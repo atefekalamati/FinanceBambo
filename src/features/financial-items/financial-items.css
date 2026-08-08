@@ -1,0 +1,711 @@
+/* --------------------------------------------------------------------------
+   Financial items page layout
+   -------------------------------------------------------------------------- */
+
+.financial-items-page {
+  min-inline-size: 0;
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.item-type-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+.item-type-card {
+  min-block-size: 7.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.item-type-card::before {
+  content: "";
+  inline-size: 2.25rem;
+  block-size: .25rem;
+  margin-block-end: .5rem;
+  border-radius: var(--radius-pill);
+  background: var(--item-type-color, var(--brand-teal));
+}
+
+.item-type-card--material {
+  --item-type-color: var(--dash-actual);
+}
+
+.item-type-card--labor {
+  --item-type-color: var(--dash-plan);
+}
+
+.item-type-card--equipment {
+  --item-type-color: var(--dash-sev-med);
+}
+
+.item-type-card--general_cost {
+  --item-type-color: var(--brand-teal);
+}
+
+.item-type-card span,
+.item-type-card small {
+  color: var(--color-text-muted);
+  font-size: .75rem;
+}
+
+.item-type-card strong {
+  margin-block-start: auto;
+  font-size: 1.55rem;
+}
+
+/* --------------------------------------------------------------------------
+   Toolbar and content sections
+   -------------------------------------------------------------------------- */
+
+.items-toolbar {
+  min-block-size: var(--toolbar-min-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-toolbar);
+  backdrop-filter: var(--glass-bg-pb-filter);
+}
+
+.items-toolbar p {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.items-toolbar__actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.items-section {
+  min-inline-size: 0;
+  padding: var(--space-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.items-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  margin-block-end: var(--space-xl);
+}
+
+.items-section__head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.items-section__head p {
+  margin: .2rem 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.section-count {
+  min-inline-size: 2.25rem;
+  block-size: 2.25rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(0 172 88 / 30%);
+  border-radius: var(--radius-pill);
+  background: var(--grad-accent-soft);
+  color: var(--dash-actual);
+  font-weight: 800;
+}
+
+/* --------------------------------------------------------------------------
+   Resource and estimate-line tables
+   -------------------------------------------------------------------------- */
+
+.items-table {
+  min-inline-size: 48rem;
+}
+
+.estimate-lines-table {
+  min-inline-size: 72rem;
+}
+
+.items-table :is(th, td):nth-child(1) {
+  inline-size: 16%;
+}
+
+.items-table :is(th, td):nth-child(2) {
+  inline-size: 24%;
+}
+
+.items-table :is(th, td):nth-child(3) {
+  inline-size: 16%;
+}
+
+.items-table :is(th, td):nth-child(4) {
+  inline-size: 14%;
+}
+
+.items-table :is(th, td):nth-child(5) {
+  inline-size: 16%;
+}
+
+.items-table :is(th, td):nth-child(6) {
+  inline-size: 14%;
+}
+
+.items-table :is(th, td):nth-child(1),
+.items-table :is(th, td):nth-child(4) {
+  overflow-wrap: anywhere;
+}
+
+.estimate-lines-table :is(th, td):nth-child(1) {
+  inline-size: 22%;
+}
+
+.estimate-lines-table :is(th, td):nth-child(2) {
+  inline-size: 17%;
+}
+
+.estimate-lines-table :is(th, td):nth-child(3) {
+  inline-size: 8%;
+}
+
+.estimate-lines-table :is(th, td):nth-child(4) {
+  inline-size: 14%;
+}
+
+.estimate-lines-table :is(th, td):nth-child(5) {
+  inline-size: 16%;
+}
+
+.estimate-lines-table :is(th, td):nth-child(6) {
+  inline-size: 11%;
+}
+
+.estimate-lines-table :is(th, td):nth-child(7) {
+  inline-size: 12%;
+}
+
+.line-actions {
+  white-space: nowrap;
+}
+
+.line-actions .table-action + .table-action {
+  margin-inline-start: .35rem;
+}
+
+.table-action {
+  min-block-size: 1.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: .2rem .45rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-btn-action);
+  color: var(--color-text-muted);
+  font-size: .68rem;
+}
+
+.table-action:hover {
+  background: var(--color-btn-action-hover);
+}
+
+.table-action--primary {
+  border-color: rgb(0 172 88 / 32%);
+  background: rgb(0 172 88 / 12%);
+  color: var(--dash-actual);
+}
+
+.type-badge,
+.change-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: .2rem .55rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-pill);
+  font-size: .7rem;
+  white-space: nowrap;
+}
+
+.type-badge--material {
+  color: var(--dash-actual);
+  background: rgb(38 208 124 / 10%);
+}
+
+.type-badge--labor {
+  color: var(--dash-plan);
+  background: rgb(59 130 246 / 10%);
+}
+
+.type-badge--equipment {
+  color: var(--dash-sev-med);
+  background: rgb(234 179 8 / 10%);
+}
+
+.type-badge--general_cost {
+  color: var(--brand-teal);
+  background: rgb(0 136 151 / 10%);
+}
+
+.table-subtext {
+  display: block;
+  margin-block-start: .15rem;
+  color: var(--color-text-muted);
+  font-size: .7rem;
+}
+
+.value-changed {
+  color: var(--dash-sev-med);
+  font-weight: 800;
+}
+
+.change-badge {
+  margin-inline-start: .45rem;
+  color: var(--dash-sev-med);
+  background: rgb(234 179 8 / 9%);
+}
+
+/* --------------------------------------------------------------------------
+   Create dialogs and forms
+   -------------------------------------------------------------------------- */
+
+.workspace-dialog {
+  inline-size: min(44rem, calc(100% - 2rem));
+  max-inline-size: 44rem;
+  max-block-size: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
+
+.workspace-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  margin-block-end: var(--space-xl);
+}
+
+.workspace-dialog__head h2 {
+  margin: 0;
+}
+
+.dialog-close {
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 1.5rem;
+}
+
+.workspace-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+.workspace-form .inline-notice,
+.workspace-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+.workspace-form select {
+  inline-size: 100%;
+  min-block-size: 2.85rem;
+  padding: .7rem .85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: rgb(10 17 32 / 90%);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="light"] .workspace-form select {
+  background: rgb(255 255 255 / 95%);
+}
+
+.inline-notice {
+  padding: .75rem .9rem;
+  border-inline-start: .2rem solid var(--brand-teal);
+  border-radius: var(--radius-sm);
+  background: rgb(0 136 151 / 8%);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+/* --------------------------------------------------------------------------
+   Estimate revision workflow
+   -------------------------------------------------------------------------- */
+
+.revision-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+  margin-block-end: var(--space-xl);
+}
+
+.revision-summary__item {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(120 145 205 / 6%);
+}
+
+.revision-summary__item span,
+.revision-summary__item small {
+  color: var(--color-text-muted);
+  font-size: .72rem;
+}
+
+.revision-summary__item strong {
+  margin-block-start: .35rem;
+  font-size: 1.2rem;
+}
+
+.revision-form .form-field:first-child {
+  grid-column: 1 / -1;
+}
+
+.overrun-warning {
+  grid-column: 1 / -1;
+  padding: .75rem .9rem;
+  border: 1px solid rgb(234 179 8 / 30%);
+  border-inline-start-width: .25rem;
+  border-radius: var(--radius-sm);
+  background: rgb(234 179 8 / 8%);
+  color: var(--dash-sev-med);
+  font-size: var(--font-size-sm);
+}
+
+.revision-identity {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  margin-block-end: var(--space-xl);
+  padding: var(--space-lg);
+  border-radius: var(--radius-md);
+  background: var(--grad-accent-soft);
+}
+
+.revision-identity small {
+  color: var(--color-text-muted);
+}
+
+.revision-list {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.revision-record {
+  position: relative;
+  display: grid;
+  gap: .55rem;
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(120 145 205 / 5%);
+}
+
+.revision-record--overrun {
+  border-color: rgb(234 179 8 / 28%);
+}
+
+.revision-record__head,
+.revision-record__values {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+}
+
+.revision-record__head time,
+.revision-record__actor,
+.revision-record__values small {
+  color: var(--color-text-muted);
+  font-size: .72rem;
+}
+
+.revision-record p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  overflow-wrap: break-word;
+}
+
+.overrun-badge {
+  inline-size: fit-content;
+  padding: .15rem .5rem;
+  border-radius: var(--radius-pill);
+  background: rgb(234 179 8 / 10%);
+  color: var(--dash-sev-med);
+  font-size: .68rem;
+}
+
+.items-empty {
+  max-inline-size: 44rem;
+}
+
+/* --------------------------------------------------------------------------
+   Estimate import preview and commit
+   -------------------------------------------------------------------------- */
+
+.import-dialog {
+  inline-size: min(68rem, calc(100% - 2rem));
+  max-inline-size: 68rem;
+}
+
+.import-dialog__description {
+  margin: 0 0 var(--space-xl);
+  color: var(--color-text-secondary);
+  line-height: 1.9;
+}
+
+.import-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-lg);
+}
+
+.import-form .form-actions {
+  margin: 0;
+}
+
+.import-form input[type="file"] {
+  inline-size: 100%;
+  min-block-size: 2.85rem;
+  padding: .5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+}
+
+.import-result {
+  display: grid;
+  gap: var(--space-lg);
+  margin-block-start: var(--space-xl);
+  padding-block-start: var(--space-xl);
+  border-block-start: 1px solid var(--color-border-subtle);
+}
+
+.import-result[hidden] {
+  display: none;
+}
+
+.import-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+}
+
+.import-summary h3,
+.import-summary p {
+  margin: 0;
+}
+
+.import-summary p {
+  margin-block-start: .2rem;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.import-summary__counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.import-count,
+.import-row-status {
+  display: inline-flex;
+  padding: .25rem .65rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  font-size: .72rem;
+  white-space: nowrap;
+}
+
+.import-count--valid,
+.import-row-status--valid {
+  border-color: rgb(38 208 124 / 28%);
+  background: rgb(38 208 124 / 9%);
+  color: var(--dash-actual);
+}
+
+.import-count--invalid {
+  border-color: rgb(239 68 68 / 30%);
+  background: rgb(239 68 68 / 9%);
+  color: var(--color-danger);
+}
+
+.import-preview-table {
+  min-inline-size: 58rem;
+}
+
+.import-preview-table :is(th, td):nth-child(1) {
+  inline-size: 7%;
+}
+
+.import-preview-table :is(th, td):nth-child(2),
+.import-preview-table :is(th, td):nth-child(3) {
+  inline-size: 21%;
+}
+
+.import-preview-table :is(th, td):nth-child(4),
+.import-preview-table :is(th, td):nth-child(5) {
+  inline-size: 11%;
+}
+
+.import-preview-table :is(th, td):nth-child(6) {
+  inline-size: 29%;
+}
+
+.import-row--invalid {
+  background: rgb(239 68 68 / 5%);
+}
+
+.import-errors {
+  display: grid;
+  gap: .25rem;
+  margin: 0;
+  padding-inline-start: 1rem;
+  color: var(--color-danger);
+  font-size: .72rem;
+}
+
+.import-notice--valid {
+  border-inline-start-color: var(--dash-actual);
+}
+
+.import-result__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive financial items
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 70rem) {
+  .item-type-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 48rem) {
+  .items-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .items-toolbar__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-form {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-form .inline-notice,
+  .workspace-form .form-actions {
+    grid-column: auto;
+  }
+
+  .revision-form .form-field:first-child,
+  .overrun-warning {
+    grid-column: auto;
+  }
+
+  .revision-record__head,
+  .revision-record__values {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .2rem;
+  }
+
+  .import-form {
+    grid-template-columns: 1fr;
+  }
+
+  .import-form .form-actions,
+  .import-result__actions {
+    justify-content: stretch;
+  }
+
+  .import-form .button,
+  .import-result__actions .button {
+    inline-size: 100%;
+  }
+}
+
+@media (max-width: 36rem) {
+  .item-type-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .items-section {
+    padding: var(--space-lg);
+  }
+
+  .items-toolbar__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-dialog {
+    inline-size: calc(100% - 1rem);
+    padding: var(--space-lg);
+  }
+
+  .revision-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .import-dialog {
+    inline-size: calc(100% - 1rem);
+    padding: var(--space-lg);
+  }
+
+  .import-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Financial items print behavior
+   -------------------------------------------------------------------------- */
+
+@media print {
+  .items-toolbar,
+  .workspace-dialog {
+    display: none !important;
+  }
+
+  .item-type-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .items-section,
+  .item-type-card {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+}

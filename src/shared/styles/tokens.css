@@ -1,0 +1,145 @@
+:root {
+  /* BAMBO host layout contract */
+  --header-height: 3.5rem;
+  --sidebar-width: 3.75rem;
+  --sidebar-width-expanded: 13.75rem;
+  --sidebar-nav-icon-size: 2.282rem;
+  --sidebar-rail-padding: .75rem;
+  --sidebar-icon-rail: var(--sidebar-width);
+  --sidebar-nav-item-height: 2.85rem;
+  --sidebar-nav-link-inset-y: 0;
+  --sidebar-nav-top-offset: 2cm;
+  --sidebar-logo-height: calc(var(--sidebar-nav-icon-size) * 2.736 / 1.755);
+  --toolbar-min-height: 4.5rem;
+  --chrome-gap: 1px;
+
+  /* BAMBO geometry and spacing */
+  --radius-sm: .5rem;
+  --radius-md: .875rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
+  --radius-pill: 999px;
+  --space-xs: .25rem;
+  --space-sm: .5rem;
+  --space-md: 2rem;
+  --space-lg: 1rem;
+  --space-xl: 1.5rem;
+  --font-size-sm: .8125rem;
+  --font-size-md: .875rem;
+  --font-size-lg: 1rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+
+  /* BAMBO stacking contract */
+  --z-viewer: 0;
+  --z-floor-plan: 25;
+  --z-header: 30;
+  --z-sidebar: 40;
+  --z-calendar-popup: 12200;
+
+  /* Brand */
+  --brand-green: #00ac58;
+  --brand-teal: #008897;
+  --brand-navy: #1d174f;
+  --brand-indigo: #32327f;
+  --grad-accent: linear-gradient(135deg, var(--brand-green) 0%, var(--brand-teal) 100%);
+  --grad-deep: linear-gradient(135deg, rgb(30 33 40 / 64%) 0%, rgb(46 51 61 / 64%) 100%);
+  --grad-accent-soft: linear-gradient(135deg, rgb(0 172 88 / 11%), rgb(0 136 151 / 11%));
+  --color-accent: var(--brand-green);
+  --color-accent-2: var(--brand-teal);
+  --color-text-link-active: var(--brand-teal);
+  --color-danger: #c0392b;
+  --color-error: #e74c3c;
+
+  /* Typography: the host supplies Vazirmatn; system fallbacks keep standalone mode usable. */
+  --font-fa: "Vazirmatn", Vazir, Tahoma, Arial, sans-serif;
+
+  /* Motion and frosted surfaces */
+  --glass-blur: 36px;
+  --glass-bg-pb-filter: blur(36px) saturate(135%);
+  --glass-opacity: .64;
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(.22, 1, .36, 1);
+  --duration-fast: .12s;
+  --duration-normal: .45s;
+  --duration-panel: .32s;
+  --duration-floor-plan: .38s;
+}
+
+html[data-theme="dark"] {
+  --color-surface-page: #0a1120;
+  --color-surface-header: rgb(21 34 80 / 50%);
+  --color-surface-viewer: #0a0c10;
+  --color-surface-toolbar: rgb(21 34 80 / 46%);
+  --color-surface-canvas: #12141a;
+  --color-surface-panel: rgb(21 34 80 / 46%);
+  --color-surface-elevated: var(--color-surface-panel);
+  --color-border-subtle: rgb(120 145 205 / 9%);
+  --color-border: rgb(120 145 205 / 14%);
+  --color-text-primary: #eef1f5;
+  --color-text-secondary: #c0c8d6;
+  --color-text-muted: #9aa3b2;
+  --color-text-inverse: #16181d;
+  --color-nav-active-bg: rgb(0 172 88 / 16%);
+  --color-nav-active-fg: #fff;
+  --color-btn-action: rgb(36 54 108 / 46%);
+  --color-btn-action-hover: rgb(0 136 151 / 32%);
+  --dash-plan: #3b82f6;
+  --dash-actual: #26d07c;
+  --dash-sev-crit: #f04438;
+  --dash-sev-high: #f97316;
+  --dash-sev-med: #eab308;
+  --dash-sev-good: #22c55e;
+  --dash-card-grad: linear-gradient(180deg, #16223c 0%, #111a30 100%);
+  --dash-shadow: 0 10px 30px rgb(3 8 20 / 50%), 0 2px 6px rgb(3 8 20 / 40%);
+  --dash-inner: inset 0 1px 0 rgb(150 175 230 / 6%);
+  --dash-grid: rgb(120 145 205 / 12%);
+  --app-card-navy: var(--dash-card-grad);
+  --glass-header-bg: rgb(21 34 80 / 50%);
+  --glass-sidebar-bg: rgb(21 34 80 / 52%);
+  --glass-floor-plan-bg: rgb(21 34 80 / 46%);
+  --shadow-header: 0 6px 24px rgb(0 0 0 / 45%);
+  --shadow-sidebar: -8px 0 28px rgb(0 0 0 / 40%);
+  --shadow-toolbar: 0 10px 30px rgb(0 0 0 / 45%);
+  --glow-accent: 0 0 0 1px rgb(0 172 88 / 35%), 0 0 24px rgb(0 172 88 / 28%);
+  --glow-edge: 0 0 0 1px rgb(180 188 204 / 16%);
+}
+
+html[data-theme="light"] {
+  --color-surface-page: #f4f6fb;
+  --color-surface-header: rgb(255 255 255 / 61%);
+  --color-surface-viewer: #0a0c10;
+  --color-surface-toolbar: rgb(255 255 255 / 53%);
+  --color-surface-canvas: #eef1f8;
+  --color-surface-panel: rgb(255 255 255 / 51%);
+  --color-surface-elevated: var(--color-surface-panel);
+  --color-border-subtle: rgb(29 23 79 / 14%);
+  --color-border: var(--color-border-subtle);
+  --color-text-primary: #14122e;
+  --color-text-secondary: #3d4560;
+  --color-text-muted: #5b6480;
+  --color-text-inverse: #fff;
+  --color-nav-active-bg: rgb(0 136 151 / 12%);
+  --color-nav-active-fg: var(--brand-navy);
+  --color-btn-action: rgb(255 255 255 / 46%);
+  --color-btn-action-hover: rgb(0 136 151 / 18%);
+  --dash-plan: #2563eb;
+  --dash-actual: #059669;
+  --dash-sev-crit: #dc2626;
+  --dash-sev-high: #ea580c;
+  --dash-sev-med: #ca8a04;
+  --dash-sev-good: #16a34a;
+  --dash-card-grad: linear-gradient(180deg, #fff 0%, #eef1f8 100%);
+  --dash-shadow: 0 8px 24px rgb(29 23 79 / 10%), 0 2px 6px rgb(29 23 79 / 6%);
+  --dash-inner: inset 0 1px 0 rgb(255 255 255 / 70%);
+  --dash-grid: rgb(29 23 79 / 16%);
+  --app-card-navy: var(--dash-card-grad);
+  --glass-header-bg: rgb(255 255 255 / 61%);
+  --glass-sidebar-bg: rgb(255 255 255 / 57%);
+  --glass-floor-plan-bg: rgb(255 255 255 / 50%);
+  --shadow-header: 0 6px 20px rgb(29 23 79 / 12%);
+  --shadow-sidebar: -8px 0 24px rgb(29 23 79 / 10%);
+  --shadow-toolbar: 0 10px 28px rgb(29 23 79 / 12%);
+  --glow-accent: 0 0 0 1px rgb(0 136 151 / 30%), 0 0 18px rgb(0 136 151 / 18%);
+  --glow-edge: 0 0 0 1px rgb(29 23 79 / 10%);
+}
