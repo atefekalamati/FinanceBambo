@@ -1,5 +1,11 @@
 # BAMBO Finance Frontend Rules
 
+## Git workflow
+
+- The Frontend team works only on the `frontend` branch of `https://github.com/atefekalamati/FinanceBambo.git`.
+- Do not commit to or rewrite Backend-owned branches.
+- After a completed and verified Frontend change, commit it with a scoped message and push it to `origin/frontend`.
+
 ## Sources of truth
 
 1. BAMBO Finance MVP PRD FA v1.1 (HTML/PDF)
