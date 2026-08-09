@@ -51,6 +51,7 @@ function makeInvoice(index, context) {
 export function createMockInvoicesAdapter(context, { initialState = "success" } = {}) {
   const invoices = initialState === "empty" ? [] : Array.from({ length: 53 }, (_, index) => makeInvoice(index + 1, context));
   const createRequests = new Map();
+  const confirmationKeys = new Map();
   const targets = [
     { targetId: "estimate-foundation-rebar", targetType: "estimate_line", label: "میلگرد فونداسیون نمونه", unit: "kg" },
     { targetId: "estimate-formwork-labor", targetType: "estimate_line", label: "اکیپ قالب‌بندی نمونه", unit: "person_hour" },
@@ -149,5 +150,26 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     return clone(invoice);
   }
 
-  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft });
+  async function confirmInvoice({ invoiceId, expectedVersion, idempotencyKey }) {
+    await wait(420);
+    if (!context.permissionCodes?.includes("finance.edit")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز تأیید فاکتور وجود ندارد.", requestId: "mock-invoice-confirm-403" });
+    const invoice = invoices.find((item) => item.invoiceId === invoiceId);
+    if (!invoice) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "فاکتور موردنظر پیدا نشد." });
+    if (invoice.submittedBy !== context.userId) throw new ApiError({ status: 403, code: "INVOICE_CONFIRMATION_FORBIDDEN", message: "در نسخه MVP فقط ثبت‌کننده فاکتور می‌تواند همان سند را تأیید کند." });
+    const key = String(idempotencyKey ?? "").trim();
+    if (!key) throw new ApiError({ status: 422, code: "IDEMPOTENCY_KEY_REQUIRED", message: "شناسه یکتای تأیید الزامی است." });
+    if (invoice.invoiceStatus === "confirmed") {
+      if (confirmationKeys.get(invoiceId) === key) return clone(invoice);
+      throw new ApiError({ status: 409, code: "INVOICE_ALREADY_CONFIRMED", message: "این فاکتور قبلاً تأیید شده است.", requestId: "mock-invoice-confirmed-409" });
+    }
+    if (invoice.invoiceStatus !== "awaitingConfirmation" || invoice.version !== expectedVersion) throw new ApiError({ status: 409, code: "STALE_VERSION", message: "فاکتور در وضعیت یا نسخه قابل تأیید نیست؛ اطلاعات را دوباره دریافت کنید.", requestId: "mock-invoice-confirm-stale-409" });
+    invoice.invoiceStatus = "confirmed";
+    invoice.version += 1;
+    invoice.confirmedBy = context.userId;
+    invoice.confirmedAt = new Date().toISOString();
+    confirmationKeys.set(invoiceId, key);
+    return clone(invoice);
+  }
+
+  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice });
 }

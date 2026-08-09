@@ -117,3 +117,24 @@ test("submits only the current draft version for confirmation", async () => {
   assert.equal(awaiting.version, 2);
   await assert.rejects(adapter.submitDraft({ invoiceId: draft.invoiceId, expectedVersion: 1 }), (error) => error.code === "STALE_VERSION");
 });
+
+test("confirms only an awaiting current version and replays the same confirmation key", async () => {
+  const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.edit"] });
+  const awaiting = await adapter.getInvoice("invoice-demo-002");
+  assert.equal(awaiting.invoiceStatus, "awaitingConfirmation");
+  await assert.rejects(adapter.confirmInvoice({ invoiceId: awaiting.invoiceId, expectedVersion: 1, idempotencyKey: "confirm-stale" }), (error) => error.code === "STALE_VERSION");
+  const confirmed = await adapter.confirmInvoice({ invoiceId: awaiting.invoiceId, expectedVersion: 2, idempotencyKey: "confirm-stable" });
+  assert.equal(confirmed.invoiceStatus, "confirmed");
+  assert.equal(confirmed.version, 3);
+  assert.equal(confirmed.confirmedBy, context.userId);
+  assert.ok(confirmed.confirmedAt);
+  assert.deepEqual(await adapter.confirmInvoice({ invoiceId: awaiting.invoiceId, expectedVersion: 2, idempotencyKey: "confirm-stable" }), confirmed);
+  await assert.rejects(adapter.confirmInvoice({ invoiceId: awaiting.invoiceId, expectedVersion: 2, idempotencyKey: "confirm-other" }), (error) => error.code === "INVOICE_ALREADY_CONFIRMED");
+});
+
+test("rejects confirmation by a user other than the invoice submitter", async () => {
+  const authContext = { ...context, permissionCodes: ["finance.edit"] };
+  const adapter = createMockInvoicesAdapter(authContext);
+  authContext.userId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2";
+  await assert.rejects(adapter.confirmInvoice({ invoiceId: "invoice-demo-002", expectedVersion: 2, idempotencyKey: "wrong-submitter" }), (error) => error.code === "INVOICE_CONFIRMATION_FORBIDDEN");
+});
