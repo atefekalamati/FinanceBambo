@@ -3,10 +3,12 @@ from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import Field, field_serializer, field_validator
+from datetime import date
+from pydantic import Field, field_serializer, field_validator, model_validator
 
 from .attachments import AttachmentResponse
 from .base import ApiModel
+from .invoices import DirectAdjustmentAllocation, InvoiceLineCreate
 
 
 class ExtractionFieldDto(ApiModel):
@@ -26,9 +28,65 @@ class ExtractionFieldDto(ApiModel):
 class ProviderExtractionResult(ApiModel):
     fields: list[ExtractionFieldDto]
 
+    @model_validator(mode="after")
+    def unique_keys(self):
+        keys = [field.key for field in self.fields]
+        if len(keys) != len(set(keys)): raise ValueError("extraction field keys must be unique")
+        return self
+
 
 class ExtractionRetry(ApiModel):
     hints: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExtractionFieldConfirmation(ApiModel):
+    key: str = Field(min_length=1)
+    confirmed_value: Any
+
+
+class ReviewedInvoiceCreate(ApiModel):
+    invoice_number: str | None = None
+    invoice_date: date
+    vendor_name: str = Field(min_length=1)
+    description: str | None = None
+    discount_irr: Decimal = Field(default=0, ge=0, max_digits=18, decimal_places=0)
+    tax_irr: Decimal = Field(default=0, ge=0, max_digits=18, decimal_places=0)
+    shipping_irr: Decimal = Field(default=0, ge=0, max_digits=18, decimal_places=0)
+    other_costs_irr: Decimal = Field(default=0, ge=0, max_digits=18, decimal_places=0)
+    direct_adjustment_allocations: list[DirectAdjustmentAllocation] = Field(default_factory=list)
+    lines: list[InvoiceLineCreate] = Field(min_length=1)
+
+    @field_validator("vendor_name")
+    @classmethod
+    def reviewed_vendor_nonblank(cls, value):
+        if not value.strip(): raise ValueError("vendor name must not be blank")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def valid_allocations(self):
+        kinds = [item.kind for item in self.direct_adjustment_allocations]
+        if len(kinds) != len(set(kinds)): raise ValueError("each adjustment kind can be allocated once")
+        if any(item.general_cost_line_index >= len(self.lines) for item in self.direct_adjustment_allocations): raise ValueError("general cost line index is out of range")
+        return self
+
+
+class ExtractionConfirm(ApiModel):
+    expected_version: int = Field(ge=1)
+    idempotency_key: str = Field(min_length=1)
+    field_confirmations: list[ExtractionFieldConfirmation] = Field(default_factory=list)
+    invoice: ReviewedInvoiceCreate
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def confirmation_key_nonblank(cls, value):
+        if not value.strip(): raise ValueError("idempotency key must not be blank")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def unique_field_confirmations(self):
+        keys = [item.key for item in self.field_confirmations]
+        if len(keys) != len(set(keys)): raise ValueError("each field can be confirmed once")
+        return self
 
 
 class ExtractionDraftResponse(ApiModel):
