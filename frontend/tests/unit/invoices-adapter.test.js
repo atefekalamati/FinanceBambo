@@ -138,3 +138,30 @@ test("rejects confirmation by a user other than the invoice submitter", async ()
   authContext.userId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2";
   await assert.rejects(adapter.confirmInvoice({ invoiceId: "invoice-demo-002", expectedVersion: 2, idempotencyKey: "wrong-submitter" }), (error) => error.code === "INVOICE_CONFIRMATION_FORBIDDEN");
 });
+
+test("creates one idempotent linked negative reversal without mutating the original", async () => {
+  const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.edit"] });
+  const original = await adapter.getInvoice("invoice-demo-003");
+  const reversal = await adapter.voidInvoice({ invoiceId: original.invoiceId, expectedVersion: original.version, idempotencyKey: "void-stable-key", reason: "ابطال براساس صورت‌جلسه مالی" });
+  assert.equal(reversal.source, "reversal");
+  assert.equal(reversal.invoiceStatus, "voided");
+  assert.equal(reversal.financialEffectSign, -1);
+  assert.equal(reversal.originalInvoiceId, original.invoiceId);
+  assert.deepEqual(await adapter.voidInvoice({ invoiceId: original.invoiceId, expectedVersion: original.version, idempotencyKey: "void-stable-key", reason: "ابطال براساس صورت‌جلسه مالی" }), reversal);
+  assert.equal((await adapter.getInvoice(original.invoiceId)).invoiceStatus, "confirmed");
+  await assert.rejects(adapter.voidInvoice({ invoiceId: original.invoiceId, expectedVersion: original.version, idempotencyKey: "void-second-key", reason: "تلاش دوباره" }), (error) => error.code === "INVOICE_OPERATION_CONFLICT");
+});
+
+test("creates an immutable corrective document linked to a confirmed original", async () => {
+  const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.edit"] });
+  const original = await adapter.getInvoice("invoice-demo-003");
+  const lines = [{ targetId: "general-permit", targetType: "general_cost", targetLabel: "هزینه مجوز نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "250000", description: "اصلاح مبلغ" }];
+  const adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
+  const corrective = await adapter.createCorrective({ originalInvoiceId: original.invoiceId, header: { invoiceNumber: "ف-003-اصلاح", invoiceDate: "2026-08-09", vendorName: original.vendorName, description: "سند اصلاحی" }, lines, adjustments, financialEffectSign: -1, reason: "اصلاح مبلغ ثبت‌شده", idempotencyKey: "corrective-stable-key" });
+  assert.equal(corrective.source, "corrective");
+  assert.equal(corrective.invoiceStatus, "corrected");
+  assert.equal(corrective.originalInvoiceId, original.invoiceId);
+  assert.equal(corrective.financialEffectSign, -1);
+  assert.equal(corrective.correctionReason, "اصلاح مبلغ ثبت‌شده");
+  assert.equal((await adapter.getInvoice(original.invoiceId)).invoiceStatus, "confirmed");
+});

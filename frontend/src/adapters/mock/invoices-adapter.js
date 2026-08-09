@@ -41,6 +41,8 @@ function makeInvoice(index, context) {
     confirmedBy: status === "confirmed" || status === "voided" || status === "corrected" ? context.userId : null,
     confirmedAt: status === "confirmed" || status === "voided" || status === "corrected" ? "2026-08-01T09:15:00Z" : null,
     relatedInvoiceId: status === "voided" || status === "corrected" ? "invoice-demo-001" : null,
+    originalInvoiceId: status === "voided" || status === "corrected" ? "invoice-demo-001" : null,
+    financialEffectSign: status === "voided" ? -1 : 1,
     lines: [
       { invoiceLineId: `line-${number}-1`, targetType: "estimate_line", targetLabel: "میلگرد فونداسیون نمونه", quantity: "1250.0000", unit: "kg", unitPriceIRR: "80000", lineAmountIRR: "100000000", description: "تحویل مرحله اول" },
       { invoiceLineId: `line-${number}-2`, targetType: "general_cost", targetLabel: "هزینه حمل نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: String(BigInt(rawTotalIRR) - 100000000n), description: "هزینه عمومی مرتبط" },
@@ -52,6 +54,8 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
   const invoices = initialState === "empty" ? [] : Array.from({ length: 53 }, (_, index) => makeInvoice(index + 1, context));
   const createRequests = new Map();
   const confirmationKeys = new Map();
+  const linkedOperationKeys = new Map();
+  const reversedOriginals = new Set(invoices.filter((invoice) => invoice.source === "reversal").map((invoice) => invoice.originalInvoiceId));
   const targets = [
     { targetId: "estimate-foundation-rebar", targetType: "estimate_line", label: "میلگرد فونداسیون نمونه", unit: "kg" },
     { targetId: "estimate-formwork-labor", targetType: "estimate_line", label: "اکیپ قالب‌بندی نمونه", unit: "person_hour" },
@@ -171,5 +175,43 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     return clone(invoice);
   }
 
-  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice });
+  async function voidInvoice({ invoiceId, expectedVersion, idempotencyKey, reason }) {
+    await wait(460);
+    if (!context.permissionCodes?.includes("finance.edit")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز ابطال فاکتور وجود ندارد." });
+    const key = String(idempotencyKey ?? "").trim();
+    const auditedReason = String(reason ?? "").trim();
+    if (!key || !auditedReason) throw new ApiError({ status: 422, code: "VALIDATION_ERROR", message: "شناسه یکتا و دلیل ابطال الزامی است." });
+    if (linkedOperationKeys.has(key)) return clone(linkedOperationKeys.get(key));
+    const original = invoices.find((item) => item.invoiceId === invoiceId);
+    if (!original) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "فاکتور اصلی پیدا نشد." });
+    if (original.invoiceStatus !== "confirmed" || original.version !== expectedVersion || reversedOriginals.has(invoiceId)) throw new ApiError({ status: 409, code: "INVOICE_OPERATION_CONFLICT", message: "فقط نسخه جاری یک فاکتور تأییدشده و بدون سند برگشت قابل ابطال است.", requestId: "mock-invoice-void-409" });
+    const occurredAt = new Date().toISOString();
+    const reversal = { ...clone(original), invoiceId: `invoice-reversal-${Date.now()}`, source: "reversal", invoiceStatus: "voided", version: 1, idempotencyKey: key, description: auditedReason, financialEffectSign: -1, originalInvoiceId: original.invoiceId, relatedInvoiceId: original.invoiceId, submittedBy: context.userId, confirmedBy: context.userId, confirmedAt: occurredAt, createdAt: occurredAt };
+    invoices.unshift(reversal);
+    reversedOriginals.add(original.invoiceId);
+    linkedOperationKeys.set(key, clone(reversal));
+    return clone(reversal);
+  }
+
+  async function createCorrective({ originalInvoiceId, header, lines, adjustments, financialEffectSign, reason, idempotencyKey }) {
+    await wait(500);
+    if (!context.permissionCodes?.includes("finance.edit")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز ثبت سند اصلاحی وجود ندارد." });
+    const key = String(idempotencyKey ?? "").trim();
+    const auditedReason = String(reason ?? "").trim();
+    if (!key || auditedReason.length < 3 || ![-1, 1].includes(financialEffectSign)) throw new ApiError({ status: 422, code: "VALIDATION_ERROR", message: "دلیل و جهت اثر مالی سند اصلاحی معتبر نیست." });
+    if (linkedOperationKeys.has(key)) return clone(linkedOperationKeys.get(key));
+    const original = invoices.find((item) => item.invoiceId === originalInvoiceId);
+    if (!original) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "فاکتور اصلی پیدا نشد." });
+    if (original.invoiceStatus !== "confirmed" || reversedOriginals.has(originalInvoiceId)) throw new ApiError({ status: 409, code: "INVOICE_OPERATION_CONFLICT", message: "سند اصلاحی فقط برای فاکتور تأییدشده و برگشت‌نخورده مجاز است." });
+    const preview = buildPreview(lines, adjustments);
+    if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ سند اصلاحی نمی‌تواند منفی باشد." });
+    const occurredAt = new Date().toISOString();
+    const preparedLines = preview.lines.map((line, index) => ({ ...line, invoiceLineId: `corrective-line-${Date.now()}-${index + 1}` }));
+    const corrective = { invoiceId: `invoice-corrective-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, source: "corrective", invoiceStatus: "corrected", version: 1, idempotencyKey: key, correctionReason: auditedReason, financialEffectSign, originalInvoiceId, relatedInvoiceId: originalInvoiceId, duplicateWarning: false, duplicateOverrideReason: null, duplicateOfInvoiceIds: [], rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, confirmedBy: context.userId, confirmedAt: occurredAt, createdAt: occurredAt, lines: preparedLines };
+    invoices.unshift(corrective);
+    linkedOperationKeys.set(key, clone(corrective));
+    return clone(corrective);
+  }
+
+  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective });
 }
