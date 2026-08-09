@@ -12,7 +12,7 @@ const WORK_AREAS = Object.freeze([
   { key: "financial-items", title: "اقلام و متره", description: "مدیریت اقلام مالی، خطوط فعالیت و مقدارهای اولیه و اصلاح‌شده", meta: "اقلام · برآورد · بازنگری", href: "#/financial-items" },
   { key: "prices", title: "قیمت‌ها و تبدیل واحد", description: "ثبت قیمت پایه، جایگزینی پروژه و مشاهده تاریخچه تغییرات", meta: "قیمت روز · تاریخچه · واحد", href: "#/prices" },
   { key: "progress", title: "پیشرفت و مقادیر اجرا", description: "مشاهده نسخه ثبت‌شده پیشرفت، کیفیت داده و جایگزینی ممیزی‌شده", meta: "نسخه ثبت‌شده · اجرا · هشدار", href: "#/progress" },
-  { key: "invoices", title: "فاکتورها", description: "ثبت دستی یا ورود با عکس و ویس و بررسی Draft قبل از تأیید", meta: "دستی · OCR · Voice" },
+  { key: "invoices", title: "فاکتورها", description: "مشاهده فهرست، وضعیت، منبع، فروشنده، مبلغ و جزئیات خطوط", meta: "فهرست · جزئیات · وضعیت", href: "#/invoices" },
   { key: "settings", title: "تنظیمات مالی", description: "زیربنای کل، واحد پول نمایشی و تنظیمات سطح پروژه", meta: "زیربنا · تومان · دسترسی", href: "#/settings" },
   { key: "audit", title: "تاریخچه و ممیزی", description: "ردیابی بازنگری، جایگزینی، تأییدها و عملیات حساس مالی", meta: "کاربر · زمان · دلیل" },
 ]);

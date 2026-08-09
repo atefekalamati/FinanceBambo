@@ -1,6 +1,8 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
+import { hasPermission } from "../../core/auth/permissions.js";
+import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "آماده", superseded: "جایگزین‌شده" });
 const RESOURCE_TYPE_LABELS = Object.freeze({ material: "متریال", labor: "نیروی انسانی", equipment: "دستگاه و تجهیزات", general_cost: "هزینه عمومی" });
@@ -35,6 +37,11 @@ function assignmentWarnings(assignment) {
   if (assignment.sourceMethod === "manual_override") warnings.push("مقدار با جایگزینی دستی تعیین شده و مقدار محاسبه‌شده اصلی حفظ شده است.");
   if (assignment.quality < 0.8) warnings.push("کیفیت این مقدار پایین‌تر از هشتاد درصد است.");
   if (assignment.actualQuantity === null && assignment.resourceType !== "general_cost") warnings.push("مقدار واقعی تخصیص موجود نیست.");
+  const deviation = calculateProgressDeviation(assignment.actualQuantity, assignment.plannedQuantity);
+  if (deviation) {
+    const percent = deviation.percent === null ? "درصد انحراف به‌دلیل برآورد صفر قابل محاسبه نیست" : `${formatDisplayNumber(deviation.percent)} درصد`;
+    warnings.push(`مقدار اجرا ${formatDisplayNumber(deviation.amount)} ${formatUnitLabel(assignment.unit)} بیشتر از برآورد است؛ انحراف ${percent}.`);
+  }
   return warnings;
 }
 
@@ -106,7 +113,104 @@ function renderOverrideDetails(override) {
   return details;
 }
 
-function renderAssignments(assignments) {
+function fieldError(message) {
+  const error = element("small", "field-error", message);
+  error.setAttribute("role", "alert");
+  return error;
+}
+
+function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "confirm-dialog progress-override-dialog";
+  dialog.setAttribute("aria-labelledby", "progress-override-title");
+  const title = element("h2", "", "ثبت جایگزینی دستی پیشرفت");
+  title.id = "progress-override-title";
+  const description = element("p", "", "مقدار محاسبه‌شده حذف یا بازنویسی نمی‌شود و این تغییر با دلیل، کاربر، زمان و نسخه پیشرفت ثبت خواهد شد.");
+  const summary = element("dl", "progress-override-summary");
+  [
+    ["فعالیت", assignment.task.taskName],
+    ["قلم مالی", assignment.resourceName],
+    ["مقدار محاسبه‌شده", valueOrMissing(assignment.manualOverride?.previousCalculatedValue ?? assignment.actualQuantity)],
+    ["مقدار برنامه", valueOrMissing(assignment.plannedQuantity)],
+    ["واحد", formatUnitLabel(assignment.unit)],
+  ].forEach(([label, value]) => summary.append(element("dt", "", label), element("dd", "", value)));
+  const form = element("form", "progress-override-form");
+  form.noValidate = true;
+  const valueField = element("label", "form-field");
+  valueField.append(element("span", "", "مقدار جایگزین"));
+  const valueInput = element("input", "app-input numeric");
+  valueInput.name = "overrideValue";
+  valueInput.inputMode = "decimal";
+  valueInput.autocomplete = "off";
+  valueInput.setAttribute("aria-describedby", "progress-override-value-help");
+  const valueHelp = element("small", "field-help", "عدد مثبت با حداکثر چهار رقم اعشار");
+  valueHelp.id = "progress-override-value-help";
+  valueField.append(valueInput, valueHelp);
+  const reasonField = element("label", "form-field");
+  reasonField.append(element("span", "", "دلیل ممیزی"));
+  const reasonInput = element("textarea", "app-textarea");
+  reasonInput.name = "reason";
+  reasonInput.rows = 4;
+  reasonInput.maxLength = 500;
+  reasonField.append(reasonInput);
+  const warning = element("div", "inline-notice progress-override-warning");
+  warning.hidden = true;
+  warning.setAttribute("role", "alert");
+  const result = element("div", "form-message");
+  result.setAttribute("aria-live", "polite");
+  const actions = element("div", "dialog-actions");
+  const cancel = element("button", "button button--ghost", "انصراف");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => dialog.close());
+  const submit = element("button", "button button--primary", "ثبت جایگزینی");
+  submit.type = "submit";
+  actions.append(cancel, submit);
+  form.append(valueField, reasonField, warning, result, actions);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    valueField.querySelector(".field-error")?.remove();
+    reasonField.querySelector(".field-error")?.remove();
+    result.textContent = "";
+    const validation = validateProgressOverride({ value: valueInput.value, reason: reasonInput.value, plannedQuantity: assignment.plannedQuantity });
+    if (validation.errors.value) valueField.append(fieldError(validation.errors.value));
+    if (validation.errors.reason) reasonField.append(fieldError(validation.errors.reason));
+    warning.hidden = !validation.exceedsPlan;
+    if (validation.exceedsPlan) {
+      const percent = validation.deviation.percent === null ? "قابل محاسبه نیست" : `${formatDisplayNumber(validation.deviation.percent)} درصد`;
+      warning.textContent = `مقدار واردشده ${formatDisplayNumber(validation.deviation.amount)} ${formatUnitLabel(assignment.unit)} بیشتر از برآورد است و انحراف ${percent} خواهد بود. ثبت مسدود نمی‌شود و دلیل در ممیزی حفظ خواهد شد.`;
+    } else {
+      warning.textContent = "";
+    }
+    if (!validation.valid) return;
+
+    submit.disabled = true;
+    cancel.disabled = true;
+    submit.textContent = "در حال ثبت…";
+    try {
+      const response = await adapter.createOverride({
+        progressSnapshotId: snapshotId,
+        assignmentExternalId: assignment.assignmentExternalId,
+        overrideValue: validation.value,
+        reason: validation.reason,
+      });
+      dialog.close();
+      onSaved(response.feed);
+    } catch (error) {
+      result.textContent = `${error.message || "ثبت جایگزینی انجام نشد."}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      result.className = "form-message form-message--error";
+    } finally {
+      submit.disabled = false;
+      cancel.disabled = false;
+      submit.textContent = "ثبت جایگزینی";
+    }
+  });
+
+  dialog.append(title, description, summary, form);
+  return dialog;
+}
+
+function renderAssignments(assignments, { canOverride, onOverride }) {
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table progress-feed-table");
   table.append(element("caption", "sr-only", "خوراک فقط‌خواندنی تخصیص‌های مالی نسخه پیشرفت"));
@@ -139,6 +243,14 @@ function renderAssignments(assignments) {
     dates.append(element("dt", "", "شروع"), element("dd", assignment.task.taskStart ? "" : "missing-value", dateOrMissing(assignment.task.taskStart)), element("dt", "", "پایان"), element("dd", assignment.task.taskFinish ? "" : "missing-value", dateOrMissing(assignment.task.taskFinish)));
     const override = document.createElement("td");
     override.append(renderOverrideDetails(assignment.manualOverride));
+    if (assignment.actualQuantity !== null && assignment.resourceType !== "general_cost") {
+      const button = element("button", "button button--small button--ghost progress-override-button", canOverride ? "ثبت جایگزینی" : "بدون مجوز ویرایش");
+      button.type = "button";
+      button.disabled = !canOverride;
+      if (!canOverride) button.title = "مجوز عمومی ویرایش مالی برای این عملیات لازم است.";
+      button.addEventListener("click", () => onOverride(assignment));
+      override.append(button);
+    }
     row.append(task, resource, element("td", "", formatUnitLabel(assignment.unit)), element("td", "", ""), element("td", "", ""), element("td", "", ""), source, element("td", "", ""), override);
     row.children[3].append(quantities);
     row.children[4].append(work);
@@ -151,11 +263,12 @@ function renderAssignments(assignments) {
   return wrapper;
 }
 
-export function createProgressPage({ adapter }) {
+export function createProgressPage({ context, adapter }) {
   const root = element("div", "progress-page");
   let snapshotsState = createRequestState(REQUEST_STATUS.LOADING);
   let feedState = createRequestState(REQUEST_STATUS.IDLE);
   let selectedId = null;
+  const canOverride = hasPermission(context, "finance.edit");
 
   async function selectSnapshot(snapshotId) {
     selectedId = snapshotId;
@@ -206,7 +319,22 @@ export function createProgressPage({ adapter }) {
     const head = element("div", "progress-section-heading");
     head.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(feed.assignments.length))));
     head.firstElementChild.append(element("h2", "", "تخصیص‌های مالی"), element("p", "", "هر اتصال فعالیت و قلم مالی یک خط مستقل است؛ داده Missing هرگز به صفر تبدیل نمی‌شود."));
-    section.append(head, renderAssignments(feed.assignments));
+    section.append(head, renderAssignments(feed.assignments, {
+      canOverride,
+      onOverride: (assignment) => {
+        const dialog = createOverrideDialog({
+          assignment,
+          snapshotId: feed.snapshot.progressSnapshotId,
+          adapter,
+          onSaved: (nextFeed) => {
+            feedState = createRequestState(REQUEST_STATUS.SUCCESS, nextFeed);
+            paint();
+          },
+        });
+        root.append(dialog);
+        dialog.showModal();
+      },
+    }));
     fragment.append(section);
     return fragment;
   }
