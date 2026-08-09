@@ -29,7 +29,8 @@ class FinanceInvoiceService:
   if duplicate!="similar" and duplicate is not None:return duplicate
   if duplicate=="similar" and not (c.duplicate_reason and c.duplicate_reason.strip()):raise DuplicateInvoice("similar invoice requires reason")
   invoice=Invoice(self.ids(),s.organization_id,s.project_id,c.invoice_number,c.invoice_date,c.vendor_name,c.description,c.source,"draft",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,None,None,self.clock(),lines)
-  return await self.repo.create(s,invoice,self.ids(),c.duplicate_reason)
+  action="invoice.duplicate_warning_overridden" if duplicate=="similar" else "invoice.created"
+  return await self.repo.create(s,invoice,self.ids(),c.duplicate_reason,action)
  async def _calculate_lines(self,s,c):
   if not await self.repo.valid_line_links(s,c.lines):raise InvoiceValidationError("each line must reference a matching estimate line or a general_cost resource")
   targets={x.kind:x.general_cost_line_index for x in c.direct_adjustment_allocations}

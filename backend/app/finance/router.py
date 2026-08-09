@@ -23,6 +23,7 @@ from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoicePatch
 from .schemas.attachments import AttachmentResponse
 from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionRetry
 from .schemas.reports import LiveReportResponse,ReportSnapshotCreate,ReportSnapshotReference
+from .schemas.audit import AuditEventResponse
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -254,3 +255,8 @@ async def report_snapshot_xlsx(projectId:str,reportId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance_report.export")
     content=await request.app.state.finance_live_report_service.export(scope,reportId,"xlsx")
     return Response(content,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",headers={"Content-Disposition":f'attachment; filename="finance-report-{reportId}.xlsx"'})
+
+@router.get("/audit-events",response_model=list[AuditEventResponse])
+async def audit_events(projectId:str,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.view")
+    return await request.app.state.finance_audit_service.list(scope)

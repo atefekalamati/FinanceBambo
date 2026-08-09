@@ -52,10 +52,20 @@ class FakeInvoiceRepo:
   return value
  async def valid_line_links(self,_scope,_lines):return True
  async def are_general_costs(self,_scope,_ids):return True
+class SimilarInvoiceRepo(FakeInvoiceRepo):
+ def __init__(self,value):super().__init__(value);self.action=None
+ async def duplicate(self,*_args):return "similar"
+ async def create(self,_scope,value,_audit,_reason,_action="invoice.created"):
+  self.action=_action;return value
 class InvoiceLifecycleTests(unittest.IsolatedAsyncioTestCase):
  def test_actual_cost_ignores_draft_and_applies_linked_document_sign(self):
   confirmed=invoice("confirmed",3);draft=invoice("draft",1);reversal=replace(invoice("voided",1),financial_effect_sign=-1,original_invoice_id=INVOICE_ID)
   self.assertEqual(Decimal(0),actual_cost([confirmed,draft,reversal]))
+ async def test_duplicate_warning_override_has_explicit_audit_action(self):
+  repo=SimilarInvoiceRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW)
+  command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="new-key",duplicateReason="reviewed duplicate",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"100"}])
+  await service.create(FinanceScope(ORG,"p1",ACTOR),command)
+  self.assertEqual("invoice.duplicate_warning_overridden",repo.action)
  async def test_submit_then_confirm_and_repeat_same_key_returns_same_outcome(self):
   repo=FakeInvoiceRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW);scope=FinanceScope(ORG,"p1",ACTOR)
   awaiting=await service.update(scope,INVOICE_ID,InvoicePatch(expectedVersion=1,status="awaitingConfirmation"))
