@@ -1,0 +1,474 @@
+/* --------------------------------------------------------------------------
+   Finance introduction
+   -------------------------------------------------------------------------- */
+
+.finance-intro {
+  position: relative;
+  overflow: hidden;
+  margin-block-end: var(--space-md);
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.finance-intro::after {
+  content: "";
+  position: absolute;
+  inset-block-start: -7rem;
+  inset-inline-end: -5rem;
+  inline-size: 18rem;
+  block-size: 18rem;
+  border: 2.5rem solid rgb(0 208 156 / 8%);
+  border-radius: 50%;
+}
+
+.finance-intro__sign {
+  position: absolute;
+  z-index: 0;
+  inset-block-start: 50%;
+  inset-inline-end: clamp(1rem, 5vw, 4rem);
+  inline-size: clamp(5.5rem, 10vw, 8.5rem);
+  opacity: .14;
+  transform: translateY(-50%);
+  filter: saturate(.9);
+  pointer-events: none;
+}
+
+.finance-intro__eyebrow {
+  color: var(--dash-actual);
+  font-size: var(--font-size-sm);
+  font-weight: 800;
+}
+
+.finance-intro h1 {
+  position: relative;
+  z-index: 1;
+  margin-block: .5rem;
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+}
+
+.finance-intro p {
+  position: relative;
+  z-index: 1;
+  max-inline-size: 48rem;
+  margin-block-end: 0;
+  color: var(--color-text-muted);
+}
+
+/* --------------------------------------------------------------------------
+   Section headings
+   -------------------------------------------------------------------------- */
+
+.section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  margin-block: var(--space-md) var(--space-lg);
+}
+
+.section-heading span {
+  color: var(--dash-actual);
+  font-size: .75rem;
+  font-weight: 800;
+}
+
+.section-heading h2 {
+  margin: .25rem 0 0;
+  font-size: 1.25rem;
+}
+
+.section-heading small {
+  color: var(--color-text-muted);
+}
+
+/* --------------------------------------------------------------------------
+   Financial summary cards
+   -------------------------------------------------------------------------- */
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+.summary-card,
+.state-card {
+  padding: 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.summary-card {
+  position: relative;
+  overflow: hidden;
+  min-block-size: 9.5rem;
+}
+
+.summary-card::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: .2rem;
+}
+
+.summary-card h2 {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.summary-card__value {
+  margin-block: 1rem .25rem;
+  font-size: 1.75rem;
+  font-weight: 900;
+}
+
+.summary-card__unit {
+  color: var(--color-text-muted);
+  font-size: .72rem;
+}
+
+/* --------------------------------------------------------------------------
+   Finance work-area cards
+   -------------------------------------------------------------------------- */
+
+.work-area-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+.work-area-card {
+  min-block-size: 9rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-emphasized);
+}
+
+.work-area-card:hover {
+  border-color: #3b5679;
+  transform: translateY(-2px);
+}
+
+.work-area-card__marker {
+  inline-size: 3rem;
+  block-size: 3rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(0 172 88 / 30%);
+  border-radius: var(--radius-md);
+  background: var(--grad-accent-soft);
+  color: var(--dash-actual);
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.work-area-card h2 {
+  margin-block-end: .25rem;
+  font-size: 1rem;
+}
+
+.work-area-card p {
+  margin-block-end: .5rem;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.work-area-card__meta {
+  color: #7890b3;
+  font-size: .72rem;
+}
+
+/* --------------------------------------------------------------------------
+   Shared page states and buttons
+   -------------------------------------------------------------------------- */
+
+.state-card--danger {
+  border-inline-start: .35rem solid var(--color-danger);
+}
+
+.button {
+  min-block-size: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-sm) var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.button--primary {
+  border-color: var(--brand-green);
+  background: var(--grad-accent);
+  color: #fff;
+}
+
+.button--ghost {
+  background: var(--color-btn-action);
+  color: var(--color-text-muted);
+  font-size: .72rem;
+}
+
+.button--ghost:hover:not(:disabled) {
+  background: var(--color-btn-action-hover);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+/* --------------------------------------------------------------------------
+   Shared RTL data tables
+   -------------------------------------------------------------------------- */
+
+.table-scroll {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  direction: rtl;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  overscroll-behavior-inline: contain;
+}
+
+.data-table {
+  inline-size: 100%;
+  direction: rtl;
+  table-layout: fixed;
+  border-collapse: collapse;
+  background: rgb(120 145 205 / 3%);
+}
+
+.data-table th,
+.data-table td {
+  min-inline-size: 0;
+  padding: .8rem .9rem;
+  border-block-end: 1px solid var(--color-border-subtle);
+  text-align: right;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.data-table th {
+  color: var(--color-text-muted);
+  font-size: .75rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.data-table td {
+  font-size: var(--font-size-sm);
+}
+
+.data-table tbody tr:last-child td {
+  border-block-end: 0;
+}
+
+.data-table :is(th, td).numeric {
+  direction: ltr;
+  text-align: right;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+}
+
+.data-table :is(.type-badge, .change-badge) {
+  max-inline-size: 100%;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   Shared Persian date picker
+   -------------------------------------------------------------------------- */
+
+.persian-date-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-sm);
+}
+
+.persian-date-control input[readonly] {
+  cursor: pointer;
+}
+
+.persian-date-trigger {
+  min-block-size: 2.85rem;
+  padding-inline: .8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-btn-action);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.persian-date-trigger:hover {
+  background: var(--color-btn-action-hover);
+}
+
+.persian-calendar-dialog {
+  inline-size: min(23rem, calc(100% - 1rem));
+  max-inline-size: 23rem;
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-card-navy);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-toolbar);
+}
+
+.persian-calendar-dialog::backdrop {
+  background: rgb(2 6 23 / 70%);
+  backdrop-filter: blur(4px);
+}
+
+.persian-calendar__header {
+  display: grid;
+  grid-template-columns: 5rem 1fr 5rem;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-lg);
+}
+
+.persian-calendar__title {
+  text-align: center;
+}
+
+.persian-calendar__nav {
+  min-block-size: 2.25rem;
+  padding: .3rem .5rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: .72rem;
+}
+
+.persian-calendar__nav:hover {
+  background: var(--color-btn-action-hover);
+}
+
+.persian-calendar__weekdays,
+.persian-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: .25rem;
+}
+
+.persian-calendar__weekdays {
+  margin-block-end: .35rem;
+  color: var(--color-text-muted);
+  font-size: .72rem;
+  text-align: center;
+}
+
+.persian-calendar__day,
+.persian-calendar__blank {
+  aspect-ratio: 1;
+}
+
+.persian-calendar__day {
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.persian-calendar__day:hover {
+  border-color: var(--color-border);
+  background: var(--color-btn-action-hover);
+}
+
+.persian-calendar__day--today {
+  border-color: rgb(0 172 88 / 45%);
+  color: var(--dash-actual);
+}
+
+.persian-calendar__day--selected {
+  border-color: var(--brand-green);
+  background: var(--grad-accent);
+  color: #fff;
+}
+
+.persian-calendar__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-lg);
+  padding-block-start: var(--space-lg);
+  border-block-start: 1px solid var(--color-border-subtle);
+}
+
+/* --------------------------------------------------------------------------
+   Responsive shared components
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 70rem) {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 48rem) {
+  .work-area-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: .7rem .75rem;
+  }
+}
+
+@media (max-width: 36rem) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .work-area-card {
+    grid-template-columns: auto 1fr;
+  }
+
+  .work-area-card .button {
+    grid-column: 1 / -1;
+  }
+
+  .finance-intro__sign {
+    opacity: .08;
+  }
+
+  .persian-date-control {
+    grid-template-columns: 1fr;
+  }
+
+  .persian-date-trigger {
+    inline-size: 100%;
+  }
+}

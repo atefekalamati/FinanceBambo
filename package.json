@@ -1,0 +1,13 @@
+{
+  "name": "bambo-finance-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/app/bootstrap.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

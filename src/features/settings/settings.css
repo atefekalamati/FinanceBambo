@@ -1,0 +1,354 @@
+/* --------------------------------------------------------------------------
+   Settings page header and layout
+   -------------------------------------------------------------------------- */
+
+.settings-page {
+  min-inline-size: 0;
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.feature-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-xl);
+}
+
+.feature-header__copy {
+  max-inline-size: 52rem;
+}
+
+.feature-header__eyebrow {
+  color: var(--dash-actual);
+  font-size: var(--font-size-sm);
+  font-weight: 800;
+}
+
+.feature-header h1 {
+  margin-block: .3rem;
+  font-size: clamp(1.7rem, 4vw, 2.35rem);
+}
+
+.feature-header p {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   Settings overview
+   -------------------------------------------------------------------------- */
+
+.settings-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+.settings-overview__item {
+  min-block-size: 8rem;
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: var(--space-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.settings-overview__item span,
+.settings-overview__item small {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.settings-overview__item strong {
+  margin-block-start: auto;
+  font-size: 1.45rem;
+}
+
+/* --------------------------------------------------------------------------
+   Shared settings cards
+   -------------------------------------------------------------------------- */
+
+.settings-card {
+  min-inline-size: 0;
+  padding: var(--space-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.settings-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  margin-block-end: var(--space-xl);
+}
+
+.settings-card__head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.settings-card__head p {
+  margin: .2rem 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.settings-card__icon {
+  inline-size: 3rem;
+  block-size: 3rem;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(0 172 88 / 30%);
+  border-radius: var(--radius-md);
+  background: var(--grad-accent-soft);
+  color: var(--dash-actual);
+  font-weight: 900;
+}
+
+/* --------------------------------------------------------------------------
+   Currency policy
+   -------------------------------------------------------------------------- */
+
+.currency-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+.currency-item {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(120 145 205 / 6%);
+}
+
+.currency-item--active {
+  border-color: rgb(0 172 88 / 30%);
+  background: var(--grad-accent-soft);
+}
+
+.currency-item__label,
+.currency-item small {
+  color: var(--color-text-muted);
+  font-size: .75rem;
+}
+
+.currency-item strong {
+  font-size: 1.35rem;
+}
+
+/* --------------------------------------------------------------------------
+   Settings form
+   -------------------------------------------------------------------------- */
+
+.settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xl);
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.form-field--wide,
+.form-actions {
+  grid-column: 1 / -1;
+}
+
+.form-label {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.form-field input,
+.form-field textarea {
+  inline-size: 100%;
+  min-block-size: 2.85rem;
+  padding: .7rem .85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: rgb(10 17 32 / 45%);
+  color: var(--color-text-primary);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+html[data-theme="light"] .form-field input,
+html[data-theme="light"] .form-field textarea {
+  background: rgb(255 255 255 / 60%);
+}
+
+.form-field input:focus,
+.form-field textarea:focus {
+  border-color: var(--brand-teal);
+  box-shadow: var(--glow-accent);
+  outline: none;
+}
+
+.form-field [aria-invalid="true"] {
+  border-color: var(--color-error);
+}
+
+.form-hint,
+.form-error {
+  min-block-size: 1.25rem;
+  font-size: .72rem;
+}
+
+.form-hint {
+  color: var(--color-text-muted);
+}
+
+.form-error {
+  color: var(--color-error);
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding-block-start: var(--space-sm);
+}
+
+.form-status {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+/* --------------------------------------------------------------------------
+   Confirmation dialog
+   -------------------------------------------------------------------------- */
+
+.confirm-dialog {
+  max-inline-size: 31rem;
+  padding: var(--space-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--dash-card-grad);
+  color: var(--color-text-primary);
+  box-shadow: var(--dash-shadow);
+}
+
+.confirm-dialog::backdrop {
+  background: rgb(3 8 20 / 72%);
+  backdrop-filter: blur(5px);
+}
+
+.confirm-dialog h2 {
+  margin-block-end: var(--space-sm);
+}
+
+.confirm-dialog p {
+  color: var(--color-text-secondary);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-xl);
+}
+
+/* --------------------------------------------------------------------------
+   Revision history table layout
+   -------------------------------------------------------------------------- */
+
+.settings-history {
+  min-inline-size: 62rem;
+}
+
+.settings-history :is(th, td):nth-child(1) {
+  inline-size: 12%;
+  white-space: nowrap;
+}
+
+.settings-history :is(th, td):nth-child(2) {
+  inline-size: 16%;
+}
+
+.settings-history :is(th, td):nth-child(3) {
+  inline-size: 16%;
+}
+
+.settings-history :is(th, td):nth-child(4) {
+  inline-size: 25%;
+}
+
+.settings-history :is(th, td):nth-child(5) {
+  inline-size: 14%;
+}
+
+.settings-history :is(th, td):nth-child(6) {
+  inline-size: 17%;
+  white-space: nowrap;
+}
+
+.settings-empty {
+  max-inline-size: 44rem;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive settings page
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 48rem) {
+  .feature-header {
+    flex-direction: column-reverse;
+  }
+
+  .settings-overview,
+  .currency-grid,
+  .settings-form {
+    grid-template-columns: 1fr;
+  }
+
+  .form-field--wide,
+  .form-actions {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 36rem) {
+  .settings-card {
+    padding: var(--space-lg);
+  }
+
+  .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dialog-actions {
+    flex-direction: column-reverse;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Settings print behavior
+   -------------------------------------------------------------------------- */
+
+@media print {
+  .settings-editor,
+  .feature-header .button {
+    display: none !important;
+  }
+
+  .settings-card,
+  .settings-overview__item {
+    box-shadow: none;
+  }
+}
