@@ -59,7 +59,7 @@ function renderRoute(route, context, adapters) {
     root.append(createFinancialItemsPage({ context, adapter: adapters.financialItems }));
   }
   if (route.key === "prices") root.append(createPricesPage({ context, adapter: adapters.prices }));
-  if (route.key === "progress") root.append(createProgressPage({ adapter: adapters.progress }));
+  if (route.key === "progress") root.append(createProgressPage({ context, adapter: adapters.progress }));
   if (route.key === "settings") {
     root.append(createSettingsPage({
       context,

@@ -59,3 +59,41 @@ test("returns empty/error states and rejects an unknown snapshot", async () => {
   const errorAdapter = createMockProgressAdapter(context, { initialState: "error" });
   await assert.rejects(errorAdapter.getSnapshots(), (error) => error.code === "PROGRESS_FEED_UNAVAILABLE");
 });
+
+test("appends an audited manual override and preserves the computed value", async () => {
+  const adapter = createMockProgressAdapter({ ...context, permissionCodes: ["finance.view", "finance.edit"] });
+  const snapshots = await adapter.getSnapshots();
+  const oldest = snapshots.at(-1).snapshot;
+  const feed = await adapter.getFeed(oldest.progressSnapshotId);
+  const assignment = feed.assignments[0];
+  const response = await adapter.createOverride({
+    progressSnapshotId: oldest.progressSnapshotId,
+    assignmentExternalId: assignment.assignmentExternalId,
+    overrideValue: "2600.5000",
+    reason: "اصلاح براساس صورت‌جلسه کارگاه",
+  });
+
+  assert.equal(response.override.previousCalculatedValue, "2500.0000");
+  assert.equal(response.override.newValue, "2600.5000");
+  assert.equal(response.override.progressSnapshotId, oldest.progressSnapshotId);
+  assert.equal(response.override.userId, context.userId);
+  assert.equal(response.override.source, "manual_override");
+  assert.equal(response.feed.assignments[0].sourceMethod, "manual_override");
+  assert.equal((await adapter.getOverrideHistory()).length, 1);
+});
+
+test("rejects a manual override without edit permission or reason", async () => {
+  const deniedAdapter = createMockProgressAdapter({ ...context, permissionCodes: ["finance.view"] });
+  const deniedSnapshot = (await deniedAdapter.getSnapshots()).at(-1).snapshot;
+  await assert.rejects(
+    deniedAdapter.createOverride({ progressSnapshotId: deniedSnapshot.progressSnapshotId, assignmentExternalId: "asg-foundation-rebar", overrideValue: "2600", reason: "اصلاح معتبر" }),
+    (error) => error.status === 403,
+  );
+
+  const adapter = createMockProgressAdapter({ ...context, permissionCodes: ["finance.edit"] });
+  const snapshot = (await adapter.getSnapshots()).at(-1).snapshot;
+  await assert.rejects(
+    adapter.createOverride({ progressSnapshotId: snapshot.progressSnapshotId, assignmentExternalId: "asg-foundation-rebar", overrideValue: "2600", reason: "" }),
+    (error) => error.status === 422,
+  );
+});

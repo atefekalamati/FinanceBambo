@@ -9,6 +9,7 @@ function wait(duration = 300) {
 }
 
 export function createMockProgressAdapter(context, { initialState = "success" } = {}) {
+  const overrideHistory = [];
   const feeds = initialState === "empty" ? [] : [
     {
       contractMarker: "MOCK DEVELOPMENT CONTRACT — NOT A PRODUCTION BAMBO ENDPOINT",
@@ -47,5 +48,48 @@ export function createMockProgressAdapter(context, { initialState = "success" } 
     return clone(feed);
   }
 
-  return Object.freeze({ getSnapshots, getFeed });
+  async function createOverride({ progressSnapshotId, assignmentExternalId, overrideValue, reason }) {
+    await wait(420);
+    if (!context.permissionCodes?.includes("finance.edit")) {
+      throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز ثبت جایگزینی دستی پیشرفت وجود ندارد.", requestId: "mock-progress-override-403" });
+    }
+
+    const feed = feeds.find((item) => item.snapshot.progressSnapshotId === progressSnapshotId);
+    const assignment = feed?.assignments.find((item) => item.assignmentExternalId === assignmentExternalId);
+    if (!feed || !assignment) {
+      throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "خط پیشرفت موردنظر پیدا نشد." });
+    }
+    if (assignment.resourceType === "general_cost" || assignment.actualQuantity === null) {
+      throw new ApiError({ status: 422, code: "PROGRESS_OVERRIDE_NOT_APPLICABLE", message: "برای این خط مقدار محاسبه‌شده قابل جایگزینی وجود ندارد." });
+    }
+    if (!String(reason ?? "").trim()) {
+      throw new ApiError({ status: 422, code: "PROGRESS_OVERRIDE_REASON_REQUIRED", message: "دلیل جایگزینی دستی الزامی است." });
+    }
+
+    const previousCalculatedValue = assignment.manualOverride?.previousCalculatedValue ?? assignment.actualQuantity;
+    const occurredAt = new Date().toISOString();
+    const manualOverride = {
+      previousCalculatedValue,
+      newValue: overrideValue,
+      reason: String(reason).trim(),
+      userId: context.userId,
+      occurredAt,
+      source: "manual_override",
+      progressSnapshotId,
+    };
+
+    overrideHistory.push({ assignmentExternalId, ...manualOverride });
+    assignment.actualQuantity = overrideValue;
+    assignment.sourceMethod = "manual_override";
+    assignment.quality = 1;
+    assignment.manualOverride = manualOverride;
+    return clone({ feed, override: manualOverride });
+  }
+
+  async function getOverrideHistory() {
+    await wait(120);
+    return clone(overrideHistory);
+  }
+
+  return Object.freeze({ getSnapshots, getFeed, createOverride, getOverrideHistory });
 }
