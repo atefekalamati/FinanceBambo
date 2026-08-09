@@ -53,3 +53,26 @@ test("supports empty, recoverable error, and not-found states", async () => {
   await assert.rejects(createMockInvoicesAdapter(context, { initialState: "error" }).getInvoices(), (error) => error.status === 503 && Boolean(error.requestId));
   await assert.rejects(createMockInvoicesAdapter(context).getInvoice("missing"), (error) => error.status === 404);
 });
+
+test("previews and creates a zero-effect manual invoice draft with exact IRR totals", async () => {
+  const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.view", "finance.edit"] });
+  const targets = await adapter.getInvoiceTargets();
+  const lines = [
+    { targetId: targets[0].targetId, targetType: "estimate_line", targetLabel: targets[0].label, quantity: "1.2500", unit: "kg", unitPriceIRR: "80001", lineAmountIRR: "", description: "" },
+    { targetId: targets[2].targetId, targetType: "general_cost", targetLabel: targets[2].label, quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "500000", description: "" },
+  ];
+  const adjustments = { discountIRR: "100", taxIRR: "200", shippingIRR: "300", otherCostsIRR: "400" };
+  const preview = await adapter.previewDraft({ lines, adjustments });
+  assert.equal(preview.lines[0].lineAmountIRR, "100001");
+  assert.equal(preview.rawLinesTotalIRR, "600001");
+  assert.equal(preview.finalAmountIRR, "600801");
+  const draft = await adapter.createDraft({ header: { invoiceNumber: "ف-جدید", invoiceDate: "2026-08-09", vendorName: "فروشنده نمونه", description: "" }, lines, adjustments });
+  assert.equal(draft.invoiceStatus, "draft");
+  assert.equal(draft.source, "manual");
+  assert.equal(draft.confirmedAt, null);
+});
+
+test("rejects draft creation without the coarse approved edit permission", async () => {
+  const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.view"] });
+  await assert.rejects(adapter.createDraft({ header: { invoiceNumber: "x", invoiceDate: "2026-08-09", vendorName: "v" }, lines: [{}], adjustments: { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" } }), (error) => error.status === 403);
+});

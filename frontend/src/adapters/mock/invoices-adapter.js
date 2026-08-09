@@ -47,6 +47,18 @@ function makeInvoice(index, context) {
 
 export function createMockInvoicesAdapter(context, { initialState = "success" } = {}) {
   const invoices = initialState === "empty" ? [] : Array.from({ length: 53 }, (_, index) => makeInvoice(index + 1, context));
+  const targets = [
+    { targetId: "estimate-foundation-rebar", targetType: "estimate_line", label: "میلگرد فونداسیون نمونه", unit: "kg" },
+    { targetId: "estimate-formwork-labor", targetType: "estimate_line", label: "اکیپ قالب‌بندی نمونه", unit: "person_hour" },
+    { targetId: "general-permit", targetType: "general_cost", label: "هزینه مجوز نمونه", unit: null },
+  ];
+
+  function calculateLineAmount(line) {
+    if (line.targetType === "general_cost") return line.lineAmountIRR;
+    const [integer, fraction = ""] = line.quantity.split(".");
+    const scaledQuantity = BigInt(`${integer}${fraction.padEnd(4, "0")}`);
+    return ((scaledQuantity * BigInt(line.unitPriceIRR) + 5000n) / 10000n).toString();
+  }
 
   async function getInvoices({ query = "", status = "", source = "", page = 1, pageSize = 50 } = {}) {
     await wait();
@@ -70,5 +82,36 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     return clone(invoice);
   }
 
-  return Object.freeze({ getInvoices, getInvoice });
+  async function getInvoiceTargets() {
+    await wait(120);
+    return clone(targets);
+  }
+
+  function buildPreview(lines, adjustments) {
+    const preparedLines = lines.map((line) => ({ ...line, lineAmountIRR: calculateLineAmount(line) }));
+    const rawLinesTotalIRR = preparedLines.reduce((sum, line) => sum + BigInt(line.lineAmountIRR), 0n).toString();
+    const finalAmountIRR = (BigInt(rawLinesTotalIRR) - BigInt(adjustments.discountIRR) + BigInt(adjustments.taxIRR) + BigInt(adjustments.shippingIRR) + BigInt(adjustments.otherCostsIRR)).toString();
+    return { lines: preparedLines, rawLinesTotalIRR, finalAmountIRR, ...adjustments };
+  }
+
+  async function previewDraft({ lines, adjustments }) {
+    await wait(260);
+    const preview = buildPreview(lines, adjustments);
+    if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ نهایی فاکتور نمی‌تواند منفی باشد." });
+    return clone(preview);
+  }
+
+  async function createDraft({ header, lines, adjustments }) {
+    await wait(480);
+    if (!context.permissionCodes?.includes("finance.edit")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز ثبت پیش‌نویس فاکتور وجود ندارد.", requestId: "mock-invoice-create-403" });
+    if (!header?.invoiceNumber || !header.invoiceDate || !header.vendorName || !Array.isArray(lines) || !lines.length) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "اطلاعات فاکتور کامل نیست." });
+    const preview = buildPreview(lines, adjustments);
+    if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ نهایی فاکتور نمی‌تواند منفی باشد." });
+    const preparedLines = preview.lines.map((line, index) => ({ ...line, invoiceLineId: `draft-line-${Date.now()}-${index + 1}` }));
+    const invoice = { invoiceId: `invoice-draft-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, source: "manual", invoiceStatus: "draft", duplicateWarning: false, rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, createdAt: new Date().toISOString(), confirmedBy: null, confirmedAt: null, relatedInvoiceId: null, lines: preparedLines };
+    invoices.unshift(invoice);
+    return clone(invoice);
+  }
+
+  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft });
 }
