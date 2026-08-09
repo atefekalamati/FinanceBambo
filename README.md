@@ -2,25 +2,26 @@
 
 پیاده‌سازی ماژول مالی BAMBO شامل Backend و Frontend مستقل، بر اساس PRD و Integration Kit نسخه ۱.۱.
 
+## ساختار مخزن
+
+- کد و مستندات Backend در `backend/`
+- کد، دارایی‌ها، آزمون‌ها و مستندات Frontend در `frontend/`
+- منابع مرجع پروژه در `Sources/`
+
 ## Backend
 
-کد Backend در پوشه `backend/` قرار دارد. راهنمای اجرا و معماری آن در `backend/README_FA.md` نگه‌داری می‌شود.
+راهنمای اجرا و معماری Backend در `backend/README_FA.md` نگه‌داری می‌شود.
 
 ## Frontend
 
 Frontend با HTML، CSS و JavaScript وانیلا و ES Modules توسعه یافته و Build Step، Framework، CDN یا درخواست خارجی مرورگر ندارد.
 
-مستندات اصلی Frontend:
-
-- راهنمای شروع: `docs/FRONTEND_ONBOARDING_FA.md`
-- معماری: `docs/FRONTEND_ARCHITECTURE_FA.md`
-- وضعیت و اولویت توسعه: `docs/PROJECT_PROGRESS_FA.md`
-- ترتیب منابع نسخه ۱.۱: `docs/SOURCE_OF_TRUTH_FA.md`
-- Roadmap تحویل: `docs/FRONTEND_DELIVERY_ROADMAP_FA.md`
+مستندات اصلی Frontend در `frontend/docs/` و راهنمای اختصاصی آن در `frontend/README.md` قرار دارند.
 
 ### اجرای محلی Frontend
 
 ```powershell
+cd frontend
 python -m http.server 43127 --bind 127.0.0.1
 ```
 
@@ -29,17 +30,10 @@ python -m http.server 43127 --bind 127.0.0.1
 ### آزمون Frontend
 
 ```powershell
+cd frontend
 npm test
 npm run check
 ```
-
-### صفحات فعال Frontend
-
-- امور مالی: `#/finance`
-- تنظیمات مالی: `#/settings`
-- اقلام و متره: `#/financial-items`
-- قیمت‌ها و تبدیل واحد: `#/prices`
-- خوراک پیشرفت مالی: `#/progress`
 
 ## منابع مرجع
 
