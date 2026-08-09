@@ -1,19 +1,54 @@
-# اسکلت Backend مالی BAMBO
+# Backend ماژول مالی BAMBO
 
-این پوشه اسکلت مرحله دوم ماژول مالی است. Adapterهای واقعی Auth، Scope، File و Progress باید توسط تیم اصلی BAMBO تزریق شوند. هیچ Mock Header یا Endpoint احراز هویت در این برنامه وجود ندارد.
+این Backend براساس PRD و Integration Kit نسخه ۱.۱، به‌صورت مستقل از پیاده‌سازی داخلی میزبان BAMBO ساخته شده است. هیچ Mock Header، مسیر مستقیم MPP، آدرس Production یا منطق احراز هویت میزبان در آن وجود ندارد.
 
-## اجرای تست اسکلت
+## پیش‌نیازها
 
-از ریشه Repository:
+- Python 3.12
+- PostgreSQL 16؛ سازگاری SQL با PostgreSQL 18 نیز باید در محیط BAMBO تأیید شود
+- Adapterهای میزبان برای Auth، Scope، Permission، File Storage، Progress Snapshot و AI Extraction
+
+نصب وابستگی‌ها از ریشه Repository:
 
 ```powershell
-python -m unittest discover -s backend/tests -v
+python -m pip install -r backend/requirements.txt
 ```
 
-نسخه هدف Python برابر 3.12 است. وابستگی‌های مجاز این مرحله در `backend/requirements.txt` ثبت شده‌اند.
+## تست‌ها
 
-## Migration مالی
+```powershell
+python -m pytest backend/tests -q
+```
 
-Migration پیشنهادی مستقل در `backend/migrations/0001_finance_core.up.sql` و Rollback آن در `backend/migrations/0001_finance_core.down.sql` قرار دارد. اجرای نهایی Migration فقط توسط تیم اصلی BAMBO و پس از تهیه Backup و Review مجاز است.
+Contract Testهای Integration Kit باید با runner داخل همان Kit اجرا شوند:
 
-تست ساختاری Migration همراه کل Suite با همان Command بالا اجرا می‌شود. آزمون اجرایی باید جداگانه روی PostgreSQL 16 و 18، ابتدا روی دیتابیس خالی، سپس اجرای مجدد Up و در پایان Down انجام شود. اطلاعات اتصال باید از محیط اجرا تأمین شود و نباید در Repository ثبت گردد.
+```powershell
+python tests/run_contract_tests.py
+```
+
+بررسی امنیت وابستگی‌ها:
+
+```powershell
+python -m pip_audit -r backend/requirements.txt
+```
+
+## Migration
+
+Migrationها به‌ترتیب عددی اجرا می‌شوند:
+
+1. `0001_finance_core.up.sql`
+2. `0002_invoice_confirmation.up.sql`
+3. `0003_invoice_linked_documents.up.sql`
+4. `0004_report_snapshot_payload.up.sql`
+
+Rollback با فایل‌های هم‌نام `.down.sql` و به‌ترتیب معکوس انجام می‌شود. اجرای Production فقط بعد از Backup، Review تیم BAMBO و آزمون روی PostgreSQL 16 و 18 مجاز است.
+
+## OpenAPI
+
+پس از ساخت برنامه، قرارداد OpenAPI استاندارد FastAPI از `/openapi.json` قابل دریافت است. تمام مسیرهای مالی زیر پیشوند زیر قرار دارند:
+
+```text
+/api/projects/{projectId}/finance
+```
+
+جزئیات Adapterها، State موردنیاز برنامه و Permissionها در `INTEGRATION_GUIDE_FA.md` آمده است.
