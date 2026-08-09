@@ -381,10 +381,12 @@ function createPriceDialog(adapter, currentPrices, onSaved) {
   return dialog;
 }
 
-function createPriceTrend(resourceId, history) {
-  const versions = history.filter((price) => price.resourceId === resourceId).sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom) || left.sequence - right.sequence).slice(-6);
+function createPriceTrend(item, history) {
+  const fallbackVersions = history.filter((price) => price.resourceId === item.resource.resourceId).sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom) || left.sequence - right.sequence);
+  const versions = (item.trend?.trendPoints ?? fallbackVersions.map((price) => ({ effectiveFrom: price.effectiveFrom, unitPriceIrr: price.unitPriceIRR }))).slice(-6);
   const container = element("div", "price-trend");
-  if (!versions.length) {
+  const directionCode = item.trend?.trendDirection ?? (versions.length < 2 ? "none" : BigInt(versions.at(-1).unitPriceIrr) > BigInt(versions.at(-2).unitPriceIrr) ? "up" : BigInt(versions.at(-1).unitPriceIrr) < BigInt(versions.at(-2).unitPriceIrr) ? "down" : "flat");
+  if (!versions.length || directionCode === "none") {
     container.append(element("span", "missing-value", "بدون سابقه"));
     return container;
   }
@@ -397,7 +399,7 @@ function createPriceTrend(resourceId, history) {
     const y = range === 0n ? 16 : 27 - Number(((value - minimum) * 22n) / range);
     return `${x},${y}`;
   }).join(" ");
-  const direction = values.at(-1) > values[0] ? "افزایشی" : values.at(-1) < values[0] ? "کاهشی" : "بدون تغییر";
+  const direction = directionCode === "up" ? "افزایشی" : directionCode === "down" ? "کاهشی" : "بدون تغییر";
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 100 32");
   svg.setAttribute("role", "img");
@@ -435,7 +437,7 @@ function renderCurrentPrices(items, history) {
       element("td", "", currentScope),
       element("td", "", item.currentPrice ? formatBusinessDate(item.currentPrice.effectiveFrom) : "—"),
     );
-    row.children[5].append(createPriceTrend(item.resource.resourceId, history));
+    row.children[5].append(createPriceTrend(item, history));
     body.append(row);
   });
   table.append(head, body);
