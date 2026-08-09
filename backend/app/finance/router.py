@@ -20,6 +20,7 @@ from .schemas.conversions import ConversionCreate,ConversionPatch,ConversionResp
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
 from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResponse
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
+from .schemas.attachments import AttachmentResponse
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -203,3 +204,14 @@ async def void_invoice(projectId:str,invoiceId:UUID,payload:InvoiceVoid,request:
 @router.post("/invoices/{invoiceId}/corrective",response_model=InvoiceResponse,status_code=201)
 async def corrective_invoice(projectId:str,invoiceId:UUID,payload:CorrectiveInvoiceCreate,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.corrective(scope,invoiceId,payload))
+
+@router.post("/files",response_model=AttachmentResponse,status_code=201)
+async def upload_finance_file(projectId:str,request:Request,logicalType:str=Form(...),file:UploadFile=File(...)):
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    value=await request.app.state.finance_attachment_service.upload(scope,logicalType,file.filename or "upload.bin",file.content_type or "application/octet-stream",await file.read())
+    return AttachmentResponse.from_domain(value)
+
+@router.get("/files/{fileId}",response_model=AttachmentResponse)
+async def get_finance_file(projectId:str,fileId:UUID,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.view")
+    return AttachmentResponse.from_domain(await request.app.state.finance_attachment_service.get(scope,fileId))
