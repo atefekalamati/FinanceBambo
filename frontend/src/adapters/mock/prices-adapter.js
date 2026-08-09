@@ -11,7 +11,7 @@ function wait(duration = 300) {
 }
 
 export function createMockPricesAdapter(context, { initialState = "success" } = {}) {
-  let priceSequence = 6;
+  let priceSequence = 7;
   let importSequence = 1;
   let conversionSequence = 4;
   const importPreviews = new Map();
@@ -27,6 +27,7 @@ export function createMockPricesAdapter(context, { initialState = "success" } = 
     { priceId: "50000000-0000-4000-8000-000000000003", sequence: 3, resourceId: resources[1].resourceId, scope: "organization", unitPriceIRR: "1850000", currency: "IRR", effectiveFrom: "2026-07-15", createdAt: "2026-07-15T09:00:00Z", actorId: context.userId, actorName: "امیر طاهری" },
     { priceId: "50000000-0000-4000-8000-000000000004", sequence: 4, resourceId: resources[2].resourceId, scope: "organization", unitPriceIRR: "12500000", currency: "IRR", effectiveFrom: "2026-06-20", createdAt: "2026-06-20T10:00:00Z", actorId: context.userId, actorName: "امیر طاهری" },
     { priceId: "50000000-0000-4000-8000-000000000005", sequence: 5, resourceId: resources[2].resourceId, scope: "project", unitPriceIRR: "13200000", currency: "IRR", effectiveFrom: "2026-08-03", createdAt: "2026-08-03T10:00:00Z", actorId: context.userId, actorName: "امیر طاهری" },
+    { priceId: "50000000-0000-4000-8000-000000000006", sequence: 6, resourceId: resources[0].resourceId, scope: "project", unitPriceIRR: "295000", currency: "IRR", effectiveFrom: "2026-07-15", createdAt: "2026-07-15T08:00:00Z", actorId: context.userId, actorName: "امیر طاهری" },
   ];
   let conversions = initialState === "empty" ? [] : [
     { conversionId: "55555555-5555-4555-8555-555555555551", organizationId: context.organizationId, projectId: null, sourceUnit: "ton", targetUnit: "kg", factor: "1000.000000", effectiveDate: "2026-01-01", createdBy: context.userId, createdByName: "امیر طاهری", createdAt: "2026-01-01T07:00:00Z" },
@@ -42,7 +43,34 @@ export function createMockPricesAdapter(context, { initialState = "success" } = 
         .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom) || right.sequence - left.sequence);
       const projectPrice = versions.find((price) => price.scope === "project");
       const organizationPrice = versions.find((price) => price.scope === "organization");
-      return { resource: clone(resource), currentPrice: clone(projectPrice ?? organizationPrice ?? null), organizationPrice: clone(organizationPrice ?? null), projectPrice: clone(projectPrice ?? null) };
+      const currentPrice = projectPrice ?? organizationPrice ?? null;
+      const selectedScope = currentPrice?.scope ?? null;
+      const trendVersions = selectedScope ? versions.filter((price) => price.scope === selectedScope).reverse() : [];
+      const previousPrice = trendVersions.length > 1 ? trendVersions.at(-2) : null;
+      const currentAmount = currentPrice ? BigInt(currentPrice.unitPriceIRR) : null;
+      const previousAmount = previousPrice ? BigInt(previousPrice.unitPriceIRR) : null;
+      const trendDirection = previousAmount === null ? "none" : currentAmount > previousAmount ? "up" : currentAmount < previousAmount ? "down" : "flat";
+      let latestChangePercent = null;
+      if (previousAmount !== null && previousAmount !== 0n) {
+        const scale = 1_000_000n;
+        const numerator = (currentAmount - previousAmount) * 100n * scale;
+        const absolute = numerator < 0n ? -numerator : numerator;
+        const rounded = (absolute + previousAmount / 2n) / previousAmount;
+        const signed = numerator < 0n ? -rounded : rounded;
+        const whole = signed / scale;
+        const fraction = (signed < 0n ? -signed : signed) % scale;
+        latestChangePercent = `${signed < 0n && whole === 0n ? "-" : ""}${whole}.${String(fraction).padStart(6, "0")}`;
+      }
+      const trend = {
+        resourceId: resource.resourceId,
+        currentPriceIrr: currentPrice?.unitPriceIRR ?? null,
+        previousPriceIrr: previousPrice?.unitPriceIRR ?? null,
+        latestChangePercent,
+        trendDirection,
+        scopeKind: selectedScope,
+        trendPoints: trendVersions.map((price) => ({ effectiveFrom: price.effectiveFrom, unitPriceIrr: price.unitPriceIRR })),
+      };
+      return { resource: clone(resource), currentPrice: clone(currentPrice), organizationPrice: clone(organizationPrice ?? null), projectPrice: clone(projectPrice ?? null), trend };
     });
     const conversionGroups = new Map();
     conversions
