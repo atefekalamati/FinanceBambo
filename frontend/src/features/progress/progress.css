@@ -119,6 +119,56 @@
   margin: 0;
 }
 
+.progress-override-button {
+  inline-size: 100%;
+  margin-block-start: var(--space-sm);
+  white-space: normal;
+}
+
+/* --------------------------------------------------------------------------
+   Audited manual override dialog
+   -------------------------------------------------------------------------- */
+
+.progress-override-dialog {
+  inline-size: min(35rem, calc(100% - 2rem));
+  max-block-size: calc(100dvh - 2rem);
+  overflow: auto;
+}
+
+.progress-override-summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: .45rem var(--space-lg);
+  margin: var(--space-lg) 0;
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(120 145 205 / 6%);
+}
+
+.progress-override-summary dt {
+  color: var(--color-text-muted);
+}
+
+.progress-override-summary dd {
+  min-inline-size: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.progress-override-form {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.progress-override-warning {
+  color: var(--dash-sev-med);
+}
+
+.progress-override-warning[hidden] {
+  display: none;
+}
+
 .progress-snapshot-card__meta {
   margin-block-end: var(--space-sm);
   font-size: .7rem;
@@ -291,6 +341,30 @@
   .progress-metadata,
   .progress-feed-section {
     padding: var(--space-lg);
+  }
+
+  .progress-override-dialog {
+    inline-size: calc(100% - 1rem);
+    max-block-size: calc(100dvh - 1rem);
+    padding: var(--space-lg);
+  }
+
+  .progress-override-summary {
+    grid-template-columns: 1fr;
+    gap: .2rem;
+  }
+
+  .progress-override-summary dd:not(:last-child) {
+    margin-block-end: var(--space-sm);
+  }
+
+  .progress-override-dialog .dialog-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .progress-override-dialog .dialog-actions .button {
+    inline-size: 100%;
   }
 }
 
