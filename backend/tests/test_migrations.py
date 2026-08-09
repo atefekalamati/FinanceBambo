@@ -6,6 +6,8 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 UP = BACKEND_ROOT / "migrations" / "0001_finance_core.up.sql"
 DOWN = BACKEND_ROOT / "migrations" / "0001_finance_core.down.sql"
+CONFIRM_UP = BACKEND_ROOT / "migrations" / "0002_invoice_confirmation.up.sql"
+CONFIRM_DOWN = BACKEND_ROOT / "migrations" / "0002_invoice_confirmation.down.sql"
 
 TABLES = (
     "finance_project_settings",
@@ -131,6 +133,15 @@ class FinanceMigrationContractTests(unittest.TestCase):
         self.assertNotRegex(self.up, r"(?i)create\s+extension")
         self.assertNotRegex(self.up, r"(?i)create\s+table(?!\s+if\s+not\s+exists)")
         self.assertNotRegex(self.up, r"(?i)create\s+index(?!\s+if\s+not\s+exists)")
+
+    def test_confirmation_idempotency_migration_is_scoped_and_reversible(self):
+        up = CONFIRM_UP.read_text(encoding="utf-8")
+        down = CONFIRM_DOWN.read_text(encoding="utf-8")
+        self.assertIn("confirmation_idempotency_key", up)
+        self.assertRegex(up, r"(?is)unique\s+index.*?organization_id\s*,\s*project_id\s*,\s*confirmation_idempotency_key")
+        self.assertIn("DROP COLUMN IF EXISTS confirmation_idempotency_key", down)
+        for script in (up, down):
+            self.assertRegex(script.strip(), r"(?is)^begin\s*;.*commit\s*;$")
 
 
 if __name__ == "__main__":

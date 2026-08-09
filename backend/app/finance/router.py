@@ -19,7 +19,7 @@ from .schemas.prices import PriceCreate, PriceResponse
 from .schemas.conversions import ConversionCreate,ConversionPatch,ConversionResponse
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
 from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResponse
-from .schemas.invoices import InvoiceCreate,InvoicePatch,InvoiceResponse
+from .schemas.invoices import InvoiceCreate,InvoicePatch,InvoiceConfirm,InvoiceResponse
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -194,3 +194,6 @@ async def invoice(projectId:str,invoiceId:UUID,request:Request):
 @router.patch("/invoices/{invoiceId}",response_model=InvoiceResponse)
 async def patch_invoice(projectId:str,invoiceId:UUID,payload:InvoicePatch,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.update(scope,invoiceId,payload))
+@router.post("/invoices/{invoiceId}/confirm",response_model=InvoiceResponse)
+async def confirm_invoice(projectId:str,invoiceId:UUID,payload:InvoiceConfirm,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.confirm(scope,invoiceId,payload))

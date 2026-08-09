@@ -28,4 +28,4 @@ def calculate_invoice(items,discount=Decimal(0),tax=Decimal(0),shipping=Decimal(
 class DuplicateInvoiceError(Exception):pass
 @dataclass(frozen=True)
 class Invoice:
- id:UUID;organization_id:UUID;project_id:str;invoice_number:str|None;invoice_date:date;vendor_name:str;description:str|None;source:str;status:str;discount_irr:Decimal;tax_irr:Decimal;shipping_irr:Decimal;other_costs_irr:Decimal;final_amount_irr:Decimal;idempotency_key:str;version:int;submitted_by:UUID;created_at:datetime;lines:list
+ id:UUID;organization_id:UUID;project_id:str;invoice_number:str|None;invoice_date:date;vendor_name:str;description:str|None;source:str;status:str;discount_irr:Decimal;tax_irr:Decimal;shipping_irr:Decimal;other_costs_irr:Decimal;final_amount_irr:Decimal;idempotency_key:str;version:int;submitted_by:UUID;confirmed_by:UUID|None;confirmed_at:datetime|None;created_at:datetime;lines:list

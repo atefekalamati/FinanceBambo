@@ -6,6 +6,8 @@ from ..domain.resources import FinanceRecordNotFound
 from ..domain.errors import FinanceDomainError
 class DuplicateInvoice(FinanceDomainError):status=409;code="DUPLICATE_INVOICE"
 class StaleInvoice(FinanceDomainError):status=409;code="STALE_VERSION"
+class InvoiceAlreadyConfirmed(FinanceDomainError):status=409;code="INVOICE_ALREADY_CONFIRMED"
+class InvoiceConfirmationForbidden(FinanceDomainError):status=403;code="FINANCE_FORBIDDEN"
 class InvoiceValidationError(FinanceDomainError):status=422;code="VALIDATION_ERROR"
 class FinanceInvoiceService:
  def __init__(self,repo,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.ids=id_factory;self.clock=clock
@@ -24,15 +26,27 @@ class FinanceInvoiceService:
   pairs=[(Decimal(1) if x.quantity is None else x.quantity,Decimal(0) if x.unit_price_irr is None else x.unit_price_irr) for x in c.lines]
   calc=calculate_invoice(pairs,c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,targets)
   duplicate=await self.repo.duplicate(s,c.idempotency_key,c.vendor_name,c.invoice_number,c.invoice_date,calc.final_total)
-  if duplicate=="exact":raise DuplicateInvoice("duplicate invoice")
+  if duplicate!="similar" and duplicate is not None:return duplicate
   if duplicate=="similar" and not (c.duplicate_reason and c.duplicate_reason.strip()):raise DuplicateInvoice("similar invoice requires reason")
   lines=[]
   for command,value in zip(c.lines,calc.lines):lines.append({**command.model_dump(),"raw_amount_irr":value.raw,"allocated_discount_irr":value.discount,"allocated_tax_irr":value.tax,"allocated_shipping_irr":value.shipping,"allocated_other_costs_irr":value.other,"final_line_amount_irr":value.final})
-  invoice=Invoice(self.ids(),s.organization_id,s.project_id,c.invoice_number,c.invoice_date,c.vendor_name,c.description,c.source,"draft",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,self.clock(),lines)
+  invoice=Invoice(self.ids(),s.organization_id,s.project_id,c.invoice_number,c.invoice_date,c.vendor_name,c.description,c.source,"draft",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,None,None,self.clock(),lines)
   return await self.repo.create(s,invoice,self.ids(),c.duplicate_reason)
  async def update(self,s,invoice_id,c):
   current=await self.get(s,invoice_id)
   if current.status!="draft":raise StaleInvoice("only draft invoice can be edited")
   if current.version!=c.expected_version:raise StaleInvoice("stale invoice version")
-  try:return await self.repo.update_description(s,current,c.description,self.ids(),self.clock())
+  description=c.description if "description" in c.model_fields_set else current.description
+  try:return await self.repo.update_draft(s,current,description,c.status,self.ids(),self.clock())
   except ValueError as error:raise StaleInvoice("stale invoice version") from error
+ async def confirm(self,s,invoice_id,c):
+  if s.actor_user_id is None:raise PermissionError("actor required")
+  current=await self.get(s,invoice_id)
+  if current.submitted_by!=s.actor_user_id:raise InvoiceConfirmationForbidden("only the submitting user can confirm this invoice")
+  if current.status=="confirmed":
+   repeated=await self.repo.confirmation_matches(s,invoice_id,c.idempotency_key)
+   if repeated:return current
+   raise InvoiceAlreadyConfirmed("invoice is already confirmed")
+  if current.status!="awaitingConfirmation" or current.version!=c.expected_version:raise StaleInvoice("invoice is not awaiting confirmation or version is stale")
+  try:return await self.repo.confirm(s,current,c.idempotency_key,self.ids(),self.clock())
+  except ValueError as error:raise StaleInvoice("competing confirmation or stale version") from error
