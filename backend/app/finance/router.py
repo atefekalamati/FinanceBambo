@@ -19,7 +19,7 @@ from .schemas.prices import PriceCreate, PriceResponse
 from .schemas.conversions import ConversionCreate,ConversionPatch,ConversionResponse
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
 from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResponse
-from .schemas.invoices import InvoiceCreate,InvoicePatch,InvoiceConfirm,InvoiceResponse
+from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -197,3 +197,9 @@ async def patch_invoice(projectId:str,invoiceId:UUID,payload:InvoicePatch,reques
 @router.post("/invoices/{invoiceId}/confirm",response_model=InvoiceResponse)
 async def confirm_invoice(projectId:str,invoiceId:UUID,payload:InvoiceConfirm,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.confirm(scope,invoiceId,payload))
+@router.post("/invoices/{invoiceId}/void",response_model=InvoiceResponse,status_code=201)
+async def void_invoice(projectId:str,invoiceId:UUID,payload:InvoiceVoid,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.void(scope,invoiceId,payload))
+@router.post("/invoices/{invoiceId}/corrective",response_model=InvoiceResponse,status_code=201)
+async def corrective_invoice(projectId:str,invoiceId:UUID,payload:CorrectiveInvoiceCreate,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.corrective(scope,invoiceId,payload))
