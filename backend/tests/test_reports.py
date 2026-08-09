@@ -12,6 +12,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 from app.finance.domain.reports import calculate_live_report
 from app.finance.domain.resources import FinanceRecordNotFound
 from app.finance.services.reports import FinanceLiveReportService
+from app.finance.schemas.reports import ReportSnapshotReference
 
 
 MATERIAL_LINE = UUID("10000000-0000-4000-8000-000000000001")
@@ -92,7 +93,7 @@ class Repository:
         self.selected = {"progress_snapshot_id": SNAPSHOT, "reporting_date": date(2026, 8, 1)}
 
     async def load(self, scope, reporting_date):
-        return {"snapshot": self.selected, "estimates": [], "invoices": [], "conversions": [], "gross_area": "100"}
+        return {"snapshot": self.selected, "estimates": [], "invoices": [], "conversions": [], "gross_area": "100", "settings_id": UUID(int=7)}
 
     async def snapshot(self, scope, snapshot_id):
         return self.selected if snapshot_id == SNAPSHOT else None
@@ -117,6 +118,40 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
         bad = FinanceLiveReportService(Repository(), Provider(organization_id, scope.project_id, UUID(int=9)))
         with self.assertRaises(FinanceRecordNotFound):
             await bad.live(scope, date(2026, 8, 2), SNAPSHOT)
+
+    async def test_issued_reference_matches_kit_and_payload_is_a_frozen_copy(self):
+        organization_id = UUID("40000000-0000-4000-8000-000000000001")
+        scope = SimpleNamespace(organization_id=organization_id, project_id="sample_site_01", actor_user_id=UUID(int=8))
+        repository = SnapshotRepository()
+        issued_at = __import__("datetime").datetime(2026,8,2,tzinfo=__import__("datetime").timezone.utc)
+        service = FinanceLiveReportService(repository, Provider(organization_id, scope.project_id), lambda:UUID(int=10), lambda:issued_at)
+        response = await service.issue(scope,date(2026,8,2),SNAPSHOT)
+        dto = ReportSnapshotReference(**response)
+        self.assertTrue(dto.immutable)
+        self.assertEqual(UUID(int=10),dto.report_snapshot_id)
+        self.assertEqual(8,len(dto.calculated_metrics))
+        self.assertIn("estimateInputs",repository.payload)
+        repository.source_estimate["resource_title"]="changed later"
+        self.assertEqual("material",repository.payload["estimateInputs"][0]["resource_title"])
+
+
+class SnapshotRepository(Repository):
+    def __init__(self):
+        super().__init__()
+        self.selected["progress_snapshot_ref_id"]=UUID(int=6)
+        self.source_estimate=estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-m")
+        self.source_estimate.update({"estimate_version_id":MATERIAL_LINE,"price_version_id":UUID(int=5)})
+        self.payload=None
+
+    async def load(self,scope,reporting_date):
+        return {"snapshot":self.selected,"settings_id":UUID(int=7),"gross_area":"100",
+                "estimates":[self.source_estimate],"invoices":[],"conversions":[]}
+
+    async def issue(self,scope,value,payload,audit_id):
+        import copy
+        self.payload=copy.deepcopy(payload)
+        self.value=dict(value)
+        return value
 
 
 if __name__ == "__main__":
