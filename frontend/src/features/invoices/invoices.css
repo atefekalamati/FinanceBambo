@@ -342,6 +342,14 @@
   font-weight: 800;
 }
 
+.invoice-detail-actions {
+  margin-block-start: var(--space-xl);
+}
+
+.invoice-submit-dialog {
+  inline-size: min(32rem, calc(100% - 2rem));
+}
+
 /* --------------------------------------------------------------------------
    Responsive invoices
    -------------------------------------------------------------------------- */

@@ -67,7 +67,7 @@ test("previews and creates a zero-effect manual invoice draft with exact IRR tot
   assert.equal(preview.lines[0].lineAmountIRR, "100001");
   assert.equal(preview.rawLinesTotalIRR, "600001");
   assert.equal(preview.finalAmountIRR, "600801");
-  const draft = await adapter.createDraft({ header, lines, adjustments });
+  const draft = await adapter.createDraft({ header, lines, adjustments, idempotencyKey: "create-draft-001" });
   assert.equal(draft.invoiceStatus, "draft");
   assert.equal(draft.source, "manual");
   assert.equal(draft.confirmedAt, null);
@@ -75,7 +75,7 @@ test("previews and creates a zero-effect manual invoice draft with exact IRR tot
 
 test("rejects draft creation without the coarse approved edit permission", async () => {
   const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.view"] });
-  await assert.rejects(adapter.createDraft({ header: { invoiceNumber: "x", invoiceDate: "2026-08-09", vendorName: "v" }, lines: [{}], adjustments: { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" } }), (error) => error.status === 403);
+  await assert.rejects(adapter.createDraft({ header: { invoiceNumber: "x", invoiceDate: "2026-08-09", vendorName: "v" }, lines: [{}], adjustments: { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" }, idempotencyKey: "denied-create" }), (error) => error.status === 403);
 });
 
 test("detects a similar invoice and requires an audited continuation reason", async () => {
@@ -86,9 +86,34 @@ test("detects a similar invoice and requires an audited continuation reason", as
   const preview = await adapter.previewDraft({ header, lines, adjustments });
   assert.equal(preview.duplicateMatches.length, 1);
   assert.equal(preview.duplicateMatches[0].invoiceId, "invoice-demo-001");
-  await assert.rejects(adapter.createDraft({ header, lines, adjustments }), (error) => error.code === "INVOICE_DUPLICATE_REASON_REQUIRED");
-  const draft = await adapter.createDraft({ header, lines, adjustments, duplicateOverrideReason: "خرید مستقل براساس حواله دوم" });
+  await assert.rejects(adapter.createDraft({ header, lines, adjustments, idempotencyKey: "duplicate-create-001" }), (error) => error.code === "INVOICE_DUPLICATE_REASON_REQUIRED");
+  const draft = await adapter.createDraft({ header, lines, adjustments, duplicateOverrideReason: "خرید مستقل براساس حواله دوم", idempotencyKey: "duplicate-create-001" });
   assert.equal(draft.duplicateWarning, true);
   assert.equal(draft.duplicateOverrideReason, "خرید مستقل براساس حواله دوم");
   assert.deepEqual(draft.duplicateOfInvoiceIds, ["invoice-demo-001"]);
+});
+
+test("replays the same create idempotency key and rejects a changed payload", async () => {
+  const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.edit"] });
+  const header = { invoiceNumber: "ف-یکتا", invoiceDate: "2026-08-09", vendorName: "فروشنده یکتا", description: "" };
+  const lines = [{ targetId: "general-permit", targetType: "general_cost", targetLabel: "هزینه مجوز نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "1000", description: "" }];
+  const adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
+  const first = await adapter.createDraft({ header, lines, adjustments, idempotencyKey: "stable-create-key" });
+  const repeated = await adapter.createDraft({ header, lines, adjustments, idempotencyKey: "stable-create-key" });
+  assert.deepEqual(repeated, first);
+  assert.equal(first.version, 1);
+  await assert.rejects(adapter.createDraft({ header: { ...header, vendorName: "فروشنده متفاوت" }, lines, adjustments, idempotencyKey: "stable-create-key" }), (error) => error.status === 409 && error.code === "IDEMPOTENCY_CONFLICT");
+});
+
+test("submits only the current draft version for confirmation", async () => {
+  const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.edit"] });
+  const header = { invoiceNumber: "ف-نسخه", invoiceDate: "2026-08-09", vendorName: "فروشنده نسخه", description: "" };
+  const lines = [{ targetId: "general-permit", targetType: "general_cost", targetLabel: "هزینه مجوز نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "1000", description: "" }];
+  const adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
+  const draft = await adapter.createDraft({ header, lines, adjustments, idempotencyKey: "version-create-key" });
+  await assert.rejects(adapter.submitDraft({ invoiceId: draft.invoiceId, expectedVersion: 2 }), (error) => error.code === "STALE_VERSION");
+  const awaiting = await adapter.submitDraft({ invoiceId: draft.invoiceId, expectedVersion: 1 });
+  assert.equal(awaiting.invoiceStatus, "awaitingConfirmation");
+  assert.equal(awaiting.version, 2);
+  await assert.rejects(adapter.submitDraft({ invoiceId: draft.invoiceId, expectedVersion: 1 }), (error) => error.code === "STALE_VERSION");
 });

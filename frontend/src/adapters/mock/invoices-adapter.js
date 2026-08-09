@@ -26,6 +26,8 @@ function makeInvoice(index, context) {
     description: index % 4 === 0 ? "خرید و تأمین اقلام موردنیاز عملیات اجرایی طبق صورت‌جلسه کارگاه" : "فاکتور نمایشی برای توسعه رابط کاربری",
     source,
     invoiceStatus: status,
+    version: status === "draft" ? 1 : status === "awaitingConfirmation" ? 2 : 3,
+    idempotencyKey: `seed-invoice-${number}`,
     duplicateWarning: index % 17 === 0,
     duplicateOverrideReason: index % 17 === 0 ? "ادامه ثبت پس از بررسی سند مشابه توسط کارشناس مالی" : null,
     rawLinesTotalIRR: rawTotalIRR,
@@ -48,6 +50,7 @@ function makeInvoice(index, context) {
 
 export function createMockInvoicesAdapter(context, { initialState = "success" } = {}) {
   const invoices = initialState === "empty" ? [] : Array.from({ length: 53 }, (_, index) => makeInvoice(index + 1, context));
+  const createRequests = new Map();
   const targets = [
     { targetId: "estimate-foundation-rebar", targetType: "estimate_line", label: "میلگرد فونداسیون نمونه", unit: "kg" },
     { targetId: "estimate-formwork-labor", targetType: "estimate_line", label: "اکیپ قالب‌بندی نمونه", unit: "person_hour" },
@@ -111,9 +114,17 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     return clone({ ...preview, duplicateMatches });
   }
 
-  async function createDraft({ header, lines, adjustments, duplicateOverrideReason = "" }) {
+  async function createDraft({ header, lines, adjustments, duplicateOverrideReason = "", idempotencyKey }) {
     await wait(480);
     if (!context.permissionCodes?.includes("finance.edit")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز ثبت پیش‌نویس فاکتور وجود ندارد.", requestId: "mock-invoice-create-403" });
+    const requestKey = String(idempotencyKey ?? "").trim();
+    if (!requestKey) throw new ApiError({ status: 422, code: "IDEMPOTENCY_KEY_REQUIRED", message: "شناسه یکتای درخواست الزامی است." });
+    const fingerprint = JSON.stringify({ header, lines, adjustments, duplicateOverrideReason: String(duplicateOverrideReason).trim() });
+    const repeated = createRequests.get(requestKey);
+    if (repeated) {
+      if (repeated.fingerprint !== fingerprint) throw new ApiError({ status: 409, code: "IDEMPOTENCY_CONFLICT", message: "این شناسه درخواست قبلاً با اطلاعات متفاوت استفاده شده است.", requestId: "mock-invoice-idempotency-409" });
+      return clone(repeated.invoice);
+    }
     if (!header?.invoiceNumber || !header.invoiceDate || !header.vendorName || !Array.isArray(lines) || !lines.length) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "اطلاعات فاکتور کامل نیست." });
     const preview = buildPreview(lines, adjustments);
     if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ نهایی فاکتور نمی‌تواند منفی باشد." });
@@ -121,10 +132,22 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     const auditedReason = String(duplicateOverrideReason).trim();
     if (duplicateMatches.length && auditedReason.length < 3) throw new ApiError({ status: 422, code: "INVOICE_DUPLICATE_REASON_REQUIRED", message: "برای ادامه ثبت فاکتور مشابه، دلیل ممیزی الزامی است.", details: duplicateMatches.map((invoice) => ({ invoiceId: invoice.invoiceId })) });
     const preparedLines = preview.lines.map((line, index) => ({ ...line, invoiceLineId: `draft-line-${Date.now()}-${index + 1}` }));
-    const invoice = { invoiceId: `invoice-draft-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, source: "manual", invoiceStatus: "draft", duplicateWarning: duplicateMatches.length > 0, duplicateOverrideReason: duplicateMatches.length ? auditedReason : null, duplicateOfInvoiceIds: duplicateMatches.map((item) => item.invoiceId), rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, createdAt: new Date().toISOString(), confirmedBy: null, confirmedAt: null, relatedInvoiceId: null, lines: preparedLines };
+    const invoice = { invoiceId: `invoice-draft-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, source: "manual", invoiceStatus: "draft", version: 1, idempotencyKey: requestKey, duplicateWarning: duplicateMatches.length > 0, duplicateOverrideReason: duplicateMatches.length ? auditedReason : null, duplicateOfInvoiceIds: duplicateMatches.map((item) => item.invoiceId), rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, createdAt: new Date().toISOString(), confirmedBy: null, confirmedAt: null, relatedInvoiceId: null, lines: preparedLines };
     invoices.unshift(invoice);
+    createRequests.set(requestKey, { fingerprint, invoice: clone(invoice) });
     return clone(invoice);
   }
 
-  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft });
+  async function submitDraft({ invoiceId, expectedVersion }) {
+    await wait(360);
+    if (!context.permissionCodes?.includes("finance.edit")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز ارسال پیش‌نویس برای تأیید وجود ندارد." });
+    const invoice = invoices.find((item) => item.invoiceId === invoiceId);
+    if (!invoice) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "فاکتور موردنظر پیدا نشد." });
+    if (invoice.invoiceStatus !== "draft" || invoice.version !== expectedVersion) throw new ApiError({ status: 409, code: "STALE_VERSION", message: "نسخه فاکتور تغییر کرده است؛ اطلاعات را دوباره دریافت کنید.", requestId: "mock-invoice-stale-409" });
+    invoice.invoiceStatus = "awaitingConfirmation";
+    invoice.version += 1;
+    return clone(invoice);
+  }
+
+  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft });
 }
