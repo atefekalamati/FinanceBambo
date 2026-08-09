@@ -22,6 +22,7 @@ from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResp
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from .schemas.attachments import AttachmentResponse
 from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionRetry
+from .schemas.reports import LiveReportResponse
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -226,3 +227,8 @@ async def retry_extraction(projectId:str,draftId:UUID,payload:ExtractionRetry,re
 async def confirm_extraction(projectId:str,draftId:UUID,payload:ExtractionConfirm,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit")
     return InvoiceResponse.from_domain(await request.app.state.finance_extraction_service.confirm(scope,draftId,payload))
+
+@router.get("/reports/live",response_model=LiveReportResponse)
+async def live_report(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None):
+    scope=await _resource_scope(projectId,request,"finance.view")
+    return await request.app.state.finance_live_report_service.live(scope,reportingDate,progressSnapshotId)
