@@ -15,6 +15,14 @@ class PsycopgFinancePriceRepository:
   async with self.db.cursor(row_factory=dict_row) as c:
    await c.execute("""SELECT * FROM price_versions WHERE organization_id=%s AND project_id=%s AND resource_id=%s AND effective_from<=%s ORDER BY (scope_kind='project') DESC,effective_from DESC,version DESC,created_at DESC,id DESC LIMIT 1""",(scope.organization_id,scope.project_id,resource_id,as_of)); row=await c.fetchone()
   return None if row is None else self.map(row)
+ async def trend_history(self,scope,as_of):
+  async with self.db.cursor(row_factory=dict_row) as c:
+   await c.execute("""SELECT r.id resource_id,pv.id,pv.organization_id,pv.project_id,pv.scope_kind,pv.version,pv.unit_price_irr,pv.effective_from,pv.reason,pv.created_by,pv.created_at FROM finance_resources r LEFT JOIN price_versions pv ON pv.organization_id=r.organization_id AND pv.project_id=r.project_id AND pv.resource_id=r.id AND pv.effective_from<=%s WHERE r.organization_id=%s AND r.project_id=%s AND r.deleted_at IS NULL ORDER BY r.id,pv.effective_from,pv.version,pv.created_at,pv.id""",(as_of,scope.organization_id,scope.project_id));rows=await c.fetchall()
+  grouped={}
+  for row in rows:
+   grouped.setdefault(row["resource_id"],[])
+   if row["id"] is not None:grouped[row["resource_id"]].append(self.map(row))
+  return grouped
  async def append(self,scope,v,audit_id):
   async with self.db.transaction():
    async with self.db.cursor() as c:

@@ -50,6 +50,7 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/resources/{resourceId}/prices", "get"),
                 ("/api/projects/{projectId}/finance/resources/{resourceId}/prices", "post"),
                 ("/api/projects/{projectId}/finance/price-history", "get"),
+                ("/api/projects/{projectId}/finance/prices/current", "get"),
                 ("/api/projects/{projectId}/finance/unit-conversions", "get"),
                 ("/api/projects/{projectId}/finance/unit-conversions", "post"),
                 ("/api/projects/{projectId}/finance/unit-conversions/{conversionId}", "patch"),

@@ -22,4 +22,26 @@ class PriceResponse(PriceCreate):
     @field_serializer("unit_price_irr")
     def money(self,v): return format(v,"f")
     @classmethod
-    def from_domain(cls,v:PriceVersion): return cls(**v.__dict__)
+    def from_domain(cls,v:PriceVersion):
+        return cls(id=v.id,resourceId=v.resource_id,scopeKind=v.scope_kind,version=v.version,
+            unitPriceIrr=v.unit_price_irr,effectiveFrom=v.effective_from,reason=v.reason,
+            createdBy=v.created_by,createdAt=v.created_at)
+
+
+class PriceTrendPoint(ApiModel):
+    effective_from:date
+    unit_price_irr:Decimal
+    @field_serializer("unit_price_irr")
+    def money(self,v):return format(v,"f")
+
+
+class CurrentPriceTrendResponse(ApiModel):
+    resource_id:UUID
+    current_price_irr:Decimal|None
+    previous_price_irr:Decimal|None
+    latest_change_percent:Decimal|None
+    trend_direction:Literal["up","down","flat","none"]
+    scope_kind:Literal["organization","project"]|None
+    trend_points:list[PriceTrendPoint]
+    @field_serializer("current_price_irr","previous_price_irr","latest_change_percent")
+    def decimal_string(self,v):return None if v is None else format(v,"f")
