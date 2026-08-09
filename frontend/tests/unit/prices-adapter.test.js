@@ -15,6 +15,21 @@ test("prefers a valid project price over the organization base price", async () 
   assert.equal(rebar.organizationPrice.scope, "organization");
   assert.equal(rebar.projectPrice.scope, "project");
   assert.equal(rebar.currentPrice.priceId, rebar.projectPrice.priceId);
+  assert.equal(rebar.trend.scopeKind, "project");
+  assert.equal(rebar.trend.trendDirection, "up");
+  assert.equal(rebar.trend.previousPriceIrr, "295000");
+  assert.equal(rebar.trend.currentPriceIrr, "302000");
+  assert.equal(rebar.trend.latestChangePercent, "2.372881");
+  assert.deepEqual(rebar.trend.trendPoints.map((point) => point.effectiveFrom), ["2026-07-15", "2026-08-01"]);
+});
+
+test("returns none when the resolved price scope has no previous version", async () => {
+  const workspace = await createMockPricesAdapter(context).getPrices();
+  const labor = workspace.currentPrices.find((item) => item.resource.code === "LAB-FORM");
+  assert.equal(labor.trend.scopeKind, "organization");
+  assert.equal(labor.trend.trendDirection, "none");
+  assert.equal(labor.trend.previousPriceIrr, null);
+  assert.equal(labor.trend.latestChangePercent, null);
 });
 
 test("appends a price version without rewriting history", async () => {
