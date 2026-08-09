@@ -17,6 +17,11 @@ class FinanceInvoiceService:
   v=await self.repo.get(s,i)
   if v is None:raise FinanceRecordNotFound("invoice not found")
   return v
+ async def get_by_idempotency(self,s,key):return await self.repo.get_by_idempotency(s,key)
+ async def prepare_extracted(self,s,c,source,idempotency_key,at):
+  if s.actor_user_id is None:raise PermissionError("actor required")
+  lines,calc=await self._calculate_lines(s,c)
+  return Invoice(self.ids(),s.organization_id,s.project_id,c.invoice_number,c.invoice_date,c.vendor_name,c.description,source,"confirmed",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,lines)
  async def create(self,s,c):
   if s.actor_user_id is None:raise PermissionError("actor required")
   lines,calc=await self._calculate_lines(s,c)
