@@ -2,11 +2,13 @@ import { createRequestState, REQUEST_STATUS } from "../../core/state/request-sta
 import { hasPermission } from "../../core/auth/permissions.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
+import { normalizeDecimalInput } from "../../shared/validation/decimal-validation.js";
 
 const FIELD_LABELS = Object.freeze({
   invoiceNumber: "شماره فاکتور",
   invoiceDate: "تاریخ فاکتور",
   vendorName: "فروشنده یا ارائه‌دهنده",
+  resourceId: "تخصیص به قلم مالی",
   totalIRR: "مبلغ نهایی به ریال",
 });
 
@@ -58,7 +60,7 @@ function confirmationDialog({ title, message, confirmLabel, onConfirm }) {
   return dialog;
 }
 
-function reviewCard({ draft, adapter, canEdit, onChanged, root }) {
+function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
   const card = element("article", "ai-review-card");
   const header = element("header", "ai-review-card__header");
   const title = element("div");
@@ -81,6 +83,18 @@ function reviewCard({ draft, adapter, canEdit, onChanged, root }) {
       const picker = createPersianDatePicker({ id: `ai-${draft.draftId}-date`, label: "", value: field.confirmedValue ?? field.extractedValue });
       input = picker;
       wrapper.append(labelRow, picker.field);
+    } else if (field.key === "resourceId") {
+      const select = element("select", "app-select");
+      select.append(element("option", "", "انتخاب قلم مالی"));
+      targets.forEach((target) => {
+        const option = element("option", "", `${target.label} · ${target.targetType === "general_cost" ? "هزینه عمومی" : "خط برآورد"}`);
+        option.value = target.targetId;
+        select.append(option);
+      });
+      select.value = field.confirmedValue ?? field.extractedValue ?? "";
+      select.disabled = draft.reviewStatus !== "awaitingReview" || !canEdit;
+      input = { getValue: () => select.value, input: select };
+      wrapper.append(labelRow, select);
     } else {
       const control = element("input", "app-input");
       control.value = field.confirmedValue ?? field.extractedValue ?? "";
@@ -97,7 +111,14 @@ function reviewCard({ draft, adapter, canEdit, onChanged, root }) {
 
   const warning = element("p", "ai-confidence-note", "فیلدهای نارنجی اطمینان کمتر از ۸۰ درصد دارند و باید با سند اصلی تطبیق داده شوند.");
   card.append(warning);
-  if (draft.reviewStatus !== "awaitingReview") return card;
+  if (draft.reviewStatus !== "awaitingReview") {
+    if (draft.linkedInvoiceId) {
+      const invoiceLink = element("a", "button button--ghost", "مشاهده فاکتورهای ثبت‌شده");
+      invoiceLink.href = "#/invoices";
+      card.append(invoiceLink);
+    }
+    return card;
+  }
 
   const feedback = element("div", "form-message");
   feedback.setAttribute("aria-live", "assertive");
@@ -130,8 +151,9 @@ function reviewCard({ draft, adapter, canEdit, onChanged, root }) {
   confirm.disabled = !canEdit;
   confirm.addEventListener("click", () => {
     const values = Object.fromEntries([...controls].map(([key, control]) => [key, control.getValue()]));
-    if (!values.invoiceDate || !values.vendorName || !/^\d+$/.test(values.totalIRR)) {
-      feedback.textContent = "تاریخ، فروشنده و مبلغ صحیح ریالی برای تأیید الزامی است.";
+    values.totalIRR = normalizeDecimalInput(values.totalIRR);
+    if (!values.invoiceDate || !values.vendorName || !values.resourceId || !/^\d+$/.test(values.totalIRR)) {
+      feedback.textContent = "تاریخ، فروشنده، تخصیص قلم مالی و مبلغ صحیح ریالی برای تأیید الزامی است.";
       feedback.className = "form-message form-message--error";
       return;
     }
@@ -155,8 +177,8 @@ export function createAiReviewPage({ context, adapter }) {
     state = createRequestState(REQUEST_STATUS.LOADING);
     paint();
     try {
-      const drafts = await adapter.getExtractions();
-      state = createRequestState(drafts.length ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, drafts);
+      const [drafts, targets] = await Promise.all([adapter.getExtractions(), adapter.getInvoiceTargets()]);
+      state = createRequestState(drafts.length ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, { drafts, targets });
     } catch (error) {
       state = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
     }
@@ -192,7 +214,7 @@ export function createAiReviewPage({ context, adapter }) {
       return;
     }
     const list = element("div", "ai-review-list");
-    state.data.forEach((draft) => list.append(reviewCard({ draft, adapter, canEdit, onChanged: load, root })));
+    state.data.drafts.forEach((draft) => list.append(reviewCard({ draft, targets: state.data.targets, adapter, canEdit, onChanged: load, root })));
     root.replaceChildren(header, list);
   }
 

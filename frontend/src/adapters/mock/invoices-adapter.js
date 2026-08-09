@@ -55,6 +55,7 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
   const createRequests = new Map();
   const confirmationKeys = new Map();
   const linkedOperationKeys = new Map();
+  const extractedConfirmationKeys = new Map();
   const reversedOriginals = new Set(invoices.filter((invoice) => invoice.source === "reversal").map((invoice) => invoice.originalInvoiceId));
   const targets = [
     { targetId: "estimate-foundation-rebar", targetType: "estimate_line", label: "میلگرد فونداسیون نمونه", unit: "kg" },
@@ -213,5 +214,50 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     return clone(corrective);
   }
 
-  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective });
+  async function createConfirmedExtractedInvoice({ logicalType, invoice, idempotencyKey, submittedBy }) {
+    await wait(260);
+    if (!context.permissionCodes?.includes("finance.edit")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز ثبت فاکتور استخراج‌شده وجود ندارد." });
+    const key = String(idempotencyKey ?? "").trim();
+    if (!key) throw new ApiError({ status: 422, code: "IDEMPOTENCY_KEY_REQUIRED", message: "شناسه یکتای درخواست الزامی است." });
+    if (extractedConfirmationKeys.has(key)) return clone(extractedConfirmationKeys.get(key));
+    if (submittedBy !== context.userId) throw new ApiError({ status: 403, code: "INVOICE_CONFIRMATION_FORBIDDEN", message: "فقط بارگذار فایل می‌تواند فاکتور استخراج‌شده را تأیید کند." });
+    if (!invoice?.invoiceDate || !String(invoice.vendorName ?? "").trim() || !/^\d+$/.test(String(invoice.totalIRR ?? "")) || !invoice.resourceId) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "اطلاعات و تخصیص فاکتور استخراج‌شده کامل نیست." });
+    const target = targets.find((item) => item.targetId === invoice.resourceId);
+    if (!target) throw new ApiError({ status: 422, code: "INVOICE_TARGET_INVALID", message: "قلم مالی انتخاب‌شده معتبر نیست." });
+    const occurredAt = new Date().toISOString();
+    const confirmed = {
+      invoiceId: `invoice-extracted-${Date.now()}`,
+      organizationId: context.organizationId,
+      projectId: context.projectId,
+      invoiceNumber: String(invoice.invoiceNumber ?? "").trim() || null,
+      invoiceDate: invoice.invoiceDate,
+      vendorName: String(invoice.vendorName).trim(),
+      description: "ثبت‌شده پس از بازبینی انسانی استخراج هوشمند",
+      source: logicalType === "invoice_image" ? "image" : "voice",
+      invoiceStatus: "confirmed",
+      version: 1,
+      idempotencyKey: key,
+      duplicateWarning: false,
+      duplicateOverrideReason: null,
+      rawLinesTotalIRR: String(invoice.totalIRR),
+      discountIRR: "0",
+      taxIRR: "0",
+      shippingIRR: "0",
+      otherCostsIRR: "0",
+      finalAmountIRR: String(invoice.totalIRR),
+      submittedBy,
+      createdAt: occurredAt,
+      confirmedBy: context.userId,
+      confirmedAt: occurredAt,
+      relatedInvoiceId: null,
+      originalInvoiceId: null,
+      financialEffectSign: 1,
+      lines: [{ invoiceLineId: `extracted-line-${Date.now()}`, targetId: target.targetId, targetType: target.targetType, targetLabel: target.label, quantity: target.targetType === "general_cost" ? null : "1.0000", unit: target.targetType === "general_cost" ? null : target.unit, unitPriceIRR: target.targetType === "general_cost" ? null : String(invoice.totalIRR), lineAmountIRR: String(invoice.totalIRR), description: "مبلغ و تخصیص تأییدشده توسط کاربر" }],
+    };
+    invoices.unshift(confirmed);
+    extractedConfirmationKeys.set(key, clone(confirmed));
+    return clone(confirmed);
+  }
+
+  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective, createConfirmedExtractedInvoice });
 }
