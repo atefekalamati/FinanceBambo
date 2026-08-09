@@ -21,6 +21,7 @@ from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,Progre
 from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResponse
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from .schemas.attachments import AttachmentResponse
+from .schemas.extractions import ExtractionDraftResponse,ExtractionRetry
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -215,3 +216,8 @@ async def upload_finance_file(projectId:str,request:Request,logicalType:str=Form
 async def get_finance_file(projectId:str,fileId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
     return AttachmentResponse.from_domain(await request.app.state.finance_attachment_service.get(scope,fileId))
+
+@router.post("/extractions/{draftId}/retry",response_model=ExtractionDraftResponse,status_code=201)
+async def retry_extraction(projectId:str,draftId:UUID,payload:ExtractionRetry,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.retry(scope,draftId,payload.hints))

@@ -1,6 +1,6 @@
 """Provider-neutral host adapter interfaces from the Integration Kit."""
 
-from typing import Protocol
+from typing import Mapping, Protocol
 
 from fastapi import Request
 
@@ -23,3 +23,13 @@ class ProgressSnapshotProvider(Protocol):
     async def get_snapshot(
         self, organization_id: str, project_id: str, snapshot_id: str
     ) -> object: ...
+
+
+class InvoiceImageExtractor(Protocol):
+    adapter_name: str
+    async def extract(self, file: object, hints: Mapping[str, object]) -> object: ...
+
+
+class InvoiceVoiceExtractor(Protocol):
+    adapter_name: str
+    async def extract(self, file: object, hints: Mapping[str, object]) -> object: ...
