@@ -3,7 +3,7 @@
 Feature endpoints are intentionally added only in their approved delivery stage.
 """
 
-from fastapi import APIRouter, Request, UploadFile, File, Form
+from fastapi import APIRouter, Request, UploadFile, File, Form,Response
 from uuid import UUID
 
 from .schemas.settings import (
@@ -242,3 +242,15 @@ async def issue_report_snapshot(projectId:str,payload:ReportSnapshotCreate,reque
 async def report_snapshot(projectId:str,reportId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance_report.view")
     return await request.app.state.finance_live_report_service.get_snapshot(scope,reportId)
+
+@router.get("/report-snapshots/{reportId}/csv")
+async def report_snapshot_csv(projectId:str,reportId:UUID,request:Request):
+    scope=await _resource_scope(projectId,request,"finance_report.export")
+    content=await request.app.state.finance_live_report_service.export(scope,reportId,"csv")
+    return Response(content,media_type="text/csv; charset=utf-8",headers={"Content-Disposition":f'attachment; filename="finance-report-{reportId}.csv"'})
+
+@router.get("/report-snapshots/{reportId}/xlsx")
+async def report_snapshot_xlsx(projectId:str,reportId:UUID,request:Request):
+    scope=await _resource_scope(projectId,request,"finance_report.export")
+    content=await request.app.state.finance_live_report_service.export(scope,reportId,"xlsx")
+    return Response(content,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",headers={"Content-Disposition":f'attachment; filename="finance-report-{reportId}.xlsx"'})

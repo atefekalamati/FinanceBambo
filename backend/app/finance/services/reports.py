@@ -1,6 +1,12 @@
+import csv
+import io
 from datetime import date,datetime,timezone
 from decimal import Decimal
 from uuid import UUID,uuid4
+
+from openpyxl import Workbook
+from openpyxl.chart import BarChart,Reference
+from openpyxl.styles import Font
 
 from ..domain.reports import calculate_live_report
 from ..domain.errors import FinanceDomainError
@@ -17,6 +23,13 @@ def _json_value(value):
     if isinstance(value,dict):return {key:_json_value(item) for key,item in value.items()}
     if isinstance(value,(list,tuple)):return [_json_value(item) for item in value]
     return value
+
+
+def _export_cell(value):
+    if not isinstance(value,str) or not value:return value
+    if value[0] not in "=+-@":return value
+    try:Decimal(value);return value
+    except Exception:return "'"+value
 
 
 class FinanceLiveReportService:
@@ -65,6 +78,50 @@ class FinanceLiveReportService:
         value=await self.repo.get(scope,report_id)
         if value is None:raise FinanceRecordNotFound("report snapshot not found")
         return self._response(scope,value)
+
+    async def export(self,scope,report_id,kind):
+        value=await self.repo.export_payload(scope,report_id)
+        if value is None:raise FinanceRecordNotFound("report snapshot not found")
+        payload=value["snapshot_payload"]
+        return self._csv(payload) if kind=="csv" else self._xlsx(payload)
+
+    @staticmethod
+    def _csv(payload):
+        stream=io.StringIO(newline="")
+        writer=csv.writer(stream)
+        writer.writerow(("section","key","value"))
+        for key,value in payload.get("metrics",{}).items():writer.writerow(("metrics",_export_cell(key),_export_cell(value)))
+        for row in payload.get("breakdown",[]):
+            kind=row.get("resourceType","")
+            for key,value in row.items():
+                if key!="resourceType":writer.writerow((_export_cell(f"breakdown:{kind}"),_export_cell(key),_export_cell(value)))
+        for section,key in (("priceVariance","topPriceVariances"),("quantityVariance","topQuantityVariances")):
+            for index,row in enumerate(payload.get(key,[]),1):
+                for name,value in row.items():writer.writerow((f"{section}:{index}",_export_cell(name),_export_cell(value)))
+        return ("\ufeff"+stream.getvalue()).encode("utf-8")
+
+    @staticmethod
+    def _xlsx(payload):
+        workbook=Workbook()
+        summary=workbook.active;summary.title="Summary";summary.sheet_view.rightToLeft=True
+        summary.append(("Metric","Value (IRR)"))
+        for key,value in payload.get("metrics",{}).items():summary.append((_export_cell(key),_export_cell(value)))
+        breakdown=workbook.create_sheet("Breakdown");breakdown.sheet_view.rightToLeft=True
+        breakdown.append(("Resource Type","Initial Estimate (IRR)","Actual Cost (IRR)","Forecast Final (IRR)"))
+        for row in payload.get("breakdown",[]):breakdown.append(tuple(_export_cell(value) for value in (row.get("resourceType"),row.get("initialEstimateIrr"),row.get("actualCostIrr"),row.get("forecastFinalIrr"))))
+        for title,key,variance in (("Price Variance","topPriceVariances","varianceIrr"),("Quantity Variance","topQuantityVariances","varianceQuantity")):
+            sheet=workbook.create_sheet(title);sheet.sheet_view.rightToLeft=True
+            sheet.append(("Resource Code","Resource Title","Resource Type","Variance"))
+            for row in payload.get(key,[]):sheet.append(tuple(_export_cell(value) for value in (row.get("resourceCode"),row.get("resourceTitle"),row.get("resourceType"),row.get(variance))))
+        for sheet in workbook.worksheets:
+            for cell in sheet[1]:cell.font=Font(bold=True)
+            sheet.freeze_panes="A2";sheet.auto_filter.ref=sheet.dimensions
+            for column in sheet.columns:sheet.column_dimensions[column[0].column_letter].width=min(45,max(14,max(len(str(cell.value or "")) for cell in column)+2))
+        if breakdown.max_row>1:
+            chart=BarChart();chart.title="Cost Breakdown";chart.y_axis.title="IRR";chart.x_axis.title="Resource Type"
+            chart.add_data(Reference(breakdown,min_col=2,max_col=4,min_row=1,max_row=breakdown.max_row),titles_from_data=True)
+            chart.set_categories(Reference(breakdown,min_col=1,min_row=2,max_row=breakdown.max_row));breakdown.add_chart(chart,"F2")
+        output=io.BytesIO();workbook.save(output);return output.getvalue()
 
     @staticmethod
     def _response(scope,value):
