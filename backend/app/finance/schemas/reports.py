@@ -1,9 +1,9 @@
-from datetime import date
+from datetime import date,datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import field_serializer
+from pydantic import Field,field_serializer
 
 from .base import ApiModel
 
@@ -55,3 +55,23 @@ class LiveReportResponse(ApiModel):
     top_price_variances:list[PriceVariance]
     top_quantity_variances:list[QuantityVariance]
     warnings:list[ReportWarning]
+
+
+class ReportSnapshotCreate(ApiModel):
+    reporting_date:date
+    progress_snapshot_id:UUID|None=None
+
+
+class ReportSnapshotReference(ApiModel):
+    report_snapshot_id:UUID
+    organization_id:UUID
+    project_id:str=Field(pattern=r"^[A-Za-z0-9_-]+$")
+    issued_at:datetime
+    issued_by:UUID
+    progress_snapshot_id:UUID
+    resource_version_ids:list[UUID]=Field(min_length=1)
+    price_version_ids:list[UUID]=Field(min_length=1)
+    invoice_ids:list[UUID]
+    unit_conversion_ids:list[UUID]
+    calculated_metrics:dict[str,str]=Field(min_length=1)
+    immutable:Literal[True]

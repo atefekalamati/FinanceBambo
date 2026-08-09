@@ -22,7 +22,7 @@ from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResp
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from .schemas.attachments import AttachmentResponse
 from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionRetry
-from .schemas.reports import LiveReportResponse
+from .schemas.reports import LiveReportResponse,ReportSnapshotCreate,ReportSnapshotReference
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -232,3 +232,13 @@ async def confirm_extraction(projectId:str,draftId:UUID,payload:ExtractionConfir
 async def live_report(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None):
     scope=await _resource_scope(projectId,request,"finance.view")
     return await request.app.state.finance_live_report_service.live(scope,reportingDate,progressSnapshotId)
+
+@router.post("/report-snapshots",response_model=ReportSnapshotReference,status_code=201)
+async def issue_report_snapshot(projectId:str,payload:ReportSnapshotCreate,request:Request):
+    scope=await _resource_scope(projectId,request,"finance_report.issue")
+    return await request.app.state.finance_live_report_service.issue(scope,payload.reporting_date,payload.progress_snapshot_id)
+
+@router.get("/report-snapshots/{reportId}",response_model=ReportSnapshotReference)
+async def report_snapshot(projectId:str,reportId:UUID,request:Request):
+    scope=await _resource_scope(projectId,request,"finance_report.view")
+    return await request.app.state.finance_live_report_service.get_snapshot(scope,reportId)

@@ -10,6 +10,8 @@ CONFIRM_UP = BACKEND_ROOT / "migrations" / "0002_invoice_confirmation.up.sql"
 CONFIRM_DOWN = BACKEND_ROOT / "migrations" / "0002_invoice_confirmation.down.sql"
 LINKED_UP = BACKEND_ROOT / "migrations" / "0003_invoice_linked_documents.up.sql"
 LINKED_DOWN = BACKEND_ROOT / "migrations" / "0003_invoice_linked_documents.down.sql"
+REPORT_UP = BACKEND_ROOT / "migrations" / "0004_report_snapshot_payload.up.sql"
+REPORT_DOWN = BACKEND_ROOT / "migrations" / "0004_report_snapshot_payload.down.sql"
 
 TABLES = (
     "finance_project_settings",
@@ -142,6 +144,16 @@ class FinanceMigrationContractTests(unittest.TestCase):
         self.assertIn("confirmation_idempotency_key", up)
         self.assertRegex(up, r"(?is)unique\s+index.*?organization_id\s*,\s*project_id\s*,\s*confirmation_idempotency_key")
         self.assertIn("DROP COLUMN IF EXISTS confirmation_idempotency_key", down)
+        for script in (up, down):
+            self.assertRegex(script.strip(), r"(?is)^begin\s*;.*commit\s*;$")
+
+    def test_report_payload_migration_pins_full_inputs_and_is_reversible(self):
+        up = REPORT_UP.read_text(encoding="utf-8")
+        down = REPORT_DOWN.read_text(encoding="utf-8")
+        self.assertIn("snapshot_payload jsonb", up)
+        self.assertIn("resource_version_ids jsonb", up)
+        self.assertRegex(up, r"(?i)alter column snapshot_payload set not null")
+        self.assertIn("DROP COLUMN IF EXISTS snapshot_payload", down)
         for script in (up, down):
             self.assertRegex(script.strip(), r"(?is)^begin\s*;.*commit\s*;$")
 
