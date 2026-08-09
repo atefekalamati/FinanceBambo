@@ -19,6 +19,7 @@ from .schemas.prices import PriceCreate, PriceResponse
 from .schemas.conversions import ConversionCreate,ConversionPatch,ConversionResponse
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
 from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResponse
+from .schemas.invoices import InvoiceCreate,InvoicePatch,InvoiceResponse
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -180,3 +181,16 @@ async def _commit_import(projectId,request,payload):
 async def commit_estimate(projectId:str,payload:ImportCommit,request:Request):return await _commit_import(projectId,request,payload)
 @router.post("/imports/prices/commit",response_model=ImportCommitResponse)
 async def commit_prices(projectId:str,payload:ImportCommit,request:Request):return await _commit_import(projectId,request,payload)
+
+@router.get("/invoices",response_model=list[InvoiceResponse])
+async def invoices(projectId:str,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.view");return [InvoiceResponse.from_domain(x) for x in await request.app.state.invoice_service.list(scope)]
+@router.post("/invoices",response_model=InvoiceResponse,status_code=201)
+async def create_invoice(projectId:str,payload:InvoiceCreate,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.create(scope,payload))
+@router.get("/invoices/{invoiceId}",response_model=InvoiceResponse)
+async def invoice(projectId:str,invoiceId:UUID,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.view");return InvoiceResponse.from_domain(await request.app.state.invoice_service.get(scope,invoiceId))
+@router.patch("/invoices/{invoiceId}",response_model=InvoiceResponse)
+async def patch_invoice(projectId:str,invoiceId:UUID,payload:InvoicePatch,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.update(scope,invoiceId,payload))

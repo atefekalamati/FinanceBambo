@@ -1,0 +1,38 @@
+from datetime import datetime,timezone
+from decimal import Decimal
+from uuid import uuid4
+from ..domain.invoices import Invoice,calculate_invoice
+from ..domain.resources import FinanceRecordNotFound
+from ..domain.errors import FinanceDomainError
+class DuplicateInvoice(FinanceDomainError):status=409;code="DUPLICATE_INVOICE"
+class StaleInvoice(FinanceDomainError):status=409;code="STALE_VERSION"
+class InvoiceValidationError(FinanceDomainError):status=422;code="VALIDATION_ERROR"
+class FinanceInvoiceService:
+ def __init__(self,repo,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.ids=id_factory;self.clock=clock
+ async def list(self,s):return await self.repo.list(s)
+ async def get(self,s,i):
+  v=await self.repo.get(s,i)
+  if v is None:raise FinanceRecordNotFound("invoice not found")
+  return v
+ async def create(self,s,c):
+  if s.actor_user_id is None:raise PermissionError("actor required")
+  if not await self.repo.valid_line_links(s,c.lines):raise InvoiceValidationError("each line must reference a matching estimate line or a general_cost resource")
+  targets={x.kind:x.general_cost_line_index for x in c.direct_adjustment_allocations}
+  if targets:
+   resource_ids=[c.lines[i].resource_id for i in targets.values()]
+   if not await self.repo.are_general_costs(s,resource_ids):raise InvoiceValidationError("direct adjustment target must be a general_cost resource")
+  pairs=[(Decimal(1) if x.quantity is None else x.quantity,Decimal(0) if x.unit_price_irr is None else x.unit_price_irr) for x in c.lines]
+  calc=calculate_invoice(pairs,c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,targets)
+  duplicate=await self.repo.duplicate(s,c.idempotency_key,c.vendor_name,c.invoice_number,c.invoice_date,calc.final_total)
+  if duplicate=="exact":raise DuplicateInvoice("duplicate invoice")
+  if duplicate=="similar" and not (c.duplicate_reason and c.duplicate_reason.strip()):raise DuplicateInvoice("similar invoice requires reason")
+  lines=[]
+  for command,value in zip(c.lines,calc.lines):lines.append({**command.model_dump(),"raw_amount_irr":value.raw,"allocated_discount_irr":value.discount,"allocated_tax_irr":value.tax,"allocated_shipping_irr":value.shipping,"allocated_other_costs_irr":value.other,"final_line_amount_irr":value.final})
+  invoice=Invoice(self.ids(),s.organization_id,s.project_id,c.invoice_number,c.invoice_date,c.vendor_name,c.description,c.source,"draft",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,self.clock(),lines)
+  return await self.repo.create(s,invoice,self.ids(),c.duplicate_reason)
+ async def update(self,s,invoice_id,c):
+  current=await self.get(s,invoice_id)
+  if current.status!="draft":raise StaleInvoice("only draft invoice can be edited")
+  if current.version!=c.expected_version:raise StaleInvoice("stale invoice version")
+  try:return await self.repo.update_description(s,current,c.description,self.ids(),self.clock())
+  except ValueError as error:raise StaleInvoice("stale invoice version") from error
