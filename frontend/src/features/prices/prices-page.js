@@ -158,7 +158,7 @@ function createPriceImportDialog(adapter, onSaved) {
   const input = document.createElement("input");
   input.id = "priceImportFile";
   input.type = "file";
-  input.accept = ".xlsx,.xls";
+  input.accept = ".xlsx";
   const hint = element("small", "form-hint", "واحد پول هر ردیف باید صریح باشد و از روی مبلغ حدس زده نمی‌شود.");
   hint.id = "priceImportHint";
   const error = element("small", "form-error");

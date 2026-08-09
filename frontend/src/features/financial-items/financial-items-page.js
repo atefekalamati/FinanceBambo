@@ -219,7 +219,7 @@ function createEstimateImportDialog(adapter, onSaved) {
   input.id = "estimateImportFile";
   input.name = "estimateImportFile";
   input.type = "file";
-  input.accept = ".xlsx,.xls";
+  input.accept = ".xlsx";
   input.setAttribute("aria-describedby", "estimateImportHint estimateImportError");
   const hint = element("small", "form-hint", "قالب دقیق ستون‌ها در منابع تعریف نشده است و پس از دریافت قرارداد سمت سرور نهایی می‌شود.");
   hint.id = "estimateImportHint";
