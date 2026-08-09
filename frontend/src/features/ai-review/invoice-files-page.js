@@ -122,6 +122,11 @@ function renderFiles(files, { adapter, canUpload, onChanged }) {
       details.append(element("dt", "", term), element("dd", "", value));
     });
     card.append(title, details, element("p", "uploaded-file-card__note", "فایل و استخراج احتمالی آن تا تأیید انسانی، اثر مالی ندارد."));
+    if (file.processingStatus === "failed") {
+      const failure = element("div", "file-processing-failure");
+      failure.append(element("strong", "", "پردازش ناموفق بود"), element("p", "", file.processingError || "فایل اصلی حفظ شده است؛ دوباره تلاش کنید یا فاکتور را دستی وارد کنید."));
+      card.append(failure);
+    }
     const actions = element("div", "uploaded-file-card__actions");
     const process = element("button", "button button--primary", file.processingStatus === "failed" ? "پردازش دوباره" : "شروع پردازش");
     process.type = "button";
@@ -134,8 +139,7 @@ function renderFiles(files, { adapter, canUpload, onChanged }) {
         await onChanged();
         window.location.hash = "#/ai-review";
       } catch (error) {
-        process.textContent = error.message || "پردازش انجام نشد";
-        process.disabled = false;
+        await onChanged();
       }
     });
     const reviews = element("a", "button button--ghost", "مشاهده بازبینی‌ها");
