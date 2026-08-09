@@ -9,7 +9,7 @@ function safeDisplayName(value) {
   return String(value).replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-").slice(0, 180) || "فایل";
 }
 
-export function createMockAttachmentsAdapter(context, { initialState = "success" } = {}) {
+export function createMockAttachmentsAdapter(context, { initialState = "success", invoiceAdapter = null } = {}) {
   const files = [];
   const drafts = [];
   const confirmationKeys = new Map();
@@ -72,17 +72,24 @@ export function createMockAttachmentsAdapter(context, { initialState = "success"
       { key: "invoiceNumber", extractedValue: voice ? "صوتی-۱۴۰۵-۱۲" : "تصویری-۱۴۰۵-۲۱", confirmedValue: null, confidence: voice ? 0.76 : 0.94, editedByUser: false },
       { key: "invoiceDate", extractedValue: "2026-08-09", confirmedValue: null, confidence: 0.91, editedByUser: false },
       { key: "vendorName", extractedValue: voice ? "تأمین‌کننده نمونه صوتی" : "فروشگاه مصالح نمونه", confirmedValue: null, confidence: voice ? 0.58 : 0.83, editedByUser: false },
+      { key: "resourceId", extractedValue: "general-permit", confirmedValue: null, confidence: 0.42, editedByUser: false },
       { key: "totalIRR", extractedValue: voice ? "185000000" : "248500000", confirmedValue: null, confidence: 0.67, editedByUser: false },
     ];
   }
 
-  async function startExtraction(fileId) {
+  async function startExtraction(fileId, { simulateFailure = false } = {}) {
     requireEditPermission("مجوز شروع پردازش فایل وجود ندارد.");
     const file = findFile(fileId);
     if (file.uploadedBy !== context.userId) throw new ApiError({ status: 403, code: "FINANCE_FORBIDDEN", message: "فقط بارگذار فایل می‌تواند پردازش را شروع کند." });
     if (file.processingStatus === "processing") throw new ApiError({ status: 503, code: "AI_EXTRACTION_FAILED", message: "فایل هم‌اکنون در حال پردازش است." });
     file.processingStatus = "processing";
+    file.processingError = null;
     await wait(650);
+    if (simulateFailure) {
+      file.processingStatus = "failed";
+      file.processingError = "ارائه‌دهنده پردازش در دسترس نیست؛ فایل اصلی حفظ شده است.";
+      throw new ApiError({ status: 503, code: "AI_EXTRACTION_FAILED", message: file.processingError, requestId: "mock-ai-provider-503" });
+    }
     file.processingStatus = "ready";
     const previousVersions = drafts.filter((item) => item.file.fileId === fileId);
     const draft = {
@@ -106,6 +113,10 @@ export function createMockAttachmentsAdapter(context, { initialState = "success"
     await wait(220);
     if (!context.permissionCodes?.includes("finance.view")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز مشاهده بازبینی‌های هوشمند وجود ندارد." });
     return structuredClone(drafts);
+  }
+
+  async function getInvoiceTargets() {
+    return invoiceAdapter?.getInvoiceTargets ? invoiceAdapter.getInvoiceTargets() : [];
   }
 
   async function retryExtraction(draftId) {
@@ -135,7 +146,8 @@ export function createMockAttachmentsAdapter(context, { initialState = "success"
     if (!draft) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "پیش‌نویس استخراج پیدا نشد." });
     if (draft.submittedBy !== context.userId) throw new ApiError({ status: 403, code: "FINANCE_FORBIDDEN", message: "فقط بارگذار فایل می‌تواند استخراج را تأیید کند." });
     const requestKey = String(idempotencyKey ?? "").trim();
-    if (draft.reviewStatus === "accepted" && confirmationKeys.get(draftId) === requestKey) return structuredClone(draft);
+    const previousConfirmation = confirmationKeys.get(draftId);
+    if (draft.reviewStatus === "accepted" && previousConfirmation?.key === requestKey) return structuredClone(previousConfirmation.invoice);
     if (draft.reviewStatus !== "awaitingReview" || draft.version !== expectedVersion) throw new ApiError({ status: 409, code: "STALE_VERSION", message: "نسخه بازبینی تغییر کرده است؛ اطلاعات را دوباره دریافت کنید." });
     if (!requestKey || !invoice?.invoiceDate || !String(invoice.vendorName ?? "").trim() || !/^\d+$/.test(String(invoice.totalIRR ?? ""))) {
       throw new ApiError({ status: 422, code: "AI_EXTRACTION_FAILED", message: "فیلدهای تأییدشده برای ایجاد فاکتور کامل نیستند." });
@@ -144,15 +156,19 @@ export function createMockAttachmentsAdapter(context, { initialState = "success"
     if (fieldConfirmations.some((item) => !knownKeys.has(item.key))) throw new ApiError({ status: 422, code: "AI_EXTRACTION_FAILED", message: "فیلد ناشناخته در اصلاحات بازبینی وجود دارد." });
     const confirmations = new Map(fieldConfirmations.map((item) => [item.key, item.confirmedValue]));
     draft.fields = draft.fields.map((field) => ({ ...field, confirmedValue: confirmations.get(field.key) ?? field.extractedValue, editedByUser: confirmations.has(field.key) && confirmations.get(field.key) !== field.extractedValue }));
+    const confirmedInvoice = invoiceAdapter?.createConfirmedExtractedInvoice
+      ? await invoiceAdapter.createConfirmedExtractedInvoice({ logicalType: draft.file.logicalType, invoice, idempotencyKey: requestKey, submittedBy: draft.submittedBy })
+      : { invoiceId: `invoice-extracted-${Date.now()}`, finalAmountIRR: String(invoice.totalIRR) };
     draft.reviewStatus = "accepted";
     draft.invoiceStatus = "confirmed";
     draft.financialEffectIRR = String(invoice.totalIRR);
     draft.confirmedBy = context.userId;
     draft.confirmedAt = new Date().toISOString();
+    draft.linkedInvoiceId = confirmedInvoice.invoiceId;
     draft.version += 1;
-    confirmationKeys.set(draftId, requestKey);
-    return structuredClone(draft);
+    confirmationKeys.set(draftId, { key: requestKey, invoice: structuredClone(confirmedInvoice) });
+    return structuredClone(confirmedInvoice);
   }
 
-  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, retryExtraction, rejectExtraction, confirmExtraction });
+  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, getInvoiceTargets, retryExtraction, rejectExtraction, confirmExtraction });
 }

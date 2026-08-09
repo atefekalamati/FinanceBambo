@@ -94,13 +94,14 @@ try {
   const invoicesState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedInvoicesState) ? requestedInvoicesState : "success";
   const requestedFilesState = new URLSearchParams(window.location.search).get("filesState");
   const filesState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedFilesState) ? requestedFilesState : "success";
+  const invoicesAdapter = createMockInvoicesAdapter(context, { initialState: invoicesState });
   const adapters = Object.freeze({
     settings: createMockSettingsAdapter(context, { initialState: settingsState }),
     financialItems: createMockFinancialItemsAdapter(context, { initialState: itemsState }),
     prices: createMockPricesAdapter(context, { initialState: pricesState }),
     progress: createMockProgressAdapter(context, { initialState: progressState }),
-    invoices: createMockInvoicesAdapter(context, { initialState: invoicesState }),
-    attachments: createMockAttachmentsAdapter(context, { initialState: filesState }),
+    invoices: invoicesAdapter,
+    attachments: createMockAttachmentsAdapter(context, { initialState: filesState, invoiceAdapter: invoicesAdapter }),
   });
   renderContext(context);
   createHashRouter({ routes: ROUTES, defaultPath: DEFAULT_ROUTE, onNavigate: (route) => renderRoute(route, context, adapters) }).start();
