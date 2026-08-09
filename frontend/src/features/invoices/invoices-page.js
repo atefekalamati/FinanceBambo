@@ -1,6 +1,10 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
+import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
+import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
+import { hasPermission } from "../../core/auth/permissions.js";
+import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 
 const STATUS_LABELS = Object.freeze({ draft: "پیش‌نویس", awaitingConfirmation: "در انتظار تأیید", confirmed: "تأییدشده", voided: "باطل‌شده", corrected: "اصلاح‌شده" });
 const SOURCE_LABELS = Object.freeze({ manual: "ورود دستی", image: "تصویر", voice: "صدای فارسی" });
@@ -24,6 +28,192 @@ function option(value, label) {
   const node = element("option", "", label);
   node.value = value;
   return node;
+}
+
+function inputField(label, name, { type = "text", inputMode = "text", placeholder = "" } = {}) {
+  const field = element("label", "form-field");
+  field.append(element("span", "form-label", label));
+  const input = element("input", "app-input");
+  input.name = name;
+  input.type = type;
+  input.inputMode = inputMode;
+  input.placeholder = placeholder;
+  field.append(input);
+  return { field, input };
+}
+
+function createInvoiceWizard({ adapter, onSaved }) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "confirm-dialog invoice-wizard";
+  dialog.setAttribute("aria-labelledby", "invoice-wizard-title");
+  const head = element("header", "invoice-detail-dialog__head");
+  const heading = element("div");
+  const title = element("h2", "", "ثبت فاکتور دستی");
+  title.id = "invoice-wizard-title";
+  heading.append(title, element("p", "invoice-wizard__subtitle", "پیش‌نویس تا قبل از تأیید، اثر مالی ندارد."));
+  const close = element("button", "dialog-close", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "بستن فرم ثبت فاکتور");
+  close.addEventListener("click", () => dialog.close());
+  head.append(heading, close);
+  const steps = element("ol", "invoice-stepper");
+  ["سربرگ", "خطوط", "پیش‌نمایش"].forEach((label, index) => {
+    const item = element("li", "", label);
+    item.dataset.step = String(index + 1);
+    steps.append(item);
+  });
+  const body = element("div", "invoice-wizard__body");
+  const message = element("div", "form-message");
+  message.setAttribute("aria-live", "assertive");
+  let currentStep = 1;
+  let targets = [];
+  let headerData = null;
+  let lines = [];
+  let adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
+  let preview = null;
+
+  function showMessage(text, error = false) {
+    message.textContent = text;
+    message.className = `form-message${error ? " form-message--error" : ""}`;
+  }
+
+  function updateStepper() {
+    [...steps.children].forEach((item, index) => {
+      item.classList.toggle("invoice-stepper__active", index + 1 === currentStep);
+      item.classList.toggle("invoice-stepper__done", index + 1 < currentStep);
+      if (index + 1 === currentStep) item.setAttribute("aria-current", "step");
+      else item.removeAttribute("aria-current");
+    });
+  }
+
+  function actions({ back = false, nextLabel, onNext }) {
+    const row = element("div", "dialog-actions invoice-wizard__actions");
+    if (back) {
+      const previous = element("button", "button button--ghost", "مرحله قبل");
+      previous.type = "button";
+      previous.addEventListener("click", () => { currentStep -= 1; paintStep(); });
+      row.append(previous);
+    }
+    const next = element("button", "button button--primary", nextLabel);
+    next.type = "button";
+    next.addEventListener("click", () => onNext(next));
+    row.append(next);
+    return row;
+  }
+
+  function renderHeaderStep() {
+    const form = element("div", "invoice-wizard-grid");
+    const number = inputField("شماره فاکتور", "invoiceNumber");
+    number.input.value = headerData?.invoiceNumber ?? "";
+    const vendor = inputField("فروشنده یا ارائه‌دهنده", "vendorName");
+    vendor.input.value = headerData?.vendorName ?? "";
+    const date = createPersianDatePicker({ id: "invoiceDate", label: "تاریخ فاکتور", value: headerData?.invoiceDate ?? getTehranTodayIso() });
+    const description = element("label", "form-field invoice-wizard-grid__wide");
+    description.append(element("span", "form-label", "توضیح"));
+    const textarea = element("textarea", "app-textarea");
+    textarea.rows = 3;
+    textarea.maxLength = 500;
+    textarea.value = headerData?.description ?? "";
+    description.append(textarea);
+    form.append(number.field, vendor.field, date.field, description);
+    form.append(actions({ nextLabel: "ادامه به خطوط", onNext: () => {
+      const validation = validateInvoiceHeader({ invoiceNumber: number.input.value, invoiceDate: date.getValue(), vendorName: vendor.input.value, description: textarea.value });
+      if (!validation.valid) { showMessage(Object.values(validation.errors).join(" "), true); return; }
+      headerData = validation.values;
+      currentStep = 2;
+      paintStep();
+    } }));
+    return form;
+  }
+
+  function renderLinesStep() {
+    const section = element("div", "invoice-lines-editor");
+    const targetField = element("label", "form-field");
+    targetField.append(element("span", "form-label", "اتصال به خط برآورد یا هزینه عمومی"));
+    const targetSelect = element("select", "app-select");
+    targetSelect.append(option("", "انتخاب کنید"), ...targets.map((target) => option(target.targetId, `${target.label} · ${target.targetType === "general_cost" ? "هزینه عمومی" : formatUnitLabel(target.unit)}`)));
+    targetField.append(targetSelect);
+    const quantity = inputField("مقدار", "quantity", { inputMode: "decimal" });
+    const unitPrice = inputField("قیمت واحد به ریال", "unitPriceIRR", { inputMode: "numeric" });
+    const amount = inputField("مبلغ خط هزینه عمومی به ریال", "amountIRR", { inputMode: "numeric" });
+    amount.field.hidden = true;
+    targetSelect.addEventListener("change", () => {
+      const target = targets.find((item) => item.targetId === targetSelect.value);
+      const general = target?.targetType === "general_cost";
+      quantity.field.hidden = general;
+      unitPrice.field.hidden = general;
+      amount.field.hidden = !general;
+    });
+    const lineDescription = inputField("توضیح خط", "lineDescription");
+    const add = element("button", "button button--ghost", "افزودن خط");
+    add.type = "button";
+    add.addEventListener("click", () => {
+      const target = targets.find((item) => item.targetId === targetSelect.value);
+      const validation = validateInvoiceLine({ quantity: quantity.input.value, unitPriceIRR: unitPrice.input.value, amountIRR: amount.input.value, description: lineDescription.input.value }, target);
+      if (!validation.valid) { showMessage(Object.values(validation.errors).join(" "), true); return; }
+      lines.push(validation.values);
+      showMessage("خط به پیش‌نویس اضافه شد.");
+      paintStep();
+    });
+    const editor = element("div", "invoice-line-entry");
+    editor.append(targetField, quantity.field, unitPrice.field, amount.field, lineDescription.field, add);
+    const list = element("div", "invoice-draft-lines");
+    lines.forEach((line, index) => {
+      const card = element("article", "invoice-draft-line");
+      card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", line.targetType === "general_cost" ? `${formatDisplayNumber(line.lineAmountIRR)} ریال` : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)} × ${formatDisplayNumber(line.unitPriceIRR)} ریال`));
+      const remove = element("button", "button button--ghost", "حذف خط");
+      remove.type = "button";
+      remove.addEventListener("click", () => { lines.splice(index, 1); paintStep(); });
+      card.append(remove);
+      list.append(card);
+    });
+    const adjustmentGrid = element("div", "invoice-adjustments");
+    const adjustmentFields = [["تخفیف به ریال", "discountIRR"], ["مالیات به ریال", "taxIRR"], ["حمل به ریال", "shippingIRR"], ["سایر هزینه‌ها به ریال", "otherCostsIRR"]].map(([label, key]) => {
+      const field = inputField(label, key, { inputMode: "numeric" });
+      field.input.value = adjustments[key];
+      adjustmentGrid.append(field.field);
+      return [key, field.input];
+    });
+    section.append(editor, list, adjustmentGrid, actions({ back: true, nextLabel: "مشاهده پیش‌نمایش", onNext: async (button) => {
+      if (!lines.length) { showMessage("حداقل یک خط فاکتور اضافه کنید.", true); return; }
+      const validation = validateInvoiceAdjustments(Object.fromEntries(adjustmentFields.map(([key, input]) => [key, input.value])));
+      if (!validation.valid) { showMessage(Object.values(validation.errors).join(" "), true); return; }
+      adjustments = validation.values;
+      button.disabled = true;
+      button.textContent = "در حال محاسبه…";
+      try { preview = await adapter.previewDraft({ lines, adjustments }); currentStep = 3; paintStep(); }
+      catch (error) { showMessage(`${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`, true); button.disabled = false; button.textContent = "مشاهده پیش‌نمایش"; }
+    } }));
+    return section;
+  }
+
+  function renderPreviewStep() {
+    const section = element("div", "invoice-preview");
+    const summary = element("dl", "invoice-detail-grid");
+    [["شماره", headerData.invoiceNumber], ["تاریخ", formatBusinessDate(headerData.invoiceDate)], ["فروشنده", headerData.vendorName], ["منبع", "ورود دستی"]].forEach(([label, value]) => { const item = element("div", "invoice-detail-grid__item"); item.append(element("dt", "", label), element("dd", "", value)); summary.append(item); });
+    const lineList = element("div", "invoice-draft-lines");
+    preview.lines.forEach((line, index) => { const card = element("article", "invoice-draft-line"); card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", formatTomanFromIRR(line.lineAmountIRR))); lineList.append(card); });
+    const totals = element("dl", "invoice-totals");
+    [["جمع خام خطوط", preview.rawLinesTotalIRR], ["تخفیف", preview.discountIRR], ["مالیات", preview.taxIRR], ["حمل", preview.shippingIRR], ["سایر هزینه‌ها", preview.otherCostsIRR], ["مبلغ نهایی", preview.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIRR(value))));
+    section.append(element("div", "inline-notice", "با ثبت این مرحله فقط پیش‌نویس ساخته می‌شود و هزینه واقعی پروژه تغییر نمی‌کند."), summary, lineList, totals, actions({ back: true, nextLabel: "ثبت پیش‌نویس", onNext: async (button) => {
+      button.disabled = true;
+      button.textContent = "در حال ثبت…";
+      try { await adapter.createDraft({ header: headerData, lines, adjustments }); dialog.close(); onSaved(); }
+      catch (error) { showMessage(`${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`, true); button.disabled = false; button.textContent = "ثبت پیش‌نویس"; }
+    } }));
+    return section;
+  }
+
+  function paintStep() {
+    updateStepper();
+    showMessage("");
+    body.replaceChildren(currentStep === 1 ? renderHeaderStep() : currentStep === 2 ? renderLinesStep() : renderPreviewStep());
+  }
+
+  dialog.append(head, steps, message, body);
+  adapter.getInvoiceTargets().then((items) => { targets = items; paintStep(); }).catch((error) => showMessage(error.message, true));
+  updateStepper();
+  return dialog;
 }
 
 function renderDetail(invoice) {
@@ -115,10 +305,11 @@ function renderTable(items, onDetail) {
   return wrapper;
 }
 
-export function createInvoicesPage({ adapter }) {
+export function createInvoicesPage({ context, adapter }) {
   const root = element("div", "invoices-page");
   let state = createRequestState(REQUEST_STATUS.LOADING);
   const filters = { query: "", status: "", source: "", page: 1, pageSize: 50 };
+  const canCreate = hasPermission(context, "finance.edit");
   const detailMessage = element("div", "form-message invoice-detail-message");
   detailMessage.setAttribute("aria-live", "assertive");
 
@@ -159,9 +350,20 @@ export function createInvoicesPage({ adapter }) {
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "اسناد هزینه پروژه"), element("h1", "", "فاکتورها"), element("p", "", "فاکتورهای پروژه را براساس وضعیت، منبع و مشخصات سند جست‌وجو و جزئیات ثبت‌شده را مشاهده کنید."));
+    const actions = element("div", "feature-header__actions");
+    const create = element("button", "button button--primary", canCreate ? "ثبت فاکتور دستی" : "بدون مجوز ثبت");
+    create.type = "button";
+    create.disabled = !canCreate;
+    create.addEventListener("click", () => {
+      const dialog = createInvoiceWizard({ adapter, onSaved: () => { filters.page = 1; load(); } });
+      root.append(dialog);
+      dialog.addEventListener("close", () => dialog.remove(), { once: true });
+      dialog.showModal();
+    });
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.href = "#/finance";
-    header.append(copy, back);
+    actions.append(create, back);
+    header.append(copy, actions);
     return header;
   }
 
