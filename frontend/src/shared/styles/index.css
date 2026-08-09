@@ -9,4 +9,5 @@
 @import url("../../features/progress/progress.css");
 @import url("../../features/invoices/invoices.css");
 @import url("../../features/ai-review/invoice-files.css");
+@import url("../../features/ai-review/ai-review.css");
 @import url("./print.css");

@@ -15,6 +15,7 @@ import { createPricesPage } from "../features/prices/prices-page.js";
 import { createProgressPage } from "../features/progress/progress-page.js";
 import { createInvoicesPage } from "../features/invoices/invoices-page.js";
 import { createInvoiceFilesPage } from "../features/ai-review/invoice-files-page.js";
+import { createAiReviewPage } from "../features/ai-review/ai-review-page.js";
 import { createSettingsPage } from "../features/settings/settings-page.js";
 import { formatArea } from "../shared/formatters/display.js";
 
@@ -66,6 +67,7 @@ function renderRoute(route, context, adapters) {
   if (route.key === "progress") root.append(createProgressPage({ context, adapter: adapters.progress }));
   if (route.key === "invoices") root.append(createInvoicesPage({ context, adapter: adapters.invoices }));
   if (route.key === "invoice-files") root.append(createInvoiceFilesPage({ context, adapter: adapters.attachments }));
+  if (route.key === "ai-review") root.append(createAiReviewPage({ context, adapter: adapters.attachments }));
   if (route.key === "settings") {
     root.append(createSettingsPage({
       context,
