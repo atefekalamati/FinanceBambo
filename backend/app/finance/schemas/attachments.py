@@ -25,3 +25,11 @@ class AttachmentResponse(ApiModel):
     @classmethod
     def from_domain(cls, value):
         return cls(**{name: getattr(value, name) for name in cls.model_fields})
+
+
+class AttachmentListResponse(ApiModel):
+    items: list[AttachmentResponse]
+    page: int
+    page_size: int
+    total_count: int
+    total_pages: int

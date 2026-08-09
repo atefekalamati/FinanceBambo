@@ -69,6 +69,7 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/invoices/{invoiceId}/void", "post"),
                 ("/api/projects/{projectId}/finance/invoices/{invoiceId}/corrective", "post"),
                 ("/api/projects/{projectId}/finance/files", "post"),
+                ("/api/projects/{projectId}/finance/files", "get"),
                 ("/api/projects/{projectId}/finance/files/{fileId}", "get"),
                 ("/api/projects/{projectId}/finance/extractions/{draftId}/retry", "post"),
                 ("/api/projects/{projectId}/finance/extractions/{draftId}/confirm", "post"),
