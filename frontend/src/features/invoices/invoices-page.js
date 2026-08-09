@@ -7,7 +7,7 @@ import { hasPermission } from "../../core/auth/permissions.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 
 const STATUS_LABELS = Object.freeze({ draft: "پیش‌نویس", awaitingConfirmation: "در انتظار تأیید", confirmed: "تأییدشده", voided: "باطل‌شده", corrected: "اصلاح‌شده" });
-const SOURCE_LABELS = Object.freeze({ manual: "ورود دستی", image: "تصویر", voice: "صدای فارسی" });
+const SOURCE_LABELS = Object.freeze({ manual: "ورود دستی", image: "تصویر", voice: "صدای فارسی", reversal: "سند برگشت", corrective: "سند اصلاحی" });
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -42,15 +42,16 @@ function inputField(label, name, { type = "text", inputMode = "text", placeholde
   return { field, input };
 }
 
-function createInvoiceWizard({ adapter, onSaved }) {
+function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoice = null }) {
+  const isCorrective = mode === "corrective";
   const dialog = document.createElement("dialog");
   dialog.className = "confirm-dialog invoice-wizard";
   dialog.setAttribute("aria-labelledby", "invoice-wizard-title");
   const head = element("header", "invoice-detail-dialog__head");
   const heading = element("div");
-  const title = element("h2", "", "ثبت فاکتور دستی");
+  const title = element("h2", "", isCorrective ? "ثبت سند اصلاحی مرتبط" : "ثبت فاکتور دستی");
   title.id = "invoice-wizard-title";
-  heading.append(title, element("p", "invoice-wizard__subtitle", "پیش‌نویس تا قبل از تأیید، اثر مالی ندارد."));
+  heading.append(title, element("p", "invoice-wizard__subtitle", isCorrective ? `سند اصلاحی به فاکتور ${originalInvoice.invoiceNumber} متصل و مستقل ثبت می‌شود.` : "پیش‌نویس تا قبل از تأیید، اثر مالی ندارد."));
   const close = element("button", "dialog-close", "×");
   close.type = "button";
   close.setAttribute("aria-label", "بستن فرم ثبت فاکتور");
@@ -72,6 +73,8 @@ function createInvoiceWizard({ adapter, onSaved }) {
   let adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
   let preview = null;
   let duplicateOverrideReason = "";
+  let correctionReason = "";
+  let financialEffectSign = -1;
   const idempotencyKey = crypto.randomUUID();
 
   function showMessage(text, error = false) {
@@ -106,9 +109,9 @@ function createInvoiceWizard({ adapter, onSaved }) {
   function renderHeaderStep() {
     const form = element("div", "invoice-wizard-grid");
     const number = inputField("شماره فاکتور", "invoiceNumber");
-    number.input.value = headerData?.invoiceNumber ?? "";
+    number.input.value = headerData?.invoiceNumber ?? (isCorrective ? `${originalInvoice.invoiceNumber}-اصلاح` : "");
     const vendor = inputField("فروشنده یا ارائه‌دهنده", "vendorName");
-    vendor.input.value = headerData?.vendorName ?? "";
+    vendor.input.value = headerData?.vendorName ?? (isCorrective ? originalInvoice.vendorName : "");
     const date = createPersianDatePicker({ id: "invoiceDate", label: "تاریخ فاکتور", value: headerData?.invoiceDate ?? getTehranTodayIso() });
     const description = element("label", "form-field invoice-wizard-grid__wide");
     description.append(element("span", "form-label", "توضیح"));
@@ -197,7 +200,27 @@ function createInvoiceWizard({ adapter, onSaved }) {
     preview.lines.forEach((line, index) => { const card = element("article", "invoice-draft-line"); card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", formatTomanFromIRR(line.lineAmountIRR))); lineList.append(card); });
     const totals = element("dl", "invoice-totals");
     [["جمع خام خطوط", preview.rawLinesTotalIRR], ["تخفیف", preview.discountIRR], ["مالیات", preview.taxIRR], ["حمل", preview.shippingIRR], ["سایر هزینه‌ها", preview.otherCostsIRR], ["مبلغ نهایی", preview.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIRR(value))));
-    section.append(element("div", "inline-notice", "با ثبت این مرحله فقط پیش‌نویس ساخته می‌شود و هزینه واقعی پروژه تغییر نمی‌کند."), summary, lineList, totals);
+    section.append(element("div", "inline-notice", isCorrective ? "این سند پس از ثبت، با اثر مالی انتخاب‌شده و ارتباط صریح با فاکتور اصلی اعمال می‌شود؛ فاکتور اصلی تغییر نمی‌کند." : "با ثبت این مرحله فقط پیش‌نویس ساخته می‌شود و هزینه واقعی پروژه تغییر نمی‌کند."), summary, lineList, totals);
+    let correctionReasonInput = null;
+    let effectSelect = null;
+    if (isCorrective) {
+      const correction = element("section", "invoice-correction-fields");
+      const effectField = element("label", "form-field");
+      effectField.append(element("span", "form-label", "جهت اثر مالی"));
+      effectSelect = element("select", "app-select");
+      [["-1", "کاهنده هزینه واقعی"], ["1", "افزاینده هزینه واقعی"]].forEach(([value, label]) => effectSelect.append(option(value, label)));
+      effectSelect.value = String(financialEffectSign);
+      effectField.append(effectSelect);
+      const reasonField = element("label", "form-field");
+      reasonField.append(element("span", "form-label", "دلیل ممیزی اصلاح"));
+      correctionReasonInput = element("textarea", "app-textarea");
+      correctionReasonInput.rows = 3;
+      correctionReasonInput.maxLength = 500;
+      correctionReasonInput.value = correctionReason;
+      reasonField.append(correctionReasonInput);
+      correction.append(effectField, reasonField);
+      section.append(correction);
+    }
     let reasonInput = null;
     if (preview.duplicateMatches.length) {
       const warning = element("section", "invoice-duplicate-warning");
@@ -215,13 +238,23 @@ function createInvoiceWizard({ adapter, onSaved }) {
       warning.append(matches, reason);
       section.append(warning);
     }
-    section.append(actions({ back: true, nextLabel: "ثبت پیش‌نویس", onNext: async (button) => {
+    section.append(actions({ back: true, nextLabel: isCorrective ? "ثبت سند اصلاحی" : "ثبت پیش‌نویس", onNext: async (button) => {
       duplicateOverrideReason = reasonInput?.value.trim() ?? "";
       if (preview.duplicateMatches.length && duplicateOverrideReason.length < 3) { showMessage("دلیل ادامه با وجود فاکتور مشابه باید حداقل سه نویسه داشته باشد.", true); reasonInput.focus(); return; }
+      if (isCorrective) {
+        correctionReason = correctionReasonInput.value.trim();
+        financialEffectSign = Number(effectSelect.value);
+        if (correctionReason.length < 3) { showMessage("دلیل اصلاح باید حداقل سه نویسه داشته باشد.", true); correctionReasonInput.focus(); return; }
+      }
       button.disabled = true;
       button.textContent = "در حال ثبت…";
-      try { await adapter.createDraft({ header: headerData, lines, adjustments, duplicateOverrideReason, idempotencyKey }); dialog.close(); onSaved(); }
-      catch (error) { showMessage(`${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`, true); button.disabled = false; button.textContent = "ثبت پیش‌نویس"; }
+      try {
+        if (isCorrective) await adapter.createCorrective({ originalInvoiceId: originalInvoice.invoiceId, header: headerData, lines, adjustments, financialEffectSign, reason: correctionReason, idempotencyKey });
+        else await adapter.createDraft({ header: headerData, lines, adjustments, duplicateOverrideReason, idempotencyKey });
+        dialog.close();
+        onSaved();
+      }
+      catch (error) { showMessage(`${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`, true); button.disabled = false; button.textContent = isCorrective ? "ثبت سند اصلاحی" : "ثبت پیش‌نویس"; }
     } }));
     return section;
   }
@@ -238,7 +271,7 @@ function createInvoiceWizard({ adapter, onSaved }) {
   return dialog;
 }
 
-function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm }) {
+function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm, onVoid, onCorrective }) {
   const dialog = document.createElement("dialog");
   dialog.className = "confirm-dialog invoice-detail-dialog";
   dialog.setAttribute("aria-labelledby", "invoice-detail-title");
@@ -270,6 +303,8 @@ function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm }) 
   if (invoice.duplicateWarning) dialog.append(element("div", "invoice-warning", "این سند دارای هشدار شباهت با فاکتور دیگری است."));
   if (invoice.duplicateOverrideReason) dialog.append(element("div", "inline-notice", `دلیل ادامه ثبت: ${invoice.duplicateOverrideReason}`));
   if (invoice.relatedInvoiceId) dialog.append(element("div", "inline-notice numeric", `شناسه سند مرتبط: ${invoice.relatedInvoiceId}`));
+  if (invoice.originalInvoiceId) dialog.append(element("div", "inline-notice numeric", `فاکتور اصلی: ${invoice.originalInvoiceId} · اثر مالی: ${invoice.financialEffectSign === -1 ? "کاهنده" : "افزاینده"}`));
+  if (invoice.correctionReason) dialog.append(element("div", "inline-notice", `دلیل اصلاح: ${invoice.correctionReason}`));
 
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table invoice-lines-table");
@@ -313,6 +348,19 @@ function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm }) 
     confirm.disabled = !canEdit || !isSubmitter;
     confirm.addEventListener("click", () => onConfirm(invoice, dialog));
     actions.append(confirm);
+    dialog.append(actions);
+  }
+  if (invoice.invoiceStatus === "confirmed") {
+    const actions = element("div", "dialog-actions invoice-detail-actions");
+    const corrective = element("button", "button button--ghost", canEdit ? "ثبت سند اصلاحی" : "بدون مجوز اصلاح");
+    corrective.type = "button";
+    corrective.disabled = !canEdit;
+    corrective.addEventListener("click", () => onCorrective(invoice, dialog));
+    const voidButton = element("button", "button button--danger", canEdit ? "ابطال با سند برگشت" : "بدون مجوز ابطال");
+    voidButton.type = "button";
+    voidButton.disabled = !canEdit;
+    voidButton.addEventListener("click", () => onVoid(invoice, dialog));
+    actions.append(corrective, voidButton);
     dialog.append(actions);
   }
   return dialog;
@@ -393,6 +441,42 @@ function createConfirmInvoiceDialog({ invoice, adapter, onSaved }) {
   return dialog;
 }
 
+function createVoidInvoiceDialog({ invoice, adapter, onSaved }) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "confirm-dialog invoice-confirm-dialog";
+  dialog.setAttribute("aria-labelledby", "invoice-void-title");
+  const title = element("h2", "", "ابطال فاکتور با سند برگشت");
+  title.id = "invoice-void-title";
+  const warning = element("div", "invoice-warning", "فاکتور اصلی حذف یا ویرایش نمی‌شود. یک سند برگشت مرتبط با اثر مالی منفی ایجاد خواهد شد.");
+  const reasonField = element("label", "form-field");
+  reasonField.append(element("span", "form-label", "دلیل ممیزی ابطال"));
+  const reason = element("textarea", "app-textarea");
+  reason.rows = 4;
+  reason.maxLength = 500;
+  reasonField.append(reason);
+  const message = element("div", "form-message");
+  message.setAttribute("aria-live", "assertive");
+  const actions = element("div", "dialog-actions");
+  const cancel = element("button", "button button--ghost", "انصراف");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => dialog.close());
+  const submit = element("button", "button button--danger", "ایجاد سند برگشت");
+  submit.type = "button";
+  const idempotencyKey = crypto.randomUUID();
+  submit.addEventListener("click", async () => {
+    const auditedReason = reason.value.trim();
+    if (auditedReason.length < 3) { message.textContent = "دلیل ابطال باید حداقل سه نویسه داشته باشد."; message.className = "form-message form-message--error"; reason.focus(); return; }
+    submit.disabled = true;
+    cancel.disabled = true;
+    submit.textContent = "در حال ثبت…";
+    try { await adapter.voidInvoice({ invoiceId: invoice.invoiceId, expectedVersion: invoice.version, idempotencyKey, reason: auditedReason }); dialog.close(); onSaved(); }
+    catch (error) { message.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`; message.className = "form-message form-message--error"; submit.disabled = false; cancel.disabled = false; submit.textContent = "ایجاد سند برگشت"; }
+  });
+  actions.append(cancel, submit);
+  dialog.append(title, warning, reasonField, message, actions);
+  return dialog;
+}
+
 function renderTable(items, onDetail) {
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table invoices-table");
@@ -467,6 +551,20 @@ export function createInvoicesPage({ context, adapter }) {
           root.append(confirmation);
           confirmation.addEventListener("close", () => confirmation.remove(), { once: true });
           confirmation.showModal();
+        },
+        onVoid: (confirmedInvoice, detailDialog) => {
+          detailDialog.close();
+          const voidDialog = createVoidInvoiceDialog({ invoice: confirmedInvoice, adapter, onSaved: load });
+          root.append(voidDialog);
+          voidDialog.addEventListener("close", () => voidDialog.remove(), { once: true });
+          voidDialog.showModal();
+        },
+        onCorrective: (confirmedInvoice, detailDialog) => {
+          detailDialog.close();
+          const correctiveDialog = createInvoiceWizard({ adapter, onSaved: load, mode: "corrective", originalInvoice: confirmedInvoice });
+          root.append(correctiveDialog);
+          correctiveDialog.addEventListener("close", () => correctiveDialog.remove(), { once: true });
+          correctiveDialog.showModal();
         },
       });
       root.append(dialog);
