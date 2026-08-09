@@ -1,10 +1,12 @@
 import sys
+import io
 import unittest
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
+from openpyxl import load_workbook
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
@@ -134,6 +136,24 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
         repository.source_estimate["resource_title"]="changed later"
         self.assertEqual("material",repository.payload["estimateInputs"][0]["resource_title"])
 
+        csv_content=await service.export(scope,UUID(int=10),"csv")
+        self.assertTrue(csv_content.startswith(b"\xef\xbb\xbf"))
+        self.assertIn(b"initialEstimateIrr",csv_content)
+        xlsx_content=await service.export(scope,UUID(int=10),"xlsx")
+        self.assertTrue(xlsx_content.startswith(b"PK"))
+        workbook=load_workbook(io.BytesIO(xlsx_content),read_only=False,data_only=True)
+        self.assertEqual(["Summary","Breakdown","Price Variance","Quantity Variance"],workbook.sheetnames)
+        self.assertEqual("initialEstimateIrr",workbook["Summary"]["A2"].value)
+        self.assertTrue(workbook["Summary"].sheet_view.rightToLeft)
+        self.assertEqual(1,len(workbook["Breakdown"]._charts))
+
+    def test_exports_neutralize_spreadsheet_formula_injection(self):
+        payload={"metrics":{"safe":"1"},"breakdown":[],"topPriceVariances":[{"resourceCode":"=CMD()","resourceTitle":"+bad","resourceType":"material","varianceIrr":"-10"}],"topQuantityVariances":[]}
+        csv_content=FinanceLiveReportService._csv(payload).decode("utf-8-sig")
+        self.assertIn("'=CMD()",csv_content);self.assertIn("'+bad",csv_content)
+        workbook=load_workbook(io.BytesIO(FinanceLiveReportService._xlsx(payload)),data_only=False)
+        self.assertEqual("'=CMD()",workbook["Price Variance"]["A2"].value)
+
 
 class SnapshotRepository(Repository):
     def __init__(self):
@@ -152,6 +172,10 @@ class SnapshotRepository(Repository):
         self.payload=copy.deepcopy(payload)
         self.value=dict(value)
         return value
+
+    async def export_payload(self,scope,report_id):
+        if self.payload is None or report_id!=self.value["report_snapshot_id"]:return None
+        return {"report_snapshot_id":report_id,"reporting_date":self.value["reporting_date"],"snapshot_payload":self.payload}
 
 
 if __name__ == "__main__":

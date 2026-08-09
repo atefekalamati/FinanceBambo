@@ -29,3 +29,8 @@ class PsycopgLiveReportRepository:
         async with self.db.cursor(row_factory=dict_row) as cursor:
             await cursor.execute("SELECT id report_snapshot_id,organization_id,project_id,reporting_date,progress_snapshot_ref_id,resource_version_ids,estimate_revision_ids,price_version_ids,unit_conversion_ids,invoice_ids,calculated_metrics,issued_by,issued_at,(SELECT progress_snapshot_id FROM progress_snapshot_refs p WHERE p.organization_id=r.organization_id AND p.project_id=r.project_id AND p.id=r.progress_snapshot_ref_id) progress_snapshot_id FROM report_snapshots r WHERE organization_id=%s AND project_id=%s AND id=%s",(scope.organization_id,scope.project_id,report_id))
             return await cursor.fetchone()
+
+    async def export_payload(self,scope,report_id):
+        async with self.db.cursor(row_factory=dict_row) as cursor:
+            await cursor.execute("SELECT id report_snapshot_id,reporting_date,snapshot_payload FROM report_snapshots WHERE organization_id=%s AND project_id=%s AND id=%s",(scope.organization_id,scope.project_id,report_id))
+            return await cursor.fetchone()
