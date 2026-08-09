@@ -26,7 +26,7 @@ class WiringTests(unittest.TestCase):
     def test_finance_router_uses_project_scoped_contract(self):
         self.assertEqual("/projects/{projectId}/finance", router.prefix)
 
-    def test_application_exposes_only_approved_through_stage_nineteen_endpoints(self):
+    def test_application_exposes_only_approved_through_stage_twenty_endpoints(self):
         application = create_app()
         paths = application.openapi()["paths"]
         business_operations = {
@@ -76,6 +76,7 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/report-snapshots/{reportId}", "get"),
                 ("/api/projects/{projectId}/finance/report-snapshots/{reportId}/csv", "get"),
                 ("/api/projects/{projectId}/finance/report-snapshots/{reportId}/xlsx", "get"),
+                ("/api/projects/{projectId}/finance/audit-events", "get"),
             },
             business_operations,
         )
