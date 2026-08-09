@@ -160,6 +160,17 @@
   color: var(--color-text-secondary);
 }
 
+.invoice-correction-fields {
+  display: grid;
+  grid-template-columns: minmax(12rem, .7fr) minmax(0, 1.3fr);
+  gap: var(--space-lg);
+  margin-block: var(--space-xl);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(120 145 205 / 5%);
+}
+
 .invoice-list-heading p {
   margin-block-start: .25rem;
   color: var(--color-text-muted);
@@ -229,6 +240,16 @@
 .invoice-status--corrected {
   border-color: rgb(255 93 115 / 28%);
   color: var(--color-danger);
+}
+
+.button--danger {
+  border-color: rgb(239 68 68 / 35%);
+  background: rgb(239 68 68 / 12%);
+  color: var(--color-danger);
+}
+
+.button--danger:hover:not(:disabled) {
+  background: rgb(239 68 68 / 20%);
 }
 
 .invoice-pagination {
@@ -422,7 +443,8 @@
 
   .invoice-wizard-grid,
   .invoice-line-entry,
-  .invoice-adjustments {
+  .invoice-adjustments,
+  .invoice-correction-fields {
     grid-template-columns: 1fr;
   }
 
