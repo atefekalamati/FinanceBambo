@@ -1,0 +1,123 @@
+import sys
+import unittest
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
+from uuid import UUID
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.finance.domain.reports import calculate_live_report
+from app.finance.domain.resources import FinanceRecordNotFound
+from app.finance.services.reports import FinanceLiveReportService
+
+
+MATERIAL_LINE = UUID("10000000-0000-4000-8000-000000000001")
+LABOR_LINE = UUID("10000000-0000-4000-8000-000000000002")
+GENERAL_LINE = UUID("10000000-0000-4000-8000-000000000003")
+MATERIAL = UUID("20000000-0000-4000-8000-000000000001")
+LABOR = UUID("20000000-0000-4000-8000-000000000002")
+GENERAL = UUID("20000000-0000-4000-8000-000000000003")
+SNAPSHOT = UUID("30000000-0000-4000-8000-000000000001")
+
+
+def estimate(line_id, resource_id, kind, quantity, revised, original_price, current_price, assignment):
+    return {"id": line_id, "resource_id": resource_id, "resource_type": kind,
+            "resource_code": kind[:3], "resource_title": kind,
+            "original_quantity": quantity, "revised_quantity": revised,
+            "original_unit_price_irr": original_price,
+            "current_unit_price_irr": current_price,
+            "assignment_external_id": assignment, "activity_external_id": None}
+
+
+class LiveReportDomainTests(unittest.TestCase):
+    def test_calculates_eight_prd_metrics_and_charts(self):
+        estimates = [
+            estimate(MATERIAL_LINE, MATERIAL, "material", "10", "12", "100", "150", "a-m"),
+            estimate(LABOR_LINE, LABOR, "labor", "5", "5", "100", "200", "a-l"),
+            estimate(GENERAL_LINE, GENERAL, "general_cost", None, "1200", "1000", None, None),
+        ]
+        invoices = [
+            {"estimate_line_id": MATERIAL_LINE, "resource_id": MATERIAL, "quantity": "4",
+             "unit": "box", "base_unit": "each", "dimension": "count",
+             "final_line_amount_irr": "800", "financial_effect_sign": 1, "resource_type": "material"},
+            {"estimate_line_id": None, "resource_id": MATERIAL, "quantity": "2",
+             "unit": "each", "base_unit": "each", "dimension": "count",
+             "final_line_amount_irr": "200", "financial_effect_sign": 1, "resource_type": "material"},
+            {"estimate_line_id": None, "resource_id": MATERIAL, "quantity": "2",
+             "unit": "each", "base_unit": "each", "dimension": "count",
+             "final_line_amount_irr": "200", "financial_effect_sign": -1, "resource_type": "material"},
+            {"estimate_line_id": LABOR_LINE, "resource_id": LABOR, "quantity": "1",
+             "unit": "hour", "base_unit": "hour", "dimension": "time",
+             "final_line_amount_irr": "200", "financial_effect_sign": 1, "resource_type": "labor"},
+            {"estimate_line_id": GENERAL_LINE, "resource_id": GENERAL, "quantity": None,
+             "unit": None, "base_unit": None, "dimension": "lump_sum",
+             "final_line_amount_irr": "1300", "financial_effect_sign": 1, "resource_type": "general_cost"},
+        ]
+        assignments = [
+            {"assignmentExternalId": "a-m", "actualQuantity": "4", "task": {}},
+            {"assignmentExternalId": "a-l", "actualWork": "2", "task": {}},
+        ]
+        report = calculate_live_report(estimates, invoices, assignments,
+                                       [{"source_unit": "box", "target_unit": "each", "dimension": "count", "factor": "2"}], "10")
+        self.assertEqual(8, len(report.metrics))
+        self.assertEqual({
+            "initialEstimateIrr": Decimal("2500"), "actualCostIrr": Decimal("2300"),
+            "currentExecutedValueIrr": Decimal("1000"), "remainingPhysicalCostIrr": Decimal("1800"),
+            "moneyRequiredToContinueIrr": Decimal("1200"), "forecastFinalCostIrr": Decimal("3500"),
+            "actualCostPerSquareMeterIrr": Decimal("230"), "forecastPerSquareMeterIrr": Decimal("350")}, report.metrics)
+        by_type = {row["resourceType"]: row for row in report.breakdown}
+        self.assertEqual(Decimal("1400"), by_type["material"]["forecastFinalIrr"])
+        self.assertEqual(Decimal("800"), by_type["labor"]["forecastFinalIrr"])
+        self.assertEqual(Decimal("1300"), by_type["general_cost"]["forecastFinalIrr"])
+        self.assertEqual(Decimal("400"), report.price_variances[0]["varianceIrr"])
+        self.assertEqual(Decimal("2"), report.quantity_variances[0]["varianceQuantity"])
+        self.assertIn("GENERAL_COST_OVERRUN", {warning["code"] for warning in report.warnings})
+
+    def test_reports_missing_sources_as_warnings(self):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "1", "1", "10", None, None)
+        invoice = {"estimate_line_id": MATERIAL_LINE, "resource_id": MATERIAL, "quantity": "1",
+                   "unit": "box", "base_unit": "each", "dimension": "count",
+                   "final_line_amount_irr": "10", "financial_effect_sign": 1, "resource_type": "material"}
+        report = calculate_live_report([row], [invoice], [], [], None)
+        self.assertEqual({"PROGRESS_MISSING", "CURRENT_PRICE_MISSING", "UNIT_CONVERSION_MISSING", "GROSS_AREA_MISSING"},
+                         {warning["code"] for warning in report.warnings})
+        self.assertIsNone(report.metrics["actualCostPerSquareMeterIrr"])
+
+
+class Repository:
+    def __init__(self):
+        self.selected = {"progress_snapshot_id": SNAPSHOT, "reporting_date": date(2026, 8, 1)}
+
+    async def load(self, scope, reporting_date):
+        return {"snapshot": self.selected, "estimates": [], "invoices": [], "conversions": [], "gross_area": "100"}
+
+    async def snapshot(self, scope, snapshot_id):
+        return self.selected if snapshot_id == SNAPSHOT else None
+
+
+class Provider:
+    def __init__(self, organization_id, project_id, snapshot_id=SNAPSHOT):
+        self.organization_id, self.project_id, self.snapshot_id = organization_id, project_id, snapshot_id
+
+    async def get_snapshot(self, organization_id, project_id, snapshot_id):
+        return {"snapshot": {"organizationId": str(self.organization_id), "projectId": self.project_id,
+                             "progressSnapshotId": str(self.snapshot_id)}, "assignments": []}
+
+
+class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_accepts_only_the_exact_dual_scoped_snapshot(self):
+        organization_id = UUID("40000000-0000-4000-8000-000000000001")
+        scope = SimpleNamespace(organization_id=organization_id, project_id="sample_site_01")
+        service = FinanceLiveReportService(Repository(), Provider(organization_id, scope.project_id))
+        result = await service.live(scope, date(2026, 8, 2), SNAPSHOT)
+        self.assertEqual(SNAPSHOT, result["progress_snapshot_id"])
+        bad = FinanceLiveReportService(Repository(), Provider(organization_id, scope.project_id, UUID(int=9)))
+        with self.assertRaises(FinanceRecordNotFound):
+            await bad.live(scope, date(2026, 8, 2), SNAPSHOT)
+
+
+if __name__ == "__main__":
+    unittest.main()
