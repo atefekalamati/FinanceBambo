@@ -91,7 +91,7 @@ function createUploadCard({ logicalType, title, description, accept, limit, adap
   return card;
 }
 
-function renderFiles(files) {
+function renderFiles(files, { adapter, canUpload, onChanged }) {
   const section = element("section", "uploaded-files");
   const head = element("div", "section-heading");
   const copy = element("div");
@@ -122,6 +122,26 @@ function renderFiles(files) {
       details.append(element("dt", "", term), element("dd", "", value));
     });
     card.append(title, details, element("p", "uploaded-file-card__note", "فایل و استخراج احتمالی آن تا تأیید انسانی، اثر مالی ندارد."));
+    const actions = element("div", "uploaded-file-card__actions");
+    const process = element("button", "button button--primary", file.processingStatus === "failed" ? "پردازش دوباره" : "شروع پردازش");
+    process.type = "button";
+    process.disabled = !canUpload || file.processingStatus === "processing";
+    process.addEventListener("click", async () => {
+      process.disabled = true;
+      process.textContent = "در حال پردازش…";
+      try {
+        await adapter.startExtraction(file.fileId);
+        await onChanged();
+        window.location.hash = "#/ai-review";
+      } catch (error) {
+        process.textContent = error.message || "پردازش انجام نشد";
+        process.disabled = false;
+      }
+    });
+    const reviews = element("a", "button button--ghost", "مشاهده بازبینی‌ها");
+    reviews.href = "#/ai-review";
+    actions.append(process, reviews);
+    card.append(actions);
     list.append(card);
   });
   section.append(list);
@@ -184,7 +204,7 @@ export function createInvoiceFilesPage({ context, adapter }) {
     );
     const securityNote = element("aside", "file-security-note");
     securityNote.append(element("strong", "", "کنترل نهایی با سرور است"), element("p", "", "بررسی سمت مرورگر فقط برای راهنمایی سریع کاربر است. سرور باید پسوند، نوع محتوا، امضای واقعی فایل، اندازه و محدوده پروژه را دوباره اعتبارسنجی کند."));
-    root.replaceChildren(header, permissionNote, uploadGrid, securityNote, renderFiles(state.data));
+    root.replaceChildren(header, permissionNote, uploadGrid, securityNote, renderFiles(state.data, { adapter, canUpload, onChanged: load }));
   }
 
   load();

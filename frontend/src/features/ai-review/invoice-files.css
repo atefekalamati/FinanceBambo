@@ -140,6 +140,13 @@
   color: var(--color-text-muted);
 }
 
+.uploaded-file-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-lg);
+}
+
 @media (max-width: 48rem) {
   .file-upload-grid,
   .uploaded-files__list {
