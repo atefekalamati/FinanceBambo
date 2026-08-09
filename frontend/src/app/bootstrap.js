@@ -5,6 +5,7 @@ import { createMockFinancialItemsAdapter } from "../adapters/mock/financial-item
 import { createMockPricesAdapter } from "../adapters/mock/prices-adapter.js";
 import { createMockProgressAdapter } from "../adapters/mock/progress-adapter.js";
 import { createMockInvoicesAdapter } from "../adapters/mock/invoices-adapter.js";
+import { createMockAttachmentsAdapter } from "../adapters/mock/attachments-adapter.js";
 import { canAccessRoute } from "../core/auth/permissions.js";
 import { DEFAULT_ROUTE, ROUTES } from "../core/config/routes.js";
 import { createHashRouter } from "../core/routing/router.js";
@@ -13,6 +14,7 @@ import { createFinancialItemsPage } from "../features/financial-items/financial-
 import { createPricesPage } from "../features/prices/prices-page.js";
 import { createProgressPage } from "../features/progress/progress-page.js";
 import { createInvoicesPage } from "../features/invoices/invoices-page.js";
+import { createInvoiceFilesPage } from "../features/ai-review/invoice-files-page.js";
 import { createSettingsPage } from "../features/settings/settings-page.js";
 import { formatArea } from "../shared/formatters/display.js";
 
@@ -63,6 +65,7 @@ function renderRoute(route, context, adapters) {
   if (route.key === "prices") root.append(createPricesPage({ context, adapter: adapters.prices }));
   if (route.key === "progress") root.append(createProgressPage({ context, adapter: adapters.progress }));
   if (route.key === "invoices") root.append(createInvoicesPage({ context, adapter: adapters.invoices }));
+  if (route.key === "invoice-files") root.append(createInvoiceFilesPage({ context, adapter: adapters.attachments }));
   if (route.key === "settings") {
     root.append(createSettingsPage({
       context,
@@ -87,12 +90,15 @@ try {
   const progressState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedProgressState) ? requestedProgressState : "success";
   const requestedInvoicesState = new URLSearchParams(window.location.search).get("invoicesState");
   const invoicesState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedInvoicesState) ? requestedInvoicesState : "success";
+  const requestedFilesState = new URLSearchParams(window.location.search).get("filesState");
+  const filesState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedFilesState) ? requestedFilesState : "success";
   const adapters = Object.freeze({
     settings: createMockSettingsAdapter(context, { initialState: settingsState }),
     financialItems: createMockFinancialItemsAdapter(context, { initialState: itemsState }),
     prices: createMockPricesAdapter(context, { initialState: pricesState }),
     progress: createMockProgressAdapter(context, { initialState: progressState }),
     invoices: createMockInvoicesAdapter(context, { initialState: invoicesState }),
+    attachments: createMockAttachmentsAdapter(context, { initialState: filesState }),
   });
   renderContext(context);
   createHashRouter({ routes: ROUTES, defaultPath: DEFAULT_ROUTE, onNavigate: (route) => renderRoute(route, context, adapters) }).start();
