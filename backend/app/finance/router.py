@@ -15,7 +15,7 @@ from .security.guards import authorize_finance_request
 from .services.settings import settings_edit_permission
 from .schemas.resources import (EstimateLineCreate, EstimateLineResponse,
     EstimateRevisionCreate, ResourceCreate, ResourcePatch, ResourceResponse)
-from .schemas.prices import PriceCreate, PriceResponse
+from .schemas.prices import CurrentPriceTrendResponse,PriceCreate, PriceResponse
 from .schemas.conversions import ConversionCreate,ConversionPatch,ConversionResponse
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
 from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResponse
@@ -138,6 +138,11 @@ async def create_price(projectId:str,resourceId:UUID,payload:PriceCreate,request
 async def price_history(projectId:str,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
     return [PriceResponse.from_domain(x) for x in await request.app.state.finance_price_service.history(scope)]
+
+@router.get("/prices/current",response_model=list[CurrentPriceTrendResponse])
+async def current_price_trends(projectId:str,asOf:date,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.view")
+    return await request.app.state.finance_price_service.trends(scope,asOf)
 
 @router.get("/unit-conversions",response_model=list[ConversionResponse])
 async def unit_conversions(projectId:str,request:Request):
