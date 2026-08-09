@@ -383,14 +383,16 @@ function createPriceDialog(adapter, currentPrices, onSaved) {
 
 function createPriceTrend(item, history) {
   const fallbackVersions = history.filter((price) => price.resourceId === item.resource.resourceId).sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom) || left.sequence - right.sequence);
-  const versions = (item.trend?.trendPoints ?? fallbackVersions.map((price) => ({ effectiveFrom: price.effectiveFrom, unitPriceIrr: price.unitPriceIRR }))).slice(-6);
+  const versions = (item.trend?.trendPoints ?? fallbackVersions.map((price) => ({ effectiveFrom: price.effectiveFrom, unitPriceIrr: price.unitPriceIRR })))
+    .filter((price) => /^\d+$/.test(String(price?.unitPriceIrr ?? "")))
+    .slice(-6);
   const container = element("div", "price-trend");
   const directionCode = item.trend?.trendDirection ?? (versions.length < 2 ? "none" : BigInt(versions.at(-1).unitPriceIrr) > BigInt(versions.at(-2).unitPriceIrr) ? "up" : BigInt(versions.at(-1).unitPriceIrr) < BigInt(versions.at(-2).unitPriceIrr) ? "down" : "flat");
   if (!versions.length || directionCode === "none") {
     container.append(element("span", "missing-value", "بدون سابقه"));
     return container;
   }
-  const values = versions.map((price) => BigInt(price.unitPriceIRR));
+  const values = versions.map((price) => BigInt(price.unitPriceIrr));
   const minimum = values.reduce((result, value) => value < result ? value : result);
   const maximum = values.reduce((result, value) => value > result ? value : result);
   const range = maximum - minimum;
