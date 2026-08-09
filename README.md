@@ -12,6 +12,10 @@
 
 راهنمای اجرا و معماری Backend در `backend/README_FA.md` نگه‌داری می‌شود.
 
+- راهنمای Backend و تست: [`backend/README_FA.md`](backend/README_FA.md)
+- راهنمای اتصال به میزبان: [`backend/INTEGRATION_GUIDE_FA.md`](backend/INTEGRATION_GUIDE_FA.md)
+- Migrationها: [`backend/migrations`](backend/migrations)
+
 ## Frontend
 
 Frontend با HTML، CSS و JavaScript وانیلا و ES Modules توسعه یافته و Build Step، Framework، CDN یا درخواست خارجی مرورگر ندارد.
