@@ -5,8 +5,8 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 BACKEND_ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(BACKEND_ROOT))
-from app.finance.domain.invoices import Invoice,calculate_invoice
-from app.finance.schemas.invoices import InvoiceConfirm,InvoiceCreate,InvoicePatch
+from app.finance.domain.invoices import Invoice,actual_cost,calculate_invoice
+from app.finance.schemas.invoices import CorrectiveInvoiceCreate,InvoiceConfirm,InvoiceCreate,InvoicePatch,InvoiceVoid
 from app.finance.security.guards import FinanceScope
 from app.finance.services.invoices import FinanceInvoiceService,InvoiceAlreadyConfirmed,InvoiceConfirmationForbidden,StaleInvoice
 class InvoiceTests(unittest.TestCase):
@@ -35,7 +35,7 @@ NOW=datetime(2026,8,8,tzinfo=timezone.utc)
 def invoice(status="draft",version=1,submitted_by=ACTOR):
  return Invoice(INVOICE_ID,ORG,"p1","N-1",date(2026,8,8),"Vendor",None,"manual",status,Decimal(0),Decimal(0),Decimal(0),Decimal(0),Decimal(100),"create-key",version,submitted_by,ACTOR if status=="confirmed" else None,NOW if status=="confirmed" else None,NOW,[])
 class FakeInvoiceRepo:
- def __init__(self,value):self.value=value;self.confirm_key=None;self.confirm_calls=0
+ def __init__(self,value):self.value=value;self.confirm_key=None;self.confirm_calls=0;self.by_key={};self.reversed=False
  async def get(self,_scope,_id):return self.value
  async def update_draft(self,_scope,value,description,status,_audit,_at):
   self.value=replace(value,description=description,status=status or "draft",version=value.version+1);return self.value
@@ -44,7 +44,18 @@ class FakeInvoiceRepo:
   self.confirm_calls+=1;self.confirm_key=key
   self.value=Invoice(value.id,value.organization_id,value.project_id,value.invoice_number,value.invoice_date,value.vendor_name,value.description,value.source,"confirmed",value.discount_irr,value.tax_irr,value.shipping_irr,value.other_costs_irr,value.final_amount_irr,value.idempotency_key,value.version+1,value.submitted_by,scope.actor_user_id,at,value.created_at,value.lines)
   return self.value
+ async def get_by_idempotency(self,_scope,key):return self.by_key.get(key)
+ async def has_reversal(self,_scope,_id):return self.reversed
+ async def create(self,_scope,value,_audit,_reason,_action="invoice.created"):
+  self.value=value;self.by_key[value.idempotency_key]=value
+  if value.source=="reversal":self.reversed=True
+  return value
+ async def valid_line_links(self,_scope,_lines):return True
+ async def are_general_costs(self,_scope,_ids):return True
 class InvoiceLifecycleTests(unittest.IsolatedAsyncioTestCase):
+ def test_actual_cost_ignores_draft_and_applies_linked_document_sign(self):
+  confirmed=invoice("confirmed",3);draft=invoice("draft",1);reversal=replace(invoice("voided",1),financial_effect_sign=-1,original_invoice_id=INVOICE_ID)
+  self.assertEqual(Decimal(0),actual_cost([confirmed,draft,reversal]))
  async def test_submit_then_confirm_and_repeat_same_key_returns_same_outcome(self):
   repo=FakeInvoiceRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW);scope=FinanceScope(ORG,"p1",ACTOR)
   awaiting=await service.update(scope,INVOICE_ID,InvoicePatch(expectedVersion=1,status="awaitingConfirmation"))
@@ -66,3 +77,14 @@ class InvoiceLifecycleTests(unittest.IsolatedAsyncioTestCase):
  async def test_confirm_requires_awaiting_state_and_current_version(self):
   service=FinanceInvoiceService(FakeInvoiceRepo(invoice("draft",1)))
   with self.assertRaises(StaleInvoice):await service.confirm(FinanceScope(ORG,"p1",ACTOR),INVOICE_ID,InvoiceConfirm(expectedVersion=1,idempotencyKey="key"))
+ async def test_void_creates_one_linked_negative_reversal_and_is_idempotent(self):
+  repo=FakeInvoiceRepo(invoice("confirmed",3));service=FinanceInvoiceService(repo,clock=lambda:NOW);scope=FinanceScope(ORG,"p1",ACTOR)
+  command=InvoiceVoid(expectedVersion=3,idempotencyKey="void-1",reason="duplicate bill")
+  reversal=await service.void(scope,INVOICE_ID,command);repeated=await service.void(scope,INVOICE_ID,command)
+  self.assertEqual(("reversal","voided",-1,INVOICE_ID),(reversal.source,reversal.status,reversal.financial_effect_sign,reversal.original_invoice_id))
+  self.assertIs(reversal,repeated)
+ async def test_corrective_is_linked_immutable_effective_document(self):
+  repo=FakeInvoiceRepo(invoice("confirmed",3));service=FinanceInvoiceService(repo,clock=lambda:NOW);scope=FinanceScope(ORG,"p1",ACTOR)
+  command=CorrectiveInvoiceCreate(invoiceDate="2026-08-09",vendorName="Vendor",idempotencyKey="correct-1",financialEffectSign=-1,reason="price correction",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"20"}])
+  corrected=await service.corrective(scope,INVOICE_ID,command)
+  self.assertEqual(("corrective","corrected",-1,INVOICE_ID),(corrected.source,corrected.status,corrected.financial_effect_sign,corrected.original_invoice_id))
