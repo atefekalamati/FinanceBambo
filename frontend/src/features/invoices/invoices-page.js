@@ -72,6 +72,7 @@ function createInvoiceWizard({ adapter, onSaved }) {
   let adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
   let preview = null;
   let duplicateOverrideReason = "";
+  const idempotencyKey = crypto.randomUUID();
 
   function showMessage(text, error = false) {
     message.textContent = text;
@@ -219,7 +220,7 @@ function createInvoiceWizard({ adapter, onSaved }) {
       if (preview.duplicateMatches.length && duplicateOverrideReason.length < 3) { showMessage("دلیل ادامه با وجود فاکتور مشابه باید حداقل سه نویسه داشته باشد.", true); reasonInput.focus(); return; }
       button.disabled = true;
       button.textContent = "در حال ثبت…";
-      try { await adapter.createDraft({ header: headerData, lines, adjustments, duplicateOverrideReason }); dialog.close(); onSaved(); }
+      try { await adapter.createDraft({ header: headerData, lines, adjustments, duplicateOverrideReason, idempotencyKey }); dialog.close(); onSaved(); }
       catch (error) { showMessage(`${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`, true); button.disabled = false; button.textContent = "ثبت پیش‌نویس"; }
     } }));
     return section;
@@ -237,7 +238,7 @@ function createInvoiceWizard({ adapter, onSaved }) {
   return dialog;
 }
 
-function renderDetail(invoice) {
+function renderDetail(invoice, { canEdit, onSubmit }) {
   const dialog = document.createElement("dialog");
   dialog.className = "confirm-dialog invoice-detail-dialog";
   dialog.setAttribute("aria-labelledby", "invoice-detail-title");
@@ -256,6 +257,7 @@ function renderDetail(invoice) {
   [
     ["تاریخ فاکتور", formatBusinessDate(invoice.invoiceDate)], ["فروشنده یا ارائه‌دهنده", invoice.vendorName],
     ["منبع ثبت", SOURCE_LABELS[invoice.source] ?? "نامشخص"], ["تعداد خطوط", formatDisplayNumber(String(invoice.lines.length))],
+    ["نسخه سند", formatDisplayNumber(String(invoice.version))], ["شناسه یکتای ثبت", invoice.idempotencyKey],
     ["ثبت‌کننده", invoice.submittedBy], ["زمان ثبت", formatSystemDateTime(invoice.createdAt)],
     ["تأییدکننده", invoice.confirmedBy ?? "تأیید نشده"], ["زمان تأیید", invoice.confirmedAt ? formatSystemDateTime(invoice.confirmedAt) : "تأیید نشده"],
   ].forEach(([label, value]) => {
@@ -294,6 +296,51 @@ function renderDetail(invoice) {
   const totals = element("dl", "invoice-totals");
   [["جمع خام خطوط", invoice.rawLinesTotalIRR], ["تخفیف", invoice.discountIRR], ["مالیات", invoice.taxIRR], ["حمل", invoice.shippingIRR], ["سایر هزینه‌ها", invoice.otherCostsIRR], ["مبلغ نهایی", invoice.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIRR(value))));
   dialog.append(wrapper, totals);
+  if (invoice.invoiceStatus === "draft") {
+    const actions = element("div", "dialog-actions invoice-detail-actions");
+    const submit = element("button", "button button--primary", canEdit ? "ارسال برای تأیید" : "بدون مجوز ویرایش");
+    submit.type = "button";
+    submit.disabled = !canEdit;
+    submit.addEventListener("click", () => onSubmit(invoice, dialog));
+    actions.append(submit);
+    dialog.append(actions);
+  }
+  return dialog;
+}
+
+function createSubmitDraftDialog({ invoice, adapter, onSaved }) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "confirm-dialog invoice-submit-dialog";
+  dialog.setAttribute("aria-labelledby", "invoice-submit-title");
+  const title = element("h2", "", "ارسال پیش‌نویس برای تأیید");
+  title.id = "invoice-submit-title";
+  dialog.append(title, element("p", "", `فاکتور ${invoice.invoiceNumber} با نسخه ${formatDisplayNumber(String(invoice.version))} به وضعیت «در انتظار تأیید» منتقل می‌شود. این عملیات هنوز هزینه واقعی ایجاد نمی‌کند.`));
+  const message = element("div", "form-message");
+  message.setAttribute("aria-live", "assertive");
+  const actions = element("div", "dialog-actions");
+  const cancel = element("button", "button button--ghost", "انصراف");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => dialog.close());
+  const submit = element("button", "button button--primary", "تأیید ارسال");
+  submit.type = "button";
+  submit.addEventListener("click", async () => {
+    submit.disabled = true;
+    cancel.disabled = true;
+    submit.textContent = "در حال ارسال…";
+    try {
+      await adapter.submitDraft({ invoiceId: invoice.invoiceId, expectedVersion: invoice.version });
+      dialog.close();
+      onSaved();
+    } catch (error) {
+      message.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      message.className = "form-message form-message--error";
+      submit.disabled = false;
+      cancel.disabled = false;
+      submit.textContent = "تأیید ارسال";
+    }
+  });
+  actions.append(cancel, submit);
+  dialog.append(message, actions);
   return dialog;
 }
 
@@ -355,7 +402,16 @@ export function createInvoicesPage({ context, adapter }) {
     trigger.textContent = "در حال دریافت…";
     try {
       const invoice = await adapter.getInvoice(invoiceId);
-      const dialog = renderDetail(invoice);
+      const dialog = renderDetail(invoice, {
+        canEdit: canCreate,
+        onSubmit: (draft, detailDialog) => {
+          detailDialog.close();
+          const confirmation = createSubmitDraftDialog({ invoice: draft, adapter, onSaved: load });
+          root.append(confirmation);
+          confirmation.addEventListener("close", () => confirmation.remove(), { once: true });
+          confirmation.showModal();
+        },
+      });
       root.append(dialog);
       dialog.addEventListener("close", () => dialog.remove(), { once: true });
       dialog.showModal();
