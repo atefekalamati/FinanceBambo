@@ -3,7 +3,7 @@
 Feature endpoints are intentionally added only in their approved delivery stage.
 """
 
-from fastapi import APIRouter, Request, UploadFile, File, Form,Response
+from fastapi import APIRouter, Request, UploadFile, File, Form,Response,Query
 from uuid import UUID
 
 from .schemas.settings import (
@@ -20,7 +20,7 @@ from .schemas.conversions import ConversionCreate,ConversionPatch,ConversionResp
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
 from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResponse
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
-from .schemas.attachments import AttachmentResponse
+from .schemas.attachments import AttachmentListResponse,AttachmentResponse
 from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionRetry
 from .schemas.reports import LiveReportResponse,ReportSnapshotCreate,ReportSnapshotReference
 from .schemas.audit import AuditEventResponse
@@ -218,6 +218,24 @@ async def upload_finance_file(projectId:str,request:Request,logicalType:str=Form
     scope=await _resource_scope(projectId,request,"finance.edit")
     value=await request.app.state.finance_attachment_service.upload(scope,logicalType,file.filename or "upload.bin",file.content_type or "application/octet-stream",await file.read())
     return AttachmentResponse.from_domain(value)
+
+@router.get("/files",response_model=AttachmentListResponse)
+async def list_finance_files(
+    projectId:str, request:Request,
+    page:int=Query(1,ge=1), pageSize:int=Query(50,ge=1,le=200),
+    logicalType:str|None=Query(None,pattern="^(invoice_image|invoice_voice)$"),
+    fileCategory:str|None=Query(None,pattern="^(image|audio)$"),
+    processingStatus:str|None=Query(None,pattern="^(uploaded|processing|ready|failed)$"),
+    uploaderId:UUID|None=None,
+):
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items,total_count=await request.app.state.finance_attachment_service.list(
+        scope,page,pageSize,logicalType,fileCategory,processingStatus,uploaderId)
+    return AttachmentListResponse(
+        items=[AttachmentResponse.from_domain(item) for item in items],
+        page=page,page_size=pageSize,total_count=total_count,
+        total_pages=(total_count+pageSize-1)//pageSize,
+    )
 
 @router.get("/files/{fileId}",response_model=AttachmentResponse)
 async def get_finance_file(projectId:str,fileId:UUID,request:Request):

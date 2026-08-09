@@ -98,6 +98,11 @@ class FinanceAttachmentService:
         await self.repo.record_access(scope, value.file_id, self.ids(), self.clock())
         return value
 
+    async def list(self, scope, page=1, page_size=50, logical_type=None,
+                   file_category=None, processing_status=None, uploader_id=None):
+        return await self.repo.list(scope, page, page_size, logical_type,
+            file_category, processing_status, uploader_id)
+
     async def transition(self, scope, file_id, target):
         value = await self.repo.get(scope, file_id)
         if value is None: raise FinanceRecordNotFound("file not found")
