@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fa" dir="rtl" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>مالی | BAMBO</title>
+  <link rel="stylesheet" href="./src/shared/styles/index.css">
+</head>
+<body data-finance-runtime="standalone">
+  <a class="skip-link" href="#finance-module-root">رفتن به محتوای اصلی</a>
+  <div id="finance-app" class="app-shell">
+    <section class="app-workspace">
+      <header class="host-preview-header">
+        <img class="host-preview-logo" src="./public/assets/images/Persian Logo Final.svg" alt="بامبو؛ پلتفرم هوشمند پایش پروژه">
+        <span class="host-preview-label">پیش‌نمایش محل اتصال ماژول مالی</span>
+      </header>
+      <header id="project-context-slot" class="project-context"></header>
+      <div id="finance-live-region" class="sr-only" role="status" aria-live="polite"></div>
+      <main id="finance-module-root" tabindex="-1"></main>
+    </section>
+  </div>
+  <noscript>برای اجرای ماژول مالی، JavaScript مرورگر باید فعال باشد.</noscript>
+  <script type="module" src="./src/app/bootstrap.js"></script>
+</body>
+</html>

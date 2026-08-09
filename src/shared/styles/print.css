@@ -1,0 +1,44 @@
+/* --------------------------------------------------------------------------
+   Shared A4 print rules
+   -------------------------------------------------------------------------- */
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  .app-shell {
+    display: block;
+  }
+
+  .host-preview-header,
+  .project-context,
+  .skip-link,
+  .button {
+    display: none !important;
+  }
+
+  body,
+  #finance-module-root {
+    color: #000;
+    background: #fff;
+  }
+
+  #finance-module-root {
+    max-inline-size: none;
+    padding: 0;
+  }
+
+  .summary-grid,
+  .work-area-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .summary-card,
+  .work-area-card,
+  .state-card {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+}
