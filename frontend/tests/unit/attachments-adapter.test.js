@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockAttachmentsAdapter } from "../../src/adapters/mock/attachments-adapter.js";
+import { createMockInvoicesAdapter } from "../../src/adapters/mock/invoices-adapter.js";
 
 const context = {
   userId: "00000000-0000-4000-8000-000000000001",
@@ -65,30 +66,45 @@ test("rejects an extraction without deleting its uploaded file", async () => {
 });
 
 test("confirms human edits only for the uploader and current version", async () => {
-  const adapter = createMockAttachmentsAdapter(context);
+  const invoiceAdapter = createMockInvoicesAdapter(context);
+  const adapter = createMockAttachmentsAdapter(context, { invoiceAdapter });
   const file = await adapter.uploadFile({ file: { name: "invoice.png", type: "image/png", size: 4096 }, logicalType: "invoice_image" });
   const draft = await adapter.startExtraction(file.fileId);
-  const accepted = await adapter.confirmExtraction({
+  const invoice = await adapter.confirmExtraction({
     draftId: draft.draftId,
     expectedVersion: 1,
     idempotencyKey: "ai-confirm-1",
     fieldConfirmations: [{ key: "vendorName", confirmedValue: "فروشنده اصلاح‌شده" }],
-    invoice: { invoiceNumber: "۱۲", invoiceDate: "2026-08-09", vendorName: "فروشنده اصلاح‌شده", totalIRR: "248500000" },
+    invoice: { invoiceNumber: "۱۲", invoiceDate: "2026-08-09", vendorName: "فروشنده اصلاح‌شده", resourceId: "general-permit", totalIRR: "248500000" },
   });
+  assert.equal(invoice.invoiceStatus, "confirmed");
+  assert.equal(invoice.source, "image");
+  assert.equal(invoice.finalAmountIRR, "248500000");
+  const accepted = (await adapter.getExtractions()).find((item) => item.draftId === draft.draftId);
   assert.equal(accepted.reviewStatus, "accepted");
-  assert.equal(accepted.invoiceStatus, "confirmed");
-  assert.equal(accepted.financialEffectIRR, "248500000");
   assert.equal(accepted.fields.find((field) => field.key === "vendorName").editedByUser, true);
   const repeated = await adapter.confirmExtraction({
     draftId: draft.draftId,
     expectedVersion: 1,
     idempotencyKey: "ai-confirm-1",
     fieldConfirmations: [],
-    invoice: { invoiceDate: "2026-08-09", vendorName: "نادیده‌گرفته‌شده", totalIRR: "1" },
+    invoice: { invoiceDate: "2026-08-09", vendorName: "نادیده‌گرفته‌شده", resourceId: "general-permit", totalIRR: "1" },
   });
-  assert.equal(repeated.financialEffectIRR, "248500000");
+  assert.equal(repeated.finalAmountIRR, "248500000");
+  assert.ok((await invoiceAdapter.getInvoices({ source: "image" })).items.some((item) => item.invoiceId === invoice.invoiceId));
   await assert.rejects(
     adapter.rejectExtraction({ draftId: draft.draftId, expectedVersion: 1 }),
     (error) => error.code === "STALE_VERSION",
   );
+});
+
+test("preserves a failed provider upload for retry and manual fallback", async () => {
+  const adapter = createMockAttachmentsAdapter(context);
+  const file = await adapter.uploadFile({ file: { name: "invoice.png", type: "image/png", size: 4096 }, logicalType: "invoice_image" });
+  await assert.rejects(adapter.startExtraction(file.fileId, { simulateFailure: true }), (error) => error.code === "AI_EXTRACTION_FAILED" && error.status === 503);
+  const failed = (await adapter.getFiles()).find((item) => item.fileId === file.fileId);
+  assert.equal(failed.processingStatus, "failed");
+  assert.match(failed.processingError, /حفظ/);
+  const retried = await adapter.startExtraction(file.fileId);
+  assert.equal(retried.reviewStatus, "awaitingReview");
 });

@@ -147,6 +147,19 @@
   margin-block-start: var(--space-lg);
 }
 
+.file-processing-failure {
+  margin-block-start: var(--space-lg);
+  padding: var(--space-lg);
+  border-inline-start: .25rem solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  background: var(--color-btn-action);
+}
+
+.file-processing-failure p {
+  margin-block-end: 0;
+  color: var(--color-text-muted);
+}
+
 @media (max-width: 48rem) {
   .file-upload-grid,
   .uploaded-files__list {
