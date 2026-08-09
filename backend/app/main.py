@@ -21,7 +21,7 @@ def create_app() -> FastAPI:
                 "error": {
                     "code": getattr(exc, "code", "VALIDATION_ERROR"),
                     "message": str(exc),
-                    "request_id": f"req-{uuid4()}",
+                    "requestId": f"req-{uuid4()}",
                     "details": [],
                 }
             },

@@ -16,5 +16,11 @@ class InvoiceRepositorySqlTests(unittest.TestCase):
             self.assertIn("resource_type='general_cost'",source)
             self.assertNotIn(" type='general_cost'",source)
 
+    def test_list_filters_and_paginates_in_sql_without_n_plus_one(self):
+        source=inspect.getsource(PsycopgInvoiceRepository.list)
+        for fragment in ("COUNT(*)","ILIKE %s","status=%s","source=%s","ORDER BY invoice_date DESC,created_at DESC,id DESC","LIMIT %s OFFSET %s","invoice_id=ANY(%s)"):
+            self.assertIn(fragment,source)
+        self.assertNotIn("await self._map",source)
+
 
 if __name__=="__main__":unittest.main()

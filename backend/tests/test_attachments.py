@@ -35,6 +35,7 @@ class FakeStorage:
     def __init__(self): self.puts = []
     async def put(self, metadata, content):
         self.puts.append((metadata, content)); return f"private/{metadata.stored_name}"
+    async def get(self, _organization_id, _project_id, _file_id): return PNG
 
 
 class FakeAttachmentRepo:
@@ -119,6 +120,13 @@ class AttachmentServiceTests(unittest.IsolatedAsyncioTestCase):
         items,total=await service.list(scope,1,50,file_category="image",processing_status="uploaded",uploader_id=ACTOR)
         self.assertEqual((1,FILE_ID,0),(total,items[0].file_id,repo.accesses))
         self.assertEqual(([],0),await service.list(FinanceScope(ORG,"p2",ACTOR),1,50))
+
+    async def test_secure_content_uses_scoped_metadata_and_audits_access(self):
+        repo,storage=FakeAttachmentRepo(),FakeStorage();service=FinanceAttachmentService(repo,storage,id_factory=lambda:FILE_ID,clock=lambda:NOW);scope=FinanceScope(ORG,"p1",ACTOR)
+        await service.upload(scope,"invoice_image","bill.png","image/png",PNG)
+        metadata,content=await service.content(scope,FILE_ID)
+        self.assertEqual(("image/png",PNG,1),(metadata.mime_type,content,repo.accesses))
+        with self.assertRaises(Exception):await service.content(FinanceScope(ORG,"p2",ACTOR),FILE_ID)
 
 
 class AttachmentRepositoryContractTests(unittest.TestCase):

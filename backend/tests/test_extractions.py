@@ -14,7 +14,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 from app.finance.domain.attachments import FinanceAttachment
 from app.finance.domain.invoices import Invoice
 from app.finance.adapters.ports import InvoiceImageExtractor, InvoiceVoiceExtractor
-from app.finance.schemas.extractions import ExtractionConfirm, ExtractionDraftResponse
+from app.finance.schemas.extractions import ExtractionConfirm, ExtractionDraftResponse, ExtractionReject
 from app.finance.security.guards import FinanceScope
 from app.finance.services.extractions import AIExtractionContentError, ExtractionConflict, ExtractionForbidden, FinanceExtractionService
 
@@ -57,8 +57,20 @@ class FakeExtractions:
     async def create_next(self,_scope,value):self.value=replace(value,version=1 if self.value is None else self.value.version+1);return self.value
     async def get(self,scope,draft_id):
         return self.value if self.value and self.value.draft_id==draft_id and self.value.project_id==scope.project_id else None
-    async def confirm_with_invoice(self,_scope,draft,confirmed_fields,invoice,_extraction_audit,_invoice_audit,at):
-        self.value=replace(draft,review_status="accepted",invoice_status="confirmed",fields=confirmed_fields,
+    async def latest_for_file(self,scope,file_id):
+        return self.value if self.value and self.value.file.file_id==file_id and self.value.project_id==scope.project_id else None
+    async def list(self,scope,page,page_size,review_status=None,source=None,file_id=None,linked_invoice_id=None):
+        values=[] if self.value is None or self.value.project_id!=scope.project_id else [self.value]
+        if review_status:values=[item for item in values if item.review_status==review_status]
+        if source:values=[item for item in values if item.file.logical_type==("invoice_image" if source=="image" else "invoice_voice")]
+        if file_id:values=[item for item in values if item.file.file_id==file_id]
+        if linked_invoice_id:values=[item for item in values if item.file.invoice_id==linked_invoice_id]
+        return values[(page-1)*page_size:page*page_size],len(values)
+    async def reject(self,_scope,draft,_reason,_audit,_at):
+        if self.value.review_status!="awaitingReview" or self.value.version!=draft.version:raise ValueError("stale")
+        self.value=replace(draft,review_status="rejected",version=draft.version+1);return self.value
+    async def confirm_with_invoice(self,_scope,draft,confirmed_fields,invoice,_duplicate_reason,_extraction_audit,_invoice_audit,at):
+        self.value=replace(draft,review_status="accepted",invoice_status="confirmed",version=draft.version+1,fields=confirmed_fields,
             file=replace(draft.file,invoice_id=invoice.id),confirmed_by=ACTOR,confirmed_at=at)
         self.invoices.store(invoice);return invoice
     async def get_linked_invoice_id(self,_scope,attachment_id):
@@ -105,6 +117,7 @@ class ExtractionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(("awaitingReview","draft","image-adapter",0),(draft.review_status,draft.invoice_status,draft.provider_adapter,draft.financial_effect_irr))
         payload=ExtractionDraftResponse.from_domain(draft).model_dump(by_alias=True,mode="json")
         self.assertEqual("0",payload["financialEffectIRR"]);self.assertNotIn("financialEffectIrr",payload);self.assertEqual(0.92,payload["fields"][0]["confidence"])
+        self.assertEqual((1,NOW.isoformat().replace("+00:00","Z"),None),(payload["version"],payload["createdAt"],payload["linkedInvoiceId"]))
 
     async def test_voice_uses_independent_adapter_and_scoped_storage(self):
         draft=await self.service(attachment("invoice_voice")).start(FinanceScope(ORG,"p1",ACTOR),FILE_ID)
@@ -120,11 +133,34 @@ class ExtractionTests(unittest.IsolatedAsyncioTestCase):
         service=self.service(attachment(status="ready"));current=await service.start(FinanceScope(ORG,"p1",ACTOR),FILE_ID);self.assertEqual([],self.attachments.transitions)
         with self.assertRaises(ExtractionForbidden):await service.retry(FinanceScope(ORG,"p1",OTHER),current.draft_id)
 
+    async def test_repeated_start_is_idempotent_but_retry_creates_next_version(self):
+        service=self.service();scope=FinanceScope(ORG,"p1",ACTOR)
+        first=await service.start(scope,FILE_ID);repeated=await service.start(scope,FILE_ID)
+        self.assertIs(first,repeated);self.assertEqual(1,len(self.image.calls))
+        retried=await service.retry(scope,first.draft_id)
+        self.assertEqual((2,2),(retried.version,len(self.image.calls)))
+
+    async def test_list_filters_and_reject_is_versioned_without_deleting_file(self):
+        service=self.service();scope=FinanceScope(ORG,"p1",ACTOR);draft=await service.start(scope,FILE_ID)
+        items,total=await service.list(scope,1,50,"awaitingReview","image",FILE_ID,None)
+        self.assertEqual((1,DRAFT_ID),(total,items[0].draft_id))
+        rejected=await service.reject(scope,DRAFT_ID,ExtractionReject(expectedVersion=1,reason="not an invoice"))
+        self.assertEqual(("rejected",2,FILE_ID),(rejected.review_status,rejected.version,rejected.file.file_id))
+        with self.assertRaises(ExtractionConflict):await service.reject(scope,DRAFT_ID,ExtractionReject(expectedVersion=1))
+
+    def test_repository_list_and_reject_are_scoped_paginated_and_audited(self):
+        from app.finance.repositories.extractions import PsycopgExtractionRepository
+        list_source=inspect.getsource(PsycopgExtractionRepository.list);reject_source=inspect.getsource(PsycopgExtractionRepository.reject)
+        for fragment in ("d.organization_id=%s","d.project_id=%s","COUNT(*)","LIMIT %s OFFSET %s","ORDER BY d.created_at DESC,d.id DESC"):self.assertIn(fragment,list_source)
+        for fragment in ("FOR UPDATE","version=version+1","extraction.rejected"):self.assertIn(fragment,reject_source)
+
     async def test_human_confirmation_atomically_accepts_fields_and_confirms_linked_invoice(self):
         service=self.service();scope=FinanceScope(ORG,"p1",ACTOR);draft=await service.start(scope,FILE_ID)
         invoice=await service.confirm(scope,draft.draft_id,self.confirmation())
         self.assertEqual(("image","confirmed",ACTOR),(invoice.source,invoice.status,invoice.confirmed_by))
         self.assertEqual(("accepted","confirmed",INVOICE_ID),(self.repo.value.review_status,self.repo.value.invoice_status,self.repo.value.file.invoice_id))
+        payload=ExtractionDraftResponse.from_domain(self.repo.value).model_dump(by_alias=True,mode="json")
+        self.assertEqual(str(INVOICE_ID),payload["linkedInvoiceId"])
         field=self.repo.value.fields[0];self.assertEqual(("N-1","N-2",True),(field.extracted_value,field.confirmed_value,field.edited_by_user))
 
     async def test_confirmation_is_idempotent_and_rejects_competing_key(self):

@@ -19,14 +19,17 @@ from .schemas.prices import CurrentPriceTrendResponse,PriceCreate, PriceResponse
 from .schemas.conversions import ConversionCreate,ConversionPatch,ConversionResponse
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
 from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResponse
-from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
+from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoiceListResponse,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from .schemas.attachments import AttachmentListResponse,AttachmentResponse
-from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionRetry
+from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionListResponse,ExtractionReject,ExtractionRetry,ExtractionStart
 from .schemas.reports import LiveReportResponse,ReportSnapshotCreate,ReportSnapshotReference
 from .schemas.audit import AuditEventResponse
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
+
+_ERROR_EXAMPLE={"error":{"code":"VALIDATION_ERROR","message":"Request validation failed.","requestId":"req-example","details":[]}}
+FINANCE_ERROR_RESPONSES={status:{"description":description,"content":{"application/json":{"example":_ERROR_EXAMPLE}}} for status,description in ((403,"Forbidden"),(404,"Scoped record not found"),(409,"Conflict or stale version"),(413,"File too large"),(415,"Unsupported media type"),(422,"Validation error"),(503,"Provider or storage unavailable"))}
 
 
 def _host_ports(request: Request):
@@ -191,9 +194,10 @@ async def commit_estimate(projectId:str,payload:ImportCommit,request:Request):re
 @router.post("/imports/prices/commit",response_model=ImportCommitResponse)
 async def commit_prices(projectId:str,payload:ImportCommit,request:Request):return await _commit_import(projectId,request,payload)
 
-@router.get("/invoices",response_model=list[InvoiceResponse])
-async def invoices(projectId:str,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.view");return [InvoiceResponse.from_domain(x) for x in await request.app.state.invoice_service.list(scope)]
+@router.get("/invoices",response_model=InvoiceListResponse,responses=FINANCE_ERROR_RESPONSES)
+async def invoices(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),query:str|None=Query(None,min_length=1,max_length=200),status:str|None=Query(None,pattern="^(draft|awaitingConfirmation|confirmed|voided|corrected)$"),source:str|None=Query(None,pattern="^(manual|image|voice|reversal|corrective)$")):
+    scope=await _resource_scope(projectId,request,"finance.view");items,total=await request.app.state.invoice_service.list(scope,page,pageSize,query,status,source)
+    return InvoiceListResponse(items=[InvoiceResponse.from_domain(x) for x in items],page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 @router.post("/invoices",response_model=InvoiceResponse,status_code=201)
 async def create_invoice(projectId:str,payload:InvoiceCreate,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.create(scope,payload))
@@ -213,13 +217,13 @@ async def void_invoice(projectId:str,invoiceId:UUID,payload:InvoiceVoid,request:
 async def corrective_invoice(projectId:str,invoiceId:UUID,payload:CorrectiveInvoiceCreate,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.corrective(scope,invoiceId,payload))
 
-@router.post("/files",response_model=AttachmentResponse,status_code=201)
+@router.post("/files",response_model=AttachmentResponse,status_code=201,responses=FINANCE_ERROR_RESPONSES)
 async def upload_finance_file(projectId:str,request:Request,logicalType:str=Form(...),file:UploadFile=File(...)):
     scope=await _resource_scope(projectId,request,"finance.edit")
     value=await request.app.state.finance_attachment_service.upload(scope,logicalType,file.filename or "upload.bin",file.content_type or "application/octet-stream",await file.read())
     return AttachmentResponse.from_domain(value)
 
-@router.get("/files",response_model=AttachmentListResponse)
+@router.get("/files",response_model=AttachmentListResponse,responses=FINANCE_ERROR_RESPONSES)
 async def list_finance_files(
     projectId:str, request:Request,
     page:int=Query(1,ge=1), pageSize:int=Query(50,ge=1,le=200),
@@ -237,17 +241,44 @@ async def list_finance_files(
         total_pages=(total_count+pageSize-1)//pageSize,
     )
 
-@router.get("/files/{fileId}",response_model=AttachmentResponse)
+@router.get("/files/{fileId}",response_model=AttachmentResponse,responses=FINANCE_ERROR_RESPONSES)
 async def get_finance_file(projectId:str,fileId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
     return AttachmentResponse.from_domain(await request.app.state.finance_attachment_service.get(scope,fileId))
 
-@router.post("/extractions/{draftId}/retry",response_model=ExtractionDraftResponse,status_code=201)
+@router.get("/files/{fileId}/content",responses=FINANCE_ERROR_RESPONSES)
+async def get_finance_file_content(projectId:str,fileId:UUID,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.view")
+    metadata,content=await request.app.state.finance_attachment_service.content(scope,fileId)
+    return Response(content=content,media_type=metadata.mime_type,headers={"Content-Disposition":f'inline; filename="{metadata.original_name_safe}"',"X-Content-Type-Options":"nosniff"})
+
+@router.post("/files/{fileId}/extractions",response_model=ExtractionDraftResponse,status_code=201,responses=FINANCE_ERROR_RESPONSES)
+async def start_extraction(projectId:str,fileId:UUID,payload:ExtractionStart,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.start(scope,fileId,payload.hints))
+
+@router.get("/extractions",response_model=ExtractionListResponse,responses=FINANCE_ERROR_RESPONSES)
+async def list_extractions(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),reviewStatus:str|None=Query(None,pattern="^(awaitingReview|accepted|rejected)$"),source:str|None=Query(None,pattern="^(image|voice)$"),fileId:UUID|None=None,linkedInvoiceId:UUID|None=None):
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items,total=await request.app.state.finance_extraction_service.list(scope,page,pageSize,reviewStatus,source,fileId,linkedInvoiceId)
+    return ExtractionListResponse(items=[ExtractionDraftResponse.from_domain(item) for item in items],page=page,page_size=pageSize,total_count=total,total_pages=(total+pageSize-1)//pageSize)
+
+@router.get("/extractions/{draftId}",response_model=ExtractionDraftResponse,responses=FINANCE_ERROR_RESPONSES)
+async def get_extraction(projectId:str,draftId:UUID,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.view")
+    return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.get(scope,draftId))
+
+@router.post("/extractions/{draftId}/reject",response_model=ExtractionDraftResponse,responses=FINANCE_ERROR_RESPONSES)
+async def reject_extraction(projectId:str,draftId:UUID,payload:ExtractionReject,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.reject(scope,draftId,payload))
+
+@router.post("/extractions/{draftId}/retry",response_model=ExtractionDraftResponse,status_code=201,responses=FINANCE_ERROR_RESPONSES)
 async def retry_extraction(projectId:str,draftId:UUID,payload:ExtractionRetry,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit")
     return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.retry(scope,draftId,payload.hints))
 
-@router.post("/extractions/{draftId}/confirm",response_model=InvoiceResponse)
+@router.post("/extractions/{draftId}/confirm",response_model=InvoiceResponse,responses=FINANCE_ERROR_RESPONSES)
 async def confirm_extraction(projectId:str,draftId:UUID,payload:ExtractionConfirm,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit")
     return InvoiceResponse.from_domain(await request.app.state.finance_extraction_service.confirm(scope,draftId,payload))
