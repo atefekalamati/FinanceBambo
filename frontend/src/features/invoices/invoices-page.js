@@ -238,7 +238,7 @@ function createInvoiceWizard({ adapter, onSaved }) {
   return dialog;
 }
 
-function renderDetail(invoice, { canEdit, onSubmit }) {
+function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm }) {
   const dialog = document.createElement("dialog");
   dialog.className = "confirm-dialog invoice-detail-dialog";
   dialog.setAttribute("aria-labelledby", "invoice-detail-title");
@@ -305,6 +305,16 @@ function renderDetail(invoice, { canEdit, onSubmit }) {
     actions.append(submit);
     dialog.append(actions);
   }
+  if (invoice.invoiceStatus === "awaitingConfirmation") {
+    const isSubmitter = invoice.submittedBy === currentUserId;
+    const actions = element("div", "dialog-actions invoice-detail-actions");
+    const confirm = element("button", "button button--primary", !canEdit ? "بدون مجوز تأیید" : !isSubmitter ? "فقط ثبت‌کننده مجاز است" : "تأیید نهایی فاکتور");
+    confirm.type = "button";
+    confirm.disabled = !canEdit || !isSubmitter;
+    confirm.addEventListener("click", () => onConfirm(invoice, dialog));
+    actions.append(confirm);
+    dialog.append(actions);
+  }
   return dialog;
 }
 
@@ -341,6 +351,45 @@ function createSubmitDraftDialog({ invoice, adapter, onSaved }) {
   });
   actions.append(cancel, submit);
   dialog.append(message, actions);
+  return dialog;
+}
+
+function createConfirmInvoiceDialog({ invoice, adapter, onSaved }) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "confirm-dialog invoice-confirm-dialog";
+  dialog.setAttribute("aria-labelledby", "invoice-confirm-title");
+  const title = element("h2", "", "تأیید نهایی فاکتور");
+  title.id = "invoice-confirm-title";
+  const warning = element("div", "invoice-warning", "پس از تأیید، فاکتور در هزینه واقعی پروژه اثر می‌گذارد و دیگر قابل ویرایش یا حذف مستقیم نیست. اصلاح فقط با سند ابطال، برگشت یا اصلاحی مرتبط انجام می‌شود.");
+  const summary = element("dl", "invoice-confirm-summary");
+  [["شماره فاکتور", invoice.invoiceNumber], ["فروشنده", invoice.vendorName], ["مبلغ نهایی", formatTomanFromIRR(invoice.finalAmountIRR)], ["نسخه مورد تأیید", formatDisplayNumber(String(invoice.version))]].forEach(([label, value]) => summary.append(element("dt", "", label), element("dd", "", value)));
+  const message = element("div", "form-message");
+  message.setAttribute("aria-live", "assertive");
+  const actions = element("div", "dialog-actions");
+  const cancel = element("button", "button button--ghost", "انصراف");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => dialog.close());
+  const confirm = element("button", "button button--primary", "تأیید و قفل فاکتور");
+  confirm.type = "button";
+  const idempotencyKey = crypto.randomUUID();
+  confirm.addEventListener("click", async () => {
+    confirm.disabled = true;
+    cancel.disabled = true;
+    confirm.textContent = "در حال تأیید…";
+    try {
+      await adapter.confirmInvoice({ invoiceId: invoice.invoiceId, expectedVersion: invoice.version, idempotencyKey });
+      dialog.close();
+      onSaved();
+    } catch (error) {
+      message.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      message.className = "form-message form-message--error";
+      confirm.disabled = false;
+      cancel.disabled = false;
+      confirm.textContent = "تأیید و قفل فاکتور";
+    }
+  });
+  actions.append(cancel, confirm);
+  dialog.append(title, warning, summary, message, actions);
   return dialog;
 }
 
@@ -404,9 +453,17 @@ export function createInvoicesPage({ context, adapter }) {
       const invoice = await adapter.getInvoice(invoiceId);
       const dialog = renderDetail(invoice, {
         canEdit: canCreate,
+        currentUserId: context.userId,
         onSubmit: (draft, detailDialog) => {
           detailDialog.close();
           const confirmation = createSubmitDraftDialog({ invoice: draft, adapter, onSaved: load });
+          root.append(confirmation);
+          confirmation.addEventListener("close", () => confirmation.remove(), { once: true });
+          confirmation.showModal();
+        },
+        onConfirm: (awaitingInvoice, detailDialog) => {
+          detailDialog.close();
+          const confirmation = createConfirmInvoiceDialog({ invoice: awaitingInvoice, adapter, onSaved: load });
           root.append(confirmation);
           confirmation.addEventListener("close", () => confirmation.remove(), { once: true });
           confirmation.showModal();
