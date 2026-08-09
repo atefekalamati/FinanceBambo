@@ -4,7 +4,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from datetime import date
-from pydantic import Field, field_serializer, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from .attachments import AttachmentResponse
 from .base import ApiModel
@@ -39,6 +39,23 @@ class ExtractionRetry(ApiModel):
     hints: dict[str, Any] = Field(default_factory=dict)
 
 
+class ExtractionStart(ApiModel):
+    model_config = ConfigDict(json_schema_extra={"examples":[{"hints":{"locale":"fa-IR"}}]})
+    hints: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExtractionReject(ApiModel):
+    model_config = ConfigDict(json_schema_extra={"examples":[{"expectedVersion":1,"reason":"فایل فاکتور قابل خواندن نیست"}]})
+    expected_version: int = Field(ge=1)
+    reason: str | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value):
+        if value is not None and not value.strip(): raise ValueError("reason must not be blank")
+        return None if value is None else value.strip()
+
+
 class ExtractionFieldConfirmation(ApiModel):
     key: str = Field(min_length=1)
     confirmed_value: Any
@@ -49,6 +66,7 @@ class ReviewedInvoiceCreate(ApiModel):
     invoice_date: date
     vendor_name: str = Field(min_length=1)
     description: str | None = None
+    duplicate_reason: str | None = None
     discount_irr: Decimal = Field(default=0, ge=0, max_digits=18, decimal_places=0)
     tax_irr: Decimal = Field(default=0, ge=0, max_digits=18, decimal_places=0)
     shipping_irr: Decimal = Field(default=0, ge=0, max_digits=18, decimal_places=0)
@@ -61,6 +79,12 @@ class ReviewedInvoiceCreate(ApiModel):
     def reviewed_vendor_nonblank(cls, value):
         if not value.strip(): raise ValueError("vendor name must not be blank")
         return value.strip()
+
+    @field_validator("duplicate_reason")
+    @classmethod
+    def duplicate_reason_nonblank(cls, value):
+        if value is not None and not value.strip(): raise ValueError("duplicate reason must not be blank")
+        return None if value is None else value.strip()
 
     @model_validator(mode="after")
     def valid_allocations(self):
@@ -91,12 +115,15 @@ class ExtractionConfirm(ApiModel):
 
 class ExtractionDraftResponse(ApiModel):
     draft_id: UUID
+    version: int = Field(ge=1)
     file: AttachmentResponse
     review_status: Literal["awaitingReview", "accepted", "rejected"]
     invoice_status: Literal["draft", "awaitingConfirmation", "confirmed", "voided", "corrected"]
     provider_adapter: str
     fields: list[ExtractionFieldDto]
     submitted_by: UUID
+    created_at: datetime
+    linked_invoice_id: UUID | None
     financial_effect_irr: Decimal = Field(alias="financialEffectIRR")
     confirmed_by: UUID | None
     confirmed_at: datetime | None
@@ -108,13 +135,25 @@ class ExtractionDraftResponse(ApiModel):
     def from_domain(cls, value):
         return cls(
             draft_id=value.draft_id,
+            version=value.version,
             file=AttachmentResponse.from_domain(value.file),
             review_status=value.review_status,
             invoice_status=value.invoice_status,
             provider_adapter=value.provider_adapter,
             fields=[field.__dict__ for field in value.fields],
             submitted_by=value.submitted_by,
+            created_at=value.created_at,
+            linked_invoice_id=value.file.invoice_id,
             financial_effect_irr=value.financial_effect_irr,
             confirmed_by=value.confirmed_by,
             confirmed_at=value.confirmed_at,
         )
+
+
+class ExtractionListResponse(ApiModel):
+    model_config = ConfigDict(json_schema_extra={"examples":[{"items":[],"page":1,"pageSize":50,"totalCount":0,"totalPages":0}]})
+    items: list[ExtractionDraftResponse]
+    page: int
+    page_size: int
+    total_count: int
+    total_pages: int

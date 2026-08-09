@@ -26,6 +26,10 @@ class InvoiceTests(unittest.TestCase):
   base={"invoiceDate":"2026-08-08","vendorName":"V","idempotencyKey":"k","lines":[{"resourceId":"11111111-1111-4111-8111-111111111111","unitPriceIrr":"100"}]}
   base["directAdjustmentAllocations"]=[{"kind":"tax","generalCostLineIndex":0},{"kind":"tax","generalCostLineIndex":0}]
   with self.assertRaises(ValueError):InvoiceCreate(**base)
+ def test_direct_general_cost_amount_is_exact_and_mutually_exclusive(self):
+  command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="V",idempotencyKey="gc",lines=[{"resourceId":"11111111-1111-4111-8111-111111111111","lineAmountIrr":"12000001"}])
+  self.assertEqual(Decimal("12000001"),command.lines[0].line_amount_irr)
+  with self.assertRaises(ValueError):InvoiceCreate(invoiceDate="2026-08-08",vendorName="V",idempotencyKey="bad",lines=[{"resourceId":"11111111-1111-4111-8111-111111111111","lineAmountIrr":"100","unitPriceIrr":"100"}])
 
 ACTOR=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1")
 OTHER=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2")
@@ -66,6 +70,11 @@ class InvoiceLifecycleTests(unittest.IsolatedAsyncioTestCase):
   command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="new-key",duplicateReason="reviewed duplicate",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"100"}])
   await service.create(FinanceScope(ORG,"p1",ACTOR),command)
   self.assertEqual("invoice.duplicate_warning_overridden",repo.action)
+ async def test_direct_general_cost_amount_is_not_zeroed(self):
+  repo=SimilarInvoiceRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW)
+  command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="gc-direct",duplicateReason="reviewed",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","lineAmountIrr":"8750001"}])
+  created=await service.create(FinanceScope(ORG,"p1",ACTOR),command)
+  self.assertEqual((Decimal("8750001"),Decimal("8750001")),(created.final_amount_irr,created.lines[0]["raw_amount_irr"]))
  async def test_submit_then_confirm_and_repeat_same_key_returns_same_outcome(self):
   repo=FakeInvoiceRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW);scope=FinanceScope(ORG,"p1",ACTOR)
   awaiting=await service.update(scope,INVOICE_ID,InvoicePatch(expectedVersion=1,status="awaitingConfirmation"))

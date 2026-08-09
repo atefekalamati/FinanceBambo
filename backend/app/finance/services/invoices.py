@@ -12,7 +12,7 @@ class InvoiceOperationConflict(FinanceDomainError):status=409;code="INVOICE_ALRE
 class InvoiceValidationError(FinanceDomainError):status=422;code="VALIDATION_ERROR"
 class FinanceInvoiceService:
  def __init__(self,repo,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.ids=id_factory;self.clock=clock
- async def list(self,s):return await self.repo.list(s)
+ async def list(self,s,page=1,page_size=50,query=None,status=None,source=None):return await self.repo.list(s,page,page_size,query,status,source)
  async def get(self,s,i):
   v=await self.repo.get(s,i)
   if v is None:raise FinanceRecordNotFound("invoice not found")
@@ -21,6 +21,8 @@ class FinanceInvoiceService:
  async def prepare_extracted(self,s,c,source,idempotency_key,at):
   if s.actor_user_id is None:raise PermissionError("actor required")
   lines,calc=await self._calculate_lines(s,c)
+  duplicate=await self.repo.duplicate(s,idempotency_key,c.vendor_name,c.invoice_number,c.invoice_date,calc.final_total)
+  if duplicate is not None and not (c.duplicate_reason and c.duplicate_reason.strip()):raise DuplicateInvoice("similar extracted invoice requires reason")
   return Invoice(self.ids(),s.organization_id,s.project_id,c.invoice_number,c.invoice_date,c.vendor_name,c.description,source,"confirmed",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,lines)
  async def create(self,s,c):
   if s.actor_user_id is None:raise PermissionError("actor required")
@@ -33,11 +35,13 @@ class FinanceInvoiceService:
   return await self.repo.create(s,invoice,self.ids(),c.duplicate_reason,action)
  async def _calculate_lines(self,s,c):
   if not await self.repo.valid_line_links(s,c.lines):raise InvoiceValidationError("each line must reference a matching estimate line or a general_cost resource")
+  direct_amount_resource_ids=[x.resource_id for x in c.lines if x.line_amount_irr is not None]
+  if direct_amount_resource_ids and not await self.repo.are_general_costs(s,direct_amount_resource_ids):raise InvoiceValidationError("direct line amount requires a general_cost resource")
   targets={x.kind:x.general_cost_line_index for x in c.direct_adjustment_allocations}
   if targets:
    resource_ids=[c.lines[i].resource_id for i in targets.values()]
    if not await self.repo.are_general_costs(s,resource_ids):raise InvoiceValidationError("direct adjustment target must be a general_cost resource")
-  pairs=[(Decimal(1) if x.quantity is None else x.quantity,Decimal(0) if x.unit_price_irr is None else x.unit_price_irr) for x in c.lines]
+  pairs=[(Decimal(1),x.line_amount_irr) if x.line_amount_irr is not None else (Decimal(1) if x.quantity is None else x.quantity,Decimal(0) if x.unit_price_irr is None else x.unit_price_irr) for x in c.lines]
   calc=calculate_invoice(pairs,c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,targets)
   lines=[]
   for command,value in zip(c.lines,calc.lines):lines.append({**command.model_dump(),"raw_amount_irr":value.raw,"allocated_discount_irr":value.discount,"allocated_tax_irr":value.tax,"allocated_shipping_irr":value.shipping,"allocated_other_costs_irr":value.other,"final_line_amount_irr":value.final})

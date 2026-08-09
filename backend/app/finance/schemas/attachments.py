@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
+from pydantic import ConfigDict
 
 from .base import ApiModel
 
@@ -28,6 +29,7 @@ class AttachmentResponse(ApiModel):
 
 
 class AttachmentListResponse(ApiModel):
+    model_config = ConfigDict(json_schema_extra={"examples":[{"items":[],"page":1,"pageSize":50,"totalCount":0,"totalPages":0}]})
     items: list[AttachmentResponse]
     page: int
     page_size: int

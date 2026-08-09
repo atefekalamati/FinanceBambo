@@ -42,10 +42,17 @@ class FinanceExtractionService:
         if value is None: raise FinanceRecordNotFound("extraction draft not found")
         return value
 
-    async def start(self, scope, attachment_id, hints=None):
+    async def list(self, scope, page=1, page_size=50, review_status=None,
+                   source=None, file_id=None, linked_invoice_id=None):
+        return await self.repo.list(scope,page,page_size,review_status,source,file_id,linked_invoice_id)
+
+    async def start(self, scope, attachment_id, hints=None, force_new=False):
         attachment = await self.attachments.get(scope, attachment_id)
         if attachment is None: raise FinanceRecordNotFound("file not found")
         if scope.actor_user_id != attachment.uploaded_by: raise ExtractionForbidden("only the uploader can process this file")
+        if not force_new:
+            existing = await self.repo.latest_for_file(scope, attachment_id)
+            if existing is not None: return existing
         if attachment.processing_status not in {"uploaded", "failed", "ready"}: raise AIExtractionFailed("file is already processing")
         changes_file_status = attachment.processing_status != "ready"
         if changes_file_status: attachment = await self.attachments.transition(scope, attachment, "processing")
@@ -69,7 +76,17 @@ class FinanceExtractionService:
     async def retry(self, scope, draft_id, hints=None):
         current = await self.get(scope, draft_id)
         if current.submitted_by != scope.actor_user_id: raise ExtractionForbidden("only the uploader can retry this extraction")
-        return await self.start(scope, current.file.file_id, hints)
+        return await self.start(scope, current.file.file_id, hints, force_new=True)
+
+    async def reject(self, scope, draft_id, command):
+        current = await self.get(scope, draft_id)
+        if current.submitted_by != scope.actor_user_id: raise ExtractionForbidden("only the uploader can reject this extraction")
+        if current.review_status != "awaitingReview" or current.version != command.expected_version:
+            raise ExtractionConflict("extraction version is stale or not awaiting review")
+        try:
+            return await self.repo.reject(scope,current,command.reason,self.ids(),self.clock())
+        except ValueError as error:
+            raise ExtractionConflict("competing extraction mutation") from error
 
     async def confirm(self, scope, draft_id, command):
         if self.invoices is None: raise RuntimeError("invoice service is required for extraction confirmation")
@@ -94,7 +111,7 @@ class FinanceExtractionService:
         source = "image" if current.file.logical_type == "invoice_image" else "voice"
         invoice = await self.invoices.prepare_extracted(scope, command.invoice, source, command.idempotency_key, at)
         try:
-            return await self.repo.confirm_with_invoice(scope, current, confirmed_fields, invoice, self.ids(), self.ids(), at)
+            return await self.repo.confirm_with_invoice(scope, current, confirmed_fields, invoice, command.invoice.duplicate_reason, self.ids(), self.ids(), at)
         except ValueError as error:
             repeated = await self.invoices.get_by_idempotency(scope, command.idempotency_key)
             linked_id = await self.repo.get_linked_invoice_id(scope, current.file.file_id)

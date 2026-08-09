@@ -71,6 +71,11 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/files", "post"),
                 ("/api/projects/{projectId}/finance/files", "get"),
                 ("/api/projects/{projectId}/finance/files/{fileId}", "get"),
+                ("/api/projects/{projectId}/finance/files/{fileId}/content", "get"),
+                ("/api/projects/{projectId}/finance/files/{fileId}/extractions", "post"),
+                ("/api/projects/{projectId}/finance/extractions", "get"),
+                ("/api/projects/{projectId}/finance/extractions/{draftId}", "get"),
+                ("/api/projects/{projectId}/finance/extractions/{draftId}/reject", "post"),
                 ("/api/projects/{projectId}/finance/extractions/{draftId}/retry", "post"),
                 ("/api/projects/{projectId}/finance/extractions/{draftId}/confirm", "post"),
                 ("/api/projects/{projectId}/finance/reports/live", "get"),
@@ -82,6 +87,26 @@ class WiringTests(unittest.TestCase):
             },
             business_operations,
         )
+
+    def test_openapi_matches_runtime_pagination_filters_and_new_dto_fields(self):
+        spec=create_app().openapi();paths=spec["paths"];schemas=spec["components"]["schemas"]
+        file_params={item["name"]:item["schema"] for item in paths["/api/projects/{projectId}/finance/files"]["get"]["parameters"]}
+        extraction_params={item["name"]:item["schema"] for item in paths["/api/projects/{projectId}/finance/extractions"]["get"]["parameters"]}
+        invoice_params={item["name"]:item["schema"] for item in paths["/api/projects/{projectId}/finance/invoices"]["get"]["parameters"]}
+        for params in (file_params,extraction_params,invoice_params):
+            self.assertEqual((50,200),(params["pageSize"]["default"],params["pageSize"]["maximum"]))
+        self.assertTrue({"reviewStatus","source","fileId","linkedInvoiceId"}<=set(extraction_params))
+        self.assertTrue({"query","status","source"}<=set(invoice_params))
+        self.assertTrue({"version","createdAt","linkedInvoiceId"}<=set(schemas["ExtractionDraftResponse"]["properties"]))
+        self.assertIn("lineAmountIrr",schemas["InvoiceLineCreate"]["properties"])
+        self.assertIn("examples",schemas["ExtractionStart"])
+        self.assertIn("examples",schemas["InvoiceListResponse"])
+        self.assertIn("409",paths["/api/projects/{projectId}/finance/extractions/{draftId}/reject"]["post"]["responses"])
+
+    def test_domain_error_envelope_uses_public_camel_case_request_id(self):
+        source=inspect.getsource(create_app)
+        self.assertIn('"requestId"',source)
+        self.assertNotIn('"request_id"',source)
 
     def test_dto_serializes_camel_case_and_rejects_unknown_fields(self):
         dto = ExampleDto(projectId="sample_site_01")

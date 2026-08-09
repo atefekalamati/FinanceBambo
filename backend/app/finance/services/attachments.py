@@ -42,6 +42,11 @@ class DuplicateAttachment(FinanceDomainError):
     code = "DUPLICATE_INVOICE"
 
 
+class AttachmentStorageUnavailable(FinanceDomainError):
+    status = 503
+    code = "FINANCE_FILES_UNAVAILABLE"
+
+
 def safe_filename(name: str) -> str:
     leaf = re.split(r"[\\/]", name)[-1]
     clean = re.sub(r"[\\/:*?\"<>|\x00-\x1f]", "_", leaf).strip(" .")
@@ -102,6 +107,14 @@ class FinanceAttachmentService:
                    file_category=None, processing_status=None, uploader_id=None):
         return await self.repo.list(scope, page, page_size, logical_type,
             file_category, processing_status, uploader_id)
+
+    async def content(self, scope, file_id):
+        value = await self.get(scope, file_id)
+        stored = await self.storage.get(str(scope.organization_id), scope.project_id, str(value.file_id))
+        content = stored if isinstance(stored,(bytes,bytearray,memoryview)) else getattr(stored,"content",None)
+        if not isinstance(content,(bytes,bytearray,memoryview)):
+            raise AttachmentStorageUnavailable("file content is unavailable")
+        return value, content
 
     async def transition(self, scope, file_id, target):
         value = await self.repo.get(scope, file_id)

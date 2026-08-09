@@ -23,9 +23,22 @@ class PsycopgInvoiceRepository:
      await c.execute("SELECT EXISTS(SELECT 1 FROM estimate_lines WHERE organization_id=%s AND project_id=%s AND id=%s AND resource_id=%s) ok",(s.organization_id,s.project_id,line.estimate_line_id,line.resource_id))
     if not (await c.fetchone())["ok"]:return False
   return True
- async def list(self,s):
-  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT * FROM invoices WHERE organization_id=%s AND project_id=%s ORDER BY invoice_date DESC,created_at DESC",(s.organization_id,s.project_id));rows=await c.fetchall()
-  return [await self._map(s,r) for r in rows]
+ async def list(self,s,page,page_size,query=None,status=None,source=None):
+  clauses=["organization_id=%s","project_id=%s"];args=[s.organization_id,s.project_id]
+  if query:
+   clauses.append("(invoice_number ILIKE %s OR vendor_name ILIKE %s OR COALESCE(description,'') ILIKE %s)");term=f"%{query}%";args.extend([term,term,term])
+  if status:clauses.append("status=%s");args.append(status)
+  if source:clauses.append("source=%s");args.append(source)
+  where=" AND ".join(clauses)
+  async with self.db.cursor(row_factory=dict_row) as c:
+   await c.execute("SELECT COUNT(*) total_count FROM invoices WHERE "+where,tuple(args));total=(await c.fetchone())["total_count"]
+   await c.execute("SELECT * FROM invoices WHERE "+where+" ORDER BY invoice_date DESC,created_at DESC,id DESC LIMIT %s OFFSET %s",(*args,page_size,(page-1)*page_size));rows=await c.fetchall()
+   ids=[row["id"] for row in rows];lines=[]
+   if ids:
+    await c.execute("SELECT invoice_id,estimate_line_id,resource_id,quantity,unit,unit_price_snapshot_irr unit_price_irr,CASE WHEN quantity IS NULL AND unit IS NULL AND unit_price_snapshot_irr IS NULL THEN raw_amount_irr ELSE NULL END line_amount_irr,raw_amount_irr,allocated_discount_irr,allocated_tax_irr,allocated_shipping_irr,allocated_other_costs_irr,final_line_amount_irr,description FROM invoice_lines WHERE organization_id=%s AND project_id=%s AND invoice_id=ANY(%s) ORDER BY invoice_id,created_at,id",(s.organization_id,s.project_id,ids));lines=await c.fetchall()
+  grouped={invoice_id:[] for invoice_id in ids}
+  for line in lines:grouped[line["invoice_id"]].append({key:value for key,value in line.items() if key!="invoice_id"})
+  return [self._invoice(row,grouped[row["id"]]) for row in rows],total
  async def get(self,s,i):
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT * FROM invoices WHERE organization_id=%s AND project_id=%s AND id=%s",(s.organization_id,s.project_id,i));r=await c.fetchone()
   return None if r is None else await self._map(s,r)
@@ -36,8 +49,10 @@ class PsycopgInvoiceRepository:
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT EXISTS(SELECT 1 FROM invoices WHERE organization_id=%s AND project_id=%s AND original_invoice_id=%s AND source='reversal') ok",(s.organization_id,s.project_id,invoice_id));r=await c.fetchone()
   return r["ok"]
  async def _map(self,s,r):
-  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT estimate_line_id,resource_id,quantity,unit,unit_price_snapshot_irr unit_price_irr,raw_amount_irr,allocated_discount_irr,allocated_tax_irr,allocated_shipping_irr,allocated_other_costs_irr,final_line_amount_irr,description FROM invoice_lines WHERE organization_id=%s AND project_id=%s AND invoice_id=%s ORDER BY created_at,id",(s.organization_id,s.project_id,r["id"]));lines=await c.fetchall()
-  return Invoice(r["id"],r["organization_id"],r["project_id"],r["invoice_number"],r["invoice_date"],r["vendor_name"],r["description"],r["source"],r["status"],r["discount_irr"],r["tax_irr"],r["shipping_irr"],r["other_costs_irr"],r["final_amount_irr"],r["idempotency_key"],r["version"],r["submitted_by"],r["confirmed_by"],r["confirmed_at"],r["created_at"],lines,r["financial_effect_sign"],r["original_invoice_id"])
+  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT estimate_line_id,resource_id,quantity,unit,unit_price_snapshot_irr unit_price_irr,CASE WHEN quantity IS NULL AND unit IS NULL AND unit_price_snapshot_irr IS NULL THEN raw_amount_irr ELSE NULL END line_amount_irr,raw_amount_irr,allocated_discount_irr,allocated_tax_irr,allocated_shipping_irr,allocated_other_costs_irr,final_line_amount_irr,description FROM invoice_lines WHERE organization_id=%s AND project_id=%s AND invoice_id=%s ORDER BY created_at,id",(s.organization_id,s.project_id,r["id"]));lines=await c.fetchall()
+  return self._invoice(r,lines)
+ @staticmethod
+ def _invoice(r,lines):return Invoice(r["id"],r["organization_id"],r["project_id"],r["invoice_number"],r["invoice_date"],r["vendor_name"],r["description"],r["source"],r["status"],r["discount_irr"],r["tax_irr"],r["shipping_irr"],r["other_costs_irr"],r["final_amount_irr"],r["idempotency_key"],r["version"],r["submitted_by"],r["confirmed_by"],r["confirmed_at"],r["created_at"],lines,r["financial_effect_sign"],r["original_invoice_id"])
  async def create(self,s,v,audit_id,duplicate_reason,action="invoice.created"):
   try:
    async with self.db.transaction():
