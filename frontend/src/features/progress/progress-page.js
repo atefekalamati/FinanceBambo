@@ -2,7 +2,7 @@ import { createRequestState, REQUEST_STATUS } from "../../core/state/request-sta
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { hasPermission } from "../../core/auth/permissions.js";
-import { validateProgressOverride } from "./progress-validation.js";
+import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "آماده", superseded: "جایگزین‌شده" });
 const RESOURCE_TYPE_LABELS = Object.freeze({ material: "متریال", labor: "نیروی انسانی", equipment: "دستگاه و تجهیزات", general_cost: "هزینه عمومی" });
@@ -37,6 +37,11 @@ function assignmentWarnings(assignment) {
   if (assignment.sourceMethod === "manual_override") warnings.push("مقدار با جایگزینی دستی تعیین شده و مقدار محاسبه‌شده اصلی حفظ شده است.");
   if (assignment.quality < 0.8) warnings.push("کیفیت این مقدار پایین‌تر از هشتاد درصد است.");
   if (assignment.actualQuantity === null && assignment.resourceType !== "general_cost") warnings.push("مقدار واقعی تخصیص موجود نیست.");
+  const deviation = calculateProgressDeviation(assignment.actualQuantity, assignment.plannedQuantity);
+  if (deviation) {
+    const percent = deviation.percent === null ? "درصد انحراف به‌دلیل برآورد صفر قابل محاسبه نیست" : `${formatDisplayNumber(deviation.percent)} درصد`;
+    warnings.push(`مقدار اجرا ${formatDisplayNumber(deviation.amount)} ${formatUnitLabel(assignment.unit)} بیشتر از برآورد است؛ انحراف ${percent}.`);
+  }
   return warnings;
 }
 
@@ -171,7 +176,12 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
     if (validation.errors.value) valueField.append(fieldError(validation.errors.value));
     if (validation.errors.reason) reasonField.append(fieldError(validation.errors.reason));
     warning.hidden = !validation.exceedsPlan;
-    warning.textContent = validation.exceedsPlan ? "مقدار واردشده بیشتر از مقدار برنامه است. ثبت مسدود نمی‌شود و دلیل واردشده در ممیزی حفظ خواهد شد." : "";
+    if (validation.exceedsPlan) {
+      const percent = validation.deviation.percent === null ? "قابل محاسبه نیست" : `${formatDisplayNumber(validation.deviation.percent)} درصد`;
+      warning.textContent = `مقدار واردشده ${formatDisplayNumber(validation.deviation.amount)} ${formatUnitLabel(assignment.unit)} بیشتر از برآورد است و انحراف ${percent} خواهد بود. ثبت مسدود نمی‌شود و دلیل در ممیزی حفظ خواهد شد.`;
+    } else {
+      warning.textContent = "";
+    }
     if (!validation.valid) return;
 
     submit.disabled = true;
