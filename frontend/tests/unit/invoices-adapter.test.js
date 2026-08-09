@@ -62,11 +62,12 @@ test("previews and creates a zero-effect manual invoice draft with exact IRR tot
     { targetId: targets[2].targetId, targetType: "general_cost", targetLabel: targets[2].label, quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "500000", description: "" },
   ];
   const adjustments = { discountIRR: "100", taxIRR: "200", shippingIRR: "300", otherCostsIRR: "400" };
-  const preview = await adapter.previewDraft({ lines, adjustments });
+  const header = { invoiceNumber: "ف-جدید", invoiceDate: "2026-08-09", vendorName: "فروشنده نمونه", description: "" };
+  const preview = await adapter.previewDraft({ header, lines, adjustments });
   assert.equal(preview.lines[0].lineAmountIRR, "100001");
   assert.equal(preview.rawLinesTotalIRR, "600001");
   assert.equal(preview.finalAmountIRR, "600801");
-  const draft = await adapter.createDraft({ header: { invoiceNumber: "ف-جدید", invoiceDate: "2026-08-09", vendorName: "فروشنده نمونه", description: "" }, lines, adjustments });
+  const draft = await adapter.createDraft({ header, lines, adjustments });
   assert.equal(draft.invoiceStatus, "draft");
   assert.equal(draft.source, "manual");
   assert.equal(draft.confirmedAt, null);
@@ -75,4 +76,19 @@ test("previews and creates a zero-effect manual invoice draft with exact IRR tot
 test("rejects draft creation without the coarse approved edit permission", async () => {
   const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.view"] });
   await assert.rejects(adapter.createDraft({ header: { invoiceNumber: "x", invoiceDate: "2026-08-09", vendorName: "v" }, lines: [{}], adjustments: { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" } }), (error) => error.status === 403);
+});
+
+test("detects a similar invoice and requires an audited continuation reason", async () => {
+  const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.view", "finance.edit"] });
+  const header = { invoiceNumber: "ف-001", invoiceDate: "2026-07-01", vendorName: "فروشگاه ساختمانی بامبو نمونه", description: "" };
+  const lines = [{ targetId: "general-permit", targetType: "general_cost", targetLabel: "هزینه مجوز نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "121750000", description: "" }];
+  const adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
+  const preview = await adapter.previewDraft({ header, lines, adjustments });
+  assert.equal(preview.duplicateMatches.length, 1);
+  assert.equal(preview.duplicateMatches[0].invoiceId, "invoice-demo-001");
+  await assert.rejects(adapter.createDraft({ header, lines, adjustments }), (error) => error.code === "INVOICE_DUPLICATE_REASON_REQUIRED");
+  const draft = await adapter.createDraft({ header, lines, adjustments, duplicateOverrideReason: "خرید مستقل براساس حواله دوم" });
+  assert.equal(draft.duplicateWarning, true);
+  assert.equal(draft.duplicateOverrideReason, "خرید مستقل براساس حواله دوم");
+  assert.deepEqual(draft.duplicateOfInvoiceIds, ["invoice-demo-001"]);
 });

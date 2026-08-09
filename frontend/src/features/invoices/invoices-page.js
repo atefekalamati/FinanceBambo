@@ -71,6 +71,7 @@ function createInvoiceWizard({ adapter, onSaved }) {
   let lines = [];
   let adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
   let preview = null;
+  let duplicateOverrideReason = "";
 
   function showMessage(text, error = false) {
     message.textContent = text;
@@ -181,7 +182,7 @@ function createInvoiceWizard({ adapter, onSaved }) {
       adjustments = validation.values;
       button.disabled = true;
       button.textContent = "در حال محاسبه…";
-      try { preview = await adapter.previewDraft({ lines, adjustments }); currentStep = 3; paintStep(); }
+      try { preview = await adapter.previewDraft({ header: headerData, lines, adjustments }); currentStep = 3; paintStep(); }
       catch (error) { showMessage(`${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`, true); button.disabled = false; button.textContent = "مشاهده پیش‌نمایش"; }
     } }));
     return section;
@@ -195,10 +196,30 @@ function createInvoiceWizard({ adapter, onSaved }) {
     preview.lines.forEach((line, index) => { const card = element("article", "invoice-draft-line"); card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", formatTomanFromIRR(line.lineAmountIRR))); lineList.append(card); });
     const totals = element("dl", "invoice-totals");
     [["جمع خام خطوط", preview.rawLinesTotalIRR], ["تخفیف", preview.discountIRR], ["مالیات", preview.taxIRR], ["حمل", preview.shippingIRR], ["سایر هزینه‌ها", preview.otherCostsIRR], ["مبلغ نهایی", preview.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIRR(value))));
-    section.append(element("div", "inline-notice", "با ثبت این مرحله فقط پیش‌نویس ساخته می‌شود و هزینه واقعی پروژه تغییر نمی‌کند."), summary, lineList, totals, actions({ back: true, nextLabel: "ثبت پیش‌نویس", onNext: async (button) => {
+    section.append(element("div", "inline-notice", "با ثبت این مرحله فقط پیش‌نویس ساخته می‌شود و هزینه واقعی پروژه تغییر نمی‌کند."), summary, lineList, totals);
+    let reasonInput = null;
+    if (preview.duplicateMatches.length) {
+      const warning = element("section", "invoice-duplicate-warning");
+      warning.setAttribute("role", "alert");
+      warning.append(element("h3", "", "فاکتور مشابه پیدا شد"), element("p", "", "ادامه ثبت مجاز است، اما باید سند مشابه را بررسی و دلیل ادامه را ثبت کنید."));
+      const matches = element("ul", "invoice-duplicate-matches");
+      preview.duplicateMatches.forEach((match) => matches.append(element("li", "", `${match.invoiceNumber} · ${match.vendorName} · ${formatBusinessDate(match.invoiceDate)} · ${formatTomanFromIRR(match.finalAmountIRR)} · ${STATUS_LABELS[match.invoiceStatus]}`)));
+      const reason = element("label", "form-field");
+      reason.append(element("span", "form-label", "دلیل ادامه با وجود شباهت"));
+      reasonInput = element("textarea", "app-textarea");
+      reasonInput.rows = 3;
+      reasonInput.maxLength = 500;
+      reasonInput.value = duplicateOverrideReason;
+      reason.append(reasonInput);
+      warning.append(matches, reason);
+      section.append(warning);
+    }
+    section.append(actions({ back: true, nextLabel: "ثبت پیش‌نویس", onNext: async (button) => {
+      duplicateOverrideReason = reasonInput?.value.trim() ?? "";
+      if (preview.duplicateMatches.length && duplicateOverrideReason.length < 3) { showMessage("دلیل ادامه با وجود فاکتور مشابه باید حداقل سه نویسه داشته باشد.", true); reasonInput.focus(); return; }
       button.disabled = true;
       button.textContent = "در حال ثبت…";
-      try { await adapter.createDraft({ header: headerData, lines, adjustments }); dialog.close(); onSaved(); }
+      try { await adapter.createDraft({ header: headerData, lines, adjustments, duplicateOverrideReason }); dialog.close(); onSaved(); }
       catch (error) { showMessage(`${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`, true); button.disabled = false; button.textContent = "ثبت پیش‌نویس"; }
     } }));
     return section;
@@ -245,6 +266,7 @@ function renderDetail(invoice) {
   if (invoice.description) dialog.append(head, metadata, element("p", "inline-notice", invoice.description));
   else dialog.append(head, metadata);
   if (invoice.duplicateWarning) dialog.append(element("div", "invoice-warning", "این سند دارای هشدار شباهت با فاکتور دیگری است."));
+  if (invoice.duplicateOverrideReason) dialog.append(element("div", "inline-notice", `دلیل ادامه ثبت: ${invoice.duplicateOverrideReason}`));
   if (invoice.relatedInvoiceId) dialog.append(element("div", "inline-notice numeric", `شناسه سند مرتبط: ${invoice.relatedInvoiceId}`));
 
   const wrapper = element("div", "table-scroll");

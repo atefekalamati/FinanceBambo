@@ -27,6 +27,7 @@ function makeInvoice(index, context) {
     source,
     invoiceStatus: status,
     duplicateWarning: index % 17 === 0,
+    duplicateOverrideReason: index % 17 === 0 ? "ادامه ثبت پس از بررسی سند مشابه توسط کارشناس مالی" : null,
     rawLinesTotalIRR: rawTotalIRR,
     discountIRR: index % 4 === 0 ? "500000" : "0",
     taxIRR: index % 3 === 0 ? "1200000" : "0",
@@ -94,21 +95,33 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     return { lines: preparedLines, rawLinesTotalIRR, finalAmountIRR, ...adjustments };
   }
 
-  async function previewDraft({ lines, adjustments }) {
+  function findSimilarInvoices(header, finalAmountIRR) {
+    const vendor = String(header.vendorName).trim().toLocaleLowerCase("fa-IR");
+    return invoices.filter((invoice) => invoice.vendorName.trim().toLocaleLowerCase("fa-IR") === vendor
+      && invoice.invoiceNumber === header.invoiceNumber
+      && invoice.invoiceDate === header.invoiceDate
+      && invoice.finalAmountIRR === finalAmountIRR);
+  }
+
+  async function previewDraft({ header, lines, adjustments }) {
     await wait(260);
     const preview = buildPreview(lines, adjustments);
     if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ نهایی فاکتور نمی‌تواند منفی باشد." });
-    return clone(preview);
+    const duplicateMatches = findSimilarInvoices(header, preview.finalAmountIRR).map((invoice) => ({ invoiceId: invoice.invoiceId, invoiceNumber: invoice.invoiceNumber, invoiceDate: invoice.invoiceDate, vendorName: invoice.vendorName, finalAmountIRR: invoice.finalAmountIRR, invoiceStatus: invoice.invoiceStatus }));
+    return clone({ ...preview, duplicateMatches });
   }
 
-  async function createDraft({ header, lines, adjustments }) {
+  async function createDraft({ header, lines, adjustments, duplicateOverrideReason = "" }) {
     await wait(480);
     if (!context.permissionCodes?.includes("finance.edit")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز ثبت پیش‌نویس فاکتور وجود ندارد.", requestId: "mock-invoice-create-403" });
     if (!header?.invoiceNumber || !header.invoiceDate || !header.vendorName || !Array.isArray(lines) || !lines.length) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "اطلاعات فاکتور کامل نیست." });
     const preview = buildPreview(lines, adjustments);
     if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ نهایی فاکتور نمی‌تواند منفی باشد." });
+    const duplicateMatches = findSimilarInvoices(header, preview.finalAmountIRR);
+    const auditedReason = String(duplicateOverrideReason).trim();
+    if (duplicateMatches.length && auditedReason.length < 3) throw new ApiError({ status: 422, code: "INVOICE_DUPLICATE_REASON_REQUIRED", message: "برای ادامه ثبت فاکتور مشابه، دلیل ممیزی الزامی است.", details: duplicateMatches.map((invoice) => ({ invoiceId: invoice.invoiceId })) });
     const preparedLines = preview.lines.map((line, index) => ({ ...line, invoiceLineId: `draft-line-${Date.now()}-${index + 1}` }));
-    const invoice = { invoiceId: `invoice-draft-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, source: "manual", invoiceStatus: "draft", duplicateWarning: false, rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, createdAt: new Date().toISOString(), confirmedBy: null, confirmedAt: null, relatedInvoiceId: null, lines: preparedLines };
+    const invoice = { invoiceId: `invoice-draft-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, source: "manual", invoiceStatus: "draft", duplicateWarning: duplicateMatches.length > 0, duplicateOverrideReason: duplicateMatches.length ? auditedReason : null, duplicateOfInvoiceIds: duplicateMatches.map((item) => item.invoiceId), rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, createdAt: new Date().toISOString(), confirmedBy: null, confirmedAt: null, relatedInvoiceId: null, lines: preparedLines };
     invoices.unshift(invoice);
     return clone(invoice);
   }
