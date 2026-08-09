@@ -41,6 +41,14 @@ npm run check
 - امور مالی: `http://127.0.0.1:43127/#/finance`
 - تنظیمات مالی: `http://127.0.0.1:43127/#/settings`
 - اقلام و متره: `http://127.0.0.1:43127/#/financial-items`
+- قیمت‌ها و تبدیل واحد: `http://127.0.0.1:43127/#/prices`
+- خوراک پیشرفت مالی: `http://127.0.0.1:43127/#/progress`
+- فاکتورها: `http://127.0.0.1:43127/#/invoices`
+
+حالت‌های آزمایشی فاکتورها:
+
+- Empty: `http://127.0.0.1:43127/?invoicesState=empty#/invoices`
+- Error: `http://127.0.0.1:43127/?invoicesState=error#/invoices`
 
 تنظیمات فعلاً از `src/adapters/mock/settings-adapter.js` تغذیه می‌شود. حالت‌های آزمایشی صفحه:
 
