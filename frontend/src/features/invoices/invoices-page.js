@@ -595,7 +595,9 @@ export function createInvoicesPage({ context, adapter }) {
     });
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.href = "#/finance";
-    actions.append(create, back);
+    const upload = element("a", "button button--ghost", "ورود از تصویر یا صدا");
+    upload.href = "#/invoice-files";
+    actions.append(create, upload, back);
     header.append(copy, actions);
     return header;
   }
