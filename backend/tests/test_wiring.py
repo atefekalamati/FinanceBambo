@@ -102,6 +102,9 @@ class WiringTests(unittest.TestCase):
         self.assertIn("examples",schemas["ExtractionStart"])
         self.assertIn("examples",schemas["InvoiceListResponse"])
         self.assertIn("409",paths["/api/projects/{projectId}/finance/extractions/{draftId}/reject"]["post"]["responses"])
+        preview=schemas["ImportPreviewResponse"]
+        self.assertTrue({"previewId","kind","rowCount","validCount","invalidCount","rows","errors","canCommit"}<=set(preview["properties"]))
+        self.assertTrue({"rowNumber","status","errors","resourceCode","resourceId","resourceTitle","baseUnit"}<=set(schemas["ImportPreviewRow"]["properties"]))
 
     def test_domain_error_envelope_uses_public_camel_case_request_id(self):
         source=inspect.getsource(create_app)
