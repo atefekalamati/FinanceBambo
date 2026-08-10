@@ -3,6 +3,11 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 class PsycopgFinanceImportRepository:
  def __init__(self,db):self.db=db
+ async def resolve_resources(self,s,codes):
+  if not codes:return []
+  async with self.db.cursor(row_factory=dict_row) as c:
+   await c.execute("SELECT id,code,title,base_unit FROM finance_resources WHERE organization_id=%s AND project_id=%s AND code=ANY(%s) AND deleted_at IS NULL",(s.organization_id,s.project_id,list(codes)))
+   return await c.fetchall()
  async def save_preview(self,s,pid,kind,currency,file_hash,rows,errors,at):
   async with self.db.transaction():
    async with self.db.cursor() as c:await c.execute("INSERT INTO finance_import_batches(id,organization_id,project_id,import_kind,currency_unit,file_sha256,normalized_rows,validation_errors,status,created_by,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'previewed',%s,%s)",(pid,s.organization_id,s.project_id,kind,currency,file_hash,Jsonb(rows),Jsonb(errors),s.actor_user_id,at))
@@ -14,7 +19,11 @@ class PsycopgFinanceImportRepository:
     if batch["status"]!="previewed" or batch["validation_errors"]:raise ValueError("preview is not committable")
     count=0
     for row in batch["normalized_rows"]:
-     await c.execute("SELECT id FROM finance_resources WHERE organization_id=%s AND project_id=%s AND code=%s AND deleted_at IS NULL",(s.organization_id,s.project_id,row["resourceCode"]));resource=await c.fetchone()
+     if row.get("resourceId"):
+      await c.execute("SELECT id FROM finance_resources WHERE organization_id=%s AND project_id=%s AND id=%s AND deleted_at IS NULL",(s.organization_id,s.project_id,row["resourceId"]))
+     else:
+      await c.execute("SELECT id FROM finance_resources WHERE organization_id=%s AND project_id=%s AND code=%s AND deleted_at IS NULL",(s.organization_id,s.project_id,row["resourceCode"]))
+     resource=await c.fetchone()
      if resource is None:raise ValueError("resource code not found")
      if batch["import_kind"]=="prices":
       await c.execute("SELECT COALESCE(max(version),0)+1 next_version FROM price_versions WHERE organization_id=%s AND project_id=%s AND resource_id=%s AND scope_kind=%s",(s.organization_id,s.project_id,resource["id"],row["scope"]));version=(await c.fetchone())["next_version"]
