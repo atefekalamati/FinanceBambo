@@ -94,7 +94,7 @@ export function createApiPricesAdapter(context, client) {
     return getPrices();
   }
   async function previewPriceImport(file) {
-    return mapImportPreview(await client.request(`${base}/imports/prices/preview`, { method: "POST", body: formDataWithFile(file, { currencyUnit: "IRR" }) }), "prices");
+    return mapImportPreview(await client.request(`${base}/imports/prices/preview`, { method: "POST", body: formDataWithFile(file) }), "prices");
   }
   async function commitPriceImport({ previewId }) {
     await client.request(`${base}/imports/prices/commit`, jsonOptions("POST", { previewId }));
