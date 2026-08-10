@@ -29,15 +29,37 @@ export function formDataWithFile(file, fields = {}) {
 }
 
 export function mapImportPreview(value, kind) {
-  const grouped = new Map();
-  (value.errors ?? []).forEach((issue) => {
-    const row = grouped.get(issue.row) ?? [];
-    row.push(`${issue.field}: ${issue.reason}`);
-    grouped.set(issue.row, row);
-  });
-  const rows = [...grouped.entries()].map(([rowNumber, errors]) => kind === "prices"
-    ? { rowNumber, resourceTitle: "ردیف نامعتبر", resourceCode: "—", importedAmount: null, unitPriceIRR: "نامعتبر", currency: "", effectiveFrom: null, scope: "", status: "invalid", errors }
-    : { rowNumber, activityTitle: "ردیف نامعتبر", activityExternalId: null, resourceTitle: "—", resourceCode: null, value: "—", unit: null, status: "invalid", errors });
-  const invalidRows = grouped.size;
-  return { previewId: value.previewId, totalRows: value.rowCount, validRows: Math.max(0, value.rowCount - invalidRows), invalidRows, rows, canCommit: value.canCommit };
+  const issueText = (issue) => `${issue.field}: ${issue.reason}`;
+  const rows = (value.rows ?? []).map((row) => kind === "prices"
+    ? {
+      rowNumber: row.rowNumber,
+      resourceTitle: row.resourceTitle ?? "قلم نامعتبر",
+      resourceCode: row.resourceCode ?? "—",
+      importedAmount: row.unitPrice,
+      unitPriceIRR: row.normalizedUnitPriceIrr ?? "نامعتبر",
+      currency: row.currency ?? "",
+      effectiveFrom: row.effectiveFrom,
+      scope: row.scope ?? "",
+      status: row.status,
+      errors: (row.errors ?? []).map(issueText),
+    }
+    : {
+      rowNumber: row.rowNumber,
+      activityTitle: row.activityTitle ?? row.activityExternalId ?? "فعالیت نامعتبر",
+      activityExternalId: row.activityExternalId,
+      resourceTitle: row.resourceTitle ?? "قلم نامعتبر",
+      resourceCode: row.resourceCode,
+      value: row.originalQuantity ?? "—",
+      unit: row.baseUnit,
+      status: row.status,
+      errors: (row.errors ?? []).map(issueText),
+    });
+  if (!rows.length && value.errors?.length) {
+    const grouped = new Map();
+    value.errors.forEach((issue) => grouped.set(issue.row, [...(grouped.get(issue.row) ?? []), issueText(issue)]));
+    grouped.forEach((errors, rowNumber) => rows.push(kind === "prices"
+      ? { rowNumber, resourceTitle: "ردیف نامعتبر", resourceCode: "—", importedAmount: null, unitPriceIRR: "نامعتبر", currency: "", effectiveFrom: null, scope: "", status: "invalid", errors }
+      : { rowNumber, activityTitle: "ردیف نامعتبر", activityExternalId: null, resourceTitle: "—", resourceCode: null, value: "—", unit: null, status: "invalid", errors }));
+  }
+  return { previewId: value.previewId, totalRows: value.rowCount, validRows: value.validCount, invalidRows: value.invalidCount, rows, canCommit: value.canCommit };
 }
