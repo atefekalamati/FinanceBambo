@@ -20,10 +20,11 @@ class PsycopgFinanceResourcesRepository:
             row["external_resource_id"], row["created_by"], row["created_at"])
 
     @staticmethod
-    def _line(row):
+    def _line(row, revisions=()):
         return EstimateLine(row["id"], row["organization_id"], row["project_id"], row["resource_id"],
             row["activity_external_id"], row["assignment_external_id"], row["original_quantity"],
-            row["revised_quantity"], row["original_unit_price_irr"], row["source"], row["created_by"], row["created_at"])
+            row["revised_quantity"], row["original_unit_price_irr"], row["source"], row["created_by"], row["created_at"],
+            row.get("current_revision",0)+1,tuple(revisions))
 
     async def list_resources(self, scope):
         async with self._connection.cursor(row_factory=dict_row) as c:
@@ -55,8 +56,11 @@ class PsycopgFinanceResourcesRepository:
 
     async def list_estimate_lines(self, scope):
         async with self._connection.cursor(row_factory=dict_row) as c:
-            await c.execute("""SELECT l.*, COALESCE((SELECT r.new_quantity FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id ORDER BY r.revision DESC LIMIT 1),l.original_quantity) revised_quantity FROM estimate_lines l WHERE l.organization_id=%s AND l.project_id=%s AND l.deleted_at IS NULL ORDER BY l.created_at,l.id""", (scope.organization_id,scope.project_id))
-            return [self._line(x) for x in await c.fetchall()]
+            await c.execute("""SELECT l.*, COALESCE((SELECT r.new_quantity FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id ORDER BY r.revision DESC LIMIT 1),CASE WHEN fr.resource_type='general_cost' THEN l.original_unit_price_irr ELSE l.original_quantity END) revised_quantity,COALESCE((SELECT max(r.revision) FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id),0) current_revision FROM estimate_lines l JOIN finance_resources fr ON fr.organization_id=l.organization_id AND fr.project_id=l.project_id AND fr.id=l.resource_id WHERE l.organization_id=%s AND l.project_id=%s AND l.deleted_at IS NULL ORDER BY l.created_at,l.id""", (scope.organization_id,scope.project_id));lines=await c.fetchall()
+            await c.execute("SELECT id,estimate_line_id,revision,previous_quantity,new_quantity,reason,created_by,created_at FROM estimate_revisions WHERE organization_id=%s AND project_id=%s ORDER BY estimate_line_id,revision",(scope.organization_id,scope.project_id));history=await c.fetchall()
+        grouped={line["id"]:[] for line in lines}
+        for revision in history:grouped.setdefault(revision["estimate_line_id"],[]).append({key:value for key,value in revision.items() if key!="estimate_line_id"})
+        return [self._line(line,grouped[line["id"]]) for line in lines]
 
     async def create_estimate_line(self, scope, value, audit_id):
         async with self._connection.transaction():
@@ -73,7 +77,7 @@ class PsycopgFinanceResourcesRepository:
                 if row is None: return None
                 await c.execute("""INSERT INTO estimate_revisions (id,organization_id,project_id,estimate_line_id,revision,previous_quantity,new_quantity,reason,created_by,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (revision_id,scope.organization_id,scope.project_id,line_id,row["current_revision"]+1,row["revised_quantity"],new_quantity,reason,actor,occurred_at))
                 await self._audit(c,audit_id,scope,actor,"estimate_line.revised","estimate_lines",line_id,{"quantity":row["revised_quantity"]},{"quantity":new_quantity},occurred_at,reason)
-        return self._line(row).with_revised_quantity(new_quantity)
+        return self._line({**row,"current_revision":row["current_revision"]+1}).with_revised_quantity(new_quantity)
 
     @staticmethod
     async def _audit(c,audit_id,scope,actor,action,entity_type,entity_id,before,after,at,reason=None):

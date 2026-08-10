@@ -19,7 +19,10 @@ def parse_excel(content:bytes,kind:str,currency_unit:str|None=None):
  rows=ws.iter_rows(values_only=True);header=tuple("" if x is None else str(x).strip() for x in next(rows,()))
  errors=[];normalized=[]
  missing=[x for x in HEADERS[kind] if x not in header]
- if missing:return [],[{"row":1,"field":x,"reason":"required_column"} for x in missing]
+ unexpected=[x for x in header if x and x not in HEADERS[kind]]
+ if missing or unexpected:
+  return [],([{"row":1,"field":x,"reason":"required_column"} for x in missing]
+   +[{"row":1,"field":x,"reason":"unexpected_column"} for x in unexpected])
  positions={x:header.index(x) for x in HEADERS[kind]}
  for number,row in enumerate(rows,2):
   if not any(x is not None and str(x).strip() for x in row):continue
@@ -32,11 +35,13 @@ def parse_excel(content:bytes,kind:str,currency_unit:str|None=None):
   try:
    amount_key="unitPrice" if kind=="prices" else "originalQuantity";value=Decimal(str(item[amount_key]));item[amount_key]=format(value,"f")
    if value<0:errors.append({"row":number,"field":amount_key,"reason":"negative_value"})
-   if kind=="prices" and ((item["currency"] not in ("IRR","TOMAN")) or item["currency"]!=currency_unit):errors.append({"row":number,"field":"currency","reason":"explicit_currency_mismatch"})
+   if kind=="prices" and item["currency"] not in ("IRR","TOMAN"):errors.append({"row":number,"field":"currency","reason":"invalid_choice"})
    if kind=="prices":
-    irr=value if currency_unit=="IRR" else value*10
+    irr=value if item["currency"]=="IRR" else value*10
     if irr!=irr.to_integral_value():errors.append({"row":number,"field":"unitPrice","reason":"fractional_irr"})
+    if len(str(abs(irr.to_integral_value())))>18:errors.append({"row":number,"field":"unitPrice","reason":"max_digits"})
     item["unitPriceIrr"]=format(irr,".0f")
+   elif value.as_tuple().exponent < -4:errors.append({"row":number,"field":"originalQuantity","reason":"max_decimal_places"})
   except (InvalidOperation,TypeError,ValueError):
    item[amount_key]=None;errors.append({"row":number,"field":amount_key,"reason":"invalid_decimal"})
   if kind=="prices":
@@ -58,7 +63,12 @@ class FinanceImportService:
    code=str(row.get("resourceCode") or "").strip();resource=resource_by_code.get(code)
    if code and resource is None:errors.append({"row":row["rowNumber"],"field":"resourceCode","reason":"resource_not_found"})
    if resource is not None:
-    row["resourceId"]=str(resource["id"]);row["resourceTitle"]=resource["title"];row["baseUnit"]=resource["base_unit"]
+    row["resourceId"]=str(resource["id"]);row["resourceTitle"]=resource["title"];row["baseUnit"]=resource["base_unit"];row["resourceType"]=resource["resource_type"]
+    if kind=="estimate" and resource["resource_type"]=="general_cost" and row.get("originalQuantity") is not None:
+     amount=Decimal(row["originalQuantity"])
+     if amount!=amount.to_integral_value():errors.append({"row":row["rowNumber"],"field":"originalQuantity","reason":"fractional_irr"})
+     elif len(str(abs(amount.to_integral_value())))>18:errors.append({"row":row["rowNumber"],"field":"originalQuantity","reason":"max_digits"})
+     else:row["originalUnitPriceIrr"]=format(amount,".0f")
   issues_by_row={row["rowNumber"]:[] for row in rows}
   for issue in errors:
    if issue["row"] in issues_by_row:issues_by_row[issue["row"]].append(issue)

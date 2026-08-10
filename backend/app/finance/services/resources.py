@@ -45,9 +45,17 @@ class FinanceResourcesService:
         resource = await self.get_resource(scope, command.resource_id)
         if resource.type != "general_cost" and command.original_quantity is None:
             raise UnitMismatch("quantified estimate line requires quantity")
+        original_quantity=command.original_quantity;revised_quantity=command.original_quantity;original_price=command.original_unit_price_irr
+        if resource.type == "general_cost":
+            if command.original_quantity is not None and command.original_unit_price_irr is not None:
+                raise UnitMismatch("general cost amount must be provided once")
+            amount=command.original_unit_price_irr if command.original_unit_price_irr is not None else command.original_quantity
+            if amount is None or amount<0 or amount!=amount.to_integral_value():
+                raise UnitMismatch("general cost requires an exact integer IRR amount")
+            original_quantity=None;revised_quantity=amount;original_price=amount
         value = EstimateLine(self._id_factory(), scope.organization_id, scope.project_id,
             command.resource_id, command.activity_external_id, command.assignment_external_id,
-            command.original_quantity, command.original_quantity, command.original_unit_price_irr,
+            original_quantity, revised_quantity, original_price,
             command.source, self._actor(scope), self._clock())
         return await self._repository.create_estimate_line(scope, value, self._id_factory())
 

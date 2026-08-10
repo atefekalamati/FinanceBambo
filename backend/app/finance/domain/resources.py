@@ -50,6 +50,8 @@ class EstimateLine:
     source: str
     created_by: UUID
     created_at: datetime
+    revision: int = 1
+    revisions: tuple = ()
 
     def with_revised_quantity(self, quantity: Decimal | None):
         return replace(self, revised_quantity=quantity)

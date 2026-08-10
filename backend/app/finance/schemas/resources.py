@@ -70,12 +70,27 @@ class EstimateRevisionCreate(ApiModel):
         if not self.reason.strip(): raise ValueError("reason must not be blank")
         return self
 
+class EstimateRevisionResponse(ApiModel):
+    id: UUID
+    revision: int
+    previous_quantity: Decimal | None
+    new_quantity: Decimal | None
+    reason: str
+    created_by: UUID
+    created_at: datetime
+
+    @field_serializer("previous_quantity", "new_quantity")
+    def serialize_quantity(self, value):
+        return None if value is None else format(value, "f")
+
 
 class EstimateLineResponse(EstimateLineCreate):
     id: UUID
     revised_quantity: Decimal | None
     created_by: UUID
     created_at: datetime
+    revision: int
+    revisions: list[EstimateRevisionResponse]
 
     @field_serializer("original_quantity", "revised_quantity", "original_unit_price_irr")
     def serialize_decimal(self, value: Decimal | None):
