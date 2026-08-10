@@ -76,10 +76,10 @@ test("does not invent quantity truth when extracted total targets a quantified l
   await assert.rejects(adapter.confirmExtraction({ draftId: "draft-1", expectedVersion: 1, idempotencyKey: "confirm-quantified", fieldConfirmations: [], invoice: { invoiceDate: "2026-08-10", vendorName: "فروشنده", resourceId: "target-1", totalIRR: "5000" } }), (error) => error.code === "EXTRACTION_QUANTIFIED_LINE_DATA_MISSING");
 });
 
-test("sends backend-provided computed baseline for the currently required override DTO", async () => {
+test("lets backend own the computed progress baseline", async () => {
   const calls = [];
   const client = { async request(path, options) { calls.push({ path, options }); if (path.endsWith("/estimate-lines")) return [{ id: "line-1", assignmentExternalId: "asg-1" }]; if (path.includes("/feed")) return { snapshot: {}, assignments: [{ assignmentExternalId: "asg-1", actualQuantity: "12.5", manualOverride: null }] }; if (path.includes("/progress-override")) return { computedValue: "12.5", overrideValue: "14" }; throw new Error(path); } };
   await createApiProgressAdapter(context, client).createOverride({ progressSnapshotId: "snapshot-1", assignmentExternalId: "asg-1", overrideValue: "14", reason: "صورت‌جلسه" });
   const request = calls.find((call) => call.path.includes("/progress-override"));
-  assert.deepEqual(JSON.parse(request.options.body), { progressSnapshotId: "snapshot-1", computedValue: "12.5", overrideValue: "14", reason: "صورت‌جلسه" });
+  assert.deepEqual(JSON.parse(request.options.body), { progressSnapshotId: "snapshot-1", overrideValue: "14", reason: "صورت‌جلسه" });
 });
