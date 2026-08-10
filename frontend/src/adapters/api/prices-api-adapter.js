@@ -41,26 +41,31 @@ function compareVersion(left, right) {
     || right.priceId.localeCompare(left.priceId);
 }
 
-function trendFor(resourceId, selectedScope, prices) {
-  const points = prices
-    .filter((price) => price.resourceId === resourceId && price.scope === selectedScope)
-    .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom) || left.sequence - right.sequence)
-    .map((price) => ({ effectiveFrom: price.effectiveFrom, unitPriceIrr: price.unitPriceIRR }));
-  const current = points.at(-1)?.unitPriceIrr ?? null;
-  const previous = points.at(-2)?.unitPriceIrr ?? null;
-  const direction = previous === null ? "none" : BigInt(current) > BigInt(previous) ? "up" : BigInt(current) < BigInt(previous) ? "down" : "flat";
-  return { resourceId, currentPriceIrr: current, previousPriceIrr: previous, latestChangePercent: null, trendDirection: direction, scopeKind: selectedScope, trendPoints: points };
+function mapCurrentTrend(value) {
+  return {
+    resourceId: value.resourceId,
+    organizationPriceIrr: value.organizationPriceIrr,
+    organizationEffectiveFrom: value.organizationEffectiveFrom,
+    projectPriceIrr: value.projectPriceIrr,
+    projectEffectiveFrom: value.projectEffectiveFrom,
+    currentPriceIrr: value.currentPriceIrr,
+    currentEffectiveFrom: value.currentEffectiveFrom,
+    previousPriceIrr: value.previousPriceIrr,
+    latestChangePercent: value.latestChangePercent,
+    trendDirection: value.trendDirection,
+    scopeKind: value.scopeKind,
+    trendPoints: value.trendPoints ?? [],
+  };
 }
 
-function buildWorkspace(context, resources, prices, conversions) {
+function buildWorkspace(context, resources, prices, conversions, currentTrends) {
   const asOfDate = new Date().toISOString().slice(0, 10);
-  const effectivePrices = prices.filter((price) => price.effectiveFrom <= asOfDate);
   const currentPrices = resources.map((resource) => {
-    const versions = effectivePrices.filter((price) => price.resourceId === resource.resourceId).sort(compareVersion);
-    const projectPrice = versions.find((price) => price.scope === "project") ?? null;
-    const organizationPrice = versions.find((price) => price.scope === "organization") ?? null;
-    const currentPrice = projectPrice ?? organizationPrice;
-    return { resource, currentPrice, organizationPrice, projectPrice, trend: trendFor(resource.resourceId, currentPrice?.scope ?? null, effectivePrices) };
+    const trend = currentTrends.find((item) => item.resourceId === resource.resourceId) ?? { resourceId: resource.resourceId, currentPriceIrr: null, previousPriceIrr: null, latestChangePercent: null, trendDirection: "none", scopeKind: null, trendPoints: [] };
+    const organizationPrice = trend.organizationPriceIrr === null || trend.organizationPriceIrr === undefined ? null : { scope: "organization", unitPriceIRR: trend.organizationPriceIrr, effectiveFrom: trend.organizationEffectiveFrom };
+    const projectPrice = trend.projectPriceIrr === null || trend.projectPriceIrr === undefined ? null : { scope: "project", unitPriceIRR: trend.projectPriceIrr, effectiveFrom: trend.projectEffectiveFrom };
+    const currentPrice = trend.currentPriceIrr === null || trend.currentPriceIrr === undefined ? null : { scope: trend.scopeKind, unitPriceIRR: trend.currentPriceIrr, effectiveFrom: trend.currentEffectiveFrom };
+    return { resource, currentPrice, organizationPrice, projectPrice, trend };
   });
   const groups = new Map();
   conversions.filter((item) => item.effectiveDate <= asOfDate).forEach((item) => {
@@ -79,8 +84,9 @@ function buildWorkspace(context, resources, prices, conversions) {
 export function createApiPricesAdapter(context, client) {
   const base = financeBase(context);
   async function getPrices() {
-    const [resourcePayload, pricePayload, conversionPayload] = await Promise.all([client.request(`${base}/resources`), client.request(`${base}/price-history`), client.request(`${base}/unit-conversions`)]);
-    return buildWorkspace(context, resourcePayload.map(mapResource), pricePayload.map(mapPrice), conversionPayload.map((item) => mapConversion(item, context)));
+    const asOfDate = new Date().toISOString().slice(0, 10);
+    const [resourcePayload, pricePayload, conversionPayload, currentPayload] = await Promise.all([client.request(`${base}/resources`), client.request(`${base}/price-history`), client.request(`${base}/unit-conversions`), client.request(`${base}/prices/current?asOf=${encodeURIComponent(asOfDate)}`)]);
+    return buildWorkspace(context, resourcePayload.map(mapResource), pricePayload.map(mapPrice), conversionPayload.map((item) => mapConversion(item, context)), currentPayload.map(mapCurrentTrend));
   }
   async function createPriceVersion(values) {
     await client.request(`${base}/resources/${encodeURIComponent(values.resourceId)}/prices`, jsonOptions("POST", { scopeKind: values.scope, unitPriceIrr: values.unitPriceIRR, effectiveFrom: values.effectiveFrom, reason: values.reason || "ثبت نسخه قیمت از رابط مالی" }));

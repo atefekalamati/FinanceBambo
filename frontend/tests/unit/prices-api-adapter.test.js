@@ -12,6 +12,7 @@ function clientWith(payloads) {
       if (path.endsWith("/resources")) return payloads.resources;
       if (path.endsWith("/price-history")) return payloads.prices;
       if (path.endsWith("/unit-conversions")) return payloads.conversions ?? [];
+      if (path.includes("/prices/current?asOf=")) return payloads.current ?? [];
       throw new Error(`unexpected path: ${path}`);
     },
   };
@@ -26,6 +27,7 @@ test("builds a dynamic trend from real backend price history in effective order"
       { id: "price-2", resourceId: "resource-1", scopeKind: "project", version: 2, unitPriceIrr: "280000", effectiveFrom: "2026-08-02", reason: "دوم", createdBy: "user-1", createdAt: "2026-08-02T08:00:00Z" },
       { id: "base-1", resourceId: "resource-1", scopeKind: "organization", version: 1, unitPriceIrr: "250000", effectiveFrom: "2026-07-01", reason: "پایه", createdBy: "user-1", createdAt: "2026-07-01T08:00:00Z" },
     ],
+    current: [{ resourceId: "resource-1", organizationPriceIrr: "250000", organizationEffectiveFrom: "2026-07-01", projectPriceIrr: "330000", projectEffectiveFrom: "2026-08-03", currentPriceIrr: "330000", currentEffectiveFrom: "2026-08-03", previousPriceIrr: "280000", latestChangePercent: "17.857143", trendDirection: "up", scopeKind: "project", trendPoints: [{ effectiveFrom: "2026-08-01", unitPriceIrr: "300000" }, { effectiveFrom: "2026-08-02", unitPriceIrr: "280000" }, { effectiveFrom: "2026-08-03", unitPriceIrr: "330000" }] }],
   });
   const workspace = await createApiPricesAdapter(context, client).getPrices();
   const item = workspace.currentPrices[0];
@@ -33,6 +35,7 @@ test("builds a dynamic trend from real backend price history in effective order"
   assert.equal(item.trend.trendDirection, "up");
   assert.deepEqual(item.trend.trendPoints.map((point) => point.unitPriceIrr), ["300000", "280000", "330000"]);
   assert.ok(client.calls.some((call) => call.path === "/api/projects/project-1/finance/price-history"));
+  assert.ok(client.calls.some((call) => call.path.includes("/api/projects/project-1/finance/prices/current?asOf=")));
 });
 
 test("uses organization history when no project override exists", async () => {
@@ -42,6 +45,7 @@ test("uses organization history when no project override exists", async () => {
       { id: "price-1", resourceId: "resource-1", scopeKind: "organization", version: 1, unitPriceIrr: "100", effectiveFrom: "2026-07-01", reason: "اول", createdBy: "user-1", createdAt: "2026-07-01T08:00:00Z" },
       { id: "price-2", resourceId: "resource-1", scopeKind: "organization", version: 2, unitPriceIrr: "90", effectiveFrom: "2026-08-01", reason: "دوم", createdBy: "user-1", createdAt: "2026-08-01T08:00:00Z" },
     ],
+    current: [{ resourceId: "resource-1", organizationPriceIrr: "90", organizationEffectiveFrom: "2026-08-01", projectPriceIrr: null, projectEffectiveFrom: null, currentPriceIrr: "90", currentEffectiveFrom: "2026-08-01", previousPriceIrr: "100", latestChangePercent: "-10", trendDirection: "down", scopeKind: "organization", trendPoints: [{ effectiveFrom: "2026-07-01", unitPriceIrr: "100" }, { effectiveFrom: "2026-08-01", unitPriceIrr: "90" }] }],
   });
   const item = (await createApiPricesAdapter(context, client).getPrices()).currentPrices[0];
   assert.equal(item.currentPrice.scope, "organization");
