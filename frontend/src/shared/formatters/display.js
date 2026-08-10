@@ -1,9 +1,11 @@
+import { CURRENCY_LABELS } from "../constants/currency.js";
+
 const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 const persianDate = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { year: "numeric", month: "long", day: "numeric" });
 const persianDateTime = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tehran" });
 
 const UNIT_LABELS = Object.freeze({
-  IRR: "ریال",
+  IRR: CURRENCY_LABELS.IRR,
   m2: "مترمربع",
   kg: "کیلوگرم",
   hour: "ساعت",

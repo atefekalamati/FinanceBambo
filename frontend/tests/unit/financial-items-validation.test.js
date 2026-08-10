@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { CURRENCY_LABELS } from "../../src/shared/constants/currency.js";
 import { validateEstimateLine, validateEstimateRevision, validateResource } from "../../src/features/financial-items/financial-items-validation.js";
 
 test("supports the four PRD financial item types", () => {
@@ -44,5 +45,5 @@ test("rejects fractional IRR general-cost revisions", () => {
 test("rejects a zero fractional part for integer IRR general costs", () => {
   const result = validateEstimateRevision({ revisedValue: "100.0", reason: "اصلاح مبلغ" }, { isGeneralCost: true });
   assert.equal(result.valid, false);
-  assert.match(result.errors.revisedValue, /عدد صحیح ریال/);
+  assert.match(result.errors.revisedValue, new RegExp(`عدد صحیح ${CURRENCY_LABELS.IRR}`));
 });

@@ -1,6 +1,8 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
+import { buildBreakdownPresentation } from "./report-presentation.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -27,7 +29,7 @@ const WORK_AREAS = Object.freeze([
   { key: "prices", title: "قیمت‌ها و تبدیل واحد", description: "ثبت قیمت پایه، جایگزینی پروژه و مشاهده تاریخچه تغییرات", meta: "قیمت روز · تاریخچه · واحد", href: "#/prices" },
   { key: "progress", title: "پیشرفت و مقادیر اجرا", description: "مشاهده نسخه ثبت‌شده پیشرفت، کیفیت داده و جایگزینی ممیزی‌شده", meta: "نسخه ثبت‌شده · اجرا · هشدار", href: "#/progress" },
   { key: "invoices", title: "فاکتورها", description: "مشاهده فهرست، وضعیت، منبع، فروشنده، مبلغ و جزئیات خطوط", meta: "فهرست · جزئیات · وضعیت", href: "#/invoices" },
-  { key: "settings", title: "تنظیمات مالی", description: "زیربنای کل، واحد پول نمایشی و تنظیمات سطح پروژه", meta: "زیربنا · تومان · دسترسی", href: "#/settings" },
+  { key: "settings", title: "تنظیمات مالی", description: "زیربنای کل، واحد پول نمایشی و تنظیمات سطح پروژه", meta: `زیربنا · ${CURRENCY_LABELS.TOMAN} · دسترسی`, href: "#/settings" },
   { key: "audit", title: "تاریخچه و ممیزی", description: "ردیابی بازنگری، جایگزینی، تأییدها و عملیات حساس مالی", meta: "کاربر · زمان · دلیل" },
 ]);
 
@@ -37,7 +39,26 @@ function formatTomanFromIrr(value) {
   const whole = amount / 10n;
   const remainder = amount < 0n ? -(amount % 10n) : amount % 10n;
   const display = remainder === 0n ? whole.toString() : `${amount < 0n && whole === 0n ? "-" : ""}${whole}.${remainder}`;
-  return `${formatDisplayNumber(display)} تومان`;
+  return `${CURRENCY_LABELS.TOMAN} ${formatDisplayNumber(display)}`;
+}
+
+function createTomanDisplay(value) {
+  const display = document.createElement("span");
+  display.className = "money-display";
+  if (!/^-?\d+$/.test(String(value ?? ""))) {
+    display.textContent = "قابل محاسبه نیست";
+    return display;
+  }
+  const formatted = formatTomanFromIrr(value).split(" ");
+  const unit = document.createElement("span");
+  unit.className = "money-display__unit";
+  unit.textContent = formatted.shift();
+  const amount = document.createElement("bdi");
+  amount.className = "money-display__amount numeric";
+  amount.dir = "ltr";
+  amount.textContent = formatted.join(" ");
+  display.append(unit, amount);
+  return display;
 }
 
 function createSummaryCard(key, label, description, data) {
@@ -47,8 +68,8 @@ function createSummaryCard(key, label, description, data) {
   const title = document.createElement("h2");
   title.textContent = label;
   const value = document.createElement("p");
-  value.className = "summary-card__value numeric";
-  value.textContent = formatTomanFromIrr(data?.[key]);
+  value.className = "summary-card__value";
+  value.append(createTomanDisplay(data?.[key]));
   const unit = document.createElement("span");
   unit.className = "summary-card__unit";
   unit.textContent = unavailable ? "داده مبنا موجود نیست" : description;
@@ -84,23 +105,113 @@ function createWorkAreaCard(area) {
   return card;
 }
 
+function createBreakdownChart(rows) {
+  const section = document.createElement("section");
+  section.className = "finance-breakdown";
+  const heading = document.createElement("div");
+  heading.className = "section-heading";
+  const copy = document.createElement("div");
+  const eyebrow = document.createElement("span");
+  eyebrow.textContent = "ترکیب هزینه";
+  const title = document.createElement("h2");
+  title.textContent = "مقایسه برآورد، هزینه واقعی و پیش‌بینی نهایی";
+  copy.append(eyebrow, title);
+  const hint = document.createElement("small");
+  hint.textContent = "مقیاس هر سه سری در تمام ردیف‌ها یکسان است";
+  heading.append(copy, hint);
+
+  const legend = document.createElement("ul");
+  legend.className = "breakdown-legend";
+  [["initial", "برآورد اولیه"], ["actual", "هزینه واقعی"], ["forecast", "پیش‌بینی نهایی"]].forEach(([key, label]) => {
+    const item = document.createElement("li");
+    item.dataset.series = key;
+    item.textContent = label;
+    legend.append(item);
+  });
+
+  const chart = document.createElement("div");
+  chart.className = "breakdown-chart";
+  chart.setAttribute("role", "img");
+  chart.setAttribute("aria-label", "نمودار مقایسه برآورد اولیه، هزینه واقعی و پیش‌بینی نهایی به تفکیک نوع قلم مالی");
+  rows.forEach((row) => {
+    const group = document.createElement("article");
+    group.className = "breakdown-chart__group";
+    const label = document.createElement("h3");
+    label.textContent = row.label;
+    const bars = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    bars.classList.add("breakdown-chart__bars");
+    bars.setAttribute("viewBox", "0 0 72 108");
+    bars.setAttribute("preserveAspectRatio", "xMidYMax meet");
+    bars.setAttribute("aria-hidden", "true");
+    [["initial", row.bars.initial, row.initialEstimateIrr, "برآورد اولیه"], ["actual", row.bars.actual, row.actualCostIrr, "هزینه واقعی"], ["forecast", row.bars.forecast, row.forecastFinalIrr, "پیش‌بینی نهایی"]].forEach(([series, magnitude, value, seriesLabel]) => {
+      const index = { initial: 0, actual: 1, forecast: 2 }[series];
+      const height = Number(magnitude) * .84;
+      const x = 3 + (index * 24);
+      const track = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      track.setAttribute("class", "breakdown-chart__track");
+      track.setAttribute("x", String(x));
+      track.setAttribute("y", "12");
+      track.setAttribute("width", "18");
+      track.setAttribute("height", "84");
+      track.setAttribute("rx", "3");
+      const bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bar.setAttribute("class", `breakdown-chart__bar breakdown-chart__bar--${series}`);
+      bar.setAttribute("x", String(x));
+      bar.setAttribute("y", String(96 - height));
+      bar.setAttribute("width", "18");
+      bar.setAttribute("height", String(height));
+      bar.setAttribute("rx", "3");
+      const tooltip = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      tooltip.textContent = `${seriesLabel}: ${formatTomanFromIrr(value)}`;
+      bar.append(tooltip);
+      bars.append(track, bar);
+    });
+    group.append(label, bars);
+    chart.append(group);
+  });
+  const chartViewport = document.createElement("div");
+  chartViewport.className = "breakdown-chart-viewport";
+  chartViewport.append(chart);
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "table-scroll breakdown-table-wrapper";
+  wrapper.setAttribute("role", "region");
+  wrapper.setAttribute("aria-label", "مقادیر دقیق مقایسه مالی");
+  wrapper.tabIndex = 0;
+  const table = document.createElement("table");
+  table.className = "data-table breakdown-table";
+  const caption = document.createElement("caption");
+  caption.textContent = "جدول جایگزین نمودار ترکیب هزینه به تفکیک نوع قلم مالی";
+  const thead = document.createElement("thead");
+  const header = document.createElement("tr");
+  ["نوع قلم مالی", "برآورد اولیه", "هزینه واقعی", "پیش‌بینی نهایی"].forEach((text) => {
+    const cell = document.createElement("th");
+    cell.textContent = text;
+    header.append(cell);
+  });
+  thead.append(header);
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const record = document.createElement("tr");
+    [row.label, row.initialEstimateIrr, row.actualCostIrr, row.forecastFinalIrr].forEach((text, index) => {
+      const cell = document.createElement("td");
+      if (index === 0) cell.textContent = text;
+      else cell.append(createTomanDisplay(text));
+      record.append(cell);
+    });
+    tbody.append(record);
+  });
+  table.append(caption, thead, tbody);
+  wrapper.append(table);
+  section.append(heading, legend, chartViewport, wrapper);
+  return section;
+}
+
 function renderFinanceHome(data) {
   const fragment = document.createDocumentFragment();
-  const intro = document.createElement("section");
-  intro.className = "finance-intro";
-  const logoSign = document.createElement("img");
-  logoSign.className = "finance-intro__sign";
-  logoSign.src = new URL("../../../public/assets/images/Logo%20Sign.svg", import.meta.url).href;
-  logoSign.alt = "";
-  logoSign.setAttribute("aria-hidden", "true");
-  const eyebrow = document.createElement("span");
-  eyebrow.className = "finance-intro__eyebrow";
-  eyebrow.textContent = "مرکز کنترل مالی پروژه";
-  const title = document.createElement("h1");
-  title.textContent = "امور مالی پروژه";
-  const description = document.createElement("p");
-  description.textContent = "خلاصه وضعیت مالی و دسترسی مستقیم به عملیات موردنیاز پروژه، بدون داشبورد یا ناوبری داخلی جداگانه.";
-  intro.append(logoSign, eyebrow, title, description);
+  const pageTitle = document.createElement("h1");
+  pageTitle.className = "finance-page-title";
+  pageTitle.textContent = "امور مالی";
 
   const summaryHeader = document.createElement("div");
   summaryHeader.className = "section-heading";
@@ -136,6 +247,13 @@ function renderFinanceHome(data) {
     warnings.textContent = "برای محاسبات زنده فعلی هشداری ثبت نشده است.";
   }
 
+  const breakdownRows = buildBreakdownPresentation(data.breakdown);
+  const breakdown = breakdownRows.length ? createBreakdownChart(breakdownRows) : document.createDocumentFragment();
+  const insights = document.createElement("section");
+  insights.className = "finance-insights";
+  insights.setAttribute("aria-label", "تحلیل و هشدارهای مالی");
+  insights.append(breakdown, warnings);
+
   const areasHeader = document.createElement("div");
   areasHeader.className = "section-heading";
   areasHeader.innerHTML = "<div><span>فضای کاری</span><h2>عملیات مالی پروژه</h2></div>";
@@ -144,13 +262,14 @@ function renderFinanceHome(data) {
   areas.setAttribute("aria-label", "بخش‌های امور مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  fragment.append(intro, summaryHeader, summary, warnings, areasHeader, areas);
+  fragment.append(pageTitle, summaryHeader, summary, insights, areasHeader, areas);
   return fragment;
 }
 
 export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
   let state = createRequestState(REQUEST_STATUS.LOADING);
   const root = document.createElement("div");
+  root.className = "finance-home-page";
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);

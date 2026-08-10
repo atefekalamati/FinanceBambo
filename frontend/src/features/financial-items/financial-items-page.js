@@ -1,6 +1,7 @@
 import { hasPermission } from "../../core/auth/permissions.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { compareDecimalStrings } from "../../shared/validation/decimal-validation.js";
 import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js";
@@ -172,8 +173,8 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
   function syncQuantityLabel() {
     const selected = workspace.resources.find((item) => item.resourceId === resource.select.value);
     const isGeneralCost = selected?.type === "general_cost";
-    quantity.label.textContent = isGeneralCost ? "مبلغ اولیه (ریال)" : "مقدار اولیه";
-    quantity.hint.textContent = isGeneralCost ? "هزینه عمومی بدون مقدار فیزیکی و با مبلغ ریال ثبت می‌شود." : `مقدار با واحد پایه ${formatUnitLabel(selected?.baseUnit)} ثبت می‌شود.`;
+    quantity.label.textContent = isGeneralCost ? `مبلغ اولیه (${CURRENCY_LABELS.IRR})` : "مقدار اولیه";
+    quantity.hint.textContent = isGeneralCost ? `هزینه عمومی بدون مقدار فیزیکی و با مبلغ ${CURRENCY_LABELS.IRR} ثبت می‌شود.` : `مقدار با واحد پایه ${formatUnitLabel(selected?.baseUnit)} ثبت می‌شود.`;
   }
   resource.select.addEventListener("change", syncQuantityLabel);
 
@@ -380,7 +381,7 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
   const isGeneralCost = resource.type === "general_cost";
   const originalValue = line.originalQuantity ?? line.originalAmount;
   const currentValue = line.revisedQuantity ?? line.revisedAmount;
-  const unit = isGeneralCost ? "ریال" : formatUnitLabel(resource.baseUnit);
+  const unit = isGeneralCost ? CURRENCY_LABELS.IRR : formatUnitLabel(resource.baseUnit);
   const dialog = createDialog("ثبت بازنگری مقدار");
   const summary = element("div", "revision-summary");
   const original = element("article", "revision-summary__item");
@@ -393,7 +394,7 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
   form.noValidate = true;
   const revised = createTextField({
     id: `revisedValue-${line.lineId}`,
-    label: isGeneralCost ? "مبلغ اصلاح‌شده (ریال)" : `مقدار اصلاح‌شده (${unit})`,
+    label: isGeneralCost ? `مبلغ اصلاح‌شده (${CURRENCY_LABELS.IRR})` : `مقدار اصلاح‌شده (${unit})`,
     hint: "مقدار اولیه تغییر نمی‌کند؛ فقط یک بازنگری جدید ثبت می‌شود.",
     inputMode: "decimal",
   });
@@ -488,7 +489,7 @@ function createRevisionHistoryDialog(line, resource) {
     const head = element("div", "revision-record__head");
     head.append(element("strong", "", `بازنگری ${revision.revisionNumber}`), element("time", "", formatSystemDateTime(revision.occurredAt)));
     const values = element("div", "revision-record__values");
-    values.append(element("span", "", `از ${formatDisplayNumber(revision.previousValue)} به ${formatDisplayNumber(revision.newValue)}`), element("small", "", resource.type === "general_cost" ? "ریال" : formatUnitLabel(resource.baseUnit)));
+    values.append(element("span", "", `از ${formatDisplayNumber(revision.previousValue)} به ${formatDisplayNumber(revision.newValue)}`), element("small", "", resource.type === "general_cost" ? CURRENCY_LABELS.IRR : formatUnitLabel(resource.baseUnit)));
     item.append(head, values, element("p", "", revision.reason), element("small", "revision-record__actor", revision.actorName || revision.actorId));
     if (revision.isOverrun) item.append(element("span", "overrun-badge", "بیشتر از مقدار اولیه"));
     wrapper.append(item);
@@ -562,7 +563,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
     row.append(
       activityCell,
       resourceCell,
-      element("td", "numeric", isGeneralCost ? "ریال" : formatUnitLabel(resource?.baseUnit)),
+      element("td", "numeric", isGeneralCost ? CURRENCY_LABELS.IRR : formatUnitLabel(resource?.baseUnit)),
       element("td", "numeric", formatDisplayNumber(original)),
       revisedCell,
       element("td", "", SOURCE_LABELS[line.source] ?? "منبع تعریف‌نشده"),
