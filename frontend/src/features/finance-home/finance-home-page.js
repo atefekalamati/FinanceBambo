@@ -121,6 +121,7 @@ function createBreakdownChart(rows) {
     const bars = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     bars.classList.add("breakdown-chart__bars");
     bars.setAttribute("viewBox", "0 0 100 28");
+    bars.setAttribute("preserveAspectRatio", "none");
     bars.setAttribute("aria-hidden", "true");
     [["initial", row.bars.initial], ["actual", row.bars.actual], ["forecast", row.bars.forecast]].forEach(([series, width]) => {
       const index = { initial: 0, actual: 1, forecast: 2 }[series];
@@ -144,6 +145,10 @@ function createBreakdownChart(rows) {
     chart.append(group);
   });
 
+  const details = document.createElement("details");
+  details.className = "breakdown-details";
+  const detailsSummary = document.createElement("summary");
+  detailsSummary.textContent = "مشاهده مقادیر دقیق مقایسه";
   const wrapper = document.createElement("div");
   wrapper.className = "table-scroll breakdown-table-wrapper";
   const table = document.createElement("table");
@@ -171,7 +176,8 @@ function createBreakdownChart(rows) {
   });
   table.append(caption, thead, tbody);
   wrapper.append(table);
-  section.append(heading, legend, chart, wrapper);
+  details.append(detailsSummary, wrapper);
+  section.append(heading, legend, chart, details);
   return section;
 }
 
@@ -245,6 +251,7 @@ function renderFinanceHome(data) {
 export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
   let state = createRequestState(REQUEST_STATUS.LOADING);
   const root = document.createElement("div");
+  root.className = "finance-home-page";
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
