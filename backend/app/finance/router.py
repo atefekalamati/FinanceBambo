@@ -177,16 +177,16 @@ async def progress_override(projectId:str,lineId:UUID,payload:ProgressOverrideCr
     scope=await _resource_scope(projectId,request,"finance.edit")
     return ProgressOverrideResponse.from_domain(await request.app.state.progress_service.override(scope,lineId,payload))
 
-async def _preview_import(projectId,request,kind,file,currency_unit=None):
+async def _preview_import(projectId,request,kind,file):
     scope=await _resource_scope(projectId,request,"finance.edit")
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         from .services.imports import ImportValidationError
         raise ImportValidationError("only .xlsx Excel files are accepted")
-    return await request.app.state.finance_import_service.preview(scope,kind,await file.read(),currency_unit)
+    return await request.app.state.finance_import_service.preview(scope,kind,await file.read())
 @router.post("/imports/estimate/preview",response_model=ImportPreviewResponse)
 async def preview_estimate(projectId:str,request:Request,file:UploadFile=File(...)):return await _preview_import(projectId,request,"estimate",file)
 @router.post("/imports/prices/preview",response_model=ImportPreviewResponse)
-async def preview_prices(projectId:str,request:Request,file:UploadFile=File(...),currencyUnit:str=Form(...)):return await _preview_import(projectId,request,"prices",file,currencyUnit)
+async def preview_prices(projectId:str,request:Request,file:UploadFile=File(...)):return await _preview_import(projectId,request,"prices",file)
 async def _commit_import(projectId,request,payload):
     scope=await _resource_scope(projectId,request,"finance.edit");return await request.app.state.finance_import_service.commit(scope,payload.preview_id)
 @router.post("/imports/estimate/commit",response_model=ImportCommitResponse)
