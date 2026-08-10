@@ -48,6 +48,16 @@ textarea {
   font-family: inherit;
 }
 
+select option,
+select optgroup {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-page);
+}
+
+select option:disabled {
+  color: var(--color-text-muted);
+}
+
 a {
   color: inherit;
   text-decoration: none;
