@@ -1,5 +1,6 @@
 import { ApiError } from "../../core/api/api-error.js";
 import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
+import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { validatePriceVersion } from "../../features/prices/prices-validation.js";
 import { getUnitDefinition, validateUnitConversion } from "../../features/prices/unit-conversions-validation.js";
 
@@ -37,7 +38,7 @@ export function createMockPricesAdapter(context, { initialState = "success" } = 
   ];
 
   function snapshot() {
-    const asOfDate = new Date().toISOString().slice(0, 10);
+    const asOfDate = getTehranTodayIso();
     const currentPrices = resources.map((resource) => {
       const versions = prices
         .filter((price) => price.resourceId === resource.resourceId && price.effectiveFrom <= asOfDate)

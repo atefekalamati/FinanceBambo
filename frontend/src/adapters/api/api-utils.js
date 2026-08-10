@@ -33,7 +33,7 @@ export function mapImportPreview(value, kind) {
   const rows = (value.rows ?? []).map((row) => kind === "prices"
     ? {
       rowNumber: row.rowNumber,
-      resourceTitle: row.resourceTitle ?? "قلم نامعتبر",
+      resourceTitle: row.resourceTitle ?? "—",
       resourceCode: row.resourceCode ?? "—",
       importedAmount: row.unitPrice,
       unitPriceIRR: row.normalizedUnitPriceIrr ?? "نامعتبر",
@@ -45,21 +45,23 @@ export function mapImportPreview(value, kind) {
     }
     : {
       rowNumber: row.rowNumber,
-      activityTitle: row.activityTitle ?? row.activityExternalId ?? "فعالیت نامعتبر",
+      activityTitle: row.activityTitle ?? row.activityExternalId ?? "—",
       activityExternalId: row.activityExternalId,
-      resourceTitle: row.resourceTitle ?? "قلم نامعتبر",
+      resourceTitle: row.resourceTitle ?? "—",
       resourceCode: row.resourceCode,
       value: row.originalQuantity ?? "—",
       unit: row.baseUnit,
       status: row.status,
       errors: (row.errors ?? []).map(issueText),
     });
-  if (!rows.length && value.errors?.length) {
-    const grouped = new Map();
-    value.errors.forEach((issue) => grouped.set(issue.row, [...(grouped.get(issue.row) ?? []), issueText(issue)]));
-    grouped.forEach((errors, rowNumber) => rows.push(kind === "prices"
-      ? { rowNumber, resourceTitle: "ردیف نامعتبر", resourceCode: "—", importedAmount: null, unitPriceIRR: "نامعتبر", currency: "", effectiveFrom: null, scope: "", status: "invalid", errors }
-      : { rowNumber, activityTitle: "ردیف نامعتبر", activityExternalId: null, resourceTitle: "—", resourceCode: null, value: "—", unit: null, status: "invalid", errors }));
-  }
-  return { previewId: value.previewId, totalRows: value.rowCount, validRows: value.validCount, invalidRows: value.invalidCount, rows, canCommit: value.canCommit };
+  const rowNumbers = new Set((value.rows ?? []).map((row) => row.rowNumber));
+  return {
+    previewId: value.previewId,
+    totalRows: value.rowCount,
+    validRows: value.validCount,
+    invalidRows: value.invalidCount,
+    rows,
+    fileErrors: (value.errors ?? []).filter((issue) => !rowNumbers.has(issue.row)).map(issueText),
+    canCommit: value.canCommit,
+  };
 }
