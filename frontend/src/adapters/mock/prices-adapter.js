@@ -1,4 +1,5 @@
 import { ApiError } from "../../core/api/api-error.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { validatePriceVersion } from "../../features/prices/prices-validation.js";
 import { getUnitDefinition, validateUnitConversion } from "../../features/prices/unit-conversions-validation.js";
 
@@ -158,7 +159,7 @@ export function createMockPricesAdapter(context, { initialState = "success" } = 
       { rowNumber: 3, resourceId: resources[1].resourceId, resourceCode: resources[1].code, resourceTitle: resources[1].title, importedAmount: "197500", unitPriceIRR: "1975000", currency: "TOMAN", effectiveFrom: "2026-08-08", scope: "project", status: "valid", errors: [] },
     ];
     if (/invalid|error/i.test(fileName)) {
-      rows.push({ rowNumber: 4, resourceId: null, resourceCode: "UNKNOWN", resourceTitle: "قلم ناشناخته", unitPriceIRR: "12.5", currency: "", effectiveFrom: "2026-02-30", scope: "unknown", status: "invalid", errors: ["کد قلم مالی پیدا نشد.", "قیمت باید عدد صحیح و مثبت به ریال باشد.", "واحد پول باید به‌صراحت ریال یا تومان باشد.", "تاریخ اثر یا سطح قیمت معتبر نیست."] });
+      rows.push({ rowNumber: 4, resourceId: null, resourceCode: "UNKNOWN", resourceTitle: "قلم ناشناخته", unitPriceIRR: "12.5", currency: "", effectiveFrom: "2026-02-30", scope: "unknown", status: "invalid", errors: ["کد قلم مالی پیدا نشد.", `قیمت باید عدد صحیح و مثبت به ${CURRENCY_LABELS.IRR} باشد.`, `واحد پول باید به‌صراحت ${CURRENCY_LABELS.IRR} یا ${CURRENCY_LABELS.TOMAN} باشد.`, "تاریخ اثر یا سطح قیمت معتبر نیست."] });
     }
     const preview = {
       previewId,

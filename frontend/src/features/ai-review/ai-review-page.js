@@ -1,6 +1,7 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { hasPermission } from "../../core/auth/permissions.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
 import { normalizeDecimalInput } from "../../shared/validation/decimal-validation.js";
 
@@ -9,7 +10,7 @@ const FIELD_LABELS = Object.freeze({
   invoiceDate: "تاریخ فاکتور",
   vendorName: "فروشنده یا ارائه‌دهنده",
   resourceId: "تخصیص به قلم مالی",
-  totalIRR: "مبلغ نهایی به ریال",
+  totalIRR: `مبلغ نهایی به ${CURRENCY_LABELS.IRR}`,
 });
 
 const REVIEW_LABELS = Object.freeze({
@@ -69,7 +70,7 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
   card.append(header);
 
   const zeroEffect = element("div", "ai-zero-effect");
-  zeroEffect.append(element("strong", "", draft.reviewStatus === "accepted" ? "اثر مالی پس از تأیید انسانی" : "اثر مالی فعلی: صفر ریال"), element("span", "", draft.reviewStatus === "accepted" ? `${formatDisplayNumber(draft.financialEffectIRR)} ریال` : "این داده هنوز فاکتور تأییدشده نیست."));
+  zeroEffect.append(element("strong", "", draft.reviewStatus === "accepted" ? "اثر مالی پس از تأیید انسانی" : `اثر مالی فعلی: صفر ${CURRENCY_LABELS.IRR}`), element("span", "", draft.reviewStatus === "accepted" ? `${formatDisplayNumber(draft.financialEffectIRR)} ${CURRENCY_LABELS.IRR}` : "این داده هنوز فاکتور تأییدشده نیست."));
   card.append(zeroEffect);
 
   const form = element("div", "ai-fields-grid");
@@ -153,7 +154,7 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
     const values = Object.fromEntries([...controls].map(([key, control]) => [key, control.getValue()]));
     values.totalIRR = normalizeDecimalInput(values.totalIRR);
     if (!values.invoiceDate || !values.vendorName || !values.resourceId || !/^\d+$/.test(values.totalIRR)) {
-      feedback.textContent = "تاریخ، فروشنده، تخصیص قلم مالی و مبلغ صحیح ریالی برای تأیید الزامی است.";
+      feedback.textContent = `تاریخ، فروشنده، تخصیص قلم مالی و مبلغ صحیح ${CURRENCY_LABELS.IRR} برای تأیید الزامی است.`;
       feedback.className = "form-message form-message--error";
       return;
     }

@@ -2,6 +2,7 @@ import { hasPermission } from "../../core/auth/permissions.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { validatePriceVersion } from "./prices-validation.js";
@@ -216,7 +217,7 @@ function createPriceImportDialog(adapter, onSaved) {
         element("td", "numeric", formatDisplayNumber(String(row.rowNumber))),
         resource,
         element("td", "numeric", /^\d+$/.test(row.importedAmount ?? row.unitPriceIRR) ? formatDisplayNumber(row.importedAmount ?? row.unitPriceIRR) : row.unitPriceIRR),
-        element("td", "", row.currency === "IRR" ? "ریال" : row.currency === "TOMAN" ? "تومان" : "نامعتبر"),
+        element("td", "", row.currency === "IRR" ? CURRENCY_LABELS.IRR : row.currency === "TOMAN" ? CURRENCY_LABELS.TOMAN : "نامعتبر"),
         element("td", "", row.status === "valid" ? formatBusinessDate(row.effectiveFrom) : "نامعتبر"),
         element("td", "", SCOPE_LABELS[row.scope] ?? "نامعتبر"),
         validationCell,
@@ -326,7 +327,7 @@ function createPriceDialog(adapter, currentPrices, onSaved) {
       { value: "project", label: "قیمت اختصاصی پروژه" },
     ],
   });
-  const amount = createInput({ id: "unitPriceIRR", label: "قیمت واحد (ریال)", hint: "عدد صحیح ریال؛ نمایش فهرست به تومان است.", inputMode: "numeric" });
+  const amount = createInput({ id: "unitPriceIRR", label: `قیمت واحد (${CURRENCY_LABELS.IRR})`, hint: `عدد صحیح ${CURRENCY_LABELS.IRR}؛ نمایش فهرست به ${CURRENCY_LABELS.TOMAN} است.`, inputMode: "numeric" });
   const effectiveFrom = createPersianDatePicker({ id: "priceEffectiveFrom", label: "تاریخ اثر", value: getTehranTodayIso(), hint: "تاریخ را براساس تقویم جلالی و زمان ایران انتخاب کنید." });
   const notice = element("div", "inline-notice", "ثبت قیمت، نسخه جدید می‌سازد. نسخه‌های قبلی و گزارش‌های صادرشده بازنویسی نمی‌شوند.");
   const cancel = element("button", "button button--ghost", "لغو");
@@ -432,9 +433,9 @@ function renderCurrentPrices(items, history) {
     row.append(
       resource,
       element("td", "", formatUnitLabel(item.resource.baseUnit)),
-      element("td", "numeric", item.organizationPrice ? `${formatTomanFromIRR(item.organizationPrice.unitPriceIRR)} تومان` : "—"),
-      element("td", "numeric", item.projectPrice ? `${formatTomanFromIRR(item.projectPrice.unitPriceIRR)} تومان` : "—"),
-      element("td", "numeric price-current", item.currentPrice ? `${formatTomanFromIRR(item.currentPrice.unitPriceIRR)} تومان` : "ثبت نشده"),
+      element("td", "numeric", item.organizationPrice ? `${formatTomanFromIRR(item.organizationPrice.unitPriceIRR)} ${CURRENCY_LABELS.TOMAN}` : "—"),
+      element("td", "numeric", item.projectPrice ? `${formatTomanFromIRR(item.projectPrice.unitPriceIRR)} ${CURRENCY_LABELS.TOMAN}` : "—"),
+      element("td", "numeric price-current", item.currentPrice ? `${formatTomanFromIRR(item.currentPrice.unitPriceIRR)} ${CURRENCY_LABELS.TOMAN}` : "ثبت نشده"),
       element("td", "", ""),
       element("td", "", currentScope),
       element("td", "", item.currentPrice ? formatBusinessDate(item.currentPrice.effectiveFrom) : "—"),
@@ -509,8 +510,8 @@ function renderHistory(history, currentPrices) {
     row.append(
       element("td", "", resource?.title ?? "قلم حذف‌شده"),
       element("td", "", SCOPE_LABELS[price.scope] ?? "سطح نامشخص"),
-      element("td", "numeric", `${formatTomanFromIRR(price.unitPriceIRR)} تومان`),
-      element("td", "", "ریال"),
+      element("td", "numeric", `${formatTomanFromIRR(price.unitPriceIRR)} ${CURRENCY_LABELS.TOMAN}`),
+      element("td", "", CURRENCY_LABELS.IRR),
       element("td", "", formatBusinessDate(price.effectiveFrom)),
       element("td", "", price.actorName || price.actorId),
       element("td", "", formatSystemDateTime(price.createdAt)),
@@ -676,7 +677,7 @@ export function createPricesPage({ context, adapter }) {
     const current = element("section", "prices-section prices-section--current");
     const currentHeading = element("div", "prices-section-heading");
     currentHeading.append(element("div", "", ""), element("span", "section-count numeric", `${formatDisplayNumber(String(filteredPrices.length))} قلم`));
-    currentHeading.firstElementChild.append(element("h2", "", "قیمت جاری اقلام"), element("p", "prices-section__hint", "قیمت‌ها به تومان نمایش داده می‌شوند و نمودار کوچک، روند نسخه‌های ثبت‌شده هر قلم را نشان می‌دهد."));
+    currentHeading.firstElementChild.append(element("h2", "", "قیمت جاری اقلام"), element("p", "prices-section__hint", `قیمت‌ها به ${CURRENCY_LABELS.TOMAN} نمایش داده می‌شوند و نمودار کوچک، روند نسخه‌های ثبت‌شده هر قلم را نشان می‌دهد.`));
     current.append(currentHeading, filters);
     if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history));
     else current.append(element("div", "state-card price-filter-empty", "قلمی مطابق فیلترهای انتخاب‌شده پیدا نشد."));
