@@ -64,5 +64,14 @@ export function mapImportPreview(value, kind) {
   });
   const invalidRows = value.invalidCount ?? rows.filter((row) => row.status === "invalid").length;
   const validRows = value.validCount ?? rows.filter((row) => row.status === "valid").length;
-  return { previewId: value.previewId, totalRows: value.rowCount, validRows, invalidRows, rows, canCommit: value.canCommit };
+  const rowNumbers = new Set((value.rows ?? []).map((row) => row.rowNumber));
+  return {
+    previewId: value.previewId,
+    totalRows: value.rowCount,
+    validRows: value.validCount,
+    invalidRows: value.invalidCount,
+    rows,
+    fileErrors: (value.errors ?? []).filter((issue) => !rowNumbers.has(issue.row)).map(issueText),
+    canCommit: value.canCommit,
+  };
 }
