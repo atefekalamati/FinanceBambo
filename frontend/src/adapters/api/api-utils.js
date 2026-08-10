@@ -29,15 +29,40 @@ export function formDataWithFile(file, fields = {}) {
 }
 
 export function mapImportPreview(value, kind) {
-  const grouped = new Map();
-  (value.errors ?? []).forEach((issue) => {
-    const row = grouped.get(issue.row) ?? [];
-    row.push(`${issue.field}: ${issue.reason}`);
-    grouped.set(issue.row, row);
+  const issueText = (issue) => `${issue.field}: ${issue.reason}`;
+  const rows = (value.rows ?? []).map((row) => {
+    const errors = (row.errors ?? []).map(issueText);
+    if (kind === "prices") {
+      return {
+        rowNumber: row.rowNumber,
+        resourceId: row.resourceId ?? null,
+        resourceTitle: row.resourceTitle ?? "قلم ناشناخته",
+        resourceCode: row.resourceCode ?? "—",
+        importedAmount: row.unitPrice ?? null,
+        unitPriceIRR: row.normalizedUnitPriceIrr ?? "نامعتبر",
+        currency: row.currency ?? "",
+        effectiveFrom: row.effectiveFrom ?? null,
+        scope: row.scope ?? "",
+        status: row.status,
+        errors,
+      };
+    }
+    return {
+      rowNumber: row.rowNumber,
+      activityTitle: row.activityTitle ?? row.activityExternalId ?? "فعالیت نامشخص",
+      activityExternalId: row.activityExternalId ?? null,
+      assignmentExternalId: row.assignmentExternalId ?? null,
+      resourceId: row.resourceId ?? null,
+      resourceTitle: row.resourceTitle ?? "قلم ناشناخته",
+      resourceCode: row.resourceCode ?? null,
+      value: row.originalQuantity ?? "—",
+      unit: row.baseUnit ?? null,
+      source: row.source ?? null,
+      status: row.status,
+      errors,
+    };
   });
-  const rows = [...grouped.entries()].map(([rowNumber, errors]) => kind === "prices"
-    ? { rowNumber, resourceTitle: "ردیف نامعتبر", resourceCode: "—", importedAmount: null, unitPriceIRR: "نامعتبر", currency: "", effectiveFrom: null, scope: "", status: "invalid", errors }
-    : { rowNumber, activityTitle: "ردیف نامعتبر", activityExternalId: null, resourceTitle: "—", resourceCode: null, value: "—", unit: null, status: "invalid", errors });
-  const invalidRows = grouped.size;
-  return { previewId: value.previewId, totalRows: value.rowCount, validRows: Math.max(0, value.rowCount - invalidRows), invalidRows, rows, canCommit: value.canCommit };
+  const invalidRows = value.invalidCount ?? rows.filter((row) => row.status === "invalid").length;
+  const validRows = value.validCount ?? rows.filter((row) => row.status === "valid").length;
+  return { previewId: value.previewId, totalRows: value.rowCount, validRows, invalidRows, rows, canCommit: value.canCommit };
 }
