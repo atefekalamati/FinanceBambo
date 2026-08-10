@@ -38,7 +38,26 @@ function formatTomanFromIrr(value) {
   const whole = amount / 10n;
   const remainder = amount < 0n ? -(amount % 10n) : amount % 10n;
   const display = remainder === 0n ? whole.toString() : `${amount < 0n && whole === 0n ? "-" : ""}${whole}.${remainder}`;
-  return `${formatDisplayNumber(display)} تومان`;
+  return `تومان ${formatDisplayNumber(display)}`;
+}
+
+function createTomanDisplay(value) {
+  const display = document.createElement("span");
+  display.className = "money-display";
+  if (!/^-?\d+$/.test(String(value ?? ""))) {
+    display.textContent = "قابل محاسبه نیست";
+    return display;
+  }
+  const formatted = formatTomanFromIrr(value).split(" ");
+  const unit = document.createElement("span");
+  unit.className = "money-display__unit";
+  unit.textContent = formatted.shift();
+  const amount = document.createElement("bdi");
+  amount.className = "money-display__amount numeric";
+  amount.dir = "ltr";
+  amount.textContent = formatted.join(" ");
+  display.append(unit, amount);
+  return display;
 }
 
 function createSummaryCard(key, label, description, data) {
@@ -48,8 +67,8 @@ function createSummaryCard(key, label, description, data) {
   const title = document.createElement("h2");
   title.textContent = label;
   const value = document.createElement("p");
-  value.className = "summary-card__value numeric";
-  value.textContent = formatTomanFromIrr(data?.[key]);
+  value.className = "summary-card__value";
+  value.append(createTomanDisplay(data?.[key]));
   const unit = document.createElement("span");
   unit.className = "summary-card__unit";
   unit.textContent = unavailable ? "داده مبنا موجود نیست" : description;
@@ -174,10 +193,10 @@ function createBreakdownChart(rows) {
   const tbody = document.createElement("tbody");
   rows.forEach((row) => {
     const record = document.createElement("tr");
-    [row.label, formatTomanFromIrr(row.initialEstimateIrr), formatTomanFromIrr(row.actualCostIrr), formatTomanFromIrr(row.forecastFinalIrr)].forEach((text, index) => {
+    [row.label, row.initialEstimateIrr, row.actualCostIrr, row.forecastFinalIrr].forEach((text, index) => {
       const cell = document.createElement("td");
-      cell.textContent = text;
-      if (index > 0) cell.className = "numeric";
+      if (index === 0) cell.textContent = text;
+      else cell.append(createTomanDisplay(text));
       record.append(cell);
     });
     tbody.append(record);
@@ -191,21 +210,9 @@ function createBreakdownChart(rows) {
 
 function renderFinanceHome(data) {
   const fragment = document.createDocumentFragment();
-  const intro = document.createElement("section");
-  intro.className = "finance-intro";
-  const logoSign = document.createElement("img");
-  logoSign.className = "finance-intro__sign";
-  logoSign.src = new URL("../../../public/assets/images/Logo%20Sign.svg", import.meta.url).href;
-  logoSign.alt = "";
-  logoSign.setAttribute("aria-hidden", "true");
-  const eyebrow = document.createElement("span");
-  eyebrow.className = "finance-intro__eyebrow";
-  eyebrow.textContent = "مرکز کنترل مالی پروژه";
-  const title = document.createElement("h1");
-  title.textContent = "امور مالی پروژه";
-  const description = document.createElement("p");
-  description.textContent = "خلاصه وضعیت مالی و دسترسی مستقیم به عملیات موردنیاز پروژه، بدون داشبورد یا ناوبری داخلی جداگانه.";
-  intro.append(logoSign, eyebrow, title, description);
+  const pageTitle = document.createElement("h1");
+  pageTitle.className = "finance-page-title";
+  pageTitle.textContent = "امور مالی";
 
   const summaryHeader = document.createElement("div");
   summaryHeader.className = "section-heading";
@@ -256,7 +263,7 @@ function renderFinanceHome(data) {
   areas.setAttribute("aria-label", "بخش‌های امور مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  fragment.append(intro, summaryHeader, summary, insights, areasHeader, areas);
+  fragment.append(pageTitle, summaryHeader, summary, insights, areasHeader, areas);
   return fragment;
 }
 
