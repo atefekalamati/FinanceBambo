@@ -1,4 +1,5 @@
 import { financeBase, formDataWithFile, jsonOptions, mapImportPreview, mapResource } from "./api-utils.js";
+import { compareDecimalStrings } from "../../shared/validation/decimal-validation.js";
 
 function mapLine(value, resources) {
   const resource = resources.find((item) => item.resourceId === value.resourceId);
@@ -13,12 +14,22 @@ function mapLine(value, resources) {
     resourceId: value.resourceId,
     originalQuantity: general ? null : value.originalQuantity,
     revisedQuantity: general ? null : value.revisedQuantity,
-    originalAmount: general ? value.originalQuantity : null,
+    originalAmount: general ? value.originalUnitPriceIrr : null,
     revisedAmount: general ? value.revisedQuantity : null,
     originalUnitPriceIRR: value.originalUnitPriceIrr,
     source: value.source,
-    revision: value.revisedQuantity === value.originalQuantity ? 1 : 2,
-    revisions: [],
+    revision: value.revision,
+    revisions: (value.revisions ?? []).map((revision) => ({
+      revisionId: revision.id,
+      revisionNumber: revision.revision,
+      previousValue: revision.previousQuantity,
+      newValue: revision.newQuantity,
+      reason: revision.reason,
+      actorId: revision.createdBy,
+      actorName: null,
+      occurredAt: revision.createdAt,
+      isOverrun: compareDecimalStrings(revision.newQuantity, general ? value.originalUnitPriceIrr : value.originalQuantity) > 0,
+    })),
   };
 }
 
