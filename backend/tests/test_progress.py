@@ -21,7 +21,7 @@ class ProgressTests(unittest.TestCase):
   self.assertEqual((Decimal("12"),"manual_override"),consumed_quantity(row))
  def test_missing_source_requires_override_and_reason_is_nonblank(self):
   with self.assertRaises(ValueError):consumed_quantity({"plannedQuantity":None,"actualQuantity":None,"task":{}})
-  with self.assertRaises(ValueError):ProgressOverrideCreate(progressSnapshotId=UUID(int=1),computedValue="1",overrideValue="2",reason=" ")
+  with self.assertRaises(ValueError):ProgressOverrideCreate(progressSnapshotId=UUID(int=1),overrideValue="2",reason=" ")
 
 SNAPSHOT=UUID("11111111-1111-4111-8111-111111111111")
 REF=UUID("22222222-2222-4222-8222-222222222222")
@@ -44,7 +44,7 @@ class Repo:
 class ProgressServiceTests(unittest.IsolatedAsyncioTestCase):
  def service(self,repo):return ProgressService(repo,Provider(),id_factory=lambda:UUID("44444444-4444-4444-8444-444444444444"),clock=lambda:AT)
  async def test_override_uses_backend_computed_baseline_not_client_value(self):
-  repo=Repo();command=ProgressOverrideCreate(progressSnapshotId=SNAPSHOT,computedValue="999",overrideValue="9",reason="اصلاح معتبر")
+  repo=Repo();command=ProgressOverrideCreate(progressSnapshotId=SNAPSHOT,overrideValue="9",reason="اصلاح معتبر")
   result=await self.service(repo).override(SCOPE,LINE,command)
   self.assertEqual((Decimal("7"),Decimal("9")),(result.computed_value,result.override_value))
  async def test_feed_applies_latest_persisted_override_without_mutating_provider_truth(self):

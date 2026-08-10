@@ -12,7 +12,7 @@ class ImportConflict(FinanceDomainError):
  status=409;code="STALE_VERSION"
 
 HEADERS={"prices":("resourceCode","unitPrice","currency","effectiveFrom","scope"),"estimate":("resourceCode","activityExternalId","assignmentExternalId","originalQuantity","source")}
-def parse_excel(content:bytes,kind:str,currency_unit:str|None=None):
+def parse_excel(content:bytes,kind:str):
  try:wb=load_workbook(io.BytesIO(content),read_only=True,data_only=True)
  except Exception as exc:raise ImportValidationError("invalid Excel workbook") from exc
  ws=wb.active
@@ -54,9 +54,9 @@ def parse_excel(content:bytes,kind:str,currency_unit:str|None=None):
 
 class FinanceImportService:
  def __init__(self,repo,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.ids=id_factory;self.clock=clock
- async def preview(self,scope,kind,content,currency_unit=None):
+ async def preview(self,scope,kind,content):
   if scope.actor_user_id is None:raise PermissionError("authenticated actor is required")
-  rows,errors=parse_excel(content,kind,currency_unit)
+  rows,errors=parse_excel(content,kind)
   resources=await self.repo.resolve_resources(scope,{str(row.get("resourceCode") or "").strip() for row in rows})
   resource_by_code={str(item["code"]):item for item in resources}
   for row in rows:
@@ -83,7 +83,7 @@ class FinanceImportService:
     "normalizedUnitPriceIrr":row.get("unitPriceIrr"),"effectiveFrom":row.get("effectiveFrom"),"scope":row.get("scope")})
    preview_rows.append(common)
   valid_count=sum(not value["errors"] for value in preview_rows);invalid_count=len(preview_rows)-valid_count
-  pid=self.ids();await self.repo.save_preview(scope,pid,kind,currency_unit,hashlib.sha256(content).hexdigest(),rows,errors,self.clock())
+  pid=self.ids();await self.repo.save_preview(scope,pid,kind,None,hashlib.sha256(content).hexdigest(),rows,errors,self.clock())
   return {"previewId":pid,"kind":kind,"rowCount":len(rows),"validCount":valid_count,"invalidCount":invalid_count,
    "rows":preview_rows,"errors":errors,"canCommit":not errors and bool(rows)}
  async def commit(self,scope,preview_id):
