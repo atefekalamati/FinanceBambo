@@ -1,4 +1,5 @@
 import { getUnitDefinition } from "../../features/prices/unit-conversions-validation.js";
+import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { financeBase, formDataWithFile, jsonOptions, mapImportPreview, mapResource } from "./api-utils.js";
 
 function mapPrice(value) {
@@ -59,7 +60,7 @@ function mapCurrentTrend(value) {
 }
 
 function buildWorkspace(context, resources, prices, conversions, currentTrends) {
-  const asOfDate = new Date().toISOString().slice(0, 10);
+  const asOfDate = getTehranTodayIso();
   const currentPrices = resources.map((resource) => {
     const trend = currentTrends.find((item) => item.resourceId === resource.resourceId) ?? { resourceId: resource.resourceId, currentPriceIrr: null, previousPriceIrr: null, latestChangePercent: null, trendDirection: "none", scopeKind: null, trendPoints: [] };
     const organizationPrice = trend.organizationPriceIrr === null || trend.organizationPriceIrr === undefined ? null : { scope: "organization", unitPriceIRR: trend.organizationPriceIrr, effectiveFrom: trend.organizationEffectiveFrom };
@@ -84,7 +85,7 @@ function buildWorkspace(context, resources, prices, conversions, currentTrends) 
 export function createApiPricesAdapter(context, client) {
   const base = financeBase(context);
   async function getPrices() {
-    const asOfDate = new Date().toISOString().slice(0, 10);
+    const asOfDate = getTehranTodayIso();
     const [resourcePayload, pricePayload, conversionPayload, currentPayload] = await Promise.all([client.request(`${base}/resources`), client.request(`${base}/price-history`), client.request(`${base}/unit-conversions`), client.request(`${base}/prices/current?asOf=${encodeURIComponent(asOfDate)}`)]);
     return buildWorkspace(context, resourcePayload.map(mapResource), pricePayload.map(mapPrice), conversionPayload.map((item) => mapConversion(item, context)), currentPayload.map(mapCurrentTrend));
   }

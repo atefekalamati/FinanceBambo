@@ -20,6 +20,7 @@ export function createApiProgressAdapter(context, client) {
     const assignment = feed.assignments.find((item) => item.assignmentExternalId === assignmentExternalId);
     if (!line || !assignment) throw new ApiError({ status: 422, code: "PROGRESS_LINE_MAPPING_MISSING", message: "اتصال Assignment پیشرفت به خط برآورد در Backend پیدا نشد." });
     const computedValue = assignment.manualOverride?.previousCalculatedValue ?? assignment.actualQuantity;
+    if (computedValue === null || computedValue === undefined) throw new ApiError({ status: 422, code: "PROGRESS_LINE_MAPPING_MISSING", message: "Backend برای این خط مقدار محاسبه‌شده معتبر برنگرداند." });
     const override = await client.request(`${base}/estimate-lines/${encodeURIComponent(line.id)}/progress-override`, jsonOptions("POST", { progressSnapshotId, computedValue, overrideValue, reason }));
     return { feed: await getFeed(progressSnapshotId), override };
   }

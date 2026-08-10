@@ -8,16 +8,7 @@ function mapSettings(value) {
     grossBuiltArea: value.grossBuiltArea,
     grossBuiltAreaUnit: "m2",
     revision: value.revision,
-    revisions: [{
-      revisionId: value.id,
-      previousValue: null,
-      newValue: value.grossBuiltArea,
-      effectiveDate: value.effectiveFrom,
-      reason: value.reason,
-      actorId: value.createdBy,
-      actorName: null,
-      occurredAt: value.createdAt,
-    }],
+    revisions: [],
   };
 }
 
