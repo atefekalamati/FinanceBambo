@@ -30,30 +30,40 @@ export function formDataWithFile(file, fields = {}) {
 
 export function mapImportPreview(value, kind) {
   const issueText = (issue) => `${issue.field}: ${issue.reason}`;
-  const rows = (value.rows ?? []).map((row) => kind === "prices"
-    ? {
-      rowNumber: row.rowNumber,
-      resourceTitle: row.resourceTitle ?? "—",
-      resourceCode: row.resourceCode ?? "—",
-      importedAmount: row.unitPrice,
-      unitPriceIRR: row.normalizedUnitPriceIrr ?? "نامعتبر",
-      currency: row.currency ?? "",
-      effectiveFrom: row.effectiveFrom,
-      scope: row.scope ?? "",
-      status: row.status,
-      errors: (row.errors ?? []).map(issueText),
+  const rows = (value.rows ?? []).map((row) => {
+    const errors = (row.errors ?? []).map(issueText);
+    if (kind === "prices") {
+      return {
+        rowNumber: row.rowNumber,
+        resourceId: row.resourceId ?? null,
+        resourceTitle: row.resourceTitle ?? "قلم ناشناخته",
+        resourceCode: row.resourceCode ?? "—",
+        importedAmount: row.unitPrice ?? null,
+        unitPriceIRR: row.normalizedUnitPriceIrr ?? "نامعتبر",
+        currency: row.currency ?? "",
+        effectiveFrom: row.effectiveFrom ?? null,
+        scope: row.scope ?? "",
+        status: row.status,
+        errors,
+      };
     }
-    : {
+    return {
       rowNumber: row.rowNumber,
-      activityTitle: row.activityTitle ?? row.activityExternalId ?? "—",
-      activityExternalId: row.activityExternalId,
-      resourceTitle: row.resourceTitle ?? "—",
-      resourceCode: row.resourceCode,
+      activityTitle: row.activityTitle ?? row.activityExternalId ?? "فعالیت نامشخص",
+      activityExternalId: row.activityExternalId ?? null,
+      assignmentExternalId: row.assignmentExternalId ?? null,
+      resourceId: row.resourceId ?? null,
+      resourceTitle: row.resourceTitle ?? "قلم ناشناخته",
+      resourceCode: row.resourceCode ?? null,
       value: row.originalQuantity ?? "—",
-      unit: row.baseUnit,
+      unit: row.baseUnit ?? null,
+      source: row.source ?? null,
       status: row.status,
-      errors: (row.errors ?? []).map(issueText),
-    });
+      errors,
+    };
+  });
+  const invalidRows = value.invalidCount ?? rows.filter((row) => row.status === "invalid").length;
+  const validRows = value.validCount ?? rows.filter((row) => row.status === "valid").length;
   const rowNumbers = new Set((value.rows ?? []).map((row) => row.rowNumber));
   return {
     previewId: value.previewId,
