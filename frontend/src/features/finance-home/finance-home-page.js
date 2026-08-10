@@ -120,30 +120,38 @@ function createBreakdownChart(rows) {
     label.textContent = row.label;
     const bars = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     bars.classList.add("breakdown-chart__bars");
-    bars.setAttribute("viewBox", "0 0 100 28");
-    bars.setAttribute("preserveAspectRatio", "none");
+    bars.setAttribute("viewBox", "0 0 72 108");
+    bars.setAttribute("preserveAspectRatio", "xMidYMax meet");
     bars.setAttribute("aria-hidden", "true");
-    [["initial", row.bars.initial], ["actual", row.bars.actual], ["forecast", row.bars.forecast]].forEach(([series, width]) => {
+    [["initial", row.bars.initial, row.initialEstimateIrr, "برآورد اولیه"], ["actual", row.bars.actual, row.actualCostIrr, "هزینه واقعی"], ["forecast", row.bars.forecast, row.forecastFinalIrr, "پیش‌بینی نهایی"]].forEach(([series, magnitude, value, seriesLabel]) => {
       const index = { initial: 0, actual: 1, forecast: 2 }[series];
+      const height = Number(magnitude) * .84;
+      const x = 3 + (index * 24);
       const track = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       track.setAttribute("class", "breakdown-chart__track");
-      track.setAttribute("x", "0");
-      track.setAttribute("y", String(index * 10));
-      track.setAttribute("width", "100");
-      track.setAttribute("height", "6");
+      track.setAttribute("x", String(x));
+      track.setAttribute("y", "12");
+      track.setAttribute("width", "18");
+      track.setAttribute("height", "84");
       track.setAttribute("rx", "3");
       const bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       bar.setAttribute("class", `breakdown-chart__bar breakdown-chart__bar--${series}`);
-      bar.setAttribute("x", "0");
-      bar.setAttribute("y", String(index * 10));
-      bar.setAttribute("width", String(width));
-      bar.setAttribute("height", "6");
+      bar.setAttribute("x", String(x));
+      bar.setAttribute("y", String(96 - height));
+      bar.setAttribute("width", "18");
+      bar.setAttribute("height", String(height));
       bar.setAttribute("rx", "3");
+      const tooltip = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      tooltip.textContent = `${seriesLabel}: ${formatTomanFromIrr(value)}`;
+      bar.append(tooltip);
       bars.append(track, bar);
     });
     group.append(label, bars);
     chart.append(group);
   });
+  const chartViewport = document.createElement("div");
+  chartViewport.className = "breakdown-chart-viewport";
+  chartViewport.append(chart);
 
   const details = document.createElement("details");
   details.className = "breakdown-details";
@@ -177,7 +185,7 @@ function createBreakdownChart(rows) {
   table.append(caption, thead, tbody);
   wrapper.append(table);
   details.append(detailsSummary, wrapper);
-  section.append(heading, legend, chart, details);
+  section.append(heading, legend, chartViewport, details);
   return section;
 }
 

@@ -213,40 +213,49 @@
 
 .breakdown-chart {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-  padding: 0;
+  grid-template-columns: repeat(4, minmax(7.5rem, 1fr));
+  align-items: end;
+  gap: .5rem;
+  min-inline-size: 34rem;
+  padding: .75rem .5rem .5rem;
   border-block: 1px solid var(--color-border-subtle);
 }
 
 .breakdown-chart__group {
-  display: grid;
-  grid-template-columns: minmax(7rem, .3fr) minmax(12rem, 1fr);
+  display: flex;
   align-items: center;
-  gap: var(--space-lg);
+  flex-direction: column-reverse;
+  gap: var(--space-sm);
   min-inline-size: 0;
-  padding: .55rem .25rem;
-  border-block-end: 1px solid var(--color-border-subtle);
-}
-
-.breakdown-chart__group:last-child {
-  border-block-end: 0;
+  padding: 0 .25rem;
 }
 
 .breakdown-chart__group h3 {
   margin: 0;
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
+  text-align: center;
 }
 
 .breakdown-chart__bars {
-  inline-size: 100%;
-  block-size: 1.75rem;
+  inline-size: min(100%, 8.5rem);
+  block-size: 10rem;
   overflow: visible;
 }
 
 .breakdown-chart__track {
   fill: var(--dash-grid);
+}
+
+.breakdown-chart__bar {
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    filter var(--duration-fast) var(--ease-standard);
+}
+
+.breakdown-chart__bar:hover {
+  opacity: .86;
+  filter: brightness(1.12);
 }
 
 .breakdown-chart__bar--initial {
@@ -287,6 +296,13 @@
   margin-block-start: var(--space-sm);
 }
 
+.breakdown-chart-viewport {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
 .breakdown-table {
   min-inline-size: 44rem;
 }
@@ -321,14 +337,12 @@
     gap: var(--space-sm);
   }
 
-  .breakdown-chart,
-  .breakdown-chart__group {
-    padding-inline: 0;
+  .breakdown-chart {
+    min-inline-size: 30rem;
   }
 
-  .breakdown-chart__group {
-    grid-template-columns: 1fr;
-    gap: var(--space-xs);
+  .breakdown-chart__bars {
+    block-size: 8.5rem;
   }
 
   .finance-home-page .summary-card {
