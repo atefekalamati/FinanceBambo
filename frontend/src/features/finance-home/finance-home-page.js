@@ -1,6 +1,7 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
+import { buildBreakdownPresentation } from "./report-presentation.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -84,6 +85,96 @@ function createWorkAreaCard(area) {
   return card;
 }
 
+function createBreakdownChart(rows) {
+  const section = document.createElement("section");
+  section.className = "finance-breakdown";
+  const heading = document.createElement("div");
+  heading.className = "section-heading";
+  const copy = document.createElement("div");
+  const eyebrow = document.createElement("span");
+  eyebrow.textContent = "ترکیب هزینه";
+  const title = document.createElement("h2");
+  title.textContent = "مقایسه برآورد، هزینه واقعی و پیش‌بینی نهایی";
+  copy.append(eyebrow, title);
+  const hint = document.createElement("small");
+  hint.textContent = "مقیاس هر سه سری در تمام ردیف‌ها یکسان است";
+  heading.append(copy, hint);
+
+  const legend = document.createElement("ul");
+  legend.className = "breakdown-legend";
+  [["initial", "برآورد اولیه"], ["actual", "هزینه واقعی"], ["forecast", "پیش‌بینی نهایی"]].forEach(([key, label]) => {
+    const item = document.createElement("li");
+    item.dataset.series = key;
+    item.textContent = label;
+    legend.append(item);
+  });
+
+  const chart = document.createElement("div");
+  chart.className = "breakdown-chart";
+  chart.setAttribute("role", "img");
+  chart.setAttribute("aria-label", "نمودار مقایسه برآورد اولیه، هزینه واقعی و پیش‌بینی نهایی به تفکیک نوع قلم مالی");
+  rows.forEach((row) => {
+    const group = document.createElement("article");
+    group.className = "breakdown-chart__group";
+    const label = document.createElement("h3");
+    label.textContent = row.label;
+    const bars = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    bars.classList.add("breakdown-chart__bars");
+    bars.setAttribute("viewBox", "0 0 100 28");
+    bars.setAttribute("aria-hidden", "true");
+    [["initial", row.bars.initial], ["actual", row.bars.actual], ["forecast", row.bars.forecast]].forEach(([series, width]) => {
+      const index = { initial: 0, actual: 1, forecast: 2 }[series];
+      const track = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      track.setAttribute("class", "breakdown-chart__track");
+      track.setAttribute("x", "0");
+      track.setAttribute("y", String(index * 10));
+      track.setAttribute("width", "100");
+      track.setAttribute("height", "6");
+      track.setAttribute("rx", "3");
+      const bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bar.setAttribute("class", `breakdown-chart__bar breakdown-chart__bar--${series}`);
+      bar.setAttribute("x", "0");
+      bar.setAttribute("y", String(index * 10));
+      bar.setAttribute("width", String(width));
+      bar.setAttribute("height", "6");
+      bar.setAttribute("rx", "3");
+      bars.append(track, bar);
+    });
+    group.append(label, bars);
+    chart.append(group);
+  });
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "table-scroll breakdown-table-wrapper";
+  const table = document.createElement("table");
+  table.className = "data-table breakdown-table";
+  const caption = document.createElement("caption");
+  caption.textContent = "جدول جایگزین نمودار ترکیب هزینه به تفکیک نوع قلم مالی";
+  const thead = document.createElement("thead");
+  const header = document.createElement("tr");
+  ["نوع قلم مالی", "برآورد اولیه", "هزینه واقعی", "پیش‌بینی نهایی"].forEach((text) => {
+    const cell = document.createElement("th");
+    cell.textContent = text;
+    header.append(cell);
+  });
+  thead.append(header);
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const record = document.createElement("tr");
+    [row.label, formatTomanFromIrr(row.initialEstimateIrr), formatTomanFromIrr(row.actualCostIrr), formatTomanFromIrr(row.forecastFinalIrr)].forEach((text, index) => {
+      const cell = document.createElement("td");
+      cell.textContent = text;
+      if (index > 0) cell.className = "numeric";
+      record.append(cell);
+    });
+    tbody.append(record);
+  });
+  table.append(caption, thead, tbody);
+  wrapper.append(table);
+  section.append(heading, legend, chart, wrapper);
+  return section;
+}
+
 function renderFinanceHome(data) {
   const fragment = document.createDocumentFragment();
   const intro = document.createElement("section");
@@ -136,6 +227,9 @@ function renderFinanceHome(data) {
     warnings.textContent = "برای محاسبات زنده فعلی هشداری ثبت نشده است.";
   }
 
+  const breakdownRows = buildBreakdownPresentation(data.breakdown);
+  const breakdown = breakdownRows.length ? createBreakdownChart(breakdownRows) : document.createDocumentFragment();
+
   const areasHeader = document.createElement("div");
   areasHeader.className = "section-heading";
   areasHeader.innerHTML = "<div><span>فضای کاری</span><h2>عملیات مالی پروژه</h2></div>";
@@ -144,7 +238,7 @@ function renderFinanceHome(data) {
   areas.setAttribute("aria-label", "بخش‌های امور مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  fragment.append(intro, summaryHeader, summary, warnings, areasHeader, areas);
+  fragment.append(intro, summaryHeader, summary, warnings, breakdown, areasHeader, areas);
   return fragment;
 }
 

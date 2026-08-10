@@ -38,8 +38,138 @@
   color: var(--dash-sev-good);
 }
 
+/* --------------------------------------------------------------------------
+   Cost breakdown chart and accessible table
+   -------------------------------------------------------------------------- */
+
+.finance-breakdown {
+  margin-block: var(--space-xl);
+}
+
+.breakdown-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  margin: 0 0 var(--space-lg);
+  padding: 0;
+  list-style: none;
+}
+
+.breakdown-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.breakdown-legend li::before {
+  inline-size: .75rem;
+  block-size: .75rem;
+  border-radius: .2rem;
+  background: var(--dash-plan);
+  content: "";
+}
+
+.breakdown-legend li[data-series="actual"]::before {
+  background: var(--dash-actual);
+}
+
+.breakdown-legend li[data-series="forecast"]::before {
+  background: var(--dash-sev-med);
+}
+
+.breakdown-chart {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.breakdown-chart__group {
+  min-inline-size: 0;
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.breakdown-chart__group h3 {
+  margin-block: 0 var(--space-sm);
+  font-size: var(--font-size-md);
+}
+
+.breakdown-chart__bars {
+  inline-size: 100%;
+  block-size: auto;
+  overflow: visible;
+}
+
+.breakdown-chart__track {
+  fill: var(--dash-grid);
+}
+
+.breakdown-chart__bar--initial {
+  fill: var(--dash-plan);
+}
+
+.breakdown-chart__bar--actual {
+  fill: var(--dash-actual);
+}
+
+.breakdown-chart__bar--forecast {
+  fill: var(--dash-sev-med);
+}
+
+.breakdown-table-wrapper {
+  margin-block-start: var(--space-lg);
+}
+
+.breakdown-table {
+  min-inline-size: 44rem;
+}
+
+.breakdown-table caption {
+  padding-block: var(--space-sm);
+  color: var(--color-text-muted);
+  text-align: start;
+}
+
 @media (max-width: 48rem) {
   .finance-warnings {
     padding: var(--space-md);
+  }
+
+  .breakdown-chart {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 30rem) {
+  .breakdown-legend {
+    display: grid;
+    gap: var(--space-sm);
+  }
+
+  .breakdown-chart,
+  .breakdown-chart__group {
+    padding: var(--space-md);
+  }
+}
+
+@media print {
+  .breakdown-chart {
+    display: none;
+  }
+
+  .breakdown-table-wrapper {
+    overflow: visible;
+  }
+
+  .breakdown-table {
+    min-inline-size: 0;
   }
 }
