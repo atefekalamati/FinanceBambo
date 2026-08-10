@@ -173,12 +173,11 @@ function createBreakdownChart(rows) {
   chartViewport.className = "breakdown-chart-viewport";
   chartViewport.append(chart);
 
-  const details = document.createElement("details");
-  details.className = "breakdown-details";
-  const detailsSummary = document.createElement("summary");
-  detailsSummary.textContent = "مشاهده مقادیر دقیق مقایسه";
   const wrapper = document.createElement("div");
   wrapper.className = "table-scroll breakdown-table-wrapper";
+  wrapper.setAttribute("role", "region");
+  wrapper.setAttribute("aria-label", "مقادیر دقیق مقایسه مالی");
+  wrapper.tabIndex = 0;
   const table = document.createElement("table");
   table.className = "data-table breakdown-table";
   const caption = document.createElement("caption");
@@ -204,8 +203,7 @@ function createBreakdownChart(rows) {
   });
   table.append(caption, thead, tbody);
   wrapper.append(table);
-  details.append(detailsSummary, wrapper);
-  section.append(heading, legend, chartViewport, details);
+  section.append(heading, legend, chartViewport, wrapper);
   return section;
 }
 
