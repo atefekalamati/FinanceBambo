@@ -1,5 +1,6 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
@@ -21,7 +22,7 @@ function formatTomanFromIRR(value) {
   const digits = String(value).replace(/^0+(?=\d)/, "") || "0";
   const whole = digits.length > 1 ? digits.slice(0, -1) : "0";
   const remainder = digits.at(-1);
-  return `${formatDisplayNumber(remainder === "0" ? whole : `${whole}.${remainder}`)} تومان`;
+  return `${formatDisplayNumber(remainder === "0" ? whole : `${whole}.${remainder}`)} ${CURRENCY_LABELS.TOMAN}`;
 }
 
 function option(value, label) {
@@ -139,8 +140,8 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     targetSelect.append(option("", "انتخاب کنید"), ...targets.map((target) => option(target.targetId, `${target.label} · ${target.targetType === "general_cost" ? "هزینه عمومی" : formatUnitLabel(target.unit)}`)));
     targetField.append(targetSelect);
     const quantity = inputField("مقدار", "quantity", { inputMode: "decimal" });
-    const unitPrice = inputField("قیمت واحد به ریال", "unitPriceIRR", { inputMode: "numeric" });
-    const amount = inputField("مبلغ خط هزینه عمومی به ریال", "amountIRR", { inputMode: "numeric" });
+    const unitPrice = inputField(`قیمت واحد به ${CURRENCY_LABELS.IRR}`, "unitPriceIRR", { inputMode: "numeric" });
+    const amount = inputField(`مبلغ خط هزینه عمومی به ${CURRENCY_LABELS.IRR}`, "amountIRR", { inputMode: "numeric" });
     amount.field.hidden = true;
     targetSelect.addEventListener("change", () => {
       const target = targets.find((item) => item.targetId === targetSelect.value);
@@ -165,7 +166,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     const list = element("div", "invoice-draft-lines");
     lines.forEach((line, index) => {
       const card = element("article", "invoice-draft-line");
-      card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", line.targetType === "general_cost" ? `${formatDisplayNumber(line.lineAmountIRR)} ریال` : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)} × ${formatDisplayNumber(line.unitPriceIRR)} ریال`));
+      card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", line.targetType === "general_cost" ? `${formatDisplayNumber(line.lineAmountIRR)} ${CURRENCY_LABELS.IRR}` : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)} × ${formatDisplayNumber(line.unitPriceIRR)} ${CURRENCY_LABELS.IRR}`));
       const remove = element("button", "button button--ghost", "حذف خط");
       remove.type = "button";
       remove.addEventListener("click", () => { lines.splice(index, 1); paintStep(); });
@@ -173,7 +174,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
       list.append(card);
     });
     const adjustmentGrid = element("div", "invoice-adjustments");
-    const adjustmentFields = [["تخفیف به ریال", "discountIRR"], ["مالیات به ریال", "taxIRR"], ["حمل به ریال", "shippingIRR"], ["سایر هزینه‌ها به ریال", "otherCostsIRR"]].map(([label, key]) => {
+    const adjustmentFields = [[`تخفیف به ${CURRENCY_LABELS.IRR}`, "discountIRR"], [`مالیات به ${CURRENCY_LABELS.IRR}`, "taxIRR"], [`حمل به ${CURRENCY_LABELS.IRR}`, "shippingIRR"], [`سایر هزینه‌ها به ${CURRENCY_LABELS.IRR}`, "otherCostsIRR"]].map(([label, key]) => {
       const field = inputField(label, key, { inputMode: "numeric" });
       field.input.value = adjustments[key];
       adjustmentGrid.append(field.field);
@@ -631,7 +632,7 @@ export function createInvoicesPage({ context, adapter }) {
     const section = element("section", "invoices-section");
     const heading = element("div", "invoice-list-heading");
     heading.append(element("div", "", ""), element("span", "section-count numeric", `${formatDisplayNumber(String(data.totalItems))} فاکتور`));
-    heading.firstElementChild.append(element("h2", "", "فهرست فاکتورها"), element("p", "", "مبلغ رسمی ریال است و در این صفحه با واحد پیش‌فرض تومان نمایش داده می‌شود."));
+    heading.firstElementChild.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `مبلغ رسمی ${CURRENCY_LABELS.IRR} است و در این صفحه با واحد پیش‌فرض ${CURRENCY_LABELS.TOMAN} نمایش داده می‌شود.`));
     const table = renderTable(data.items, showDetail);
     const pagination = element("nav", "invoice-pagination");
     pagination.setAttribute("aria-label", "صفحه‌بندی فاکتورها");

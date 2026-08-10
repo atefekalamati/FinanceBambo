@@ -1,4 +1,5 @@
 import { normalizeDecimalInput } from "../../shared/validation/decimal-validation.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 
 const PRICE_SCOPES = new Set(["organization", "project"]);
 
@@ -21,7 +22,7 @@ export function validatePriceVersion(values) {
   const errors = {
     resourceId: resourceId ? "" : "انتخاب قلم مالی الزامی است.",
     scope: PRICE_SCOPES.has(scope) ? "" : "سطح قیمت معتبر نیست.",
-    unitPriceIRR: /^\d+$/.test(unitPriceIRR) && /[1-9]/.test(unitPriceIRR) ? "" : "قیمت باید عدد صحیح و مثبت به ریال باشد.",
+    unitPriceIRR: /^\d+$/.test(unitPriceIRR) && /[1-9]/.test(unitPriceIRR) ? "" : `قیمت باید عدد صحیح و مثبت به ${CURRENCY_LABELS.IRR} باشد.`,
     effectiveFrom: effectiveFrom.message,
   };
   return {
