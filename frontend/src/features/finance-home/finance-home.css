@@ -1,0 +1,45 @@
+/* --------------------------------------------------------------------------
+   Live financial summary
+   -------------------------------------------------------------------------- */
+
+.summary-card--unavailable {
+  border-color: var(--dash-sev-med);
+}
+
+.summary-card--unavailable .summary-card__value {
+  color: var(--color-text-muted);
+  font-size: 1.15rem;
+}
+
+.finance-warnings {
+  margin-block: var(--space-lg) var(--space-xl);
+  padding: var(--space-lg);
+  border: 1px solid rgb(234 179 8 / 35%);
+  border-inline-start: .25rem solid var(--dash-sev-med);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+}
+
+.finance-warnings h2 {
+  margin-block-start: 0;
+  font-size: var(--font-size-lg);
+}
+
+.finance-warnings ul {
+  display: grid;
+  gap: var(--space-sm);
+  margin-block-end: 0;
+  padding-inline-start: 1.25rem;
+}
+
+.finance-warnings--clear {
+  border-color: rgb(34 197 94 / 30%);
+  border-inline-start-color: var(--dash-sev-good);
+  color: var(--dash-sev-good);
+}
+
+@media (max-width: 48rem) {
+  .finance-warnings {
+    padding: var(--space-md);
+  }
+}

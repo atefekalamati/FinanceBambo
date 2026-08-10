@@ -13,6 +13,8 @@ import { createApiPricesAdapter } from "../adapters/api/prices-api-adapter.js";
 import { createApiProgressAdapter } from "../adapters/api/progress-api-adapter.js";
 import { createApiInvoicesAdapter } from "../adapters/api/invoices-api-adapter.js";
 import { createApiAttachmentsAdapter } from "../adapters/api/attachments-api-adapter.js";
+import { createApiReportsAdapter } from "../adapters/api/reports-api-adapter.js";
+import { createMockReportsAdapter } from "../adapters/mock/reports-adapter.js";
 import { canAccessRoute } from "../core/auth/permissions.js";
 import { DEFAULT_ROUTE, ROUTES } from "../core/config/routes.js";
 import { createHashRouter } from "../core/routing/router.js";
@@ -66,7 +68,7 @@ function renderRoute(route, context, adapters) {
     return;
   }
 
-  if (route.key === "finance-home") root.append(createFinanceHomePage());
+  if (route.key === "finance-home") root.append(createFinanceHomePage({ reportsAdapter: adapters.reports, progressAdapter: adapters.progress }));
   if (route.key === "financial-items") {
     root.append(createFinancialItemsPage({ context, adapter: adapters.financialItems }));
   }
@@ -101,6 +103,8 @@ try {
   const invoicesState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedInvoicesState) ? requestedInvoicesState : "success";
   const requestedFilesState = new URLSearchParams(window.location.search).get("filesState");
   const filesState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedFilesState) ? requestedFilesState : "success";
+  const requestedReportsState = new URLSearchParams(window.location.search).get("reportsState");
+  const reportsState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedReportsState) ? requestedReportsState : "success";
   let adapters;
   if (document.body.dataset.financeRuntime === "host") {
     const client = createApiClient();
@@ -112,6 +116,7 @@ try {
       progress: createApiProgressAdapter(context, client),
       invoices,
       attachments: createApiAttachmentsAdapter(context, client, invoices),
+      reports: createApiReportsAdapter(context, client),
     });
   } else {
     const invoices = createMockInvoicesAdapter(context, { initialState: invoicesState });
@@ -122,6 +127,7 @@ try {
       progress: createMockProgressAdapter(context, { initialState: progressState }),
       invoices,
       attachments: createMockAttachmentsAdapter(context, { initialState: filesState, invoiceAdapter: invoices }),
+      reports: createMockReportsAdapter(context, { initialState: reportsState }),
     });
   }
   renderContext(context);

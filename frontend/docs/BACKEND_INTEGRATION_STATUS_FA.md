@@ -22,6 +22,7 @@
 | فاکتور | List/Get/Create/Patch/Confirm/Void/Corrective |
 | فایل | `POST files` و فهرست موقت همان نشست |
 | استخراج | Retry و Confirm برای Draft موجود |
+| خلاصه مالی زنده | `GET reports/live` با تاریخ گزارش و Snapshot پیشرفت انتخاب‌شده |
 
 ## روند داینامیک قیمت
 
