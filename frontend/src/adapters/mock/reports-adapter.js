@@ -1,0 +1,39 @@
+import { ApiError } from "../../core/api/api-error.js";
+
+function wait(duration = 320) {
+  return new Promise((resolve) => setTimeout(resolve, duration));
+}
+
+export function createMockReportsAdapter(context, { initialState = "success" } = {}) {
+  async function getLiveReport({ reportingDate, progressSnapshotId }) {
+    await wait();
+    if (initialState === "error") throw new ApiError({ status: 503, code: "LIVE_REPORT_UNAVAILABLE", message: "دریافت خلاصه مالی زنده انجام نشد.", requestId: "mock-live-report-001" });
+    if (initialState === "empty") return null;
+    return {
+      reportingDate,
+      progressSnapshotId,
+      metrics: {
+        initialEstimateIrr: "18650000000",
+        actualCostIrr: "6240000000",
+        currentExecutedValueIrr: "7150000000",
+        remainingPhysicalCostIrr: "12840000000",
+        moneyRequiredToContinueIrr: "11610000000",
+        forecastFinalCostIrr: "17850000000",
+        actualCostPerSquareMeterIrr: "1468235",
+        forecastPerSquareMeterIrr: "4200000",
+      },
+      breakdown: [
+        { resourceType: "material", initialEstimateIrr: "9800000000", actualCostIrr: "3920000000", forecastFinalIrr: "9360000000" },
+        { resourceType: "labor", initialEstimateIrr: "4100000000", actualCostIrr: "1380000000", forecastFinalIrr: "3980000000" },
+        { resourceType: "equipment", initialEstimateIrr: "2750000000", actualCostIrr: "610000000", forecastFinalIrr: "2540000000" },
+        { resourceType: "general_cost", initialEstimateIrr: "2000000000", actualCostIrr: "330000000", forecastFinalIrr: "1970000000" },
+      ],
+      topPriceVariances: [],
+      topQuantityVariances: [],
+      warnings: [{ code: "CURRENT_PRICE_MISSING", message: "Current price is missing.", estimateLineId: null }],
+      scope: { organizationId: context.organizationId, projectId: context.projectId },
+    };
+  }
+
+  return Object.freeze({ getLiveReport });
+}
