@@ -16,7 +16,7 @@ class ImportTests(unittest.TestCase):
  def test_price_excel_requires_explicit_currency_and_normalizes_toman(self):
   data=book([["resourceCode","unitPrice","currency","effectiveFrom","scope"],["M1",100,"TOMAN","2026-08-08","project"]])
   rows,errors=parse_excel(data,"prices","TOMAN");self.assertEqual([],errors);self.assertEqual("1000",rows[0]["unitPriceIrr"])
-  _,errors=parse_excel(data,"prices","IRR");self.assertEqual("explicit_currency_mismatch",errors[0]["reason"])
+  rows,errors=parse_excel(data,"prices","IRR");self.assertEqual([],errors);self.assertEqual("1000",rows[0]["unitPriceIrr"])
  def test_preview_reports_columns_and_estimate_source(self):
   _,errors=parse_excel(book([["resourceCode"],["M1"]]),"estimate");self.assertTrue(errors)
   data=book([["resourceCode","activityExternalId","assignmentExternalId","originalQuantity","source"],["M1","A1","AS1","2.5","manual_entry"]])
@@ -27,6 +27,11 @@ class ImportTests(unittest.TestCase):
   self.assertEqual([2,3],[row["rowNumber"] for row in rows]);self.assertEqual({"negative_value","invalid_decimal"},{issue["reason"] for issue in errors})
   rows,errors=parse_excel(book([["resourceCode"],["M1"]]),"prices","IRR")
   self.assertEqual([],rows);self.assertIn("required_column",{issue["reason"] for issue in errors})
+ def test_wrong_template_and_unknown_columns_are_rejected(self):
+  rows,errors=parse_excel(book([["resourceCode","unitPrice","currency","effectiveFrom","scope","title"],["M1","1","IRR","2026-08-10","project","x"]]),"prices","IRR")
+  self.assertEqual([],rows);self.assertIn({"row":1,"field":"title","reason":"unexpected_column"},errors)
+  rows,errors=parse_excel(book([["resourceCode","unitPrice","currency","effectiveFrom","scope"],["M1","1","IRR","2026-08-10","project"]]),"estimate")
+  self.assertEqual([],rows);self.assertIn("required_column",{issue["reason"] for issue in errors})
 
 RESOURCE_ID=UUID("11111111-1111-4111-8111-111111111111")
 SCOPE=SimpleNamespace(organization_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),project_id="project-a",actor_user_id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"))
@@ -35,7 +40,10 @@ class PreviewRepo:
  def __init__(self):self.saved=None
  async def resolve_resources(self,scope,codes):
   self.resolve_scope=scope
-  return [{"id":RESOURCE_ID,"code":"M1","title":"میلگرد","base_unit":"kg"}] if "M1" in codes else []
+  resources=[]
+  if "M1" in codes:resources.append({"id":RESOURCE_ID,"code":"M1","title":"میلگرد","base_unit":"kg","resource_type":"material"})
+  if "G1" in codes:resources.append({"id":UUID("44444444-4444-4444-8444-444444444444"),"code":"G1","title":"هزینه مجوز","base_unit":None,"resource_type":"general_cost"})
+  return resources
  async def save_preview(self,*args):self.saved=args
  async def commit(self,scope,preview_id,at):return 2
 
@@ -57,6 +65,13 @@ class ImportPreviewServiceTests(unittest.IsolatedAsyncioTestCase):
   result=await service.preview(SCOPE,"prices",data,"TOMAN");payload=ImportPreviewResponse(**result).model_dump(mode="json",by_alias=True)
   self.assertEqual(("125","1250","2026-08-10","valid"),(payload["rows"][0]["unitPrice"],payload["rows"][0]["normalizedUnitPriceIrr"],payload["rows"][0]["effectiveFrom"],payload["rows"][0]["status"]))
   self.assertEqual({"invalid_decimal","invalid_date","resource_not_found"},{issue["reason"] for issue in payload["rows"][1]["errors"]})
+ async def test_general_cost_preview_persists_integer_irr_in_money_field(self):
+  repo=PreviewRepo();service=self.service(repo)
+  data=book([["resourceCode","activityExternalId","assignmentExternalId","originalQuantity","source"],["G1","A1","AS1","2500000","excel_import"]])
+  result=await service.preview(SCOPE,"estimate",data)
+  self.assertTrue(result["canCommit"]);self.assertEqual("2500000",repo.saved[5][0]["originalUnitPriceIrr"])
+  invalid=book([["resourceCode","activityExternalId","assignmentExternalId","originalQuantity","source"],["G1","A1","AS1","2.5","excel_import"]])
+  result=await service.preview(SCOPE,"estimate",invalid);self.assertFalse(result["canCommit"]);self.assertEqual("fractional_irr",result["rows"][0]["errors"][-1]["reason"])
  async def test_commit_accepts_only_server_preview_identifier(self):
   repo=PreviewRepo();service=self.service(repo);preview_id=UUID("33333333-3333-4333-8333-333333333333")
   result=await service.commit(SCOPE,preview_id);self.assertEqual(2,result["committedCount"])

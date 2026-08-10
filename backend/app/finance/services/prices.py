@@ -17,10 +17,19 @@ class FinancePriceService:
   for resource_id,versions in histories.items():
    project=[value for value in versions if value.scope_kind=="project"]
    organization=[value for value in versions if value.scope_kind=="organization"]
+   project_trend=latest_price_trend(project);organization_trend=latest_price_trend(organization)
+   project_current=None if project_trend is None else project_trend[0]
+   organization_current=None if organization_trend is None else organization_trend[0]
    selected=project or organization
    trend=latest_price_trend(selected)
    if trend is None:
-    result.append({"resource_id":resource_id,"current_price_irr":None,"previous_price_irr":None,"latest_change_percent":None,"trend_direction":"none","scope_kind":None,"trend_points":[]});continue
+    result.append({"resource_id":resource_id,"organization_price_irr":None,"organization_effective_from":None,"project_price_irr":None,"project_effective_from":None,"current_price_irr":None,"current_effective_from":None,"previous_price_irr":None,"latest_change_percent":None,"trend_direction":"none","scope_kind":None,"trend_points":[]});continue
    current,previous,percent,direction,points=trend
-   result.append({"resource_id":resource_id,"current_price_irr":current.unit_price_irr,"previous_price_irr":None if previous is None else previous.unit_price_irr,"latest_change_percent":percent,"trend_direction":direction,"scope_kind":current.scope_kind,"trend_points":[{"effective_from":value.effective_from,"unit_price_irr":value.unit_price_irr} for value in points]})
+   result.append({"resource_id":resource_id,
+    "organization_price_irr":None if organization_current is None else organization_current.unit_price_irr,
+    "organization_effective_from":None if organization_current is None else organization_current.effective_from,
+    "project_price_irr":None if project_current is None else project_current.unit_price_irr,
+    "project_effective_from":None if project_current is None else project_current.effective_from,
+    "current_price_irr":current.unit_price_irr,"current_effective_from":current.effective_from,
+    "previous_price_irr":None if previous is None else previous.unit_price_irr,"latest_change_percent":percent,"trend_direction":direction,"scope_kind":current.scope_kind,"trend_points":[{"effective_from":value.effective_from,"unit_price_irr":value.unit_price_irr} for value in points]})
   return result

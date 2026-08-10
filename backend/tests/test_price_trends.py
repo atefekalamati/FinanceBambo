@@ -55,6 +55,7 @@ class PriceTrendServiceTests(unittest.IsolatedAsyncioTestCase):
         repository=Repository(rows);scope=SimpleNamespace(organization_id=ORG,project_id="p1")
         result=(await FinancePriceService(repository).trends(scope,date(2026,4,1)))[0]
         self.assertEqual((Decimal("121"),Decimal("110"),Decimal("10.000000"),"up","project"),(result["current_price_irr"],result["previous_price_irr"],result["latest_change_percent"],result["trend_direction"],result["scope_kind"]))
+        self.assertEqual((Decimal("100"),Decimal("121"),date(2026,3,1)),(result["organization_price_irr"],result["project_price_irr"],result["current_effective_from"]))
         self.assertEqual([Decimal("110"),Decimal("121")],[point["unit_price_irr"] for point in result["trend_points"]])
         self.assertEqual([(scope,date(2026,4,1))],repository.calls)
 
@@ -68,9 +69,9 @@ class PriceTrendServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(("organization","down",Decimal("-10.000000")),(result["scope_kind"],result["trend_direction"],result["latest_change_percent"]))
 
     def test_json_is_camel_case_decimal_strings_and_old_price_response_is_unchanged(self):
-        trend=CurrentPriceTrendResponse(resourceId=RESOURCE,currentPriceIrr="121",previousPriceIrr="110",latestChangePercent="10.000000",trendDirection="up",scopeKind="project",trendPoints=[{"effectiveFrom":"2026-01-01","unitPriceIrr":"110"}])
+        trend=CurrentPriceTrendResponse(resourceId=RESOURCE,organizationPriceIrr="100",organizationEffectiveFrom="2026-01-01",projectPriceIrr="121",projectEffectiveFrom="2026-03-01",currentPriceIrr="121",currentEffectiveFrom="2026-03-01",previousPriceIrr="110",latestChangePercent="10.000000",trendDirection="up",scopeKind="project",trendPoints=[{"effectiveFrom":"2026-01-01","unitPriceIrr":"110"}])
         payload=trend.model_dump(by_alias=True,mode="json")
-        self.assertEqual("121",payload["currentPriceIrr"]);self.assertEqual("10.000000",payload["latestChangePercent"])
+        self.assertEqual("121",payload["currentPriceIrr"]);self.assertEqual("100",payload["organizationPriceIrr"]);self.assertEqual("10.000000",payload["latestChangePercent"])
         old=PriceResponse.from_domain(version(1,"100","2026-01-01")).model_dump(by_alias=True,mode="json")
         self.assertEqual({"scopeKind","unitPriceIrr","effectiveFrom","reason","id","resourceId","version","createdBy","createdAt"},set(old))
 

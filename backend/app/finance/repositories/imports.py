@@ -6,7 +6,7 @@ class PsycopgFinanceImportRepository:
  async def resolve_resources(self,s,codes):
   if not codes:return []
   async with self.db.cursor(row_factory=dict_row) as c:
-   await c.execute("SELECT id,code,title,base_unit FROM finance_resources WHERE organization_id=%s AND project_id=%s AND code=ANY(%s) AND deleted_at IS NULL",(s.organization_id,s.project_id,list(codes)))
+   await c.execute("SELECT id,code,title,base_unit,resource_type FROM finance_resources WHERE organization_id=%s AND project_id=%s AND code=ANY(%s) AND deleted_at IS NULL",(s.organization_id,s.project_id,list(codes)))
    return await c.fetchall()
  async def save_preview(self,s,pid,kind,currency,file_hash,rows,errors,at):
   async with self.db.transaction():
@@ -20,15 +20,17 @@ class PsycopgFinanceImportRepository:
     count=0
     for row in batch["normalized_rows"]:
      if row.get("resourceId"):
-      await c.execute("SELECT id FROM finance_resources WHERE organization_id=%s AND project_id=%s AND id=%s AND deleted_at IS NULL",(s.organization_id,s.project_id,row["resourceId"]))
+      await c.execute("SELECT id,resource_type FROM finance_resources WHERE organization_id=%s AND project_id=%s AND id=%s AND deleted_at IS NULL",(s.organization_id,s.project_id,row["resourceId"]))
      else:
-      await c.execute("SELECT id FROM finance_resources WHERE organization_id=%s AND project_id=%s AND code=%s AND deleted_at IS NULL",(s.organization_id,s.project_id,row["resourceCode"]))
+      await c.execute("SELECT id,resource_type FROM finance_resources WHERE organization_id=%s AND project_id=%s AND code=%s AND deleted_at IS NULL",(s.organization_id,s.project_id,row["resourceCode"]))
      resource=await c.fetchone()
      if resource is None:raise ValueError("resource code not found")
      if batch["import_kind"]=="prices":
       await c.execute("SELECT COALESCE(max(version),0)+1 next_version FROM price_versions WHERE organization_id=%s AND project_id=%s AND resource_id=%s AND scope_kind=%s",(s.organization_id,s.project_id,resource["id"],row["scope"]));version=(await c.fetchone())["next_version"]
       await c.execute("INSERT INTO price_versions(id,organization_id,project_id,resource_id,scope_kind,version,unit_price_irr,effective_from,reason,created_by,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'Excel import',%s,%s)",(uuid4(),s.organization_id,s.project_id,resource["id"],row["scope"],version,row["unitPriceIrr"],row["effectiveFrom"],s.actor_user_id,at))
-     else:await c.execute("INSERT INTO estimate_lines(id,organization_id,project_id,resource_id,activity_external_id,assignment_external_id,original_quantity,source,created_by,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,'excel_import',%s,%s)",(uuid4(),s.organization_id,s.project_id,resource["id"],row["activityExternalId"],row["assignmentExternalId"],row["originalQuantity"],s.actor_user_id,at))
+     elif resource["resource_type"]=="general_cost":
+      await c.execute("INSERT INTO estimate_lines(id,organization_id,project_id,resource_id,activity_external_id,assignment_external_id,original_quantity,original_unit_price_irr,source,created_by,created_at) VALUES(%s,%s,%s,%s,%s,%s,NULL,%s,'excel_import',%s,%s)",(uuid4(),s.organization_id,s.project_id,resource["id"],row["activityExternalId"],row["assignmentExternalId"],row["originalUnitPriceIrr"],s.actor_user_id,at))
+     else:await c.execute("INSERT INTO estimate_lines(id,organization_id,project_id,resource_id,activity_external_id,assignment_external_id,original_quantity,original_unit_price_irr,source,created_by,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,NULL,'excel_import',%s,%s)",(uuid4(),s.organization_id,s.project_id,resource["id"],row["activityExternalId"],row["assignmentExternalId"],row["originalQuantity"],s.actor_user_id,at))
      count+=1
     await c.execute("UPDATE finance_import_batches SET status='committed',committed_at=%s WHERE organization_id=%s AND project_id=%s AND id=%s",(at,s.organization_id,s.project_id,pid))
     await c.execute("INSERT INTO finance_audit_events(id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,after_values,occurred_at) VALUES(%s,%s,%s,%s,'finance_import.committed','finance_import_batches',%s,%s,%s)",(uuid4(),s.organization_id,s.project_id,s.actor_user_id,pid,Jsonb({"kind":batch["import_kind"],"rowCount":count}),at))

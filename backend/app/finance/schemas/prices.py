@@ -37,11 +37,16 @@ class PriceTrendPoint(ApiModel):
 
 class CurrentPriceTrendResponse(ApiModel):
     resource_id:UUID
+    organization_price_irr:Decimal|None=None
+    organization_effective_from:date|None=None
+    project_price_irr:Decimal|None=None
+    project_effective_from:date|None=None
     current_price_irr:Decimal|None
+    current_effective_from:date|None=None
     previous_price_irr:Decimal|None
     latest_change_percent:Decimal|None
     trend_direction:Literal["up","down","flat","none"]
     scope_kind:Literal["organization","project"]|None
     trend_points:list[PriceTrendPoint]
-    @field_serializer("current_price_irr","previous_price_irr","latest_change_percent")
+    @field_serializer("organization_price_irr","project_price_irr","current_price_irr","previous_price_irr","latest_change_percent")
     def decimal_string(self,v):return None if v is None else format(v,"f")

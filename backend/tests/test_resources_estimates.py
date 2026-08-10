@@ -8,7 +8,7 @@ from uuid import UUID
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.finance.domain.resources import EstimateLine, FinanceResource
+from app.finance.domain.resources import EstimateLine, FinanceResource, UnitMismatch
 from app.finance.schemas.resources import (
     EstimateLineCreate,
     EstimateRevisionCreate,
@@ -85,6 +85,18 @@ class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Decimal("10.0000"), revised.original_quantity)
         self.assertEqual(Decimal("12.5000"), revised.revised_quantity)
         self.assertEqual(1, len(self.repo.revisions))
+
+    async def test_general_cost_ui_amount_is_normalized_to_money_not_quantity(self):
+        resource = await self.service.create_resource(
+            self.scope, ResourceCreate(type="general_cost", code="GC", title="هزینه مجوز")
+        )
+        line = await self.service.create_estimate_line(
+            self.scope, EstimateLineCreate(resourceId=resource.id, activityExternalId="A1", originalQuantity="2500000", source="manual_entry")
+        )
+        self.assertIsNone(line.original_quantity)
+        self.assertEqual((Decimal("2500000"),Decimal("2500000")),(line.original_unit_price_irr,line.revised_quantity))
+        with self.assertRaises(UnitMismatch):
+            await self.service.create_estimate_line(self.scope,EstimateLineCreate(resourceId=resource.id,activityExternalId="A1",originalQuantity="2.5",source="manual_entry"))
 
     def test_source_is_closed_enum_and_reason_is_required(self):
         with self.assertRaises(ValueError):
