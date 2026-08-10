@@ -1,4 +1,5 @@
 import { ApiError } from "../../core/api/api-error.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { validateEstimateLine, validateEstimateRevision, validateResource } from "../../features/financial-items/financial-items-validation.js";
 import { compareDecimalStrings } from "../../shared/validation/decimal-validation.js";
 
@@ -109,7 +110,7 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
     const isGeneralCost = resource.type === "general_cost";
     const [amountInteger, amountFraction] = validation.values.originalQuantity.split(".");
     if (isGeneralCost && amountFraction !== undefined) {
-      throw new ApiError({ status: 422, code: "VALIDATION_ERROR", message: "مبلغ IRR باید عدد صحیح ریال باشد." });
+      throw new ApiError({ status: 422, code: "VALIDATION_ERROR", message: `مبلغ IRR باید عدد صحیح ${CURRENCY_LABELS.IRR} باشد.` });
     }
     const amountValue = amountInteger;
     const line = {
@@ -250,7 +251,7 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
 
     const [amountInteger, amountFraction] = validation.values.revisedValue.split(".");
     if (isGeneralCost && amountFraction !== undefined) {
-      throw new ApiError({ status: 422, code: "VALIDATION_ERROR", message: "مبلغ IRR باید عدد صحیح ریال باشد." });
+      throw new ApiError({ status: 422, code: "VALIDATION_ERROR", message: `مبلغ IRR باید عدد صحیح ${CURRENCY_LABELS.IRR} باشد.` });
     }
 
     const previousValue = line.revisedQuantity ?? line.revisedAmount;

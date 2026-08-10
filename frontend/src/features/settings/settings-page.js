@@ -2,6 +2,7 @@ import { hasPermission } from "../../core/auth/permissions.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatArea, formatBusinessDate, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { validateSettingsRevision } from "./settings-validation.js";
@@ -89,7 +90,7 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
 
   function renderEmpty() {
     const card = element("section", "state-card settings-empty");
-    card.append(element("h2", "", "تنظیمات مالی هنوز ثبت نشده است"), element("p", "", "برای شروع، زیربنای کل پروژه را ثبت کنید. واحد پول رسمی به‌صورت ثابت ریال خواهد بود."));
+    card.append(element("h2", "", "تنظیمات مالی هنوز ثبت نشده است"), element("p", "", `برای شروع، زیربنای کل پروژه را ثبت کنید. واحد پول رسمی به‌صورت ثابت ${CURRENCY_LABELS.IRR} خواهد بود.`));
     const button = element("button", "button button--primary", "ثبت اولین تنظیمات");
     button.type = "button";
     button.addEventListener("click", () => root.replaceChildren(renderHeader(), renderEditor(null)));
@@ -104,9 +105,9 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
     title.lastElementChild.append(element("h2", "", "واحد پول پروژه"), element("p", "", "ذخیره و تبادل رسمی مبالغ از نمایش کاربر جدا است."));
     const grid = element("div", "currency-grid");
     const official = element("article", "currency-item");
-    official.append(element("span", "currency-item__label", "واحد رسمی ذخیره‌سازی"), element("strong", "numeric", "ریال"), element("small", "", "ریال ایران · عدد صحیح در سمت سرور"));
+    official.append(element("span", "currency-item__label", "واحد رسمی ذخیره‌سازی"), element("strong", "numeric", CURRENCY_LABELS.IRR), element("small", "", `${CURRENCY_LABELS.IRR} ایران · عدد صحیح در سمت سرور`));
     const display = element("article", "currency-item currency-item--active");
-    display.append(element("span", "currency-item__label", "نمایش پیش‌فرض رابط کاربری"), element("strong", "", "تومان"), element("small", "", "تبدیل فقط در لایه نمایش؛ هر تومان برابر ۱۰ ریال"));
+    display.append(element("span", "currency-item__label", "نمایش پیش‌فرض رابط کاربری"), element("strong", "", CURRENCY_LABELS.TOMAN), element("small", "", `تبدیل فقط در لایه نمایش؛ هر ${CURRENCY_LABELS.TOMAN} برابر ۱۰ ${CURRENCY_LABELS.IRR}`));
     grid.append(official, display);
     section.append(title, grid);
     return section;
@@ -214,7 +215,7 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
     const areaCard = element("article", "settings-overview__item");
     areaCard.append(element("span", "", "زیربنای کل فعلی"), element("strong", "numeric", formatArea(data.grossBuiltArea)), element("small", "", `بازنگری ${data.revision}`));
     const currencyCard = element("article", "settings-overview__item");
-    currencyCard.append(element("span", "", "سیاست پول"), element("strong", "", "ریال ← تومان"), element("small", "", "ذخیره رسمی ← نمایش پیش‌فرض"));
+    currencyCard.append(element("span", "", "سیاست پول"), element("strong", "", `${CURRENCY_LABELS.IRR} ← ${CURRENCY_LABELS.TOMAN}`), element("small", "", "ذخیره رسمی ← نمایش پیش‌فرض"));
     overview.append(areaCard, currencyCard);
 
     const history = element("section", "settings-card settings-history-card");

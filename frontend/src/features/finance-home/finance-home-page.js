@@ -1,5 +1,6 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
 import { buildBreakdownPresentation } from "./report-presentation.js";
 
@@ -28,7 +29,7 @@ const WORK_AREAS = Object.freeze([
   { key: "prices", title: "قیمت‌ها و تبدیل واحد", description: "ثبت قیمت پایه، جایگزینی پروژه و مشاهده تاریخچه تغییرات", meta: "قیمت روز · تاریخچه · واحد", href: "#/prices" },
   { key: "progress", title: "پیشرفت و مقادیر اجرا", description: "مشاهده نسخه ثبت‌شده پیشرفت، کیفیت داده و جایگزینی ممیزی‌شده", meta: "نسخه ثبت‌شده · اجرا · هشدار", href: "#/progress" },
   { key: "invoices", title: "فاکتورها", description: "مشاهده فهرست، وضعیت، منبع، فروشنده، مبلغ و جزئیات خطوط", meta: "فهرست · جزئیات · وضعیت", href: "#/invoices" },
-  { key: "settings", title: "تنظیمات مالی", description: "زیربنای کل، واحد پول نمایشی و تنظیمات سطح پروژه", meta: "زیربنا · تومان · دسترسی", href: "#/settings" },
+  { key: "settings", title: "تنظیمات مالی", description: "زیربنای کل، واحد پول نمایشی و تنظیمات سطح پروژه", meta: `زیربنا · ${CURRENCY_LABELS.TOMAN} · دسترسی`, href: "#/settings" },
   { key: "audit", title: "تاریخچه و ممیزی", description: "ردیابی بازنگری، جایگزینی، تأییدها و عملیات حساس مالی", meta: "کاربر · زمان · دلیل" },
 ]);
 
@@ -38,7 +39,7 @@ function formatTomanFromIrr(value) {
   const whole = amount / 10n;
   const remainder = amount < 0n ? -(amount % 10n) : amount % 10n;
   const display = remainder === 0n ? whole.toString() : `${amount < 0n && whole === 0n ? "-" : ""}${whole}.${remainder}`;
-  return `تومان ${formatDisplayNumber(display)}`;
+  return `${CURRENCY_LABELS.TOMAN} ${formatDisplayNumber(display)}`;
 }
 
 function createTomanDisplay(value) {

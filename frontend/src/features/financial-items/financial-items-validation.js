@@ -1,4 +1,5 @@
 import { validatePositiveDecimal } from "../../shared/validation/decimal-validation.js";
+import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { isResourceType } from "./financial-items-model.js";
 
 function requiredText(value, label) {
@@ -55,12 +56,12 @@ export function validateEstimateRevision(values, { isGeneralCost = false } = {})
   const revisedValue = validatePositiveDecimal(values.revisedValue, {
     precision: isGeneralCost ? 2 : 4,
     requiredMessage: isGeneralCost ? "مبلغ اصلاح‌شده الزامی است." : "مقدار اصلاح‌شده الزامی است.",
-    invalidMessage: isGeneralCost ? "مبلغ اصلاح‌شده باید عدد مثبت به ریال باشد." : "مقدار اصلاح‌شده باید مثبت و حداکثر چهار رقم اعشار باشد.",
+    invalidMessage: isGeneralCost ? `مبلغ اصلاح‌شده باید عدد مثبت به ${CURRENCY_LABELS.IRR} باشد.` : "مقدار اصلاح‌شده باید مثبت و حداکثر چهار رقم اعشار باشد.",
   });
   if (isGeneralCost && revisedValue.valid) {
     if (revisedValue.value.includes(".")) {
       revisedValue.valid = false;
-      revisedValue.message = "مبلغ باید عدد صحیح ریال باشد.";
+      revisedValue.message = `مبلغ باید عدد صحیح ${CURRENCY_LABELS.IRR} باشد.`;
     }
   }
   const reason = requiredText(values.reason, "دلیل بازنگری");
