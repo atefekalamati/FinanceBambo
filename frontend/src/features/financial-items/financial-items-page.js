@@ -299,7 +299,7 @@ function createEstimateImportDialog(adapter, onSaved) {
     const notice = element(
       "div",
       preview.canCommit ? "inline-notice import-notice--valid" : "overrun-warning",
-      preview.canCommit ? "تمام ردیف‌ها معتبرند و فایل آماده ثبت نهایی است." : "فایل ثبت نشده است. خطاهای ردیفی را در فایل اصلاح و دوباره بارگذاری کنید.",
+      preview.canCommit ? "تمام ردیف‌ها معتبرند و فایل آماده ثبت نهایی است." : preview.fileErrors?.length ? `فایل یا قالب معتبر نیست: ${preview.fileErrors.join(" · ")}` : "فایل ثبت نشده است. خطاهای ردیفی را در فایل اصلاح و دوباره بارگذاری کنید.",
     );
     const commit = element("button", "button button--primary", "ثبت نهایی ردیف‌های معتبر");
     commit.type = "button";

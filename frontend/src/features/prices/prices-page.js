@@ -226,7 +226,7 @@ function createPriceImportDialog(adapter, onSaved) {
     });
     table.append(tableHead, body);
     wrapper.append(table);
-    const notice = element("div", preview.canCommit ? "inline-notice" : "price-import-warning", preview.canCommit ? "تمام ردیف‌ها معتبرند و آماده ثبت نهایی هستند." : "فایل ثبت نشده است. خطاها را اصلاح و دوباره پیش‌نمایش بگیرید.");
+    const notice = element("div", preview.canCommit ? "inline-notice" : "price-import-warning", preview.canCommit ? "تمام ردیف‌ها معتبرند و آماده ثبت نهایی هستند." : preview.fileErrors?.length ? `فایل یا قالب معتبر نیست: ${preview.fileErrors.join(" · ")}` : "فایل ثبت نشده است. خطاها را اصلاح و دوباره پیش‌نمایش بگیرید.");
     const commit = element("button", "button button--primary", "ثبت نهایی قیمت‌ها");
     commit.type = "button";
     commit.disabled = !preview.canCommit;
