@@ -235,6 +235,10 @@ function renderFinanceHome(data) {
 
   const breakdownRows = buildBreakdownPresentation(data.breakdown);
   const breakdown = breakdownRows.length ? createBreakdownChart(breakdownRows) : document.createDocumentFragment();
+  const insights = document.createElement("section");
+  insights.className = "finance-insights";
+  insights.setAttribute("aria-label", "تحلیل و هشدارهای مالی");
+  insights.append(breakdown, warnings);
 
   const areasHeader = document.createElement("div");
   areasHeader.className = "section-heading";
@@ -244,7 +248,7 @@ function renderFinanceHome(data) {
   areas.setAttribute("aria-label", "بخش‌های امور مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  fragment.append(intro, summaryHeader, summary, warnings, breakdown, areasHeader, areas);
+  fragment.append(intro, summaryHeader, summary, insights, areasHeader, areas);
   return fragment;
 }
 

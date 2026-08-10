@@ -61,6 +61,65 @@
   line-height: 1.45;
 }
 
+/* --------------------------------------------------------------------------
+   Overview hierarchy
+   -------------------------------------------------------------------------- */
+
+.finance-insights {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(17rem, .85fr);
+  align-items: stretch;
+  gap: .75rem;
+  margin-block: .75rem var(--space-lg);
+}
+
+.finance-insights .finance-breakdown,
+.finance-insights .finance-warnings {
+  min-inline-size: 0;
+  margin-block: 0;
+}
+
+.finance-home-page .work-area-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.finance-home-page .work-area-card {
+  min-block-size: 7rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .75rem;
+  padding: .9rem;
+}
+
+.finance-home-page .work-area-card__marker {
+  inline-size: 2.35rem;
+  block-size: 2.35rem;
+  font-size: var(--font-size-md);
+}
+
+.finance-home-page .work-area-card h2 {
+  margin-block: 0 .2rem;
+  font-size: var(--font-size-md);
+}
+
+.finance-home-page .work-area-card p {
+  margin-block: 0 .35rem;
+  color: var(--color-text-muted);
+  font-size: .75rem;
+  line-height: 1.55;
+}
+
+.finance-home-page .work-area-card__meta {
+  font-size: .7rem;
+}
+
+.finance-home-page .work-area-card .button {
+  grid-column: 1 / -1;
+  inline-size: 100%;
+  min-block-size: 2rem;
+  padding-block: .35rem;
+}
+
 .summary-card--unavailable {
   border-color: var(--dash-sev-med);
 }
@@ -79,15 +138,19 @@
   background: var(--app-card-navy);
 }
 
+.finance-insights .finance-warnings {
+  display: flex;
+  flex-direction: column;
+}
+
 .finance-warnings h2 {
   margin: 0 0 var(--space-xs);
   font-size: var(--font-size-md);
 }
 
 .finance-warnings ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs) 1.5rem;
+  display: grid;
+  gap: var(--space-sm);
   margin-block-end: 0;
   padding-inline-start: 1.25rem;
 }
@@ -242,6 +305,14 @@
   .finance-home-page .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .finance-insights {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-home-page .work-area-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 30rem) {
@@ -267,6 +338,10 @@
 
   .finance-home-page .summary-card__unit {
     display: none;
+  }
+
+  .finance-home-page .work-area-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
