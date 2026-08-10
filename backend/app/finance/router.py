@@ -285,7 +285,7 @@ async def confirm_extraction(projectId:str,draftId:UUID,payload:ExtractionConfir
 
 @router.get("/reports/live",response_model=LiveReportResponse)
 async def live_report(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None):
-    scope=await _resource_scope(projectId,request,"finance.view")
+    scope=await _resource_scope(projectId,request,"finance_report.view")
     return await request.app.state.finance_live_report_service.live(scope,reportingDate,progressSnapshotId)
 
 @router.post("/report-snapshots",response_model=ReportSnapshotReference,status_code=201)
