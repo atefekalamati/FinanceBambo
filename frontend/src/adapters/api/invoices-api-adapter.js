@@ -55,13 +55,19 @@ export function createApiInvoicesAdapter(context, client) {
     return structuredClone(targetCache);
   }
   async function getInvoices({ query = "", status = "", source = "", page = 1, pageSize = 50 } = {}) {
-    const payload = (await client.request(`${base}/invoices`)).map(mapInvoice);
-    const normalized = query.trim().toLocaleLowerCase("fa-IR");
-    const filtered = payload.filter((item) => (!normalized || `${item.invoiceNumber ?? ""} ${item.vendorName} ${item.description ?? ""}`.toLocaleLowerCase("fa-IR").includes(normalized)) && (!status || item.invoiceStatus === status) && (!source || item.source === source));
     const size = Math.min(Math.max(Number(pageSize) || 50, 1), 200);
-    const totalPages = Math.max(1, Math.ceil(filtered.length / size));
-    const current = Math.min(Math.max(Number(page) || 1, 1), totalPages);
-    return { items: filtered.slice((current - 1) * size, current * size).map(({ lines, ...item }) => ({ ...item, lineCount: lines.length })), page: current, pageSize: size, totalItems: filtered.length, totalPages };
+    const params = new URLSearchParams({ page: String(Math.max(Number(page) || 1, 1)), pageSize: String(size) });
+    if (query.trim()) params.set("query", query.trim());
+    if (status) params.set("status", status);
+    if (source) params.set("source", source);
+    const payload = await client.request(`${base}/invoices?${params.toString()}`);
+    return {
+      items: payload.items.map(mapInvoice).map(({ lines, ...item }) => ({ ...item, lineCount: lines.length })),
+      page: payload.page,
+      pageSize: payload.pageSize,
+      totalItems: payload.totalItems,
+      totalPages: payload.totalPages,
+    };
   }
   async function getInvoice(invoiceId) {
     return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}`));
@@ -74,7 +80,7 @@ export function createApiInvoicesAdapter(context, client) {
     return lines.map((line) => {
       const target = targetCache.find((item) => item.targetId === line.targetId);
       if (!target) throw new ApiError({ status: 422, code: "INVOICE_TARGET_INVALID", message: "اتصال خط فاکتور به قلم مالی معتبر نیست." });
-      return { estimateLineId: target.estimateLineId, resourceId: target.resourceId, quantity: line.targetType === "general_cost" ? null : line.quantity, unit: line.targetType === "general_cost" ? null : line.unit, unitPriceIrr: line.targetType === "general_cost" ? null : line.unitPriceIRR, description: line.description || null };
+      return { estimateLineId: target.estimateLineId, resourceId: target.resourceId, quantity: line.targetType === "general_cost" ? null : line.quantity, unit: line.targetType === "general_cost" ? null : line.unit, unitPriceIrr: line.targetType === "general_cost" ? null : line.unitPriceIRR, lineAmountIrr: line.targetType === "general_cost" ? line.lineAmountIRR : null, description: line.description || null };
     });
   }
   async function createDraft({ header, lines, adjustments, duplicateOverrideReason, idempotencyKey }) {

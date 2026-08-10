@@ -15,7 +15,7 @@
 | تنظیمات | `GET/PATCH settings` |
 | اقلام و متره | `GET/POST resources`، `GET/POST estimate-lines`، `POST revisions` |
 | ورود اکسل برآورد | `POST preview/commit` |
-| قیمت | `GET price-history`، `GET/POST resource prices` |
+| قیمت | `GET price-history`، `GET prices/current`، `GET/POST resource prices` |
 | تبدیل واحد | `GET/POST unit-conversions` |
 | ورود اکسل قیمت | `POST preview/commit` |
 | پیشرفت | `GET progress-snapshots`، `GET feed`، `POST progress-override` |
@@ -26,22 +26,21 @@
 
 ## روند داینامیک قیمت
 
-نمودار هر قلم از کل خروجی واقعی `GET /price-history` ساخته می‌شود:
+نمودار هر قلم از Read Model مرجع `GET /prices/current` ساخته می‌شود و تاریخچه کامل همچنان از `GET /price-history` دریافت می‌شود:
 
-1. فقط نسخه‌های همان `resourceId` و تا تاریخ امروز انتخاب می‌شوند.
-2. قیمت پروژه در صورت وجود بر قیمت سازمان اولویت دارد.
-3. نمودار فقط تاریخچه همان Scope انتخاب‌شده را نمایش می‌دهد.
-4. ترتیب نقاط با `effectiveFrom` و سپس `version` قطعی می‌شود.
-5. جهت روند با مقایسه دقیق Decimal string دو نسخه آخر و بدون Floating Point محاسبه می‌شود.
-6. نقاط ناقص حذف می‌شوند و کل صفحه را متوقف نمی‌کنند.
+1. Frontend تاریخ امروز را به‌عنوان `asOf` ارسال می‌کند.
+2. Backend قیمت پایه سازمان، Override پروژه، قیمت جاری و تاریخ اثر هرکدام را برمی‌گرداند.
+3. `scopeKind` و اولویت قیمت پروژه در Backend تعیین می‌شود.
+4. `trendPoints`، جهت روند و درصد آخرین تغییر مستقیماً از Read Model مرجع مصرف می‌شوند.
+5. Frontend تاریخچه Append-only را برای جدول جزئیات جداگانه نگه می‌دارد.
+6. مقادیر پولی همچنان Decimal string هستند و با Floating Point محاسبه نمی‌شوند.
 
 ## محدودیت‌های Backend که مانع اتصال کامل‌اند
 
 - فهرست فایل‌ها، شروع استخراج، Get/List استخراج و Reject وجود ندارد.
 - `ExtractionDraftResponse.version` وجود ندارد.
-- تاریخچه Revision تنظیمات و خطوط برآورد Endpoint مستقل ندارد؛ Frontend فقط وضعیت جاری واقعی را نمایش می‌دهد.
+- تاریخچه Revision تنظیمات Endpoint مستقل ندارد؛ تاریخچه خطوط برآورد اکنون داخل Read Model هر خط دریافت و نمایش داده می‌شود.
 - فهرست Invoice و Audit در Backend Pagination/Filter سروری ندارد؛ فیلتر فاکتور فعلاً پس از دریافت لیست انجام می‌شود.
-- Preview Import فقط خطاها را برمی‌گرداند و ردیف‌های معتبر را برای نمایش پیش‌نمایش کامل برنمی‌گرداند.
 - Catalog فعالیت‌های پروژه برای ساخت خط متره Endpoint ندارد؛ Frontend فقط فعالیت‌های موجود در خطوط دریافت‌شده را می‌شناسد.
 - مبلغ مستقیم هزینه عمومی در `InvoiceLineCreate` قابل ارسال نیست و محاسبه Backend آن را صفر می‌کند.
 - کنترل Duplicate در `prepare_extracted` اجرا نمی‌شود.

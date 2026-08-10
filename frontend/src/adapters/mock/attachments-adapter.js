@@ -115,6 +115,13 @@ export function createMockAttachmentsAdapter(context, { initialState = "success"
     return structuredClone(drafts);
   }
 
+  async function getExtraction(draftId) {
+    await wait(120);
+    const draft = drafts.find((item) => item.draftId === draftId);
+    if (!draft) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "پیش‌نویس استخراج پیدا نشد." });
+    return structuredClone(draft);
+  }
+
   async function getInvoiceTargets() {
     return invoiceAdapter?.getInvoiceTargets ? invoiceAdapter.getInvoiceTargets() : [];
   }
@@ -170,5 +177,5 @@ export function createMockAttachmentsAdapter(context, { initialState = "success"
     return structuredClone(confirmedInvoice);
   }
 
-  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, getInvoiceTargets, retryExtraction, rejectExtraction, confirmExtraction });
+  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, getExtraction, getInvoiceTargets, retryExtraction, rejectExtraction, confirmExtraction });
 }
