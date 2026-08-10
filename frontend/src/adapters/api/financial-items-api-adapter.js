@@ -35,9 +35,11 @@ function mapLine(value, resources) {
 
 export function createApiFinancialItemsAdapter(context, client) {
   const base = financeBase(context);
+  let resourceCache = [];
   async function getWorkspace() {
     const [resourcePayload, linePayload] = await Promise.all([client.request(`${base}/resources`), client.request(`${base}/estimate-lines`)]);
     const resources = resourcePayload.map(mapResource);
+    resourceCache = resources;
     const estimateLines = linePayload.map((line) => mapLine(line, resources));
     const activities = [...new Map(estimateLines.filter((line) => line.activityExternalId).map((line) => [line.activityExternalId, { activityExternalId: line.activityExternalId, taskExternalId: line.taskExternalId, title: line.activityTitle, wbsCode: line.wbsCode }])).values()];
     return { resources, estimateLines, activities, scope: { organizationId: context.organizationId, projectId: context.projectId } };
@@ -47,7 +49,16 @@ export function createApiFinancialItemsAdapter(context, client) {
     return getWorkspace();
   }
   async function createEstimateLine(values) {
-    await client.request(`${base}/estimate-lines`, jsonOptions("POST", { resourceId: values.resourceId, activityExternalId: values.activityExternalId || null, assignmentExternalId: values.assignmentExternalId || null, originalQuantity: values.originalQuantity, originalUnitPriceIrr: values.originalUnitPriceIRR || null, source: "manual_entry" }));
+    if (!resourceCache.length) await getWorkspace();
+    const general = resourceCache.find((resource) => resource.resourceId === values.resourceId)?.type === "general_cost";
+    await client.request(`${base}/estimate-lines`, jsonOptions("POST", {
+      resourceId: values.resourceId,
+      activityExternalId: values.activityExternalId || null,
+      assignmentExternalId: values.assignmentExternalId || null,
+      originalQuantity: general ? null : values.originalQuantity,
+      originalUnitPriceIrr: general ? values.originalQuantity : values.originalUnitPriceIRR || null,
+      source: "manual_entry",
+    }));
     return getWorkspace();
   }
   async function reviseEstimateLine({ lineId, revisedValue, reason }) {
