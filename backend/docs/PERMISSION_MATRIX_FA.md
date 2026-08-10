@@ -13,7 +13,8 @@
 
 | Endpoint/Action | Permission فعلی Backend | وضعیت قرارداد |
 |---|---|---|
-| GET settings/summary/resources/estimate-lines/prices/conversions/progress/invoices/live-report/audit | `finance.view` | موجود و معتبر |
+| GET settings/summary/resources/estimate-lines/prices/conversions/progress/invoices/audit | `finance.view` | خواندن عملیاتی امور مالی؛ موجود و معتبر |
+| GET reports/live | `finance_report.view` | مشاهده خروجی محاسبه‌شده گزارش مالی؛ موجود و معتبر |
 | PATCH settings برای `org_chief` | `finance.view` | رفتار نقش از PRD؛ تأیید mapping میزبان لازم |
 | PATCH settings برای سایر نقش‌های مجاز | `finance.edit` | موجود؛ target پیشنهادی `finance.manage_settings` |
 | POST/PATCH resources و estimate revisions | `finance.edit` | fallback موجود؛ targetهای جزئی پیشنهادی‌اند |
@@ -27,6 +28,13 @@
 | POST report snapshot | `finance_report.issue` | پیشنهادی؛ Seed/Approval میزبان الزامی |
 | GET report snapshot | `finance_report.view` | موجود و معتبر |
 | GET CSV/XLSX | `finance_report.export` | موجود و معتبر |
+
+## جداسازی قطعی Capabilityها
+
+- `finance_report.view` با `finance.view` برابر نیست و دسترسی گزارش‌محور نباید فاکتور، قیمت، متره، فایل، Extraction یا Audit عملیاتی را در دسترس قرار دهد.
+- `finance.view` با `finance_report.export` برابر نیست و مشاهده امور مالی مجوز Export گزارش ایجاد نمی‌کند.
+- `GET /summary` یک Projection زمینه‌ای امور مالی شامل زیربنا، ارز و Revision تنظیمات است و با `finance.view` باقی می‌ماند.
+- `GET /reports/live` فقط خروجی محاسبه‌شده گزارش را برمی‌گرداند و با `finance_report.view` محافظت می‌شود.
 
 ## نتیجه Review
 

@@ -1,6 +1,7 @@
 import sys
 import io
 import unittest
+import inspect
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -15,6 +16,7 @@ from app.finance.domain.reports import calculate_live_report
 from app.finance.domain.resources import FinanceRecordNotFound
 from app.finance.services.reports import FinanceLiveReportService
 from app.finance.schemas.reports import ReportSnapshotReference
+from app.finance.repositories.reports import PsycopgLiveReportRepository
 
 
 MATERIAL_LINE = UUID("10000000-0000-4000-8000-000000000001")
@@ -146,6 +148,24 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("initialEstimateIrr",workbook["Summary"]["A2"].value)
         self.assertTrue(workbook["Summary"].sheet_view.rightToLeft)
         self.assertEqual(1,len(workbook["Breakdown"]._charts))
+
+    async def test_live_and_issued_metrics_match_then_live_changes_without_rewriting_snapshot(self):
+        organization_id=UUID("40000000-0000-4000-8000-000000000001")
+        scope=SimpleNamespace(organization_id=organization_id,project_id="sample_site_01",actor_user_id=UUID(int=8))
+        repository=SnapshotRepository();service=FinanceLiveReportService(repository,Provider(organization_id,scope.project_id),lambda:UUID(int=10))
+        live_at_issue=await service.live(scope,date(2026,8,2),SNAPSHOT)
+        await service.issue(scope,date(2026,8,2),SNAPSHOT)
+        self.assertEqual({key:format(value,"f") for key,value in live_at_issue["metrics"].items() if value is not None},repository.value["calculated_metrics"])
+        frozen_metrics=dict(repository.payload["metrics"])
+        repository.source_estimate["current_unit_price_irr"]="250"
+        changed_live=await service.live(scope,date(2026,8,2),SNAPSHOT)
+        self.assertNotEqual(live_at_issue["metrics"]["forecastFinalCostIrr"],changed_live["metrics"]["forecastFinalCostIrr"])
+        self.assertEqual(frozen_metrics,repository.payload["metrics"])
+
+    def test_reporting_repository_reads_only_effective_invoices_and_never_extractions(self):
+        source=inspect.getsource(PsycopgLiveReportRepository.load)
+        self.assertIn("i.status IN ('confirmed','voided','corrected')",source)
+        self.assertNotIn("extraction_drafts",source)
 
     def test_exports_neutralize_spreadsheet_formula_injection(self):
         payload={"metrics":{"safe":"1"},"breakdown":[],"topPriceVariances":[{"resourceCode":"=CMD()","resourceTitle":"+bad","resourceType":"material","varianceIrr":"-10"}],"topQuantityVariances":[]}
