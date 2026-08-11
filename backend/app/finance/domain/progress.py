@@ -3,19 +3,33 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-def consumed_quantity(a):
+def resolve_progress_quantity(a):
+ warnings=[]
  o=a.get("manualOverride")
  if o is not None:
   required=("previousCalculatedValue","newValue","reason","userId","occurredAt","progressSnapshotId")
   if o.get("source")!="manual_override" or any(not o.get(k) for k in required):raise ValueError("manual override requires complete audit metadata")
-  return Decimal(o["newValue"]),"manual_override"
- if a.get("actualQuantity") is not None:return Decimal(a["actualQuantity"]),"assignment_actual"
- if a.get("actualWork") is not None:return Decimal(a["actualWork"]),"assignment_actual"
+  computed=Decimal(o["previousCalculatedValue"]);effective=Decimal(o["newValue"])
+  return {"computed_quantity":computed,"effective_quantity":effective,"source_method":"manual_override","quality":Decimal("1"),"warnings":warnings}
+ if a.get("actualQuantity") is not None:
+  value=Decimal(a["actualQuantity"])
+  return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_actual","quality":Decimal("1"),"warnings":warnings}
+ if a.get("actualWork") is not None:
+  value=Decimal(a["actualWork"])
+  return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_actual","quality":Decimal("1"),"warnings":warnings}
  planned=a.get("plannedQuantity")
- if planned is not None and a.get("assignmentWorkCompletePercent") is not None:return Decimal(planned)*Decimal(a["assignmentWorkCompletePercent"])/100,"assignment_work_percent"
+ if planned is not None and a.get("assignmentWorkCompletePercent") is not None:
+  value=Decimal(planned)*Decimal(a["assignmentWorkCompletePercent"])/100
+  return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_work_percent","quality":Decimal("0.8"),"warnings":warnings}
  percent=(a.get("task") or {}).get("taskProgressPercent")
- if planned is not None and percent is not None:return Decimal(planned)*Decimal(percent)/100,"task_progress_fallback"
+ if planned is not None and percent is not None:
+  value=Decimal(planned)*Decimal(percent)/100
+  return {"computed_quantity":value,"effective_quantity":value,"source_method":"task_progress_fallback","quality":Decimal("0.6"),"warnings":[{"code":"TASK_PROGRESS_FALLBACK","message":"Executed quantity was resolved from task progress because assignment-level progress was unavailable."}]}
  raise ValueError("manual override is required when no calculation source exists")
+
+def consumed_quantity(a):
+ resolved=resolve_progress_quantity(a)
+ return resolved["effective_quantity"],resolved["source_method"]
 
 @dataclass(frozen=True)
 class ProgressOverride:
