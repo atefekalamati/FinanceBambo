@@ -15,6 +15,9 @@ from .security.guards import authorize_finance_request
 from .services.settings import settings_edit_permission
 from .schemas.resources import (EstimateLineCreate, EstimateLineResponse,
     EstimateRevisionCreate, ResourceCreate, ResourcePatch, ResourceResponse)
+from .schemas.activities import ActivityCreate, ActivityListResponse, ActivityResponse
+from .schemas.unit_registry import UnitDefinitionResponse, UnitRegistryResponse
+from .domain.unit_registry import UNIT_REGISTRY
 from .schemas.prices import CurrentPriceTrendResponse,PriceCreate, PriceResponse
 from .schemas.conversions import ConversionCreate,ConversionPatch,ConversionResponse
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
@@ -111,6 +114,30 @@ async def get_resource(projectId: str, resourceId: UUID, request: Request):
 async def patch_resource(projectId: str, resourceId: UUID, payload: ResourcePatch, request: Request):
     scope = await _resource_scope(projectId, request, "finance.edit")
     return ResourceResponse.from_domain(await request.app.state.finance_resources_service.update_resource(scope, resourceId, payload))
+
+@router.get("/unit-registry", response_model=UnitRegistryResponse)
+async def unit_registry(projectId: str, request: Request):
+    await _resource_scope(projectId, request, "finance.view")
+    return UnitRegistryResponse(items=[UnitDefinitionResponse(**unit.__dict__) for unit in UNIT_REGISTRY.values()])
+
+@router.get("/activities", response_model=ActivityListResponse)
+async def list_project_activities(projectId: str, request: Request,
+    query: str | None = Query(None, min_length=1, max_length=200),
+    status: str | None = Query(None, pattern="^(active|inactive)$"),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200)):
+    scope = await _resource_scope(projectId, request, "finance.view")
+    items,total = await request.app.state.finance_resources_service.list_activities(scope, query, status, page, pageSize)
+    return ActivityListResponse(
+        items=[ActivityResponse.model_validate(item) for item in items],
+        page=page, page_size=pageSize, total_items=total,
+        total_pages=(total + pageSize - 1) // pageSize,
+    )
+
+@router.post("/activities", response_model=ActivityResponse, status_code=201, responses=FINANCE_ERROR_RESPONSES)
+async def create_project_activity(projectId: str, payload: ActivityCreate, request: Request):
+    scope = await _resource_scope(projectId, request, "finance.edit")
+    return ActivityResponse.model_validate(await request.app.state.finance_resources_service.create_activity(scope, payload))
 
 @router.get("/estimate-lines", response_model=list[EstimateLineResponse])
 async def list_estimate_lines(projectId: str, request: Request):

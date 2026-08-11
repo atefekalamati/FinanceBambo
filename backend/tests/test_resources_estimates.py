@@ -8,7 +8,7 @@ from uuid import UUID
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.finance.domain.resources import EstimateLine, FinanceResource, UnitMismatch
+from app.finance.domain.resources import ActivityInactive, ActivityNotFound, EstimateLine, FinanceResource, UnitMismatch, UnitNotFound
 from app.finance.schemas.resources import (
     EstimateLineCreate,
     EstimateRevisionCreate,
@@ -53,6 +53,27 @@ class Repo:
         return revised
 
 
+class ActivityProvider:
+    async def list_activities(self, organization_id, project_id, query=None, status=None, page=1, page_size=50):
+        items = [
+            {"activityExternalId": "A1", "taskExternalId": "task-1", "title": "اجرای فونداسیون", "wbsCode": "1.2", "status": "active"},
+            {"activityExternalId": "OLD", "taskExternalId": "task-old", "title": "فعالیت قدیمی", "wbsCode": "1.1", "status": "inactive"},
+        ]
+        if status: items = [item for item in items if item["status"] == status]
+        if query: items = [item for item in items if query in item["title"] or query in item["activityExternalId"]]
+        return items[(page-1)*page_size:page*page_size], len(items)
+
+    async def get_activity(self, organization_id, project_id, activity_external_id):
+        if activity_external_id == "A1":
+            return {"activityExternalId": "A1", "taskExternalId": "task-1", "title": "اجرای فونداسیون", "wbsCode": "1.2", "status": "active"}
+        if activity_external_id == "OLD":
+            return {"activityExternalId": "OLD", "taskExternalId": "task-old", "title": "فعالیت قدیمی", "wbsCode": "1.1", "status": "inactive"}
+        return None
+
+    async def create_activity(self, organization_id, project_id, title, wbs_code=None, parent_task_external_id=None):
+        return {"activityExternalId": "A2", "taskExternalId": parent_task_external_id or "task-2", "title": title, "wbsCode": wbs_code, "status": "active"}
+
+
 class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         ids = iter((RESOURCE, UUID("44444444-4444-4444-8444-444444444444"), LINE,
@@ -60,23 +81,26 @@ class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
                     UUID("66666666-6666-4666-8666-666666666666"),
                     UUID("77777777-7777-4777-8777-777777777777")))
         self.repo = Repo()
-        self.service = FinanceResourcesService(self.repo, lambda: next(ids), lambda: NOW)
+        self.service = FinanceResourcesService(self.repo, lambda: next(ids), ActivityProvider(), lambda: NOW)
         self.scope = FinanceScope(ORG, "sample_site_01", ACTOR)
 
     def test_four_types_and_general_cost_optional_unit(self):
         for kind in ("material", "labor", "equipment"):
-            ResourceCreate(type=kind, code="X", title="قلم", baseUnit="kg", dimension="mass")
+            command = ResourceCreate(type=kind, code="X", title="قلم", baseUnit="kg")
+            self.assertIsNone(command.dimension)
         ResourceCreate(type="general_cost", code="GC", title="هزینه عمومی")
         with self.assertRaises(ValueError):
             ResourceCreate(type="material", code="M", title="مصالح")
 
     async def test_uuid_is_stable_and_original_quantity_is_not_rewritten(self):
         resource = await self.service.create_resource(
-            self.scope, ResourceCreate(type="material", code="M1", title="سیمان", baseUnit="kg", dimension="mass")
+            self.scope, ResourceCreate(type="material", code="M1", title="سیمان", baseUnit="kg")
         )
+        self.assertEqual("mass", resource.dimension)
         line = await self.service.create_estimate_line(
             self.scope, EstimateLineCreate(resourceId=resource.id, activityExternalId="A1", assignmentExternalId="AS1", originalQuantity="10.0000", originalUnitPriceIrr="12000", source="manual_entry")
         )
+        self.assertEqual(("اجرای فونداسیون", "1.2"), (line.activity_title, line.wbs_code))
         revised = await self.service.revise_estimate_line(
             self.scope, line.id, EstimateRevisionCreate(newQuantity="12.5000", reason="اصلاح متره")
         )
@@ -112,6 +136,39 @@ class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
                 originalUnitPriceIrr="100.5",
                 source="manual_entry",
             )
+
+    async def test_activity_provider_validates_active_activity_for_new_estimate_line(self):
+        resource = await self.service.create_resource(
+            self.scope, ResourceCreate(type="material", code="M2", title="میلگرد", baseUnit="kg")
+        )
+        with self.assertRaises(ActivityNotFound):
+            await self.service.create_estimate_line(
+                self.scope,
+                EstimateLineCreate(resourceId=resource.id, activityExternalId="NOPE", originalQuantity="1", source="manual_entry"),
+            )
+        with self.assertRaises(ActivityInactive):
+            await self.service.create_estimate_line(
+                self.scope,
+                EstimateLineCreate(resourceId=resource.id, activityExternalId="OLD", originalQuantity="1", source="manual_entry"),
+            )
+
+    async def test_unknown_unit_is_rejected_and_dimension_mismatch_is_rejected(self):
+        with self.assertRaises(UnitNotFound):
+            await self.service.create_resource(
+                self.scope, ResourceCreate(type="material", code="BAD", title="ناشناخته", baseUnit="parsec")
+            )
+        with self.assertRaises(UnitMismatch):
+            await self.service.create_resource(
+                self.scope, ResourceCreate(type="material", code="BAD2", title="ناسازگار", baseUnit="kg", dimension="area")
+            )
+
+    async def test_activity_creation_is_delegated_to_host_provider(self):
+        from app.finance.schemas.activities import ActivityCreate
+        created = await self.service.create_activity(
+            self.scope,
+            ActivityCreate(title="دیوارچینی", wbsCode="3.2", parentTaskExternalId="task-floor-2"),
+        )
+        self.assertEqual(("A2", "دیوارچینی", "3.2"), (created["activityExternalId"], created["title"], created["wbsCode"]))
 
 
 if __name__ == "__main__": unittest.main()

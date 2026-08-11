@@ -44,6 +44,9 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/resources", "post"),
                 ("/api/projects/{projectId}/finance/resources/{resourceId}", "get"),
                 ("/api/projects/{projectId}/finance/resources/{resourceId}", "patch"),
+                ("/api/projects/{projectId}/finance/unit-registry", "get"),
+                ("/api/projects/{projectId}/finance/activities", "get"),
+                ("/api/projects/{projectId}/finance/activities", "post"),
                 ("/api/projects/{projectId}/finance/estimate-lines", "get"),
                 ("/api/projects/{projectId}/finance/estimate-lines", "post"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/revisions", "post"),
@@ -106,6 +109,9 @@ class WiringTests(unittest.TestCase):
         self.assertTrue({"previewId","kind","rowCount","validCount","invalidCount","rows","errors","canCommit"}<=set(preview["properties"]))
         self.assertTrue({"rowNumber","status","errors","resourceCode","resourceId","resourceTitle","baseUnit"}<=set(schemas["ImportPreviewRow"]["properties"]))
         self.assertTrue({"revision","revisions"}<=set(schemas["EstimateLineResponse"]["properties"]))
+        self.assertTrue({"activityTitle","wbsCode"}<=set(schemas["EstimateLineResponse"]["properties"]))
+        self.assertTrue({"items","page","pageSize","totalItems","totalPages"}<=set(schemas["ActivityListResponse"]["properties"]))
+        self.assertTrue({"code","labelFa","dimension","dimensionLabelFa","decimalPrecision","active"}<=set(schemas["UnitDefinitionResponse"]["properties"]))
         self.assertTrue({"organizationPriceIrr","organizationEffectiveFrom","projectPriceIrr","projectEffectiveFrom","currentEffectiveFrom"}<=set(schemas["CurrentPriceTrendResponse"]["properties"]))
 
     def test_domain_error_envelope_uses_public_camel_case_request_id(self):

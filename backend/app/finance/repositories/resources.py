@@ -24,7 +24,7 @@ class PsycopgFinanceResourcesRepository:
         return EstimateLine(row["id"], row["organization_id"], row["project_id"], row["resource_id"],
             row["activity_external_id"], row["assignment_external_id"], row["original_quantity"],
             row["revised_quantity"], row["original_unit_price_irr"], row["source"], row["created_by"], row["created_at"],
-            row.get("current_revision",0)+1,tuple(revisions))
+            row.get("current_revision",0)+1,tuple(revisions),row.get("activity_title"),row.get("wbs_code"))
 
     async def list_resources(self, scope):
         async with self._connection.cursor(row_factory=dict_row) as c:
