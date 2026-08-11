@@ -1,0 +1,136 @@
+/* --------------------------------------------------------------------------
+   Unified user notices
+   Reference: subdued navy/teal callout with a fine dashed edge
+   -------------------------------------------------------------------------- */
+
+:root {
+  --notice-border: rgb(0 136 151 / 25%);
+  --notice-background: rgb(0 65 72 / 18%);
+  --notice-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 2%),
+    0 .65rem 1.8rem rgb(0 0 0 / 9%);
+  --notice-text: var(--color-text-muted);
+  --notice-title: var(--color-text-secondary);
+}
+
+html[data-theme="light"] {
+  --notice-border: rgb(0 136 151 / 28%);
+  --notice-background: rgb(0 136 151 / 6%);
+  --notice-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 68%),
+    0 .55rem 1.5rem rgb(29 23 79 / 7%);
+}
+
+:is(
+  .inline-notice,
+  .overrun-warning,
+  .progress-override-warning,
+  .price-import-warning,
+  .invoice-warning,
+  .invoice-duplicate-warning,
+  .file-security-note,
+  .ai-confidence-note,
+  .finance-warnings,
+  .state-card,
+  .form-message:not(:empty)
+) {
+  min-inline-size: 0;
+  padding: 1rem 1.2rem;
+  border: 1px dashed var(--notice-border);
+  border-radius: var(--radius-lg);
+  background: var(--notice-background);
+  box-shadow: var(--notice-shadow);
+  color: var(--notice-text);
+  font-size: var(--font-size-sm);
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+
+:is(
+  .inline-notice,
+  .overrun-warning,
+  .progress-override-warning,
+  .price-import-warning,
+  .invoice-warning,
+  .invoice-duplicate-warning,
+  .file-security-note,
+  .ai-confidence-note,
+  .finance-warnings,
+  .state-card,
+  .form-message:not(:empty)
+) :is(h2, h3, strong) {
+  color: var(--notice-title);
+}
+
+:is(
+  .inline-notice,
+  .overrun-warning,
+  .progress-override-warning,
+  .price-import-warning,
+  .invoice-warning,
+  .invoice-duplicate-warning,
+  .file-security-note,
+  .ai-confidence-note,
+  .finance-warnings,
+  .state-card,
+  .form-message:not(:empty)
+) :is(p, ul) {
+  color: inherit;
+}
+
+/* Preserve severity without changing the shared visual language. */
+
+:is(.overrun-warning, .progress-override-warning, .invoice-warning, .invoice-duplicate-warning, .ai-confidence-note) {
+  --notice-border: rgb(234 179 8 / 28%);
+  --notice-background: rgb(120 83 0 / 10%);
+  --notice-title: #d7b65e;
+}
+
+:is(.price-import-warning, .state-card--danger, .form-message--error) {
+  --notice-border: rgb(239 68 68 / 28%);
+  --notice-background: rgb(111 21 31 / 11%);
+  --notice-title: #e59aa5;
+}
+
+.state-card--danger {
+  border-inline-start-width: 1px;
+}
+
+.form-message:not(:empty) {
+  margin-block-start: var(--space-sm);
+}
+
+.ai-confidence-note {
+  margin-block: var(--space-lg);
+}
+
+.feed-warnings {
+  margin-block-start: .55rem;
+  padding: .6rem 1.5rem .6rem .75rem;
+  border: 1px dashed rgb(234 179 8 / 22%);
+  border-radius: var(--radius-md);
+  background: rgb(120 83 0 / 8%);
+  color: var(--color-text-muted);
+  line-height: 1.7;
+}
+
+@media (max-width: 48rem) {
+  :is(
+    .inline-notice,
+    .overrun-warning,
+    .progress-override-warning,
+    .price-import-warning,
+    .invoice-warning,
+    .invoice-duplicate-warning,
+    .file-security-note,
+    .ai-confidence-note,
+    .finance-warnings,
+    .state-card,
+    .form-message:not(:empty)
+  ) {
+    padding: .85rem 1rem;
+    border-radius: var(--radius-md);
+    line-height: 1.75;
+  }
+}
+

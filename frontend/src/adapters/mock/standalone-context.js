@@ -8,7 +8,7 @@ const STANDALONE_CONTEXT = Object.freeze({
   projectName: "پروژه نمایشی Frontend",
   projectCode: "project-demo",
   grossBuiltArea: null,
-  permissionCodes: ["finance.view", "finance.edit", "finance_report.view", "finance_report.export"],
+  permissionCodes: ["finance.view", "finance.edit", "finance_report.view", "finance_report.export", "finance_report.issue"],
   locale: "fa-IR",
   timezone: "Asia/Tehran",
 });

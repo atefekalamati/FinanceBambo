@@ -154,7 +154,7 @@
 }
 
 .price-history-table {
-  min-inline-size: 66rem;
+  min-inline-size: 58rem;
 }
 
 .current-conversions-table {
@@ -227,31 +227,27 @@
 }
 
 .price-history-table :is(th, td):nth-child(1) {
-  inline-size: 18%;
+  inline-size: 20%;
 }
 
 .price-history-table :is(th, td):nth-child(2) {
-  inline-size: 14%;
+  inline-size: 15%;
 }
 
 .price-history-table :is(th, td):nth-child(3) {
-  inline-size: 16%;
+  inline-size: 19%;
 }
 
 .price-history-table :is(th, td):nth-child(4) {
-  inline-size: 10%;
-}
-
-.price-history-table :is(th, td):nth-child(5) {
-  inline-size: 13%;
-}
-
-.price-history-table :is(th, td):nth-child(6) {
   inline-size: 14%;
 }
 
-.price-history-table :is(th, td):nth-child(7) {
+.price-history-table :is(th, td):nth-child(5) {
   inline-size: 15%;
+}
+
+.price-history-table :is(th, td):nth-child(6) {
+  inline-size: 17%;
 }
 
 .current-conversions-table :is(th, td):nth-child(1) {

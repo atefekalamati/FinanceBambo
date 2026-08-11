@@ -21,7 +21,7 @@ export function buildBreakdownPresentation(rows = []) {
     actualCostIrr: String(row.actualCostIrr ?? "0"),
     forecastFinalIrr: String(row.forecastFinalIrr ?? "0"),
   }));
-  const values = normalized.flatMap((row) => [row.initialEstimateIrr, row.actualCostIrr, row.forecastFinalIrr]).map((value) => absolute(exactInteger(value)));
+  const values = normalized.flatMap((row) => [row.initialEstimateIrr, row.actualCostIrr]).map((value) => absolute(exactInteger(value)));
   const maximum = values.reduce((result, value) => value > result ? value : result, 0n);
   return normalized.map((row) => ({
     ...row,

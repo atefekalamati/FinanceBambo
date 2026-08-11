@@ -5,23 +5,23 @@ import { validateEstimateLine, validateEstimateRevision, validateResource } from
 
 test("supports the four PRD financial item types", () => {
   for (const type of ["material", "labor", "equipment", "general_cost"]) {
-    const result = validateResource({ type, title: "قلم نمونه", code: `CODE-${type}`, baseUnit: "kg", dimension: "جرم" });
+    const result = validateResource({ type, title: "قلم نمونه", code: `CODE-${type}`, baseUnit: "kg" });
     assert.equal(result.valid, true, type);
   }
 });
 
-test("allows general cost without a physical unit or dimension", () => {
-  const result = validateResource({ type: "general_cost", title: "هزینه مجوز", code: "GEN-01", baseUnit: "", dimension: "" });
+test("allows general cost without a physical unit", () => {
+  const result = validateResource({ type: "general_cost", title: "هزینه مجوز", code: "GEN-01", baseUnit: "" });
   assert.equal(result.valid, true);
   assert.equal(result.values.baseUnit, null);
-  assert.equal(result.values.dimension, null);
+  assert.equal("dimension" in result.values, false);
 });
 
-test("requires unit and dimension for quantity-based resources", () => {
-  const result = validateResource({ type: "material", title: "میلگرد", code: "MAT-01", baseUnit: "", dimension: "" });
+test("requires only a registry unit for quantity-based resources", () => {
+  const result = validateResource({ type: "material", title: "میلگرد", code: "MAT-01", baseUnit: "" });
   assert.equal(result.valid, false);
   assert.match(result.errors.baseUnit, /واحد/);
-  assert.match(result.errors.dimension, /بُعد/);
+  assert.equal("dimension" in result.errors, false);
 });
 
 test("keeps estimate quantity as an exact decimal string", () => {
@@ -39,11 +39,11 @@ test("requires an audited reason for estimate revisions", () => {
 test("rejects fractional IRR general-cost revisions", () => {
   const result = validateEstimateRevision({ revisedValue: "1000.50", reason: "اصلاح مبلغ" }, { isGeneralCost: true });
   assert.equal(result.valid, false);
-  assert.match(result.errors.revisedValue, /عدد صحیح/);
+  assert.match(result.errors.revisedValue, /حداکثر یک رقم اعشار/);
 });
 
 test("rejects a zero fractional part for integer IRR general costs", () => {
   const result = validateEstimateRevision({ revisedValue: "100.0", reason: "اصلاح مبلغ" }, { isGeneralCost: true });
   assert.equal(result.valid, false);
-  assert.match(result.errors.revisedValue, new RegExp(`عدد صحیح ${CURRENCY_LABELS.IRR}`));
+  assert.match(result.errors.revisedValue, new RegExp(CURRENCY_LABELS.TOMAN));
 });

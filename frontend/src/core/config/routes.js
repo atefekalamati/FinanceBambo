@@ -6,7 +6,8 @@ export const ROUTES = Object.freeze([
   { key: "invoices", path: "/invoices", label: "فاکتورها", permission: "finance.view", enabled: true },
   { key: "invoice-files", path: "/invoice-files", label: "ورودی تصویر و صدا", permission: "finance.view", enabled: true },
   { key: "ai-review", path: "/ai-review", label: "بازبینی استخراج", permission: "finance.view", enabled: true },
-  { key: "reports", path: "/reports", label: "گزارش مالی", permission: "finance_report.view", enabled: false },
+  { key: "reports", path: "/reports", label: "گزارش مالی", permission: "finance_report.view", enabled: true },
+  { key: "audit", path: "/audit", label: "تاریخچه و ممیزی", permission: "finance.view", enabled: true },
   { key: "settings", path: "/settings", label: "تنظیمات مالی", permission: "finance.edit", enabled: true },
 ]);
 

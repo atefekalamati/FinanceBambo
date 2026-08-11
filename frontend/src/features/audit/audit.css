@@ -1,0 +1,165 @@
+/* --------------------------------------------------------------------------
+   Finance audit trail
+   -------------------------------------------------------------------------- */
+
+.audit-page {
+  min-inline-size: 0;
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.audit-filters {
+  display: grid;
+  grid-template-columns: minmax(14rem, 2fr) repeat(2, minmax(10rem, 1fr)) repeat(2, minmax(13rem, 1fr)) auto auto;
+  align-items: end;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-toolbar);
+}
+
+.audit-result-count {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.audit-table {
+  min-inline-size: 72rem;
+}
+
+.audit-table :is(th, td):nth-child(1) {
+  inline-size: 14%;
+}
+
+.audit-table :is(th, td):nth-child(2) {
+  inline-size: 18%;
+}
+
+.audit-table :is(th, td):nth-child(3) {
+  inline-size: 13%;
+}
+
+.audit-table :is(th, td):nth-child(4) {
+  inline-size: 20%;
+  overflow-wrap: anywhere;
+}
+
+.audit-table :is(th, td):nth-child(5) {
+  inline-size: 27%;
+}
+
+.audit-table :is(th, td):nth-child(6) {
+  inline-size: 8%;
+  text-align: center;
+}
+
+.audit-table__empty {
+  padding: var(--space-xl) !important;
+  color: var(--color-text-muted);
+  text-align: center !important;
+}
+
+.audit-detail-dialog {
+  inline-size: min(58rem, calc(100% - 2rem));
+  max-inline-size: 58rem;
+}
+
+.audit-detail__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  margin-block-end: var(--space-lg);
+}
+
+.audit-detail__head h2,
+.audit-detail__head p,
+.audit-detail__values h3,
+.audit-detail__values p {
+  margin: 0;
+}
+
+.audit-detail__head p {
+  margin-block-start: var(--space-xs);
+  color: var(--color-text-muted);
+}
+
+.audit-detail__identity,
+.audit-change-list {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+}
+
+.audit-detail__identity {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-block-end: var(--space-lg);
+}
+
+.audit-detail__identity > div,
+.audit-change-list > div {
+  min-inline-size: 0;
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  background: var(--color-btn-action);
+}
+
+.audit-detail__identity dt,
+.audit-change-list dt {
+  color: var(--color-text-muted);
+  font-size: .72rem;
+}
+
+.audit-detail__identity dd,
+.audit-change-list dd {
+  margin: var(--space-xs) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.audit-detail__comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+  margin-block-start: var(--space-lg);
+}
+
+.audit-detail__values {
+  display: grid;
+  align-content: start;
+  gap: var(--space-sm);
+}
+
+@media (max-width: 75rem) {
+  .audit-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 48rem) {
+  .audit-filters,
+  .audit-detail__identity,
+  .audit-detail__comparison {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 36rem) {
+  .audit-detail-dialog {
+    inline-size: calc(100% - 1rem);
+    padding: var(--space-lg);
+  }
+}
+
+@media print {
+  .audit-filters,
+  .audit-table .table-action,
+  .audit-detail-dialog {
+    display: none !important;
+  }
+
+  .audit-table {
+    min-inline-size: 0;
+  }
+}
