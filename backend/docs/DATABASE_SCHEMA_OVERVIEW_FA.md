@@ -1,6 +1,6 @@
 # سند اسکیما و تنظیمات دیتابیس ماژول مالی BAMBO
 
-تاریخ استخراج: ۱۴۰۵/۰۵/۱۸ — 2026-08-09  
+تاریخ استخراج/بازبینی: ۱۴۰۵/۰۵/۲۰ — 2026-08-11  
 منبع: Migrationهای SQL، Repositoryهای Psycopg، PRD و Integration Kit نسخه ۱.۱
 
 ## ۱. وضعیت دیتابیس
@@ -15,6 +15,7 @@ Tables: 15
 Currency storage: IRR
 Money type: numeric(18,0)
 Tenant scope: organization_id + project_id
+Latest backend audit: PRD Sections 8.10, 8.11, 9, 10
 ```
 
 مقادیر Host، Port، Database، User، Password و SSL توسط BAMBO Host در زمان Integration تزریق می‌شوند و مقدار Production در این Repository نگهداری نشده است.
@@ -286,6 +287,8 @@ Snapshot شامل نسخه تنظیمات، Revisionهای برآورد، قیم
 
 مقادیر قبل و بعد به‌صورت JSONB ثبت می‌شوند. Audit میان امور مالی و گزارش مالی مشترک و Append-only است.
 
+API مشاهده Audit از همین جدول و با Scope دوگانه خوانده می‌شود. در سطح Repository، مرتب‌سازی پایدار `occurred_at DESC, id DESC` و صفحه‌بندی واقعی دیتابیس با `LIMIT/OFFSET` اعمال می‌شود؛ بنابراین مشاهده رویدادها باعث بارگذاری کامل تاریخچه در حافظه برنامه نمی‌شود.
+
 ## ۱۴. ورود گروهی اطلاعات
 
 ### finance_import_batches
@@ -436,7 +439,21 @@ Migrationها Raw SQL هستند و به‌ترتیب زیر اجرا می‌ش�
 
 برای هر Migration فایل Down متناظر وجود دارد. Down migration جایگزین Backup/Restore نیست.
 
-## ۲۲. فایل‌های مرجع
+## ۲۲. وضعیت سازگاری پس از آخرین بازبینی
+
+آخرین بازبینی Backend براساس PRD و Integration Kit نسخه ۱.۱ انجام شده و نتیجه‌های مرتبط با دیتابیس به شرح زیر است:
+
+| حوزه | وضعیت | توضیح |
+|---|---|---|
+| Schema پایه Integration Kit | حفظ‌شده | Migration جدید برای مراحل اخیر لازم نبود. |
+| Audit History | حفظ‌شده | جدول `finance_audit_events` append-only و scoped باقی مانده است. |
+| Audit List Performance | به‌روز شده | خواندن Audit در API با pagination دیتابیس انجام می‌شود. |
+| Report Snapshot | حفظ‌شده | `snapshot_payload` و شناسه‌های Pin‌شده immutable هستند. |
+| Money/Decimal | تأیید شده | پول با `numeric(18,0)` و محاسبات Backend با `Decimal` انجام می‌شود. |
+| Rounding | تأیید شده | گردکردن مبلغ خط با `ROUND_HALF_UP` و تست 1000-line پوشش داده شده است. |
+| Frontend/API Contract | سازگار | تغییرات اخیر additive بوده و قرارداد camelCase حفظ شده است. |
+
+## ۲۳. فایل‌های مرجع
 
 - `backend/migrations/0001_finance_core.up.sql`
 - `backend/migrations/0002_invoice_confirmation.up.sql`
@@ -451,7 +468,7 @@ Migrationها Raw SQL هستند و به‌ترتیب زیر اجرا می‌ش�
 - `Sources/BAMBO_FINANCE_MVP_PRD_FA_v1.1.html`
 - `Sources/BAMBO_FINANCE_INTEGRATION_KIT_v1.1.zip`
 
-## ۲۳. نکات مهم نگهداری داده
+## ۲۴. نکات مهم نگهداری داده
 
 - مبالغ و قیمت‌ها به ریال صحیح و بدون Float ذخیره می‌شوند.
 - زمان‌ها با `timestamptz` و UTC مدیریت می‌شوند؛ نمایش شمسی مسئولیت Frontend است.
