@@ -9,6 +9,7 @@ from pydantic import Field, field_serializer, field_validator
 
 from ..domain.settings import FinanceProjectSettings
 from .base import ApiModel
+from .numeric import strict_decimal
 
 
 PositiveArea = Annotated[Decimal, Field(gt=0, max_digits=18, decimal_places=4)]
@@ -19,6 +20,11 @@ class FinanceSettingsPatch(ApiModel):
     effective_from: date
     reason: str = Field(min_length=1)
     expected_revision: int = Field(ge=0)
+
+    @field_validator("gross_built_area", mode="before")
+    @classmethod
+    def strict_area(cls, value):
+        return strict_decimal(value)
 
     @field_validator("reason")
     @classmethod

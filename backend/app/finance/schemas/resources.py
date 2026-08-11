@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import Field, field_serializer, field_validator, model_validator
 
 from .base import ApiModel
+from .numeric import strict_optional_decimal
 from ..domain.resources import EstimateLine, FinanceResource
 
 ResourceType = Literal["material", "labor", "equipment", "general_cost"]
@@ -56,14 +57,24 @@ class EstimateLineCreate(ApiModel):
     resource_id: UUID
     activity_external_id: str | None = None
     assignment_external_id: str | None = None
-    original_quantity: Decimal | None = None
+    original_quantity: Decimal | None = Field(default=None, max_digits=18, decimal_places=4)
     original_unit_price_irr: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=0)
     source: EstimateSource
 
+    @field_validator("original_quantity", "original_unit_price_irr", mode="before")
+    @classmethod
+    def strict_estimate_numbers(cls, value):
+        return strict_optional_decimal(value)
+
 
 class EstimateRevisionCreate(ApiModel):
-    new_quantity: Decimal | None
+    new_quantity: Decimal | None = Field(default=None, max_digits=18, decimal_places=4)
     reason: str = Field(min_length=1)
+
+    @field_validator("new_quantity", mode="before")
+    @classmethod
+    def strict_revision_quantity(cls, value):
+        return strict_optional_decimal(value)
 
     @model_validator(mode="after")
     def trim_reason(self):
