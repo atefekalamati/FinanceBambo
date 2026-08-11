@@ -338,6 +338,6 @@ async def report_snapshot_xlsx(projectId:str,reportId:UUID,request:Request):
     return Response(content,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",headers={"Content-Disposition":f'attachment; filename="finance-report-{reportId}.xlsx"'})
 
 @router.get("/audit-events",response_model=list[AuditEventResponse])
-async def audit_events(projectId:str,request:Request):
+async def audit_events(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200)):
     scope=await _resource_scope(projectId,request,"finance.view")
-    return await request.app.state.finance_audit_service.list(scope)
+    return await request.app.state.finance_audit_service.list(scope,page,pageSize)

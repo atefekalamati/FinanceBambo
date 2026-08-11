@@ -99,6 +99,17 @@ class LiveReportDomainTests(unittest.TestCase):
         self.assertEqual(Decimal("1200"), report.metrics["currentExecutedValueIrr"])
         self.assertEqual(Decimal("0"), report.metrics["remainingPhysicalCostIrr"])
 
+    def test_rounds_money_once_per_line_with_round_half_up(self):
+        estimates = [
+            estimate(UUID(int=index + 1), MATERIAL, "material", "0.5", "0.5", "1", "1", f"a-{index}")
+            for index in range(1000)
+        ]
+        assignments = [{"assignmentExternalId": f"a-{index}", "actualQuantity": "0.5", "task": {}} for index in range(1000)]
+        report = calculate_live_report(estimates, [], assignments, [], "1000")
+        self.assertEqual(Decimal("1000"), report.metrics["initialEstimateIrr"])
+        self.assertEqual(Decimal("1000"), report.metrics["currentExecutedValueIrr"])
+        self.assertEqual(Decimal("1"), report.metrics["forecastPerSquareMeterIrr"])
+
 
 class Repository:
     def __init__(self):
