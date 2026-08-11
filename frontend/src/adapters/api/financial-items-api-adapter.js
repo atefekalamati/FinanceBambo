@@ -9,8 +9,8 @@ function mapLine(value, resources) {
     activityExternalId: value.activityExternalId,
     taskExternalId: value.activityExternalId,
     assignmentExternalId: value.assignmentExternalId,
-    activityTitle: value.activityExternalId || "فعالیت بدون عنوان",
-    wbsCode: "—",
+    activityTitle: value.activityTitle || value.activityExternalId || "فعالیت بدون عنوان",
+    wbsCode: value.wbsCode || "—",
     resourceId: value.resourceId,
     originalQuantity: general ? null : value.originalQuantity,
     revisedQuantity: general ? null : value.revisedQuantity,
@@ -37,16 +37,42 @@ export function createApiFinancialItemsAdapter(context, client) {
   const base = financeBase(context);
   let resourceCache = [];
   async function getWorkspace() {
-    const [resourcePayload, linePayload] = await Promise.all([client.request(`${base}/resources`), client.request(`${base}/estimate-lines`)]);
+    const [resourcePayload, linePayload, activityPayload, unitPayload] = await Promise.all([
+      client.request(`${base}/resources`),
+      client.request(`${base}/estimate-lines`),
+      client.request(`${base}/activities?status=active&page=1&pageSize=200`),
+      client.request(`${base}/unit-registry`),
+    ]);
     const resources = resourcePayload.map(mapResource);
     resourceCache = resources;
     const estimateLines = linePayload.map((line) => mapLine(line, resources));
-    const activities = [...new Map(estimateLines.filter((line) => line.activityExternalId).map((line) => [line.activityExternalId, { activityExternalId: line.activityExternalId, taskExternalId: line.taskExternalId, title: line.activityTitle, wbsCode: line.wbsCode }])).values()];
-    return { resources, estimateLines, activities, scope: { organizationId: context.organizationId, projectId: context.projectId } };
+    const activities = (activityPayload.items ?? []).map((item) => ({
+      activityExternalId: item.activityExternalId,
+      taskExternalId: item.taskExternalId,
+      title: item.title,
+      wbsCode: item.wbsCode,
+      status: item.status,
+    }));
+    const unitRegistry = (unitPayload.items ?? []).filter((item) => item.active).map((item) => ({
+      code: item.code,
+      label: item.labelFa,
+      dimension: item.dimension,
+      dimensionLabel: item.dimensionLabelFa,
+      decimalPrecision: item.decimalPrecision,
+    }));
+    return { resources, estimateLines, activities, unitRegistry, scope: { organizationId: context.organizationId, projectId: context.projectId } };
   }
   async function createResource(values) {
-    await client.request(`${base}/resources`, jsonOptions("POST", { type: values.type, code: values.code, title: values.title, baseUnit: values.baseUnit || null, dimension: values.dimension || null, externalResourceId: values.externalResourceId || null }));
+    await client.request(`${base}/resources`, jsonOptions("POST", { type: values.type, code: values.code, title: values.title, baseUnit: values.baseUnit || null, externalResourceId: values.externalResourceId || null }));
     return getWorkspace();
+  }
+  async function createActivity(values) {
+    const created = await client.request(`${base}/activities`, jsonOptions("POST", {
+      title: values.title,
+      wbsCode: values.wbsCode || null,
+      parentTaskExternalId: values.parentTaskExternalId || null,
+    }));
+    return { created, workspace: await getWorkspace() };
   }
   async function createEstimateLine(values) {
     if (!resourceCache.length) await getWorkspace();
@@ -72,5 +98,5 @@ export function createApiFinancialItemsAdapter(context, client) {
     const result = await client.request(`${base}/imports/estimate/commit`, jsonOptions("POST", { previewId }));
     return { workspace: await getWorkspace(), importedCount: result.committedCount };
   }
-  return Object.freeze({ getWorkspace, createResource, createEstimateLine, reviseEstimateLine, previewEstimateImport, commitEstimateImport });
+  return Object.freeze({ getWorkspace, createResource, createActivity, createEstimateLine, reviseEstimateLine, previewEstimateImport, commitEstimateImport });
 }

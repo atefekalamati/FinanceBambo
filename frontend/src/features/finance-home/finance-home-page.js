@@ -1,7 +1,8 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
-import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
+import { formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
+import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { buildBreakdownPresentation } from "./report-presentation.js";
 
 const SUMMARY_ITEMS = Object.freeze([
@@ -29,18 +30,10 @@ const WORK_AREAS = Object.freeze([
   { key: "prices", title: "قیمت‌ها و تبدیل واحد", description: "ثبت قیمت پایه، جایگزینی پروژه و مشاهده تاریخچه تغییرات", meta: "قیمت روز · تاریخچه · واحد", href: "#/prices" },
   { key: "progress", title: "پیشرفت و مقادیر اجرا", description: "مشاهده نسخه ثبت‌شده پیشرفت، کیفیت داده و جایگزینی ممیزی‌شده", meta: "نسخه ثبت‌شده · اجرا · هشدار", href: "#/progress" },
   { key: "invoices", title: "فاکتورها", description: "مشاهده فهرست، وضعیت، منبع، فروشنده، مبلغ و جزئیات خطوط", meta: "فهرست · جزئیات · وضعیت", href: "#/invoices" },
-  { key: "settings", title: "تنظیمات مالی", description: "زیربنای کل، واحد پول نمایشی و تنظیمات سطح پروژه", meta: `زیربنا · ${CURRENCY_LABELS.TOMAN} · دسترسی`, href: "#/settings" },
-  { key: "audit", title: "تاریخچه و ممیزی", description: "ردیابی بازنگری، جایگزینی، تأییدها و عملیات حساس مالی", meta: "کاربر · زمان · دلیل" },
+  { key: "settings", title: "تنظیمات مالی", description: "زیربنای کل، واحد پول نمایشی و تنظیمات سطح پروژه", meta: "زیربنا · واحد نمایش · دسترسی", href: "#/settings" },
+  { key: "reports", title: "گزارش مالی", description: "مشاهده گزارش زنده، صدور نسخه تغییرناپذیر و دریافت خروجی", meta: "گزارش زنده · نسخه ثابت · چاپ", href: "#/reports" },
+  { key: "audit", title: "تاریخچه تغییرات مالی", description: "ردیابی بازنگری، جایگزینی، تأییدها و عملیات حساس مالی", meta: "کاربر · زمان · دلیل", href: "#/audit" },
 ]);
-
-function formatTomanFromIrr(value) {
-  if (!/^-?\d+$/.test(String(value ?? ""))) return "قابل محاسبه نیست";
-  const amount = BigInt(value);
-  const whole = amount / 10n;
-  const remainder = amount < 0n ? -(amount % 10n) : amount % 10n;
-  const display = remainder === 0n ? whole.toString() : `${amount < 0n && whole === 0n ? "-" : ""}${whole}.${remainder}`;
-  return `${CURRENCY_LABELS.TOMAN} ${formatDisplayNumber(display)}`;
-}
 
 function createTomanDisplay(value) {
   const display = document.createElement("span");
@@ -49,14 +42,13 @@ function createTomanDisplay(value) {
     display.textContent = "قابل محاسبه نیست";
     return display;
   }
-  const formatted = formatTomanFromIrr(value).split(" ");
   const unit = document.createElement("span");
   unit.className = "money-display__unit";
-  unit.textContent = formatted.shift();
+  unit.textContent = getDisplayCurrencyLabel();
   const amount = document.createElement("bdi");
   amount.className = "money-display__amount numeric";
   amount.dir = "ltr";
-  amount.textContent = formatted.join(" ");
+  amount.textContent = formatDisplayNumber(irrToDisplayValue(value));
   display.append(unit, amount);
   return display;
 }
@@ -114,15 +106,15 @@ function createBreakdownChart(rows) {
   const eyebrow = document.createElement("span");
   eyebrow.textContent = "ترکیب هزینه";
   const title = document.createElement("h2");
-  title.textContent = "مقایسه برآورد، هزینه واقعی و پیش‌بینی نهایی";
+  title.textContent = "مقایسه برآورد اولیه و هزینه واقعی";
   copy.append(eyebrow, title);
   const hint = document.createElement("small");
-  hint.textContent = "مقیاس هر سه سری در تمام ردیف‌ها یکسان است";
+  hint.textContent = "مقیاس هر دو سری در تمام ردیف‌ها یکسان است";
   heading.append(copy, hint);
 
   const legend = document.createElement("ul");
   legend.className = "breakdown-legend";
-  [["initial", "برآورد اولیه"], ["actual", "هزینه واقعی"], ["forecast", "پیش‌بینی نهایی"]].forEach(([key, label]) => {
+  [["initial", "برآورد اولیه"], ["actual", "هزینه واقعی"]].forEach(([key, label]) => {
     const item = document.createElement("li");
     item.dataset.series = key;
     item.textContent = label;
@@ -132,7 +124,7 @@ function createBreakdownChart(rows) {
   const chart = document.createElement("div");
   chart.className = "breakdown-chart";
   chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", "نمودار مقایسه برآورد اولیه، هزینه واقعی و پیش‌بینی نهایی به تفکیک نوع قلم مالی");
+  chart.setAttribute("aria-label", "نمودار مقایسه برآورد اولیه و هزینه واقعی به تفکیک نوع قلم مالی");
   rows.forEach((row) => {
     const group = document.createElement("article");
     group.className = "breakdown-chart__group";
@@ -143,10 +135,10 @@ function createBreakdownChart(rows) {
     bars.setAttribute("viewBox", "0 0 72 108");
     bars.setAttribute("preserveAspectRatio", "xMidYMax meet");
     bars.setAttribute("aria-hidden", "true");
-    [["initial", row.bars.initial, row.initialEstimateIrr, "برآورد اولیه"], ["actual", row.bars.actual, row.actualCostIrr, "هزینه واقعی"], ["forecast", row.bars.forecast, row.forecastFinalIrr, "پیش‌بینی نهایی"]].forEach(([series, magnitude, value, seriesLabel]) => {
-      const index = { initial: 0, actual: 1, forecast: 2 }[series];
+    [["initial", row.bars.initial, row.initialEstimateIrr, "برآورد اولیه"], ["actual", row.bars.actual, row.actualCostIrr, "هزینه واقعی"]].forEach(([series, magnitude, value, seriesLabel]) => {
+      const index = { initial: 0, actual: 1 }[series];
       const height = Number(magnitude) * .84;
-      const x = 3 + (index * 24);
+      const x = 15 + (index * 24);
       const track = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       track.setAttribute("class", "breakdown-chart__track");
       track.setAttribute("x", String(x));

@@ -202,6 +202,27 @@
   border-inline-start: .35rem solid var(--color-danger);
 }
 
+.state-card:focus {
+  outline: .1875rem solid var(--brand-teal);
+  outline-offset: 3px;
+}
+
+.state-card__details {
+  display: grid;
+  gap: var(--space-xs);
+  margin-block: var(--space-lg);
+  padding-inline-start: 1.25rem;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.state-card__meta {
+  display: block;
+  margin-block-start: var(--space-xs);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
 .button {
   min-block-size: 2.75rem;
   display: inline-flex;
