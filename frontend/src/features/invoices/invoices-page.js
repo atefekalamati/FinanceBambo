@@ -1,7 +1,8 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
-import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
+import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { hasPermission } from "../../core/auth/permissions.js";
@@ -15,14 +16,6 @@ function element(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-function formatTomanFromIRR(value) {
-  if (!/^\d+$/.test(String(value ?? ""))) return "—";
-  const digits = String(value).replace(/^0+(?=\d)/, "") || "0";
-  const whole = digits.length > 1 ? digits.slice(0, -1) : "0";
-  const remainder = digits.at(-1);
-  return `${formatDisplayNumber(remainder === "0" ? whole : `${whole}.${remainder}`)} ${CURRENCY_LABELS.TOMAN}`;
 }
 
 function option(value, label) {
@@ -140,8 +133,8 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     targetSelect.append(option("", "انتخاب کنید"), ...targets.map((target) => option(target.targetId, `${target.label} · ${target.targetType === "general_cost" ? "هزینه عمومی" : formatUnitLabel(target.unit)}`)));
     targetField.append(targetSelect);
     const quantity = inputField("مقدار", "quantity", { inputMode: "decimal" });
-    const unitPrice = inputField(`قیمت واحد به ${CURRENCY_LABELS.IRR}`, "unitPriceIRR", { inputMode: "numeric" });
-    const amount = inputField(`مبلغ خط هزینه عمومی به ${CURRENCY_LABELS.IRR}`, "amountIRR", { inputMode: "numeric" });
+    const unitPrice = inputField(`قیمت واحد به ${getDisplayCurrencyLabel()}`, "unitPriceIRR", { inputMode: "decimal" });
+    const amount = inputField(`مبلغ خط هزینه عمومی به ${getDisplayCurrencyLabel()}`, "amountIRR", { inputMode: "decimal" });
     amount.field.hidden = true;
     targetSelect.addEventListener("change", () => {
       const target = targets.find((item) => item.targetId === targetSelect.value);
@@ -155,7 +148,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     add.type = "button";
     add.addEventListener("click", () => {
       const target = targets.find((item) => item.targetId === targetSelect.value);
-      const validation = validateInvoiceLine({ quantity: quantity.input.value, unitPriceIRR: unitPrice.input.value, amountIRR: amount.input.value, description: lineDescription.input.value }, target);
+      const validation = validateInvoiceLine({ quantity: quantity.input.value, unitPriceIRR: tomanInputToIrr(unitPrice.input.value), amountIRR: tomanInputToIrr(amount.input.value), description: lineDescription.input.value }, target);
       if (!validation.valid) { showMessage(Object.values(validation.errors).join(" "), true); return; }
       lines.push(validation.values);
       showMessage("خط به پیش‌نویس اضافه شد.");
@@ -166,7 +159,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     const list = element("div", "invoice-draft-lines");
     lines.forEach((line, index) => {
       const card = element("article", "invoice-draft-line");
-      card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", line.targetType === "general_cost" ? `${formatDisplayNumber(line.lineAmountIRR)} ${CURRENCY_LABELS.IRR}` : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)} × ${formatDisplayNumber(line.unitPriceIRR)} ${CURRENCY_LABELS.IRR}`));
+      card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", line.targetType === "general_cost" ? formatTomanFromIrr(line.lineAmountIRR) : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)} × ${formatTomanFromIrr(line.unitPriceIRR)}`));
       const remove = element("button", "button button--ghost", "حذف خط");
       remove.type = "button";
       remove.addEventListener("click", () => { lines.splice(index, 1); paintStep(); });
@@ -174,15 +167,15 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
       list.append(card);
     });
     const adjustmentGrid = element("div", "invoice-adjustments");
-    const adjustmentFields = [[`تخفیف به ${CURRENCY_LABELS.IRR}`, "discountIRR"], [`مالیات به ${CURRENCY_LABELS.IRR}`, "taxIRR"], [`حمل به ${CURRENCY_LABELS.IRR}`, "shippingIRR"], [`سایر هزینه‌ها به ${CURRENCY_LABELS.IRR}`, "otherCostsIRR"]].map(([label, key]) => {
+    const adjustmentFields = [[`تخفیف به ${getDisplayCurrencyLabel()}`, "discountIRR"], [`مالیات به ${getDisplayCurrencyLabel()}`, "taxIRR"], [`حمل به ${getDisplayCurrencyLabel()}`, "shippingIRR"], [`سایر هزینه‌ها به ${getDisplayCurrencyLabel()}`, "otherCostsIRR"]].map(([label, key]) => {
       const field = inputField(label, key, { inputMode: "numeric" });
-      field.input.value = adjustments[key];
+      field.input.value = irrToDisplayValue(adjustments[key]) ?? "0";
       adjustmentGrid.append(field.field);
       return [key, field.input];
     });
     section.append(editor, list, adjustmentGrid, actions({ back: true, nextLabel: "مشاهده پیش‌نمایش", onNext: async (button) => {
       if (!lines.length) { showMessage("حداقل یک خط فاکتور اضافه کنید.", true); return; }
-      const validation = validateInvoiceAdjustments(Object.fromEntries(adjustmentFields.map(([key, input]) => [key, input.value])));
+      const validation = validateInvoiceAdjustments(Object.fromEntries(adjustmentFields.map(([key, input]) => [key, tomanInputToIrr(input.value)])));
       if (!validation.valid) { showMessage(Object.values(validation.errors).join(" "), true); return; }
       adjustments = validation.values;
       button.disabled = true;
@@ -198,9 +191,9 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     const summary = element("dl", "invoice-detail-grid");
     [["شماره", headerData.invoiceNumber], ["تاریخ", formatBusinessDate(headerData.invoiceDate)], ["فروشنده", headerData.vendorName], ["منبع", "ورود دستی"]].forEach(([label, value]) => { const item = element("div", "invoice-detail-grid__item"); item.append(element("dt", "", label), element("dd", "", value)); summary.append(item); });
     const lineList = element("div", "invoice-draft-lines");
-    preview.lines.forEach((line, index) => { const card = element("article", "invoice-draft-line"); card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", formatTomanFromIRR(line.lineAmountIRR))); lineList.append(card); });
+    preview.lines.forEach((line, index) => { const card = element("article", "invoice-draft-line"); card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", formatTomanFromIrr(line.lineAmountIRR))); lineList.append(card); });
     const totals = element("dl", "invoice-totals");
-    [["جمع خام خطوط", preview.rawLinesTotalIRR], ["تخفیف", preview.discountIRR], ["مالیات", preview.taxIRR], ["حمل", preview.shippingIRR], ["سایر هزینه‌ها", preview.otherCostsIRR], ["مبلغ نهایی", preview.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIRR(value))));
+    [["جمع خام خطوط", preview.rawLinesTotalIRR], ["تخفیف", preview.discountIRR], ["مالیات", preview.taxIRR], ["حمل", preview.shippingIRR], ["سایر هزینه‌ها", preview.otherCostsIRR], ["مبلغ نهایی", preview.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIrr(value))));
     section.append(element("div", "inline-notice", isCorrective ? "این سند پس از ثبت، با اثر مالی انتخاب‌شده و ارتباط صریح با فاکتور اصلی اعمال می‌شود؛ فاکتور اصلی تغییر نمی‌کند." : "با ثبت این مرحله فقط پیش‌نویس ساخته می‌شود و هزینه واقعی پروژه تغییر نمی‌کند."), summary, lineList, totals);
     let correctionReasonInput = null;
     let effectSelect = null;
@@ -228,7 +221,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
       warning.setAttribute("role", "alert");
       warning.append(element("h3", "", "فاکتور مشابه پیدا شد"), element("p", "", "ادامه ثبت مجاز است، اما باید سند مشابه را بررسی و دلیل ادامه را ثبت کنید."));
       const matches = element("ul", "invoice-duplicate-matches");
-      preview.duplicateMatches.forEach((match) => matches.append(element("li", "", `${match.invoiceNumber} · ${match.vendorName} · ${formatBusinessDate(match.invoiceDate)} · ${formatTomanFromIRR(match.finalAmountIRR)} · ${STATUS_LABELS[match.invoiceStatus]}`)));
+      preview.duplicateMatches.forEach((match) => matches.append(element("li", "", `${match.invoiceNumber} · ${match.vendorName} · ${formatBusinessDate(match.invoiceDate)} · ${formatTomanFromIrr(match.finalAmountIRR)} · ${STATUS_LABELS[match.invoiceStatus]}`)));
       const reason = element("label", "form-field");
       reason.append(element("span", "form-label", "دلیل ادامه با وجود شباهت"));
       reasonInput = element("textarea", "app-textarea");
@@ -320,8 +313,8 @@ function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm, on
       element("td", "numeric", formatDisplayNumber(String(index + 1))),
       element("td", "", `${line.targetLabel} · ${line.targetType === "general_cost" ? "هزینه عمومی" : "خط برآورد"}`),
       element("td", "numeric", line.quantity === null ? "بدون مقدار فیزیکی" : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)}`),
-      element("td", "numeric", line.unitPriceIRR === null ? "—" : formatTomanFromIRR(line.unitPriceIRR)),
-      element("td", "numeric", formatTomanFromIRR(line.lineAmountIRR)),
+      element("td", "numeric", line.unitPriceIRR === null ? "—" : formatTomanFromIrr(line.unitPriceIRR)),
+      element("td", "numeric", formatTomanFromIrr(line.lineAmountIRR)),
       element("td", "", line.description || "—"),
     );
     tbody.append(row);
@@ -330,7 +323,7 @@ function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm, on
   wrapper.append(table);
 
   const totals = element("dl", "invoice-totals");
-  [["جمع خام خطوط", invoice.rawLinesTotalIRR], ["تخفیف", invoice.discountIRR], ["مالیات", invoice.taxIRR], ["حمل", invoice.shippingIRR], ["سایر هزینه‌ها", invoice.otherCostsIRR], ["مبلغ نهایی", invoice.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIRR(value))));
+  [["جمع خام خطوط", invoice.rawLinesTotalIRR], ["تخفیف", invoice.discountIRR], ["مالیات", invoice.taxIRR], ["حمل", invoice.shippingIRR], ["سایر هزینه‌ها", invoice.otherCostsIRR], ["مبلغ نهایی", invoice.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIrr(value))));
   dialog.append(wrapper, totals);
   if (invoice.invoiceStatus === "draft") {
     const actions = element("div", "dialog-actions invoice-detail-actions");
@@ -411,7 +404,7 @@ function createConfirmInvoiceDialog({ invoice, adapter, onSaved }) {
   title.id = "invoice-confirm-title";
   const warning = element("div", "invoice-warning", "پس از تأیید، فاکتور در هزینه واقعی پروژه اثر می‌گذارد و دیگر قابل ویرایش یا حذف مستقیم نیست. اصلاح فقط با سند ابطال، برگشت یا اصلاحی مرتبط انجام می‌شود.");
   const summary = element("dl", "invoice-confirm-summary");
-  [["شماره فاکتور", invoice.invoiceNumber], ["فروشنده", invoice.vendorName], ["مبلغ نهایی", formatTomanFromIRR(invoice.finalAmountIRR)], ["نسخه مورد تأیید", formatDisplayNumber(String(invoice.version))]].forEach(([label, value]) => summary.append(element("dt", "", label), element("dd", "", value)));
+  [["شماره فاکتور", invoice.invoiceNumber], ["فروشنده", invoice.vendorName], ["مبلغ نهایی", formatTomanFromIrr(invoice.finalAmountIRR)], ["نسخه مورد تأیید", formatDisplayNumber(String(invoice.version))]].forEach(([label, value]) => summary.append(element("dt", "", label), element("dd", "", value)));
   const message = element("div", "form-message");
   message.setAttribute("aria-live", "assertive");
   const actions = element("div", "dialog-actions");
@@ -496,7 +489,7 @@ function renderTable(items, onDetail) {
       element("td", "", invoice.invoiceNumber), element("td", "", formatBusinessDate(invoice.invoiceDate)),
       element("td", "", invoice.vendorName), element("td", "", SOURCE_LABELS[invoice.source] ?? "نامشخص"),
       element("td", "", ""), element("td", "numeric", formatDisplayNumber(String(invoice.lineCount))),
-      element("td", "numeric", formatTomanFromIRR(invoice.finalAmountIRR)),
+      element("td", "numeric", formatTomanFromIrr(invoice.finalAmountIRR)),
       element("td", "", invoice.duplicateWarning ? "مشکوک به تکرار" : "ندارد"), element("td", "", ""),
     );
     row.children[4].append(element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "نامشخص"));
@@ -632,7 +625,7 @@ export function createInvoicesPage({ context, adapter }) {
     const section = element("section", "invoices-section");
     const heading = element("div", "invoice-list-heading");
     heading.append(element("div", "", ""), element("span", "section-count numeric", `${formatDisplayNumber(String(data.totalItems))} فاکتور`));
-    heading.firstElementChild.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `مبلغ رسمی ${CURRENCY_LABELS.IRR} است و در این صفحه با واحد پیش‌فرض ${CURRENCY_LABELS.TOMAN} نمایش داده می‌شود.`));
+    heading.firstElementChild.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
     const table = renderTable(data.items, showDetail);
     const pagination = element("nav", "invoice-pagination");
     pagination.setAttribute("aria-label", "صفحه‌بندی فاکتورها");
