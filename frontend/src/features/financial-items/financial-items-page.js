@@ -3,9 +3,11 @@ import { createRequestState, REQUEST_STATUS } from "../../core/state/request-sta
 import { renderPageState } from "../../shared/components/page-state.js";
 import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
+import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { compareDecimalStrings } from "../../shared/validation/decimal-validation.js";
 import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js";
-import { validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
+import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
 
 const SOURCE_LABELS = Object.freeze({
   progress_feed: "خوراک پیشرفت",
@@ -80,16 +82,33 @@ function createDialog(title) {
   return dialog;
 }
 
-function createResourceDialog(adapter, onSaved) {
+function replaceSelectOptions(select, options, selectedValue = "") {
+  const placeholder = element("option", "", "انتخاب کنید");
+  placeholder.value = "";
+  select.replaceChildren(placeholder);
+  options.forEach((option) => {
+    const node = element("option", "", option.label);
+    node.value = option.value;
+    select.append(node);
+  });
+  select.value = selectedValue;
+}
+
+function createResourceDialog(adapter, workspace, onSaved) {
   const dialog = createDialog("ثبت قلم مالی جدید");
   const form = element("form", "workspace-form");
   form.noValidate = true;
   const type = createSelectField({ id: "resourceType", label: "نوع قلم مالی", options: RESOURCE_TYPES });
   const title = createTextField({ id: "resourceTitle", label: "عنوان قلم", hint: "عنوان قابل فهم برای کاربران مالی" });
   const code = createTextField({ id: "resourceCode", label: "کد قلم", hint: "کد پایدار برای جست‌وجو و Import" });
-  const baseUnit = createTextField({ id: "resourceBaseUnit", label: "واحد پایه", hint: "مانند کیلوگرم، ساعت یا نفر-ساعت" });
-  const dimension = createTextField({ id: "resourceDimension", label: "بُعد", hint: "کد نهایی ابعاد در منابع تعریف نشده؛ فعلاً عنوان متنی وارد کنید." });
-  const notice = element("div", "inline-notice", "هزینه عمومی می‌تواند بدون مقدار فیزیکی، واحد پایه و بُعد ثبت شود.");
+  const baseUnit = createSelectField({
+    id: "resourceBaseUnit",
+    label: "واحد پایه",
+    options: (workspace.unitRegistry ?? []).map((unit) => ({ value: unit.code, label: `${unit.label} · ${unit.dimensionLabel}` })),
+  });
+  const unitHint = element("small", "form-hint", "بُعد اندازه‌گیری از واحد انتخاب‌شده و توسط سامانه تعیین می‌شود.");
+  baseUnit.wrapper.append(unitHint);
+  const notice = element("div", "inline-notice", "هزینه عمومی مبلغ‌محور است و بدون واحد پایه ثبت می‌شود.");
   const status = element("div", "form-status");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
@@ -100,25 +119,22 @@ function createResourceDialog(adapter, onSaved) {
   submit.type = "submit";
   const actions = element("div", "form-actions");
   actions.append(cancel, submit, status);
-  form.append(type.wrapper, title.wrapper, code.wrapper, baseUnit.wrapper, dimension.wrapper, notice, actions);
+  form.append(type.wrapper, title.wrapper, code.wrapper, baseUnit.wrapper, notice, actions);
 
   function syncGeneralCost() {
     const optional = type.select.value === "general_cost";
-    [baseUnit.input, dimension.input].forEach((input) => {
-      input.disabled = optional;
-      if (optional) input.value = "";
-    });
+    baseUnit.select.disabled = optional;
+    if (optional) baseUnit.select.value = "";
   }
   type.select.addEventListener("change", syncGeneralCost);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const validation = validateResource({ type: type.select.value, title: title.input.value, code: code.input.value, baseUnit: baseUnit.input.value, dimension: dimension.input.value });
+    const validation = validateResource({ type: type.select.value, title: title.input.value, code: code.input.value, baseUnit: baseUnit.select.value });
     setFieldError(type.select, type.error, validation.errors.type);
     setFieldError(title.input, title.error, validation.errors.title);
     setFieldError(code.input, code.error, validation.errors.code);
-    setFieldError(baseUnit.input, baseUnit.error, validation.errors.baseUnit);
-    setFieldError(dimension.input, dimension.error, validation.errors.dimension);
+    setFieldError(baseUnit.select, baseUnit.error, validation.errors.baseUnit);
     if (!validation.valid) {
       status.textContent = "لطفاً خطاهای فرم را اصلاح کنید.";
       form.querySelector('[aria-invalid="true"]')?.focus();
@@ -142,6 +158,51 @@ function createResourceDialog(adapter, onSaved) {
   return dialog;
 }
 
+function createActivityDialog(adapter, onSaved) {
+  const dialog = createDialog("تعریف فعالیت جدید");
+  const form = element("form", "workspace-form");
+  form.noValidate = true;
+  const title = createTextField({ id: "activityTitle", label: "عنوان فعالیت", hint: "عنوانی که در ساختار پروژه و خطوط متره نمایش داده می‌شود." });
+  const wbsCode = createTextField({ id: "activityWbsCode", label: "کد ساختار شکست کار", hint: "اختیاری؛ مانند ۲.۱ یا ۳.۲" });
+  const parentTask = createTextField({ id: "activityParentTask", label: "شناسه فعالیت والد", hint: "اختیاری؛ فقط اگر فعالیت باید زیرمجموعه یک فعالیت موجود باشد." });
+  const notice = element("div", "inline-notice", "فعالیت در ساختار اصلی پروژه ثبت می‌شود و سپس در خط متره قابل انتخاب است.");
+  const status = element("div", "form-status");
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  const cancel = element("button", "button button--ghost", "لغو");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => dialog.close());
+  const submit = element("button", "button button--primary", "ثبت فعالیت");
+  submit.type = "submit";
+  const actions = element("div", "form-actions");
+  actions.append(cancel, submit, status);
+  form.append(title.wrapper, wbsCode.wrapper, parentTask.wrapper, notice, actions);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const validation = validateActivity({ title: title.input.value, wbsCode: wbsCode.input.value, parentTaskExternalId: parentTask.input.value });
+    setFieldError(title.input, title.error, validation.errors.title);
+    if (!validation.valid) {
+      status.textContent = "لطفاً خطاهای فرم را اصلاح کنید.";
+      title.input.focus();
+      return;
+    }
+    submit.disabled = true;
+    status.textContent = "در حال ثبت فعالیت…";
+    try {
+      const result = await adapter.createActivity(validation.values);
+      dialog.close();
+      onSaved(result);
+    } catch (error) {
+      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  dialog.append(form);
+  return dialog;
+}
+
 function createEstimateLineDialog(adapter, workspace, onSaved) {
   const dialog = createDialog("ثبت خط مستقل متره");
   const form = element("form", "workspace-form");
@@ -149,15 +210,26 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
   const activity = createSelectField({
     id: "lineActivity",
     label: "فعالیت",
-    options: workspace.activities.map((item) => ({ value: item.activityExternalId, label: `${item.wbsCode} · ${item.title}` })),
+    options: workspace.activities.map((item) => ({ value: item.activityExternalId, label: `${item.wbsCode || "—"} · ${item.title}` })),
   });
   const resource = createSelectField({
     id: "lineResource",
     label: "قلم مالی",
     options: workspace.resources.map((item) => ({ value: item.resourceId, label: `${item.code} · ${item.title}` })),
   });
+  const addActivity = element("button", "button button--ghost line-reference-add", "تعریف فعالیت جدید");
+  addActivity.type = "button";
+  const activityHelp = element("small", "form-hint", "اگر فعالیت موردنظر در ساختار پروژه نیست، همین‌جا آن را تعریف کنید.");
+  activity.wrapper.append(addActivity, activityHelp);
+  const addResource = element("button", "button button--ghost line-reference-add", "تعریف قلم مالی جدید");
+  addResource.type = "button";
+  addResource.setAttribute("aria-describedby", "lineResourceHelp");
+  const resourceHelp = element("small", "form-hint", "اگر قلم موردنظر در فهرست نیست، آن را ثبت کنید و سپس برای همین خط انتخاب کنید.");
+  resourceHelp.id = "lineResourceHelp";
+  resource.wrapper.append(addResource, resourceHelp);
   const quantity = createTextField({ id: "lineOriginalQuantity", label: "مقدار اولیه", hint: "مقدار با واحد پایه قلم ثبت می‌شود.", inputMode: "decimal" });
   const relationNotice = element("div", "inline-notice", "هر فعالیت و قلم مالی یک خط مستقل است؛ استفاده همان قلم در فعالیت دیگر خط جدا می‌سازد.");
+  const activityNotice = element("div", "inline-notice", "فعالیت‌ها از ساختار پروژه BAMBO دریافت می‌شوند؛ فعالیت جدید نیز در همان ساختار ثبت می‌شود.");
   const status = element("div", "form-status");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
@@ -168,19 +240,56 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
   submit.type = "submit";
   const actions = element("div", "form-actions");
   actions.append(cancel, submit, status);
-  form.append(activity.wrapper, resource.wrapper, quantity.wrapper, relationNotice, actions);
+  form.append(activity.wrapper, resource.wrapper, quantity.wrapper, relationNotice, activityNotice, actions);
+
+  addResource.addEventListener("click", () => {
+    const previousIds = new Set(workspace.resources.map((item) => item.resourceId));
+    const resourceDialog = createResourceDialog(adapter, workspace, (nextWorkspace) => {
+      workspace = nextWorkspace;
+      const created = workspace.resources.find((item) => !previousIds.has(item.resourceId));
+      resource.select.replaceChildren();
+      const placeholder = element("option", "", "انتخاب کنید");
+      placeholder.value = "";
+      resource.select.append(placeholder);
+      workspace.resources.forEach((item) => {
+        const option = element("option", "", `${item.code} · ${item.title}`);
+        option.value = item.resourceId;
+        resource.select.append(option);
+      });
+      resource.select.value = created?.resourceId ?? "";
+      syncQuantityLabel();
+    });
+    dialog.after(resourceDialog);
+    resourceDialog.addEventListener("close", () => resourceDialog.remove(), { once: true });
+    resourceDialog.showModal();
+  });
+
+  addActivity.addEventListener("click", () => {
+    const activityDialog = createActivityDialog(adapter, ({ created, workspace: nextWorkspace }) => {
+      workspace = nextWorkspace;
+      replaceSelectOptions(activity.select, workspace.activities.map((item) => ({
+        value: item.activityExternalId,
+        label: `${item.wbsCode || "—"} · ${item.title}`,
+      })), created.activityExternalId);
+    });
+    dialog.after(activityDialog);
+    activityDialog.addEventListener("close", () => activityDialog.remove(), { once: true });
+    activityDialog.showModal();
+  });
 
   function syncQuantityLabel() {
     const selected = workspace.resources.find((item) => item.resourceId === resource.select.value);
     const isGeneralCost = selected?.type === "general_cost";
-    quantity.label.textContent = isGeneralCost ? `مبلغ اولیه (${CURRENCY_LABELS.IRR})` : "مقدار اولیه";
-    quantity.hint.textContent = isGeneralCost ? `هزینه عمومی بدون مقدار فیزیکی و با مبلغ ${CURRENCY_LABELS.IRR} ثبت می‌شود.` : `مقدار با واحد پایه ${formatUnitLabel(selected?.baseUnit)} ثبت می‌شود.`;
+    quantity.label.textContent = isGeneralCost ? `مبلغ اولیه (${getDisplayCurrencyLabel()})` : "مقدار اولیه";
+    quantity.hint.textContent = isGeneralCost ? `مبلغ با واحد نمایشی انتخاب‌شده وارد می‌شود و مقدار رسمی Backend همچنان ${CURRENCY_LABELS.IRR} است.` : `مقدار با واحد پایه ${formatUnitLabel(selected?.baseUnit)} ثبت می‌شود.`;
   }
   resource.select.addEventListener("change", syncQuantityLabel);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const validation = validateEstimateLine({ activityExternalId: activity.select.value, resourceId: resource.select.value, originalQuantity: quantity.input.value });
+    const selectedResource = workspace.resources.find((item) => item.resourceId === resource.select.value);
+    const inputValue = selectedResource?.type === "general_cost" ? tomanInputToIrr(quantity.input.value) : quantity.input.value;
+    const validation = validateEstimateLine({ activityExternalId: activity.select.value, resourceId: resource.select.value, originalQuantity: inputValue });
     setFieldError(activity.select, activity.error, validation.errors.activityExternalId);
     setFieldError(resource.select, resource.error, validation.errors.resourceId);
     setFieldError(quantity.input, quantity.error, validation.errors.originalQuantity);
@@ -381,24 +490,24 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
   const isGeneralCost = resource.type === "general_cost";
   const originalValue = line.originalQuantity ?? line.originalAmount;
   const currentValue = line.revisedQuantity ?? line.revisedAmount;
-  const unit = isGeneralCost ? CURRENCY_LABELS.IRR : formatUnitLabel(resource.baseUnit);
+  const unit = isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource.baseUnit);
   const dialog = createDialog("ثبت بازنگری مقدار");
   const summary = element("div", "revision-summary");
   const original = element("article", "revision-summary__item");
-  original.append(element("span", "", "مقدار اولیه قفل‌شده"), element("strong", "numeric", formatDisplayNumber(originalValue)), element("small", "numeric", unit));
+  original.append(element("span", "", "مقدار اولیه قفل‌شده"), element("strong", "numeric", isGeneralCost ? formatTomanFromIrr(originalValue, { withCurrency: false }) : formatDisplayNumber(originalValue)), element("small", "numeric", unit));
   const current = element("article", "revision-summary__item");
-  current.append(element("span", "", "مقدار اصلاح‌شده فعلی"), element("strong", "numeric", formatDisplayNumber(currentValue)), element("small", "numeric", `بازنگری ${line.revision}`));
+  current.append(element("span", "", "مقدار اصلاح‌شده فعلی"), element("strong", "numeric", isGeneralCost ? formatTomanFromIrr(currentValue, { withCurrency: false }) : formatDisplayNumber(currentValue)), element("small", "numeric", `بازنگری ${line.revision}`));
   summary.append(original, current);
 
   const form = element("form", "workspace-form revision-form");
   form.noValidate = true;
   const revised = createTextField({
     id: `revisedValue-${line.lineId}`,
-    label: isGeneralCost ? `مبلغ اصلاح‌شده (${CURRENCY_LABELS.IRR})` : `مقدار اصلاح‌شده (${unit})`,
+    label: isGeneralCost ? `مبلغ اصلاح‌شده (${getDisplayCurrencyLabel()})` : `مقدار اصلاح‌شده (${unit})`,
     hint: "مقدار اولیه تغییر نمی‌کند؛ فقط یک بازنگری جدید ثبت می‌شود.",
     inputMode: "decimal",
   });
-  revised.input.value = currentValue;
+  revised.input.value = isGeneralCost ? (formatTomanFromIrr(currentValue, { withCurrency: false }).replaceAll("٬", "").replace("٫", ".")) : currentValue;
   const reasonField = element("div", "form-field form-field--wide");
   const reasonLabel = element("label", "form-label", "دلیل بازنگری");
   reasonLabel.htmlFor = `revisionReason-${line.lineId}`;
@@ -427,7 +536,7 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
   form.append(revised.wrapper, reasonField, warning, actions);
 
   function syncWarning() {
-    const validation = validateEstimateRevision({ revisedValue: revised.input.value, reason: "valid reason" }, { isGeneralCost });
+    const validation = validateEstimateRevision({ revisedValue: isGeneralCost ? tomanInputToIrr(revised.input.value) : revised.input.value, reason: "valid reason" }, { isGeneralCost });
     const isOverrun = validation.values.revisedValue && validation.errors.revisedValue === "" && compareDecimalStrings(validation.values.revisedValue, originalValue) > 0;
     warning.hidden = !isOverrun;
     warning.textContent = isOverrun ? "مقدار اصلاح‌شده از مقدار اولیه بیشتر است. ثبت مسدود نمی‌شود، اما دلیل آن در Audit و تاریخچه حفظ خواهد شد." : "";
@@ -437,7 +546,7 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const validation = validateEstimateRevision({ revisedValue: revised.input.value, reason: reason.value }, { isGeneralCost });
+    const validation = validateEstimateRevision({ revisedValue: isGeneralCost ? tomanInputToIrr(revised.input.value) : revised.input.value, reason: reason.value }, { isGeneralCost });
     if (validation.valid && compareDecimalStrings(validation.values.revisedValue, currentValue) === 0) {
       validation.valid = false;
       validation.errors.revisedValue = "مقدار جدید باید با مقدار فعلی متفاوت باشد.";
@@ -489,7 +598,7 @@ function createRevisionHistoryDialog(line, resource) {
     const head = element("div", "revision-record__head");
     head.append(element("strong", "", `بازنگری ${revision.revisionNumber}`), element("time", "", formatSystemDateTime(revision.occurredAt)));
     const values = element("div", "revision-record__values");
-    values.append(element("span", "", `از ${formatDisplayNumber(revision.previousValue)} به ${formatDisplayNumber(revision.newValue)}`), element("small", "", resource.type === "general_cost" ? CURRENCY_LABELS.IRR : formatUnitLabel(resource.baseUnit)));
+    values.append(element("span", "", resource.type === "general_cost" ? `از ${formatTomanFromIrr(revision.previousValue)} به ${formatTomanFromIrr(revision.newValue)}` : `از ${formatDisplayNumber(revision.previousValue)} به ${formatDisplayNumber(revision.newValue)}`), element("small", "", resource.type === "general_cost" ? getDisplayCurrencyLabel() : formatUnitLabel(resource.baseUnit)));
     item.append(head, values, element("p", "", revision.reason), element("small", "revision-record__actor", revision.actorName || revision.actorId));
     if (revision.isOverrun) item.append(element("span", "overrun-badge", "بیشتر از مقدار اولیه"));
     wrapper.append(item);
@@ -504,19 +613,18 @@ function renderResourceTable(resources) {
   table.append(element("caption", "sr-only", "فهرست اقلام مالی"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  ["کد", "عنوان", "نوع", "واحد پایه", "بُعد", "منبع ورود"].forEach((label) => header.append(element("th", "", label)));
+  ["کد", "عنوان", "نوع", "واحد پایه", "منبع ورود"].forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
   resources.forEach((resource) => {
     const row = document.createElement("tr");
-    const typeCell = document.createElement("td");
+    const typeCell = element("td", "items-table__type");
     typeCell.append(element("span", `type-badge type-badge--${resource.type}`, getResourceTypeLabel(resource.type)));
     row.append(
       element("td", "numeric", resource.code),
       element("td", "", resource.title),
       typeCell,
       element("td", "numeric", formatUnitLabel(resource.baseUnit)),
-      element("td", "", resource.dimension ?? "مبلغی"),
       element("td", "", SOURCE_LABELS[resource.source] ?? "منبع تعریف‌نشده"),
     );
     body.append(row);
@@ -533,7 +641,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
   table.append(element("caption", "sr-only", "خطوط مستقل فعالیت و قلم مالی"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  ["ساختار شکست کار / فعالیت", "قلم مالی", "واحد", "مقدار/مبلغ اولیه", "مقدار/مبلغ اصلاح‌شده", "منبع", "عملیات"].forEach((label) => header.append(element("th", "", label)));
+  ["ساختار شکست کار / فعالیت", "قلم مالی", "واحد", "برآورد اولیه", "برآورد اصلاح‌شده", "منبع", "عملیات"].forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
   lines.forEach((line) => {
@@ -547,7 +655,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
     activityCell.append(element("strong", "", line.activityTitle), element("small", "table-subtext numeric", `${line.wbsCode} · ${line.activityExternalId}`));
     const resourceCell = document.createElement("td");
     resourceCell.append(element("strong", "", resource?.title ?? "—"), element("small", "table-subtext numeric", resource?.code ?? "—"));
-    const revisedCell = element("td", `numeric ${changed ? "value-changed" : ""}`, formatDisplayNumber(revised));
+    const revisedCell = element("td", `numeric ${changed ? "value-changed" : ""}`, isGeneralCost ? formatTomanFromIrr(revised, { withCurrency: false }) : formatDisplayNumber(revised));
     if (changed) revisedCell.append(element("span", "change-badge", "اصلاح‌شده"));
     const actionsCell = element("td", "line-actions");
     const history = element("button", "table-action", "تاریخچه");
@@ -563,8 +671,8 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
     row.append(
       activityCell,
       resourceCell,
-      element("td", "numeric", isGeneralCost ? CURRENCY_LABELS.IRR : formatUnitLabel(resource?.baseUnit)),
-      element("td", "numeric", formatDisplayNumber(original)),
+      element("td", "numeric", isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit)),
+      element("td", "numeric", isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original)),
       revisedCell,
       element("td", "", SOURCE_LABELS[line.source] ?? "منبع تعریف‌نشده"),
       actionsCell,
@@ -611,7 +719,7 @@ export function createFinancialItemsPage({ context, adapter }) {
       button.type = "button";
       button.addEventListener("click", async () => {
         const workspace = await adapter.getWorkspace();
-        const dialog = createResourceDialog(adapter, (next) => {
+        const dialog = createResourceDialog(adapter, workspace, (next) => {
           state = createRequestState(REQUEST_STATUS.SUCCESS, next);
           paint();
         });
@@ -645,7 +753,7 @@ export function createFinancialItemsPage({ context, adapter }) {
       const importEstimate = element("button", "button button--ghost", "ورود گروهی برآورد");
       importEstimate.type = "button";
       addResource.addEventListener("click", () => {
-        const dialog = createResourceDialog(adapter, (next) => {
+        const dialog = createResourceDialog(adapter, workspace, (next) => {
           state = createRequestState(REQUEST_STATUS.SUCCESS, next);
           paint();
         });
@@ -676,13 +784,13 @@ export function createFinancialItemsPage({ context, adapter }) {
     const resourcesSection = element("section", "items-section");
     const resourceHead = element("div", "items-section__head");
     resourceHead.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(workspace.resources.length))));
-    resourceHead.firstElementChild.append(element("h2", "", "کاتالوگ اقلام مالی"), element("p", "", "چهار نوع قلم، واحد پایه و بُعد هر قلم"));
+    resourceHead.firstElementChild.append(element("h2", "", "کاتالوگ اقلام مالی"), element("p", "", "فهرست چهار نوع قلم مالی و واحد پایه هر قلم"));
     resourcesSection.append(resourceHead, renderResourceTable(workspace.resources));
 
     const linesSection = element("section", "items-section");
     const linesHead = element("div", "items-section__head");
     linesHead.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(workspace.estimateLines.length))));
-    linesHead.firstElementChild.append(element("h2", "", "خطوط مستقل فعالیت و قلم مالی"), element("p", "", "تکرار یک قلم در دو فعالیت، دو خط مستقل با شناسه جدا می‌سازد."));
+    linesHead.firstElementChild.append(element("h2", "", "خطوط مستقل فعالیت و قلم مالی"), element("p", "", "هر ردیف، مقدار برنامه‌ریزی‌شده یک قلم را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا متره، بازنگری و پیشرفت هر فعالیت مستقل و قابل ممیزی بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت‌ها و فاکتورهای تأییدشده محاسبه می‌شوند."));
     linesSection.append(linesHead, renderEstimateLineTable(workspace.estimateLines, workspace.resources, {
       canEdit,
       onRevise: (line, resource) => {

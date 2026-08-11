@@ -5,6 +5,8 @@ function wait(duration = 320) {
 }
 
 export function createMockReportsAdapter(context, { initialState = "success" } = {}) {
+  const snapshots = new Map();
+
   async function getLiveReport({ reportingDate, progressSnapshotId }) {
     await wait();
     if (initialState === "error") throw new ApiError({ status: 503, code: "LIVE_REPORT_UNAVAILABLE", message: "دریافت خلاصه مالی زنده انجام نشد.", requestId: "mock-live-report-001" });
@@ -35,5 +37,41 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     };
   }
 
-  return Object.freeze({ getLiveReport });
+  async function issueSnapshot({ reportingDate, progressSnapshotId = null }) {
+    await wait();
+    if (initialState === "error") throw new ApiError({ status: 503, code: "REPORT_SNAPSHOT_UNAVAILABLE", message: "صدور گزارش انجام نشد.", requestId: "mock-report-issue-001" });
+    const live = await getLiveReport({ reportingDate, progressSnapshotId });
+    const reportSnapshotId = `00000000-0000-4000-8000-${String(snapshots.size + 1).padStart(12, "0")}`;
+    const snapshot = Object.freeze({
+      reportSnapshotId,
+      organizationId: context.organizationId,
+      projectId: context.projectId,
+      issuedAt: new Date().toISOString(),
+      issuedBy: context.userId,
+      progressSnapshotId: live.progressSnapshotId,
+      resourceVersionIds: ["00000000-0000-4000-8000-000000000101"],
+      priceVersionIds: ["00000000-0000-4000-8000-000000000201"],
+      invoiceIds: ["00000000-0000-4000-8000-000000000301"],
+      unitConversionIds: [],
+      calculatedMetrics: { ...live.metrics },
+      immutable: true,
+    });
+    snapshots.set(reportSnapshotId, snapshot);
+    return snapshot;
+  }
+
+  async function getSnapshot(reportId) {
+    await wait(80);
+    const snapshot = snapshots.get(reportId);
+    if (!snapshot) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "نسخه گزارش پیدا نشد.", requestId: "mock-report-get-001" });
+    return snapshot;
+  }
+
+  async function downloadSnapshotCsv(reportId) {
+    const snapshot = await getSnapshot(reportId);
+    const rows = ["شاخص,مقدار (ریال)", ...Object.entries(snapshot.calculatedMetrics).map(([key, value]) => `${key},${value}`)];
+    return Object.freeze({ blob: new Blob([`\uFEFF${rows.join("\r\n")}`], { type: "text/csv;charset=utf-8" }), fileName: `finance-report-${reportId}.csv` });
+  }
+
+  return Object.freeze({ getLiveReport, issueSnapshot, getSnapshot, downloadSnapshotCsv });
 }

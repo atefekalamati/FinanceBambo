@@ -15,6 +15,8 @@ import { createApiInvoicesAdapter } from "../adapters/api/invoices-api-adapter.j
 import { createApiAttachmentsAdapter } from "../adapters/api/attachments-api-adapter.js";
 import { createApiReportsAdapter } from "../adapters/api/reports-api-adapter.js";
 import { createMockReportsAdapter } from "../adapters/mock/reports-adapter.js";
+import { createApiAuditAdapter } from "../adapters/api/audit-api-adapter.js";
+import { createMockAuditAdapter } from "../adapters/mock/audit-adapter.js";
 import { canAccessRoute } from "../core/auth/permissions.js";
 import { DEFAULT_ROUTE, ROUTES } from "../core/config/routes.js";
 import { createHashRouter } from "../core/routing/router.js";
@@ -26,7 +28,10 @@ import { createInvoicesPage } from "../features/invoices/invoices-page.js";
 import { createInvoiceFilesPage } from "../features/ai-review/invoice-files-page.js";
 import { createAiReviewPage } from "../features/ai-review/ai-review-page.js";
 import { createSettingsPage } from "../features/settings/settings-page.js";
+import { createReportsPage } from "../features/reports/reports-page.js";
+import { createAuditPage } from "../features/audit/audit-page.js";
 import { formatArea } from "../shared/formatters/display.js";
+import { DISPLAY_CURRENCY_CHANGED_EVENT } from "../shared/preferences/currency-preference.js";
 
 const root = document.querySelector("#finance-module-root");
 const contextSlot = document.querySelector("#project-context-slot");
@@ -77,6 +82,8 @@ function renderRoute(route, context, adapters) {
   if (route.key === "invoices") root.append(createInvoicesPage({ context, adapter: adapters.invoices }));
   if (route.key === "invoice-files") root.append(createInvoiceFilesPage({ context, adapter: adapters.attachments }));
   if (route.key === "ai-review") root.append(createAiReviewPage({ context, adapter: adapters.attachments }));
+  if (route.key === "reports") root.append(createReportsPage({ context, adapter: adapters.reports }));
+  if (route.key === "audit") root.append(createAuditPage({ adapter: adapters.audit }));
   if (route.key === "settings") {
     root.append(createSettingsPage({
       context,
@@ -105,6 +112,8 @@ try {
   const filesState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedFilesState) ? requestedFilesState : "success";
   const requestedReportsState = new URLSearchParams(window.location.search).get("reportsState");
   const reportsState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedReportsState) ? requestedReportsState : "success";
+  const requestedAuditState = new URLSearchParams(window.location.search).get("auditState");
+  const auditState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedAuditState) ? requestedAuditState : "success";
   let adapters;
   if (document.body.dataset.financeRuntime === "host") {
     const client = createApiClient();
@@ -117,6 +126,7 @@ try {
       invoices,
       attachments: createApiAttachmentsAdapter(context, client, invoices),
       reports: createApiReportsAdapter(context, client),
+      audit: createApiAuditAdapter(context, client),
     });
   } else {
     const invoices = createMockInvoicesAdapter(context, { initialState: invoicesState });
@@ -128,10 +138,18 @@ try {
       invoices,
       attachments: createMockAttachmentsAdapter(context, { initialState: filesState, invoiceAdapter: invoices }),
       reports: createMockReportsAdapter(context, { initialState: reportsState }),
+      audit: createMockAuditAdapter(context, { initialState: auditState }),
     });
   }
+  let activeRoute = null;
   renderContext(context);
-  createHashRouter({ routes: ROUTES, defaultPath: DEFAULT_ROUTE, onNavigate: (route) => renderRoute(route, context, adapters) }).start();
+  createHashRouter({ routes: ROUTES, defaultPath: DEFAULT_ROUTE, onNavigate: (route) => {
+    activeRoute = route;
+    renderRoute(route, context, adapters);
+  } }).start();
+  window.addEventListener(DISPLAY_CURRENCY_CHANGED_EVENT, () => {
+    if (activeRoute) renderRoute(activeRoute, context, adapters);
+  });
 } catch (error) {
   const section = document.createElement("section");
   section.className = "state-card state-card--danger";

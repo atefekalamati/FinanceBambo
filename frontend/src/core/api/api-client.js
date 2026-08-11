@@ -30,5 +30,28 @@ export function createApiClient({ fetchImpl = window.fetch.bind(window) } = {}) 
     return payload;
   }
 
-  return Object.freeze({ request });
+  async function download(path, options = {}) {
+    const url = assertSameOrigin(path);
+    const headers = new Headers(options.headers);
+    const response = await fetchImpl(url, { ...options, headers, credentials: "same-origin" });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const error = payload?.error ?? {};
+      throw new ApiError({
+        status: response.status,
+        code: error.code,
+        message: error.message || "دریافت فایل گزارش انجام نشد.",
+        requestId: error.request_id ?? error.requestId ?? null,
+        details: error.details ?? [],
+      });
+    }
+
+    return Object.freeze({
+      blob: await response.blob(),
+      fileName: response.headers.get("Content-Disposition")?.match(/filename="?([^";]+)"?/i)?.[1] ?? "finance-report.csv",
+    });
+  }
+
+  return Object.freeze({ request, download });
 }

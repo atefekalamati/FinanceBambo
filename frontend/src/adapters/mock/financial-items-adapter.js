@@ -15,6 +15,7 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
   let resourceSequence = 5;
   let lineSequence = 6;
   let revisionSequence = 6;
+  let activitySequence = 3;
   let importSequence = 1;
   const importPreviews = new Map();
 
@@ -23,6 +24,15 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
     { activityExternalId: "ACT-201", taskExternalId: "task-floor1-slab", title: "سقف طبقه اول", wbsCode: "2.1" },
     { activityExternalId: "ACT-202", taskExternalId: "task-formwork", title: "قالب‌بندی", wbsCode: "2.2" },
     { activityExternalId: "ACT-002", taskExternalId: "task-permit", title: "مجوزهای پروژه", wbsCode: "0.2" },
+  ];
+
+  const unitRegistry = [
+    { code: "kg", label: "کیلوگرم", dimension: "mass", dimensionLabel: "جرم", decimalPrecision: 4 },
+    { code: "m", label: "متر", dimension: "length", dimensionLabel: "طول", decimalPrecision: 4 },
+    { code: "m2", label: "متر مربع", dimension: "area", dimensionLabel: "مساحت", decimalPrecision: 4 },
+    { code: "m3", label: "متر مکعب", dimension: "volume", dimensionLabel: "حجم", decimalPrecision: 4 },
+    { code: "hour", label: "ساعت", dimension: "equipment_time", dimensionLabel: "زمان تجهیز", decimalPrecision: 4 },
+    { code: "person_hour", label: "نفر-ساعت", dimension: "labor_time", dimensionLabel: "زمان کار", decimalPrecision: 4 },
   ];
 
   let resources = initialState === "empty" ? [] : [
@@ -69,6 +79,7 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
       resources: clone(resources),
       estimateLines: clone(estimateLines),
       activities: clone(activities),
+      unitRegistry: clone(unitRegistry),
       scope: { organizationId: context.organizationId, projectId: context.projectId },
     };
   }
@@ -92,11 +103,27 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
     const resource = {
       resourceId: `20000000-0000-4000-8000-${String(resourceSequence++).padStart(12, "0")}`,
       ...validation.values,
+      dimension: validation.values.baseUnit ? unitRegistry.find((unit) => unit.code === validation.values.baseUnit)?.dimension ?? null : null,
       externalResourceId: null,
       source: "manual_entry",
     };
     resources = [...resources, resource];
     return snapshot();
+  }
+
+  async function createActivity(values) {
+    await wait(380);
+    const title = String(values.title ?? "").trim();
+    if (!title) throw new ApiError({ status: 422, code: "VALIDATION_ERROR", message: "عنوان فعالیت الزامی است." });
+    const activity = {
+      activityExternalId: `ACT-${String(activitySequence++).padStart(3, "0")}`,
+      taskExternalId: values.parentTaskExternalId || `task-${Date.now()}`,
+      title,
+      wbsCode: values.wbsCode || null,
+      status: "active",
+    };
+    activities.push(activity);
+    return { created: clone(activity), workspace: snapshot() };
   }
 
   async function createEstimateLine(values) {
@@ -284,5 +311,5 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
     return snapshot();
   }
 
-  return Object.freeze({ getWorkspace, createResource, createEstimateLine, previewEstimateImport, commitEstimateImport, reviseEstimateLine });
+  return Object.freeze({ getWorkspace, createResource, createActivity, createEstimateLine, previewEstimateImport, commitEstimateImport, reviseEstimateLine });
 }

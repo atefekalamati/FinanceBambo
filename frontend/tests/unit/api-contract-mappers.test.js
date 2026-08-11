@@ -66,6 +66,8 @@ test("maps canonical estimate revision history and general cost amount", async (
     async request(path) {
       if (path.endsWith("/resources")) return [{ id: "resource-1", type: "general_cost", code: "GEN-1", title: "مجوز", baseUnit: null, dimension: null }];
       if (path.endsWith("/estimate-lines")) return [{ id: "line-1", resourceId: "resource-1", activityExternalId: "A-1", assignmentExternalId: null, originalQuantity: null, revisedQuantity: "1200000", originalUnitPriceIrr: "1000000", source: "manual_entry", revision: 2, revisions: [{ id: "revision-1", revision: 2, previousQuantity: "1000000", newQuantity: "1200000", reason: "اصلاح", createdBy: "user-1", createdAt: "2026-08-10T08:00:00Z" }] }];
+      if (path.includes("/activities?")) return { items: [{ activityExternalId: "A-1", taskExternalId: "task-1", title: "عملیات", wbsCode: "1", status: "active" }] };
+      if (path.endsWith("/unit-registry")) return { items: [] };
       throw new Error(`unexpected path: ${path}`);
     },
   };
@@ -87,6 +89,8 @@ test("sends general cost amount only in canonical money field", async () => {
       if (path.endsWith("/resources")) return [{ id: "resource-1", type: "general_cost", code: "GEN-1", title: "مجوز", baseUnit: null, dimension: null }];
       if (path.endsWith("/estimate-lines") && !options) return [];
       if (path.endsWith("/estimate-lines") && options?.method === "POST") return {};
+      if (path.includes("/activities?")) return { items: [] };
+      if (path.endsWith("/unit-registry")) return { items: [] };
       throw new Error(`unexpected path: ${path}`);
     },
   };
@@ -96,4 +100,29 @@ test("sends general cost amount only in canonical money field", async () => {
   const body = JSON.parse(calls.find((call) => call.options?.method === "POST").options.body);
   assert.equal(body.originalQuantity, null);
   assert.equal(body.originalUnitPriceIrr, "2500000");
+});
+
+test("uses activity and unit registry APIs and omits client-provided dimension", async () => {
+  const calls = [];
+  const client = {
+    async request(path, options) {
+      calls.push({ path, options });
+      if (path.endsWith("/resources") && !options) return [];
+      if (path.endsWith("/resources") && options?.method === "POST") return {};
+      if (path.endsWith("/estimate-lines")) return [];
+      if (path.includes("/activities?")) return { items: [{ activityExternalId: "A-2", title: "دیوارچینی", wbsCode: "3.2", status: "active" }] };
+      if (path.endsWith("/activities") && options?.method === "POST") return { activityExternalId: "A-3", title: "نازک‌کاری", wbsCode: "4.1", status: "active" };
+      if (path.endsWith("/unit-registry")) return { items: [{ code: "kg", labelFa: "کیلوگرم", dimension: "mass", dimensionLabelFa: "جرم", decimalPrecision: 4, active: true }] };
+      throw new Error(`unexpected path: ${path}`);
+    },
+  };
+  const adapter = createApiFinancialItemsAdapter({ organizationId: "org-1", projectId: "project-1" }, client);
+  const workspace = await adapter.getWorkspace();
+  assert.equal(workspace.activities[0].title, "دیوارچینی");
+  assert.equal(workspace.unitRegistry[0].label, "کیلوگرم");
+  await adapter.createResource({ type: "material", code: "MAT-1", title: "میلگرد", baseUnit: "kg" });
+  const resourceBody = JSON.parse(calls.find((call) => call.path.endsWith("/resources") && call.options?.method === "POST").options.body);
+  assert.equal("dimension" in resourceBody, false);
+  const created = await adapter.createActivity({ title: "نازک‌کاری", wbsCode: "4.1" });
+  assert.equal(created.created.activityExternalId, "A-3");
 });

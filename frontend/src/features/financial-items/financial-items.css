@@ -134,7 +134,7 @@
    -------------------------------------------------------------------------- */
 
 .items-table {
-  min-inline-size: 48rem;
+  min-inline-size: 42rem;
 }
 
 .estimate-lines-table {
@@ -142,32 +142,34 @@
 }
 
 .items-table :is(th, td):nth-child(1) {
-  inline-size: 16%;
+  inline-size: 17%;
 }
 
 .items-table :is(th, td):nth-child(2) {
-  inline-size: 24%;
+  inline-size: 29%;
 }
 
 .items-table :is(th, td):nth-child(3) {
-  inline-size: 16%;
+  inline-size: 18%;
 }
 
 .items-table :is(th, td):nth-child(4) {
-  inline-size: 14%;
+  inline-size: 17%;
 }
 
 .items-table :is(th, td):nth-child(5) {
-  inline-size: 16%;
-}
-
-.items-table :is(th, td):nth-child(6) {
-  inline-size: 14%;
+  inline-size: 19%;
 }
 
 .items-table :is(th, td):nth-child(1),
 .items-table :is(th, td):nth-child(4) {
   overflow-wrap: anywhere;
+}
+
+.items-table :is(th, td):nth-child(3),
+.items-table__type {
+  text-align: center;
+  vertical-align: middle;
 }
 
 .estimate-lines-table :is(th, td):nth-child(1) {
@@ -321,6 +323,12 @@
 .workspace-form .inline-notice,
 .workspace-form .form-actions {
   grid-column: 1 / -1;
+}
+
+.line-reference-add {
+  inline-size: fit-content;
+  min-block-size: 2.15rem;
+  margin-block-start: var(--space-sm);
 }
 
 .workspace-form select {
