@@ -28,8 +28,8 @@ class ResourceCreate(ApiModel):
 
     @model_validator(mode="after")
     def require_quantity_metadata(self):
-        if self.type != "general_cost" and not (self.base_unit and self.dimension):
-            raise ValueError("quantified resources require baseUnit and dimension")
+        if self.type != "general_cost" and not self.base_unit:
+            raise ValueError("quantified resources require baseUnit")
         return self
 
 
@@ -86,6 +86,8 @@ class EstimateRevisionResponse(ApiModel):
 
 class EstimateLineResponse(EstimateLineCreate):
     id: UUID
+    activity_title: str | None = None
+    wbs_code: str | None = None
     revised_quantity: Decimal | None
     created_by: UUID
     created_at: datetime
