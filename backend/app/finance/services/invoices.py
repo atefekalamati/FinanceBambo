@@ -10,6 +10,8 @@ class InvoiceAlreadyConfirmed(FinanceDomainError):status=409;code="INVOICE_ALREA
 class InvoiceConfirmationForbidden(FinanceDomainError):status=403;code="FINANCE_FORBIDDEN"
 class InvoiceOperationConflict(FinanceDomainError):status=409;code="INVOICE_ALREADY_CONFIRMED"
 class InvoiceValidationError(FinanceDomainError):status=422;code="VALIDATION_ERROR"
+def invoice_code(invoice_id):return f"F-{str(invoice_id).split('-')[0].upper()}"
+def resolve_invoice_number(value,invoice_id):return value.strip() if isinstance(value,str) and value.strip() else invoice_code(invoice_id)
 class FinanceInvoiceService:
  def __init__(self,repo,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.ids=id_factory;self.clock=clock
  async def list(self,s,page=1,page_size=50,query=None,status=None,source=None):return await self.repo.list(s,page,page_size,query,status,source)
@@ -23,14 +25,16 @@ class FinanceInvoiceService:
   lines,calc=await self._calculate_lines(s,c)
   duplicate=await self.repo.duplicate(s,idempotency_key,c.vendor_name,c.invoice_number,c.invoice_date,calc.final_total)
   if duplicate is not None and not (c.duplicate_reason and c.duplicate_reason.strip()):raise DuplicateInvoice("similar extracted invoice requires reason")
-  return Invoice(self.ids(),s.organization_id,s.project_id,c.invoice_number,c.invoice_date,c.vendor_name,c.description,source,"confirmed",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,lines)
+  invoice_id=self.ids();invoice_number=resolve_invoice_number(c.invoice_number,invoice_id)
+  return Invoice(invoice_id,s.organization_id,s.project_id,invoice_number,c.invoice_date,c.vendor_name,c.description,source,"confirmed",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,lines)
  async def create(self,s,c):
   if s.actor_user_id is None:raise PermissionError("actor required")
   lines,calc=await self._calculate_lines(s,c)
   duplicate=await self.repo.duplicate(s,c.idempotency_key,c.vendor_name,c.invoice_number,c.invoice_date,calc.final_total)
   if duplicate!="similar" and duplicate is not None:return duplicate
   if duplicate=="similar" and not (c.duplicate_reason and c.duplicate_reason.strip()):raise DuplicateInvoice("similar invoice requires reason")
-  invoice=Invoice(self.ids(),s.organization_id,s.project_id,c.invoice_number,c.invoice_date,c.vendor_name,c.description,c.source,"draft",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,None,None,self.clock(),lines)
+  invoice_id=self.ids();invoice_number=resolve_invoice_number(c.invoice_number,invoice_id)
+  invoice=Invoice(invoice_id,s.organization_id,s.project_id,invoice_number,c.invoice_date,c.vendor_name,c.description,c.source,"draft",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,None,None,self.clock(),lines)
   action="invoice.duplicate_warning_overridden" if duplicate=="similar" else "invoice.created"
   return await self.repo.create(s,invoice,self.ids(),c.duplicate_reason,action)
  async def _calculate_lines(self,s,c):
@@ -81,7 +85,8 @@ class FinanceInvoiceService:
   original=await self.get(s,invoice_id)
   if original.status!="confirmed" or await self.repo.has_reversal(s,invoice_id):raise InvoiceOperationConflict("corrective invoice requires a non-voided confirmed original")
   lines,calc=await self._calculate_lines(s,c);at=self.clock()
-  correction=Invoice(self.ids(),s.organization_id,s.project_id,c.invoice_number,c.invoice_date,c.vendor_name,c.description,"corrective","corrected",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,lines,c.financial_effect_sign,original.id)
+  invoice_id=self.ids();invoice_number=resolve_invoice_number(c.invoice_number,invoice_id)
+  correction=Invoice(invoice_id,s.organization_id,s.project_id,invoice_number,c.invoice_date,c.vendor_name,c.description,"corrective","corrected",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,lines,c.financial_effect_sign,original.id)
   try:return await self.repo.create(s,correction,self.ids(),c.reason,"invoice.corrected")
   except ValueError as error:
    repeated=await self.repo.get_by_idempotency(s,c.idempotency_key)

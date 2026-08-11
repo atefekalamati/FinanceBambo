@@ -8,7 +8,7 @@ BACKEND_ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(BACKEND_R
 from app.finance.domain.invoices import Invoice,actual_cost,calculate_invoice
 from app.finance.schemas.invoices import CorrectiveInvoiceCreate,InvoiceConfirm,InvoiceCreate,InvoicePatch,InvoiceVoid
 from app.finance.security.guards import FinanceScope
-from app.finance.services.invoices import FinanceInvoiceService,InvoiceAlreadyConfirmed,InvoiceConfirmationForbidden,StaleInvoice
+from app.finance.services.invoices import FinanceInvoiceService,InvoiceAlreadyConfirmed,InvoiceConfirmationForbidden,StaleInvoice,invoice_code
 class InvoiceTests(unittest.TestCase):
  def test_round_half_up_and_proportional_adjustments_last_line_remainder(self):
   result=calculate_invoice([("2.5","101"),("1","100")],discount=Decimal("10"),tax=Decimal("7"),shipping=Decimal("3"),other=Decimal("0"))
@@ -49,6 +49,7 @@ class FakeInvoiceRepo:
   self.value=Invoice(value.id,value.organization_id,value.project_id,value.invoice_number,value.invoice_date,value.vendor_name,value.description,value.source,"confirmed",value.discount_irr,value.tax_irr,value.shipping_irr,value.other_costs_irr,value.final_amount_irr,value.idempotency_key,value.version+1,value.submitted_by,scope.actor_user_id,at,value.created_at,value.lines)
   return self.value
  async def get_by_idempotency(self,_scope,key):return self.by_key.get(key)
+ async def duplicate(self,*_args):return None
  async def has_reversal(self,_scope,_id):return self.reversed
  async def create(self,_scope,value,_audit,_reason,_action="invoice.created"):
   self.value=value;self.by_key[value.idempotency_key]=value
@@ -70,6 +71,16 @@ class InvoiceLifecycleTests(unittest.IsolatedAsyncioTestCase):
   command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="new-key",duplicateReason="reviewed duplicate",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"100"}])
   await service.create(FinanceScope(ORG,"p1",ACTOR),command)
   self.assertEqual("invoice.duplicate_warning_overridden",repo.action)
+ async def test_missing_invoice_number_gets_stable_f_code_from_invoice_id(self):
+  repo=FakeInvoiceRepo(invoice());service=FinanceInvoiceService(repo,id_factory=lambda:INVOICE_ID,clock=lambda:NOW)
+  command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="auto-code",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"100"}])
+  created=await service.create(FinanceScope(ORG,"p1",ACTOR),command)
+  self.assertEqual(invoice_code(INVOICE_ID),created.invoice_number)
+ async def test_explicit_invoice_number_is_preserved(self):
+  repo=FakeInvoiceRepo(invoice());service=FinanceInvoiceService(repo,id_factory=lambda:INVOICE_ID,clock=lambda:NOW)
+  command=InvoiceCreate(invoiceNumber="F-MANUAL-1",invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="manual-code",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"100"}])
+  created=await service.create(FinanceScope(ORG,"p1",ACTOR),command)
+  self.assertEqual("F-MANUAL-1",created.invoice_number)
  async def test_direct_general_cost_amount_is_not_zeroed(self):
   repo=SimilarInvoiceRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW)
   command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="gc-direct",duplicateReason="reviewed",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","lineAmountIrr":"8750001"}])
