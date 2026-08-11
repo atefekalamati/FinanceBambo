@@ -1,6 +1,6 @@
 # وضعیت و برنامه پیشرفت Frontend مالی BAMBO
 
-آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۱۸ — 2026-08-09
+آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۲۰ — 2026-08-11
 
 این سند مرجع زنده وضعیت توسعه Frontend است و بعد از هر Feature یا تغییر Scope به‌روزرسانی می‌شود. درصدها براساس وزن قابلیت‌های محصول و Gateهای پذیرش هستند، نه تعداد فایل‌ها.
 
@@ -10,10 +10,10 @@
 
 | شاخص | وضعیت فعلی |
 |---|---|
-| پیشرفت وزنی Frontend تا نسخه Mock-complete و اتصال فعلی | حدود ۸۶٪ |
-| فاز فعال | فاز ۷ — خلاصه مالی، گزارش و Snapshot |
-| کار بعدی قطعی | صفحه گزارش زنده و صدور Report Snapshot تغییرناپذیر |
-| تست‌های فعلی | ۹۳ تست موفق |
+| پیشرفت وزنی Frontend تا نسخه Mock-complete و اتصال فعلی | حدود ۹۴٪ |
+| فاز فعال | فاز ۸ — Audit، Accessibility و سخت‌سازی |
+| کار بعدی قطعی | QA کامل Keyboard/Focus/Screen Reader و Responsive/Print |
+| تست‌های فعلی | ۱۱۶ تست موفق |
 | صفحات فعال | امور مالی، تنظیمات مالی، اقلام و متره، قیمت‌ها، خوراک پیشرفت، فاکتورها و ورود تصویر/صدا |
 | وابستگی مسدودکننده فعلی | قراردادهای فهرست فایل، شروع/دریافت/رد استخراج و فیلد version در پاسخ Backend ناقص‌اند؛ توسعه Mock مسدود نیست |
 | وابستگی نهایی | دسترسی GitHub/OpenAPI و محیط Backend برای Integration |
@@ -35,10 +35,10 @@
 | ۴. Progress Snapshot و Override | ۱۰٪ | کامل | ۱۰۰٪ | ۱۰٪ |
 | ۵. فاکتور دستی و چرخه عمر سند | ۱۶٪ | کامل | ۱۰۰٪ | ۱۶٪ |
 | ۶. فایل، OCR/Voice و AI Review | ۱۰٪ | کامل در Mock | ۱۰۰٪ | ۱۰٪ |
-| ۷. خلاصه مالی، گزارش و Snapshot | ۱۲٪ | در حال انجام | ۴۵٪ | ۵٪ |
-| ۸. Audit، Accessibility و سخت‌سازی | ۵٪ | شروع‌نشده | ۰٪ | ۰٪ |
+| ۷. خلاصه مالی، گزارش و Snapshot | ۱۲٪ | در حال انجام | ۹۰٪ | ۱۰٪ |
+| ۸. Audit، Accessibility و سخت‌سازی | ۵٪ | در حال انجام | ۵۵٪ | ۳٪ |
 | ۹. Integration با Backend و Acceptance | ۵٪ | در حال انجام | ۶۰٪ | ۳٪ |
-| **مجموع** | **۱۰۰٪** |  |  | **حدود ۸۶٪** |
+| **مجموع** | **۱۰۰٪** |  |  | **حدود ۹۴٪** |
 
 ## فاز ۱ — Foundation و اتصال بصری
 
@@ -164,24 +164,28 @@
 - [x] `P0` Warningها و N/A زیربنای صفر/خالی
 - [x] `P1` نمودار SVG داخلی Breakdown چهار نوع قلم با مقیاس مشترک دقیق
 - [x] `P0` جدول جایگزین قابل چاپ/دسترس‌پذیر برای داده‌های نمودار
-- [ ] `P0` گزارش Live
-- [ ] `P0` صدور Report Snapshot با Modal
-- [ ] `P0` نمایش Snapshot صادرشده به‌صورت immutable
-- [ ] `P0` چاپ A4 و PDF مرورگر
-- [ ] `P0` CSV UTF-8 با BOM
+- [x] `P0` گزارش Live با تاریخ گزارش جلالی و تاریخ استاندارد در API
+- [x] `P0` صدور Report Snapshot با Modal صریح
+- [x] `P0` نمایش مرجع، شاخص‌ها و شناسه‌های Snapshot صادرشده به‌صورت immutable
+- [x] `P0` چاپ A4 و PDF مرورگر
+- [x] `P0` CSV UTF-8 با BOM از Endpoint واقعی Backend
+
+محدودیت قرارداد: پاسخ فعلی `GET /report-snapshots/{reportId}` فقط مرجع Snapshot و `calculatedMetrics` را بازمی‌گرداند و Endpoint فهرست Snapshotهای صادرشده نیز تعریف نشده است. در نتیجه نمایش مجدد تمام Breakdown، انحراف‌ها و ریز ورودی‌های Pin‌شده پس از Refresh، بدون تغییر قرارداد Backend ممکن نیست و در Frontend شبیه‌سازی نشده است.
 
 ## فاز ۸ — Audit و سخت‌سازی
 
-وضعیت: `شروع‌نشده`
+وضعیت: `در حال انجام`
 
-- [ ] `P0` فهرست و جزئیات Audit Event
-- [ ] `P0` فیلتر actor/action/entity/time
-- [ ] `P0` UX خطاهای 403/404/409/422/503
+- [x] `P0` فهرست و جزئیات Audit Event منطبق با `origin/master@91d8380`
+- [x] `P0` فیلتر actor/action/entity/time روی آرایه دریافتی Backend
+- [x] `P0` UX مشترک خطاهای 403/404/409/422/503 با کد، request ID، جزئیات فیلدی، Retry کنترل‌شده و Focus قابل دسترس
 - [ ] `P0` QA کامل Keyboard/Focus/Screen Reader
 - [ ] `P0` QA موبایل، تبلت، لپ‌تاپ و Print
 - [ ] `P0` Race/Stale/Idempotency UX
 - [ ] `P1` Performance فهرست‌ها و Pagination 50/200
 - [ ] `P0` Contract و Regression tests نهایی Frontend
+
+یادداشت قرارداد: Endpoint فعلی Audit هیچ Query، Pagination یا Metadata صفحه‌بندی ندارد. فیلترها در Frontend روی آرایه Scope‌شده اعمال می‌شوند و هیچ پارامتر پشتیبانی‌نشده‌ای به Backend ارسال نمی‌شود. برای حجم بالای رویداد، Pagination و فیلتر Server-side باید به OpenAPI افزوده شود.
 
 ## فاز ۹ — Backend Integration و پذیرش
 

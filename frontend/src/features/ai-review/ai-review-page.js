@@ -1,16 +1,16 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { hasPermission } from "../../core/auth/permissions.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
-import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
-import { normalizeDecimalInput } from "../../shared/validation/decimal-validation.js";
+import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
+import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 
 const FIELD_LABELS = Object.freeze({
   invoiceNumber: "شماره فاکتور",
   invoiceDate: "تاریخ فاکتور",
   vendorName: "فروشنده یا ارائه‌دهنده",
   resourceId: "تخصیص به قلم مالی",
-  totalIRR: `مبلغ نهایی به ${CURRENCY_LABELS.IRR}`,
+  totalIRR: "مبلغ نهایی",
 });
 
 const REVIEW_LABELS = Object.freeze({
@@ -70,7 +70,7 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
   card.append(header);
 
   const zeroEffect = element("div", "ai-zero-effect");
-  zeroEffect.append(element("strong", "", draft.reviewStatus === "accepted" ? "اثر مالی پس از تأیید انسانی" : `اثر مالی فعلی: صفر ${CURRENCY_LABELS.IRR}`), element("span", "", draft.reviewStatus === "accepted" ? `${formatDisplayNumber(draft.financialEffectIRR)} ${CURRENCY_LABELS.IRR}` : "این داده هنوز فاکتور تأییدشده نیست."));
+  zeroEffect.append(element("strong", "", draft.reviewStatus === "accepted" ? "اثر مالی پس از تأیید انسانی" : `اثر مالی فعلی: صفر ${getDisplayCurrencyLabel()}`), element("span", "", draft.reviewStatus === "accepted" ? formatTomanFromIrr(draft.financialEffectIRR) : "این داده هنوز فاکتور تأییدشده نیست."));
   card.append(zeroEffect);
 
   const form = element("div", "ai-fields-grid");
@@ -78,7 +78,8 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
   draft.fields.forEach((field) => {
     const wrapper = element("label", `ai-field${field.confidence < 0.8 ? " ai-field--low" : ""}`);
     const labelRow = element("span", "ai-field__label");
-    labelRow.append(element("strong", "", FIELD_LABELS[field.key] ?? "فیلد استخراج‌شده"), element("small", "", confidenceLabel(field.confidence)));
+    const fieldLabel = field.key === "totalIRR" ? `${FIELD_LABELS[field.key]} به ${getDisplayCurrencyLabel()}` : FIELD_LABELS[field.key];
+    labelRow.append(element("strong", "", fieldLabel ?? "فیلد استخراج‌شده"), element("small", "", confidenceLabel(field.confidence)));
     let input;
     if (field.key === "invoiceDate") {
       const picker = createPersianDatePicker({ id: `ai-${draft.draftId}-date`, label: "", value: field.confirmedValue ?? field.extractedValue });
@@ -98,10 +99,11 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
       wrapper.append(labelRow, select);
     } else {
       const control = element("input", "app-input");
-      control.value = field.confirmedValue ?? field.extractedValue ?? "";
+      const canonicalValue = field.confirmedValue ?? field.extractedValue ?? "";
+      control.value = field.key === "totalIRR" ? (irrToDisplayValue(canonicalValue) ?? "") : canonicalValue;
       control.disabled = draft.reviewStatus !== "awaitingReview" || !canEdit;
       if (field.key === "totalIRR") control.inputMode = "numeric";
-      input = { getValue: () => control.value.trim(), input: control };
+      input = { getValue: () => field.key === "totalIRR" ? tomanInputToIrr(control.value) : control.value.trim(), input: control };
       wrapper.append(labelRow, control);
     }
     if (input.input) input.input.disabled = draft.reviewStatus !== "awaitingReview" || !canEdit;
@@ -152,9 +154,8 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
   confirm.disabled = !canEdit;
   confirm.addEventListener("click", () => {
     const values = Object.fromEntries([...controls].map(([key, control]) => [key, control.getValue()]));
-    values.totalIRR = normalizeDecimalInput(values.totalIRR);
     if (!values.invoiceDate || !values.vendorName || !values.resourceId || !/^\d+$/.test(values.totalIRR)) {
-      feedback.textContent = `تاریخ، فروشنده، تخصیص قلم مالی و مبلغ صحیح ${CURRENCY_LABELS.IRR} برای تأیید الزامی است.`;
+      feedback.textContent = `تاریخ، فروشنده، تخصیص قلم مالی و مبلغ صحیح ${getDisplayCurrencyLabel()} برای تأیید الزامی است.`;
       feedback.className = "form-message form-message--error";
       return;
     }

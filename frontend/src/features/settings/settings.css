@@ -132,6 +132,21 @@
   background: rgb(120 145 205 / 6%);
 }
 
+.currency-choice {
+  inline-size: 100%;
+  text-align: start;
+  transition: border-color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard);
+}
+
+.currency-choice:hover {
+  border-color: rgb(0 172 88 / 45%);
+}
+
+.currency-choice:focus-visible {
+  outline: 2px solid var(--brand-green);
+  outline-offset: 3px;
+}
+
 .currency-item--active {
   border-color: rgb(0 172 88 / 30%);
   background: var(--grad-accent-soft);
