@@ -1,6 +1,6 @@
 from datetime import datetime,timezone
 from uuid import uuid4
-from ..domain.progress import ProgressOverride,consumed_quantity
+from ..domain.progress import ProgressOverride,consumed_quantity,resolve_progress_quantity
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
 class ProgressMappingError(FinanceDomainError):status=422;code="PROGRESS_LINE_MAPPING_MISSING"
@@ -18,6 +18,19 @@ class ProgressService:
   for source in feed.get("assignments",[]):
    row=dict(source);override=by_assignment.get(row.get("assignmentExternalId")) or by_activity.get((row.get("task") or {}).get("activityCode"))
    if override is not None:row["manualOverride"]={"previousCalculatedValue":str(override["computed_value"]),"newValue":str(override["override_value"]),"reason":override["reason"],"userId":str(override["created_by"]),"occurredAt":override["created_at"].isoformat(),"source":"manual_override","progressSnapshotId":str(snapshot_id)}
+   try:
+    resolved=resolve_progress_quantity(row)
+    row["computedExecutedQuantity"]=format(resolved["computed_quantity"],"f")
+    row["effectiveExecutedQuantity"]=format(resolved["effective_quantity"],"f")
+    row["sourceMethod"]=resolved["source_method"]
+    row["quality"]=format(resolved["quality"],"f")
+    row["warnings"]=resolved["warnings"]
+   except ValueError:
+    row["computedExecutedQuantity"]=None
+    row["effectiveExecutedQuantity"]=None
+    row["sourceMethod"]="missing"
+    row["quality"]="0"
+    row["warnings"]=[{"code":"PROGRESS_MISSING","message":"No valid progress quantity is available for this assignment."}]
    assignments.append(row)
   return {**feed,"assignments":assignments}
  async def override(self,s,line_id,c):

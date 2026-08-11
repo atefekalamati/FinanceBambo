@@ -1,5 +1,6 @@
 import sys
 import unittest
+import inspect
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -16,6 +17,7 @@ from app.finance.schemas.resources import (
 )
 from app.finance.services.resources import FinanceResourcesService
 from app.finance.security.guards import FinanceScope
+from app.finance.repositories.resources import PsycopgFinanceResourcesRepository
 
 ORG = UUID("11111111-1111-4111-8111-111111111111")
 ACTOR = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1")
@@ -136,6 +138,12 @@ class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
                 originalUnitPriceIrr="100.5",
                 source="manual_entry",
             )
+
+    def test_general_cost_revision_uses_money_fallback_and_rejects_fractional_irr(self):
+        source = inspect.getsource(PsycopgFinanceResourcesRepository.append_estimate_revision)
+        self.assertIn("fr.resource_type='general_cost' THEN l.original_unit_price_irr", source)
+        self.assertIn("new_quantity.to_integral_value()", source)
+        self.assertIn("general cost revision requires an exact integer IRR amount", source)
 
     async def test_activity_provider_validates_active_activity_for_new_estimate_line(self):
         resource = await self.service.create_resource(
