@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 BACKEND_ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(BACKEND_ROOT))
-from app.finance.domain.progress import consumed_quantity
+from app.finance.domain.progress import consumed_quantity, resolve_progress_quantity
 from app.finance.schemas.progress import ProgressOverrideCreate
 from app.finance.services.progress import ProgressService
 
@@ -16,6 +16,12 @@ class ProgressTests(unittest.TestCase):
   self.assertEqual((Decimal("7"),"assignment_actual"),consumed_quantity({**base,"actualQuantity":"7"}))
   self.assertEqual((Decimal("6"),"assignment_actual"),consumed_quantity({**base,"actualWork":"6"}))
   self.assertEqual((Decimal("8"),"task_progress_fallback"),consumed_quantity({**base,"assignmentWorkCompletePercent":None}))
+ def test_resolution_exposes_source_quality_and_warnings_without_inventing_quantity(self):
+  base={"plannedQuantity":"20","actualQuantity":None,"assignmentWorkCompletePercent":None,"task":{"taskProgressPercent":"40"},"manualOverride":None}
+  resolved=resolve_progress_quantity(base)
+  self.assertEqual((Decimal("8"),"task_progress_fallback",Decimal("0.6")),(resolved["effective_quantity"],resolved["source_method"],resolved["quality"]))
+  self.assertEqual("TASK_PROGRESS_FALLBACK",resolved["warnings"][0]["code"])
+  with self.assertRaises(ValueError):resolve_progress_quantity({"plannedQuantity":None,"actualQuantity":None,"task":{}})
  def test_override_precedes_calculation_and_keeps_previous(self):
   row={"plannedQuantity":"10","actualQuantity":"4","assignmentWorkCompletePercent":None,"task":{"taskProgressPercent":None},"manualOverride":{"previousCalculatedValue":"4","newValue":"12","reason":"اصلاح پیشرفت","userId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1","occurredAt":"2026-08-08T00:00:00Z","source":"manual_override","progressSnapshotId":"11111111-1111-4111-8111-111111111111"}}
   self.assertEqual((Decimal("12"),"manual_override"),consumed_quantity(row))
@@ -51,3 +57,4 @@ class ProgressServiceTests(unittest.IsolatedAsyncioTestCase):
   repo=Repo([{"estimate_line_id":LINE,"computed_value":Decimal("7"),"override_value":Decimal("9"),"reason":"اصلاح معتبر","created_by":ACTOR,"created_at":AT,"activity_external_id":"A1","assignment_external_id":"AS1"}])
   feed=await self.service(repo).feed(SCOPE,SNAPSHOT);override=feed["assignments"][0]["manualOverride"]
   self.assertEqual(("7","9","manual_override"),(override["previousCalculatedValue"],override["newValue"],override["source"]))
+  self.assertEqual(("7","9","manual_override","1"),(feed["assignments"][0]["computedExecutedQuantity"],feed["assignments"][0]["effectiveExecutedQuantity"],feed["assignments"][0]["sourceMethod"],feed["assignments"][0]["quality"]))

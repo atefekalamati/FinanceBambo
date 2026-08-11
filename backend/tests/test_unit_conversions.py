@@ -6,6 +6,7 @@ from uuid import UUID
 BACKEND_ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(BACKEND_ROOT))
 from app.finance.schemas.conversions import ConversionCreate,ConversionPatch
 from app.finance.services.conversions import UnitConversionService
+from app.finance.domain.resources import UnitMismatch, UnitNotFound
 from app.finance.security.guards import FinanceScope
 
 ORG=UUID("11111111-1111-4111-8111-111111111111");ACTOR=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1")
@@ -28,3 +29,11 @@ class ConversionTests(unittest.IsolatedAsyncioTestCase):
    with self.assertRaises(ValueError):ConversionCreate(**good,factor=factor)
   with self.assertRaises(ValueError):ConversionCreate(**{**good,"factor":"24","targetUnit":"day"})
   with self.assertRaises(ValueError):ConversionCreate(**{**good,"factor":"24","reason":" "})
+ async def test_dimension_compatibility_is_validated_against_unit_registry(self):
+  ids=iter(UUID(int=i) for i in range(1,9));repo=Repo();svc=UnitConversionService(repo,lambda:next(ids),lambda:datetime(2026,8,8,tzinfo=timezone.utc));scope=FinanceScope(ORG,"p1",ACTOR)
+  await svc.create(scope,ConversionCreate(scopeKind="organization",sourceUnit="ton",targetUnit="kg",dimension="mass",factor="1000",effectiveFrom="2026-01-01",reason="base"))
+  await svc.create(scope,ConversionCreate(scopeKind="project",sourceUnit="day",targetUnit="hour",dimension="equipment_time",factor="8",effectiveFrom="2026-01-01",reason="equipment day"))
+  with self.assertRaises(UnitMismatch):
+   await svc.create(scope,ConversionCreate(scopeKind="organization",sourceUnit="kg",targetUnit="m2",dimension="mass",factor="1",effectiveFrom="2026-01-01",reason="bad"))
+  with self.assertRaises(UnitNotFound):
+   await svc.create(scope,ConversionCreate(scopeKind="organization",sourceUnit="parsec",targetUnit="kg",dimension="mass",factor="1",effectiveFrom="2026-01-01",reason="bad"))

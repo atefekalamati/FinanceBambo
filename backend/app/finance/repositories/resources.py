@@ -7,7 +7,7 @@ from uuid import UUID
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from ..domain.resources import EstimateLine, FinanceResource
+from ..domain.resources import EstimateLine, FinanceResource, UnitMismatch
 
 
 class PsycopgFinanceResourcesRepository:
@@ -72,9 +72,11 @@ class PsycopgFinanceResourcesRepository:
     async def append_estimate_revision(self, scope, line_id, revision_id, audit_id, new_quantity, reason, actor, occurred_at):
         async with self._connection.transaction():
             async with self._connection.cursor(row_factory=dict_row) as c:
-                await c.execute("""SELECT l.*, COALESCE((SELECT r.new_quantity FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id ORDER BY r.revision DESC LIMIT 1),l.original_quantity) revised_quantity, COALESCE((SELECT max(r.revision) FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id),0) current_revision FROM estimate_lines l WHERE l.organization_id=%s AND l.project_id=%s AND l.id=%s AND l.deleted_at IS NULL FOR UPDATE""", (scope.organization_id,scope.project_id,line_id))
+                await c.execute("""SELECT l.*, fr.resource_type, COALESCE((SELECT r.new_quantity FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id ORDER BY r.revision DESC LIMIT 1),CASE WHEN fr.resource_type='general_cost' THEN l.original_unit_price_irr ELSE l.original_quantity END) revised_quantity, COALESCE((SELECT max(r.revision) FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id),0) current_revision FROM estimate_lines l JOIN finance_resources fr ON fr.organization_id=l.organization_id AND fr.project_id=l.project_id AND fr.id=l.resource_id WHERE l.organization_id=%s AND l.project_id=%s AND l.id=%s AND l.deleted_at IS NULL FOR UPDATE""", (scope.organization_id,scope.project_id,line_id))
                 row = await c.fetchone()
                 if row is None: return None
+                if row["resource_type"] == "general_cost" and (new_quantity is None or new_quantity < 0 or new_quantity != new_quantity.to_integral_value()):
+                    raise UnitMismatch("general cost revision requires an exact integer IRR amount")
                 await c.execute("""INSERT INTO estimate_revisions (id,organization_id,project_id,estimate_line_id,revision,previous_quantity,new_quantity,reason,created_by,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (revision_id,scope.organization_id,scope.project_id,line_id,row["current_revision"]+1,row["revised_quantity"],new_quantity,reason,actor,occurred_at))
                 await self._audit(c,audit_id,scope,actor,"estimate_line.revised","estimate_lines",line_id,{"quantity":row["revised_quantity"]},{"quantity":new_quantity},occurred_at,reason)
         return self._line({**row,"current_revision":row["current_revision"]+1}).with_revised_quantity(new_quantity)

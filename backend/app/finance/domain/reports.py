@@ -66,7 +66,10 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         except ValueError: executed = ZERO;_source="missing"
         if _source == "missing": warnings.append({"code":"PROGRESS_MISSING","message":"No valid progress quantity is available for this estimate line.","estimateLineId":str(row["id"])})
         remaining = max(revised_quantity - executed, ZERO)
-        if executed > revised_quantity: warnings.append({"code":"QUANTITY_OVERRUN","message":"Executed quantity exceeds revised quantity.","estimateLineId":str(row["id"])})
+        if executed > revised_quantity:
+            deviation=executed-revised_quantity
+            percent=None if revised_quantity==0 else (deviation*Decimal(100)/revised_quantity).quantize(Decimal("0.0001"),rounding=ROUND_HALF_UP)
+            warnings.append({"code":"QUANTITY_OVERRUN","message":"Executed quantity exceeds revised quantity.","estimateLineId":str(row["id"]),"deviationQuantity":format(deviation,"f"),"deviationPercent":None if percent is None else format(percent,"f")})
         current_price = row.get("current_unit_price_irr")
         if current_price is None:
             warnings.append({"code":"CURRENT_PRICE_MISSING","message":"Current price is missing; live-value metrics exclude this line.","estimateLineId":str(row["id"])})
