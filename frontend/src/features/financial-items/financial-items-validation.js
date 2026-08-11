@@ -1,5 +1,5 @@
 import { validatePositiveDecimal } from "../../shared/validation/decimal-validation.js";
-import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
+import { getDisplayCurrencyCode, getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { isResourceType } from "./financial-items-model.js";
 
 function requiredText(value, label) {
@@ -13,18 +13,32 @@ export function validateResource(values) {
   const typeValid = isResourceType(values.type);
   const isGeneralCost = values.type === "general_cost";
   const baseUnit = isGeneralCost ? { valid: true, value: null, message: "" } : requiredText(values.baseUnit, "واحد پایه");
-  const dimension = isGeneralCost ? { valid: true, value: null, message: "" } : requiredText(values.dimension, "بُعد");
 
   return {
-    valid: title.valid && code.valid && typeValid && baseUnit.valid && dimension.valid,
-    values: { title: title.value, code: code.value, type: values.type, baseUnit: baseUnit.value, dimension: dimension.value },
+    valid: title.valid && code.valid && typeValid && baseUnit.valid,
+    values: { title: title.value, code: code.value, type: values.type, baseUnit: baseUnit.value },
     errors: {
       title: title.message,
       code: code.message,
       type: typeValid ? "" : "نوع قلم مالی معتبر نیست.",
       baseUnit: baseUnit.message,
-      dimension: dimension.message,
     },
+  };
+}
+
+export function validateActivity(values) {
+  const title = requiredText(values.title, "عنوان فعالیت");
+  const wbsCode = String(values.wbsCode ?? "").trim();
+  const parentTaskExternalId = String(values.parentTaskExternalId ?? "").trim();
+
+  return {
+    valid: title.valid,
+    values: {
+      title: title.value,
+      wbsCode: wbsCode || null,
+      parentTaskExternalId: parentTaskExternalId || null,
+    },
+    errors: { title: title.message },
   };
 }
 
@@ -56,12 +70,14 @@ export function validateEstimateRevision(values, { isGeneralCost = false } = {})
   const revisedValue = validatePositiveDecimal(values.revisedValue, {
     precision: isGeneralCost ? 2 : 4,
     requiredMessage: isGeneralCost ? "مبلغ اصلاح‌شده الزامی است." : "مقدار اصلاح‌شده الزامی است.",
-    invalidMessage: isGeneralCost ? `مبلغ اصلاح‌شده باید عدد مثبت به ${CURRENCY_LABELS.IRR} باشد.` : "مقدار اصلاح‌شده باید مثبت و حداکثر چهار رقم اعشار باشد.",
+    invalidMessage: isGeneralCost ? `مبلغ اصلاح‌شده باید عدد مثبت به ${getDisplayCurrencyLabel()} باشد.` : "مقدار اصلاح‌شده باید مثبت و حداکثر چهار رقم اعشار باشد.",
   });
   if (isGeneralCost && revisedValue.valid) {
     if (revisedValue.value.includes(".")) {
       revisedValue.valid = false;
-      revisedValue.message = `مبلغ باید عدد صحیح ${CURRENCY_LABELS.IRR} باشد.`;
+      revisedValue.message = getDisplayCurrencyCode() === "TOMAN"
+        ? `مبلغ ${getDisplayCurrencyLabel()} باید حداکثر یک رقم اعشار داشته باشد.`
+        : `مبلغ ${getDisplayCurrencyLabel()} باید عدد صحیح باشد.`;
     }
   }
   const reason = requiredText(values.reason, "دلیل بازنگری");

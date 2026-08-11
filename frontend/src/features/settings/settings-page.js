@@ -5,6 +5,7 @@ import { createPersianDatePicker } from "../../shared/components/persian-date-pi
 import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatArea, formatBusinessDate, formatSystemDateTime } from "../../shared/formatters/display.js";
+import { getDisplayCurrencyCode, getDisplayCurrencyLabel, setDisplayCurrencyCode } from "../../shared/preferences/currency-preference.js";
 import { validateSettingsRevision } from "./settings-validation.js";
 
 function element(tag, className, text) {
@@ -102,13 +103,22 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
     const section = element("section", "settings-card currency-policy");
     const title = element("div", "settings-card__head");
     title.append(element("div", "settings-card__icon", "﷼"), element("div", "", ""));
-    title.lastElementChild.append(element("h2", "", "واحد پول پروژه"), element("p", "", "ذخیره و تبادل رسمی مبالغ از نمایش کاربر جدا است."));
+    title.lastElementChild.append(element("h2", "", "واحد نمایش مبالغ"), element("p", "", "واحدی را انتخاب کنید که مبالغ در تمام بخش‌های مالی با آن نمایش داده شوند."));
     const grid = element("div", "currency-grid");
-    const official = element("article", "currency-item");
-    official.append(element("span", "currency-item__label", "واحد رسمی ذخیره‌سازی"), element("strong", "numeric", CURRENCY_LABELS.IRR), element("small", "", `${CURRENCY_LABELS.IRR} ایران · عدد صحیح در سمت سرور`));
-    const display = element("article", "currency-item currency-item--active");
-    display.append(element("span", "currency-item__label", "نمایش پیش‌فرض رابط کاربری"), element("strong", "", CURRENCY_LABELS.TOMAN), element("small", "", `تبدیل فقط در لایه نمایش؛ هر ${CURRENCY_LABELS.TOMAN} برابر ۱۰ ${CURRENCY_LABELS.IRR}`));
-    grid.append(official, display);
+    const selectedCode = getDisplayCurrencyCode();
+    [["TOMAN", "تومان", "نمایش ساده‌تر و پیش‌فرض سامانه"], ["IRR", "ریال", "نمایش مبلغ رسمی بدون تبدیل"]].forEach(([code, label, description]) => {
+      const option = element("button", `currency-item currency-choice${selectedCode === code ? " currency-item--active" : ""}`);
+      option.type = "button";
+      option.setAttribute("role", "radio");
+      option.setAttribute("aria-checked", String(selectedCode === code));
+      option.append(element("span", "currency-item__label", selectedCode === code ? "انتخاب‌شده" : "انتخاب واحد"), element("strong", "", label), element("small", "", description));
+      option.addEventListener("click", () => {
+        if (getDisplayCurrencyCode() !== code) setDisplayCurrencyCode(code);
+      });
+      grid.append(option);
+    });
+    grid.setAttribute("role", "radiogroup");
+    grid.setAttribute("aria-label", "انتخاب واحد نمایش مبالغ مالی");
     section.append(title, grid);
     return section;
   }
@@ -215,7 +225,7 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
     const areaCard = element("article", "settings-overview__item");
     areaCard.append(element("span", "", "زیربنای کل فعلی"), element("strong", "numeric", formatArea(data.grossBuiltArea)), element("small", "", `بازنگری ${data.revision}`));
     const currencyCard = element("article", "settings-overview__item");
-    currencyCard.append(element("span", "", "سیاست پول"), element("strong", "", `${CURRENCY_LABELS.IRR} ← ${CURRENCY_LABELS.TOMAN}`), element("small", "", "ذخیره رسمی ← نمایش پیش‌فرض"));
+    currencyCard.append(element("span", "", "واحد نمایش مبالغ"), element("strong", "", getDisplayCurrencyLabel()), element("small", "", "قابل تغییر برای تمام بخش‌های مالی"));
     overview.append(areaCard, currencyCard);
 
     const history = element("section", "settings-card settings-history-card");

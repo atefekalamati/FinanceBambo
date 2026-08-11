@@ -9,5 +9,20 @@ export function createApiReportsAdapter(context, client) {
     return client.request(`${base}/reports/live?${query.toString()}`);
   }
 
-  return Object.freeze({ getLiveReport });
+  async function issueSnapshot({ reportingDate, progressSnapshotId = null }) {
+    return client.request(`${base}/report-snapshots`, {
+      method: "POST",
+      body: JSON.stringify({ reportingDate, progressSnapshotId }),
+    });
+  }
+
+  async function getSnapshot(reportId) {
+    return client.request(`${base}/report-snapshots/${encodeURIComponent(reportId)}`);
+  }
+
+  async function downloadSnapshotCsv(reportId) {
+    return client.download(`${base}/report-snapshots/${encodeURIComponent(reportId)}/csv`);
+  }
+
+  return Object.freeze({ getLiveReport, issueSnapshot, getSnapshot, downloadSnapshotCsv });
 }

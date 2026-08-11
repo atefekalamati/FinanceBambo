@@ -140,8 +140,6 @@
 .finance-warnings {
   margin-block: .75rem var(--space-lg);
   padding: .75rem 1rem;
-  border: 1px solid rgb(234 179 8 / 35%);
-  border-inline-start: .25rem solid var(--dash-sev-med);
   border-radius: var(--radius-md);
   background: var(--app-card-navy);
 }

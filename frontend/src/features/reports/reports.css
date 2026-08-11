@@ -1,0 +1,149 @@
+/* --------------------------------------------------------------------------
+   Financial reports — live and immutable snapshot views
+   -------------------------------------------------------------------------- */
+
+.reports-page {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.report-toolbar,
+.report-section {
+  padding: var(--space-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.report-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-lg);
+}
+
+.report-toolbar h1,
+.report-toolbar p,
+.report-section h2 {
+  margin: 0;
+}
+
+.report-toolbar p {
+  margin-block-start: var(--space-xs);
+  color: var(--color-text-muted);
+}
+
+.report-toolbar__controls,
+.report-actions {
+  display: flex;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.report-toolbar__controls .persian-date-field {
+  min-inline-size: 18rem;
+}
+
+.report-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.report-section {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.report-table__type {
+  inline-size: 22%;
+}
+
+.report-snapshot {
+  border-color: rgb(0 172 88 / 45%);
+}
+
+.report-snapshot__details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+  margin: 0;
+}
+
+.report-snapshot__details > div {
+  min-inline-size: 0;
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  background: var(--color-btn-action);
+}
+
+.report-snapshot__details dt {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.report-snapshot__details dd {
+  margin: var(--space-xs) 0 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 64rem) {
+  .report-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .report-toolbar__controls {
+    flex-wrap: wrap;
+  }
+
+  .report-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-snapshot__details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 36rem) {
+  .report-toolbar,
+  .report-section {
+    padding: var(--space-lg);
+  }
+
+  .report-toolbar__controls,
+  .report-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .report-toolbar__controls .persian-date-field {
+    min-inline-size: 0;
+  }
+
+  .report-metrics,
+  .report-snapshot__details {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  .report-toolbar__controls,
+  .report-actions,
+  .report-issue-dialog {
+    display: none !important;
+  }
+
+  .report-toolbar,
+  .report-section,
+  .report-snapshot {
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .report-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
