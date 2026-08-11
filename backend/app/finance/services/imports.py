@@ -33,7 +33,9 @@ def parse_excel(content:bytes,kind:str,currency_unit:str|None=None):
   for key in (("currency","scope") if kind=="prices" else ("activityExternalId","assignmentExternalId","source")):
    if item[key] is not None:item[key]=str(item[key]).strip()
   try:
-   amount_key="unitPrice" if kind=="prices" else "originalQuantity";value=Decimal(str(item[amount_key]));item[amount_key]=format(value,"f")
+   amount_key="unitPrice" if kind=="prices" else "originalQuantity";value=Decimal(str(item[amount_key]).strip())
+   if not value.is_finite():raise InvalidOperation
+   item[amount_key]=format(value,"f")
    if value<0:errors.append({"row":number,"field":amount_key,"reason":"negative_value"})
    if kind=="prices" and item["currency"] not in ("IRR","TOMAN"):errors.append({"row":number,"field":"currency","reason":"invalid_choice"})
    if kind=="prices":

@@ -46,12 +46,28 @@ class FinanceLiveReportService:
                 or metadata.get("projectId")!=scope.project_id
                 or str(metadata.get("progressSnapshotId"))!=str(snapshot["progress_snapshot_id"])):
             raise FinanceRecordNotFound("progress snapshot not found")
+        for row in data["estimates"]:row["progress_snapshot_id"]=snapshot["progress_snapshot_id"]
         report=calculate_live_report(data["estimates"],data["invoices"],feed.get("assignments",[]),data["conversions"],data["gross_area"])
         return report,data,snapshot,feed
 
     async def live(self,scope,reporting_date:date,progress_snapshot_id=None):
         report,_data,snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
         return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings}
+
+    async def variances(self,scope,reporting_date:date,progress_snapshot_id=None,variance_type="all",resource_type=None,query=None,page=1,page_size=50,sort_by=None,sort_direction="desc"):
+        report,_data,_snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
+        items=[]
+        if variance_type in ("price","all"):items.extend(report.all_price_variances)
+        if variance_type in ("quantity","all"):items.extend(report.all_quantity_variances)
+        if resource_type:items=[item for item in items if item.get("resourceType")==resource_type]
+        if query:
+            term=query.casefold()
+            items=[item for item in items if term in str(item.get("resourceCode","")).casefold() or term in str(item.get("resourceTitle","")).casefold() or term in str(item.get("activityExternalId","")).casefold()]
+        key=sort_by or ("varianceIrr" if variance_type=="price" else "varianceQuantity")
+        reverse=sort_direction!="asc"
+        items.sort(key=lambda item:abs(item.get(key) or Decimal(0)),reverse=reverse)
+        total=len(items);start=(page-1)*page_size;end=start+page_size
+        return {"items":items[start:end],"page":page,"page_size":page_size,"total_items":total,"total_pages":0 if total==0 else ((total-1)//page_size)+1}
 
     async def issue(self,scope,reporting_date,progress_snapshot_id=None):
         report,data,snapshot,feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
@@ -70,7 +86,8 @@ class FinanceLiveReportService:
         payload=_json_value({"reportingDate":reporting_date,"settingsId":data["settings_id"],"grossBuiltArea":data["gross_area"],
             "progressSnapshot":feed,"estimateInputs":data["estimates"],"invoiceInputs":data["invoices"],
             "unitConversions":data["conversions"],"metrics":report.metrics,"breakdown":report.breakdown,
-            "topPriceVariances":report.price_variances,"topQuantityVariances":report.quantity_variances,"warnings":report.warnings})
+            "topPriceVariances":report.price_variances,"topQuantityVariances":report.quantity_variances,
+            "priceVariances":report.all_price_variances,"quantityVariances":report.all_quantity_variances,"warnings":report.warnings})
         await self.repo.issue(scope,value,payload,self.ids())
         return self._response(scope,value)
 

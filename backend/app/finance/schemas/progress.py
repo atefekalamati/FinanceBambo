@@ -4,12 +4,16 @@ from typing import Literal
 from uuid import UUID
 from pydantic import Field,field_serializer,field_validator
 from .base import ApiModel
+from .numeric import strict_decimal
 class ProgressSnapshotResponse(ApiModel):
  organization_id:UUID;project_id:str;progress_snapshot_id:UUID;source_file_version_id:UUID;source_file_name_safe:str;imported_at:datetime;imported_by:UUID;status:Literal["ready","superseded"];reporting_date:date
 class ProgressFeedResponse(ApiModel):
  snapshot:ProgressSnapshotResponse;assignments:list[dict]
 class ProgressOverrideCreate(ApiModel):
- progress_snapshot_id:UUID;computed_value:Decimal;override_value:Decimal;reason:str=Field(min_length=1)
+ progress_snapshot_id:UUID;computed_value:Decimal=Field(max_digits=18,decimal_places=4);override_value:Decimal=Field(max_digits=18,decimal_places=4);reason:str=Field(min_length=1)
+ @field_validator("computed_value","override_value",mode="before")
+ @classmethod
+ def strict_progress_numbers(cls,v):return strict_decimal(v)
  @field_validator("reason")
  @classmethod
  def validate_reason(cls,v):

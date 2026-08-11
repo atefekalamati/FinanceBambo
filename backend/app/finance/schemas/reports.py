@@ -25,26 +25,41 @@ class LiveMetrics(ApiModel):
 class TypeBreakdown(ApiModel):
     resource_type: Literal["material","labor","equipment","general_cost"]
     initial_estimate_irr: Decimal
+    revised_estimate_irr: Decimal = Decimal(0)
     actual_cost_irr: Decimal
+    remaining_physical_cost_irr: Decimal = Decimal(0)
     forecast_final_irr: Decimal
-    @field_serializer("initial_estimate_irr","actual_cost_irr","forecast_final_irr")
+    @field_serializer("initial_estimate_irr","revised_estimate_irr","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr")
     def serialize_money(self,value): return format(value,"f")
 
 
 class PriceVariance(ApiModel):
     estimate_line_id: UUID;resource_id:UUID;resource_code:str;resource_title:str;resource_type:str;variance_irr:Decimal
-    @field_serializer("variance_irr")
-    def serialize_money(self,value):return format(value,"f")
+    activity_external_id:str|None=None;activity_title:str|None=None;wbs_code:str|None=None;base_unit:str|None=None
+    revised_quantity:Decimal|None=None;remaining_quantity:Decimal|None=None
+    estimate_base_unit_price_irr:Decimal|None=None;current_unit_price_irr:Decimal|None=None
+    price_variance_percent:Decimal|None=None;actual_cost_irr:Decimal|None=None
+    remaining_physical_cost_irr:Decimal|None=None;forecast_final_irr:Decimal|None=None;impact_share_percent:Decimal|None=None
+    current_price_scope:str|None=None;current_price_effective_from:date|None=None
+    current_price_version_id:UUID|None=None;estimate_price_version_id:UUID|None=None
+    @field_serializer("variance_irr","revised_quantity","remaining_quantity","estimate_base_unit_price_irr","current_unit_price_irr","price_variance_percent","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr","impact_share_percent")
+    def serialize_money(self,value):return None if value is None else format(value,"f")
 
 
 class QuantityVariance(ApiModel):
     estimate_line_id:UUID;resource_id:UUID;resource_code:str;resource_title:str;resource_type:str;variance_quantity:Decimal
-    @field_serializer("variance_quantity")
-    def serialize_quantity(self,value):return format(value,"f")
+    activity_external_id:str|None=None;activity_title:str|None=None;wbs_code:str|None=None;base_unit:str|None=None
+    initial_quantity:Decimal|None=None;revised_quantity:Decimal|None=None;executed_quantity:Decimal|None=None;remaining_quantity:Decimal|None=None
+    quantity_variance_percent:Decimal|None=None;source_method:str|None=None;progress_snapshot_id:UUID|None=None
+    actual_cost_irr:Decimal|None=None;remaining_physical_cost_irr:Decimal|None=None;forecast_final_irr:Decimal|None=None;impact_share_percent:Decimal|None=None
+    @field_serializer("variance_quantity","initial_quantity","revised_quantity","executed_quantity","remaining_quantity","quantity_variance_percent","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr","impact_share_percent")
+    def serialize_quantity(self,value):return None if value is None else format(value,"f")
 
 
 class ReportWarning(ApiModel):
     code:str;message:str;estimate_line_id:UUID|None=None
+    resource_id:UUID|None=None;resource_code:str|None=None;activity_external_id:str|None=None
+    severity:str|None=None;excluded_from_calculation:bool|None=None;affected_metric_keys:list[str]|None=None
 
 
 class LiveReportResponse(ApiModel):
@@ -55,6 +70,14 @@ class LiveReportResponse(ApiModel):
     top_price_variances:list[PriceVariance]
     top_quantity_variances:list[QuantityVariance]
     warnings:list[ReportWarning]
+
+
+class ReportVarianceListResponse(ApiModel):
+    items:list[PriceVariance|QuantityVariance]
+    page:int
+    page_size:int
+    total_items:int
+    total_pages:int
 
 
 class ReportSnapshotCreate(ApiModel):

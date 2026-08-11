@@ -34,7 +34,8 @@ def estimate(line_id, resource_id, kind, quantity, revised, original_price, curr
             "original_quantity": quantity, "revised_quantity": revised,
             "original_unit_price_irr": original_price,
             "current_unit_price_irr": current_price,
-            "assignment_external_id": assignment, "activity_external_id": None}
+            "assignment_external_id": assignment, "activity_external_id": None,
+            "progress_snapshot_id": SNAPSHOT}
 
 
 class LiveReportDomainTests(unittest.TestCase):
@@ -74,11 +75,18 @@ class LiveReportDomainTests(unittest.TestCase):
             "moneyRequiredToContinueIrr": Decimal("1200"), "forecastFinalCostIrr": Decimal("3500"),
             "actualCostPerSquareMeterIrr": Decimal("230"), "forecastPerSquareMeterIrr": Decimal("350")}, report.metrics)
         by_type = {row["resourceType"]: row for row in report.breakdown}
+        self.assertEqual(Decimal("1200"), by_type["material"]["revisedEstimateIrr"])
+        self.assertEqual(Decimal("1200"), by_type["general_cost"]["revisedEstimateIrr"])
+        self.assertEqual(Decimal("1200"), by_type["material"]["remainingPhysicalCostIrr"])
+        self.assertEqual(Decimal("0"), by_type["general_cost"]["remainingPhysicalCostIrr"])
         self.assertEqual(Decimal("1400"), by_type["material"]["forecastFinalIrr"])
         self.assertEqual(Decimal("800"), by_type["labor"]["forecastFinalIrr"])
         self.assertEqual(Decimal("1300"), by_type["general_cost"]["forecastFinalIrr"])
         self.assertEqual(Decimal("400"), report.price_variances[0]["varianceIrr"])
+        self.assertEqual((Decimal("12"),Decimal("8"),Decimal("100"),Decimal("150")), (report.price_variances[0]["revisedQuantity"],report.price_variances[0]["remainingQuantity"],report.price_variances[0]["estimateBaseUnitPriceIrr"],report.price_variances[0]["currentUnitPriceIrr"]))
+        self.assertEqual(Decimal("50.0000"), report.price_variances[0]["priceVariancePercent"])
         self.assertEqual(Decimal("2"), report.quantity_variances[0]["varianceQuantity"])
+        self.assertEqual(("assignment_actual",SNAPSHOT), (report.quantity_variances[0]["sourceMethod"],report.quantity_variances[0].get("progressSnapshotId")))
         self.assertIn("GENERAL_COST_OVERRUN", {warning["code"] for warning in report.warnings})
 
     def test_reports_missing_sources_as_warnings(self):
@@ -180,6 +188,17 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
         changed_live=await service.live(scope,date(2026,8,2),SNAPSHOT)
         self.assertNotEqual(live_at_issue["metrics"]["forecastFinalCostIrr"],changed_live["metrics"]["forecastFinalCostIrr"])
         self.assertEqual(frozen_metrics,repository.payload["metrics"])
+        self.assertIn("priceVariances",repository.payload)
+        self.assertIn("quantityVariances",repository.payload)
+
+    async def test_full_variance_projection_is_paginated_without_changing_top_lists(self):
+        organization_id=UUID("40000000-0000-4000-8000-000000000001")
+        scope=SimpleNamespace(organization_id=organization_id,project_id="sample_site_01",actor_user_id=UUID(int=8))
+        repository=SnapshotRepository();service=FinanceLiveReportService(repository,Provider(organization_id,scope.project_id),lambda:UUID(int=10))
+        live=await service.live(scope,date(2026,8,2),SNAPSHOT)
+        page=await service.variances(scope,date(2026,8,2),SNAPSHOT,variance_type="all",page=1,page_size=1)
+        self.assertEqual((1,2,1),(page["page"],page["total_items"],len(page["items"])))
+        self.assertEqual(1,len(live["top_price_variances"]))
 
     def test_reporting_repository_reads_only_effective_invoices_and_never_extractions(self):
         source=inspect.getsource(PsycopgLiveReportRepository.load)
