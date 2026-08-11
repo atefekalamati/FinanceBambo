@@ -91,6 +91,14 @@ class LiveReportDomainTests(unittest.TestCase):
                          {warning["code"] for warning in report.warnings})
         self.assertIsNone(report.metrics["actualCostPerSquareMeterIrr"])
 
+    def test_quantity_overrun_warns_with_deviation_without_clamping(self):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-m")
+        report = calculate_live_report([row], [], [{"assignmentExternalId":"a-m","actualQuantity":"12","task":{}}], [], "10")
+        warning = next(item for item in report.warnings if item["code"] == "QUANTITY_OVERRUN")
+        self.assertEqual(("2","20.0000"), (warning["deviationQuantity"], warning["deviationPercent"]))
+        self.assertEqual(Decimal("1200"), report.metrics["currentExecutedValueIrr"])
+        self.assertEqual(Decimal("0"), report.metrics["remainingPhysicalCostIrr"])
+
 
 class Repository:
     def __init__(self):

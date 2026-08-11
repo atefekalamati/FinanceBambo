@@ -24,3 +24,16 @@ UNIT_REGISTRY: dict[str, UnitDefinition] = {
     "day": UnitDefinition("day", "روز", "equipment_time", "زمان تجهیز", 4),
 }
 
+
+def units_are_compatible(source_unit: str, target_unit: str, dimension: str) -> bool:
+    source = UNIT_REGISTRY.get(source_unit)
+    target = UNIT_REGISTRY.get(target_unit)
+    if source is None or target is None or not source.active or not target.active:
+        return False
+    if source.dimension == target.dimension == dimension:
+        return True
+    return (source_unit, target_unit, dimension) in {
+        ("day", "hour", "equipment_time"),
+        ("hour", "day", "equipment_time"),
+    }
+
