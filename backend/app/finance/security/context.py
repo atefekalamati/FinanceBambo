@@ -8,6 +8,17 @@ from pydantic import Field, field_validator
 
 from ..schemas.base import ApiModel
 
+SUPPORTED_LOCALES = ("fa", "en", "ar")
+LOCALE_FALLBACK = "fa"
+
+
+def normalize_locale(value: object) -> Literal["fa", "en", "ar"]:
+    if not isinstance(value, str):
+        return LOCALE_FALLBACK
+    tag = value.strip().replace("_", "-").lower()
+    language = tag.split("-", 1)[0]
+    return language if language in SUPPORTED_LOCALES else LOCALE_FALLBACK
+
 
 class AuthContext(ApiModel):
     user_id: UUID
@@ -16,8 +27,13 @@ class AuthContext(ApiModel):
     organization_role: str = Field(min_length=1)
     project_role: str = Field(min_length=1)
     permission_codes: tuple[str, ...]
-    locale: Literal["fa-IR"]
+    locale: Literal["fa", "en", "ar"] = LOCALE_FALLBACK
     timezone: Literal["Asia/Tehran"]
+
+    @field_validator("locale", mode="before")
+    @classmethod
+    def validate_locale(cls, value: object) -> Literal["fa", "en", "ar"]:
+        return normalize_locale(value)
 
     @field_validator("permission_codes")
     @classmethod

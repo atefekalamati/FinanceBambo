@@ -152,7 +152,7 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_issued_reference_matches_kit_and_payload_is_a_frozen_copy(self):
         organization_id = UUID("40000000-0000-4000-8000-000000000001")
-        scope = SimpleNamespace(organization_id=organization_id, project_id="sample_site_01", actor_user_id=UUID(int=8))
+        scope = SimpleNamespace(organization_id=organization_id, project_id="sample_site_01", actor_user_id=UUID(int=8), locale="en")
         repository = SnapshotRepository()
         issued_at = __import__("datetime").datetime(2026,8,2,tzinfo=__import__("datetime").timezone.utc)
         service = FinanceLiveReportService(repository, Provider(organization_id, scope.project_id), lambda:UUID(int=10), lambda:issued_at)
@@ -173,7 +173,7 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
         workbook=load_workbook(io.BytesIO(xlsx_content),read_only=False,data_only=True)
         self.assertEqual(["Summary","Breakdown","Price Variance","Quantity Variance"],workbook.sheetnames)
         self.assertEqual("initialEstimateIrr",workbook["Summary"]["A2"].value)
-        self.assertTrue(workbook["Summary"].sheet_view.rightToLeft)
+        self.assertFalse(workbook["Summary"].sheet_view.rightToLeft)
         self.assertEqual(1,len(workbook["Breakdown"]._charts))
 
     async def test_live_and_issued_metrics_match_then_live_changes_without_rewriting_snapshot(self):
@@ -193,7 +193,7 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_full_variance_projection_is_paginated_without_changing_top_lists(self):
         organization_id=UUID("40000000-0000-4000-8000-000000000001")
-        scope=SimpleNamespace(organization_id=organization_id,project_id="sample_site_01",actor_user_id=UUID(int=8))
+        scope=SimpleNamespace(organization_id=organization_id,project_id="sample_site_01",actor_user_id=UUID(int=8),locale="en")
         repository=SnapshotRepository();service=FinanceLiveReportService(repository,Provider(organization_id,scope.project_id),lambda:UUID(int=10))
         live=await service.live(scope,date(2026,8,2),SNAPSHOT)
         page=await service.variances(scope,date(2026,8,2),SNAPSHOT,variance_type="all",page=1,page_size=1)
@@ -209,8 +209,20 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
         payload={"metrics":{"safe":"1"},"breakdown":[],"topPriceVariances":[{"resourceCode":"=CMD()","resourceTitle":"+bad","resourceType":"material","varianceIrr":"-10"}],"topQuantityVariances":[]}
         csv_content=FinanceLiveReportService._csv(payload).decode("utf-8-sig")
         self.assertIn("'=CMD()",csv_content);self.assertIn("'+bad",csv_content)
-        workbook=load_workbook(io.BytesIO(FinanceLiveReportService._xlsx(payload)),data_only=False)
+        workbook=load_workbook(io.BytesIO(FinanceLiveReportService._xlsx(payload,"en")),data_only=False)
         self.assertEqual("'=CMD()",workbook["Price Variance"]["A2"].value)
+
+    def test_report_exports_localize_backend_owned_labels_without_changing_keys(self):
+        payload={"metrics":{"initialEstimateIrr":"1"},"breakdown":[{"resourceType":"material","initialEstimateIrr":"1","revisedEstimateIrr":"1","actualCostIrr":"0","remainingPhysicalCostIrr":"1","forecastFinalIrr":"1"}],"topPriceVariances":[],"topQuantityVariances":[]}
+        self.assertTrue(FinanceLiveReportService._csv(payload,"fa").startswith(b"\xef\xbb\xbf"))
+        self.assertIn("بخش",FinanceLiveReportService._csv(payload,"fa").decode("utf-8-sig").splitlines()[0])
+        self.assertIn("القسم",FinanceLiveReportService._csv(payload,"ar").decode("utf-8-sig").splitlines()[0])
+        fa=load_workbook(io.BytesIO(FinanceLiveReportService._xlsx(payload,"fa")),data_only=False)
+        ar=load_workbook(io.BytesIO(FinanceLiveReportService._xlsx(payload,"ar")),data_only=False)
+        en=load_workbook(io.BytesIO(FinanceLiveReportService._xlsx(payload,"en")),data_only=False)
+        self.assertEqual(("خلاصه",True),(fa.sheetnames[0],fa[fa.sheetnames[0]].sheet_view.rightToLeft))
+        self.assertEqual(("الملخص",True),(ar.sheetnames[0],ar[ar.sheetnames[0]].sheet_view.rightToLeft))
+        self.assertEqual(("Summary",False),(en.sheetnames[0],en["Summary"].sheet_view.rightToLeft))
 
 
 class SnapshotRepository(Repository):

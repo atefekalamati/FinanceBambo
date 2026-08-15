@@ -24,7 +24,7 @@ PROJECT_A = "sample_site_01"
 PROJECT_B = "other_site_01"
 
 
-def context() -> AuthContext:
+def context(locale="fa-IR") -> AuthContext:
     return AuthContext(
         userId="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
         organizationId=ORG_A,
@@ -32,18 +32,19 @@ def context() -> AuthContext:
         organizationRole="org_chief",
         projectRole="project_admin",
         permissionCodes=["finance.view"],
-        locale="fa-IR",
+        locale=locale,
         timezone="Asia/Tehran",
     )
 
 
 class FakeAuth:
-    def __init__(self, calls):
+    def __init__(self, calls, locale="fa-IR"):
         self.calls = calls
+        self.locale = locale
 
     async def current(self, _request):
         self.calls.append("authentication")
-        return context()
+        return context(self.locale)
 
 
 class FakeScopeAuthorizer:
@@ -94,6 +95,20 @@ class SecurityGuardTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(UUID(ORG_A), result.organization_id)
         self.assertEqual(PROJECT_A, result.project_id)
+        self.assertEqual("fa", result.locale)
+
+    async def test_host_locale_flows_to_finance_scope_without_changing_scope_or_permission(self):
+        calls = []
+        result = await authorize_finance_request(
+            request=object(),
+            project_id=PROJECT_A,
+            permission_code="finance.view",
+            auth_provider=FakeAuth(calls, "ar-SA"),
+            scope_authorizer=FakeScopeAuthorizer(calls),
+            permission_authorizer=FakePermissionAuthorizer(calls),
+        )
+        self.assertEqual((UUID(ORG_A), PROJECT_A, "ar"), (result.organization_id, result.project_id, result.locale))
+        self.assertEqual(["authentication", "organization", "project", "permission"], calls)
 
     async def test_failed_organization_gate_stops_later_gates(self):
         calls = []

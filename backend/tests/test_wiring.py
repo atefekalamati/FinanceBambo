@@ -139,6 +139,23 @@ class WiringTests(unittest.TestCase):
         )
         self.assertEqual("sample_site_01", context.project_id)
         self.assertEqual(("finance.view",), context.permission_codes)
+        self.assertEqual("fa", context.locale)
+
+    def test_auth_context_accepts_host_owned_fa_en_ar_locale_and_fallbacks_invalid(self):
+        valid = {
+            "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+            "organizationId": "11111111-1111-4111-8111-111111111111",
+            "projectId": "sample_site_01",
+            "organizationRole": "org_chief",
+            "projectRole": "project_admin",
+            "permissionCodes": ["finance.view"],
+            "timezone": "Asia/Tehran",
+        }
+        self.assertEqual("fa", AuthContext(**valid, locale="fa").locale)
+        self.assertEqual("fa", AuthContext(**valid, locale="fa-IR").locale)
+        self.assertEqual("en", AuthContext(**valid, locale="en-US").locale)
+        self.assertEqual("ar", AuthContext(**valid, locale="ar-SA").locale)
+        self.assertEqual("fa", AuthContext(**valid, locale="de-DE").locale)
 
     def test_auth_context_enforces_host_schema(self):
         valid = {
@@ -156,7 +173,6 @@ class WiringTests(unittest.TestCase):
             {**valid, "projectId": "unsafe/project"},
             {**valid, "permissionCodes": ["finance.view", "finance.view"]},
             {**valid, "permissionCodes": ["Finance.View"]},
-            {**valid, "locale": "en-US"},
             {**valid, "timezone": "UTC"},
         )
         for payload in invalid_cases:
