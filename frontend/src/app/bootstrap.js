@@ -1,4 +1,4 @@
-import { getHostContext } from "../adapters/host/context-adapter.js";
+import { getHostContext, subscribeHostProjectContext } from "../adapters/host/context-adapter.js";
 import { getStandaloneContext } from "../adapters/mock/standalone-context.js";
 import { createMockSettingsAdapter } from "../adapters/mock/settings-adapter.js";
 import { createMockFinancialItemsAdapter } from "../adapters/mock/financial-items-adapter.js";
@@ -37,6 +37,21 @@ const root = document.querySelector("#finance-module-root");
 const contextSlot = document.querySelector("#project-context-slot");
 const liveRegion = document.querySelector("#finance-live-region");
 
+function createHostAdapters(context) {
+  const client = createApiClient();
+  const invoices = createApiInvoicesAdapter(context, client);
+  return Object.freeze({
+    settings: createApiSettingsAdapter(context, client),
+    financialItems: createApiFinancialItemsAdapter(context, client),
+    prices: createApiPricesAdapter(context, client),
+    progress: createApiProgressAdapter(context, client),
+    invoices,
+    attachments: createApiAttachmentsAdapter(context, client, invoices),
+    reports: createApiReportsAdapter(context, client),
+    audit: createApiAuditAdapter(context, client),
+  });
+}
+
 function resolveContext() {
   const hostContext = getHostContext();
   document.body.dataset.financeRuntime = hostContext ? "host" : "standalone";
@@ -66,7 +81,7 @@ function renderDenied() {
   root.replaceChildren(section);
 }
 
-function renderRoute(route, context, adapters) {
+function renderRoute(route, context, adapters, routeQuery = new URLSearchParams()) {
   root.replaceChildren();
   if (!canAccessRoute(context, route)) {
     renderDenied();
@@ -75,9 +90,14 @@ function renderRoute(route, context, adapters) {
 
   if (route.key === "finance-home") root.append(createFinanceHomePage({ reportsAdapter: adapters.reports, progressAdapter: adapters.progress }));
   if (route.key === "financial-items") {
-    root.append(createFinancialItemsPage({ context, adapter: adapters.financialItems }));
+    root.append(createFinancialItemsPage({
+      context,
+      adapter: adapters.financialItems,
+      focusResourceId: routeQuery.get("resourceId") ?? "",
+      focusEstimateLineId: routeQuery.get("estimateLineId") ?? "",
+    }));
   }
-  if (route.key === "prices") root.append(createPricesPage({ context, adapter: adapters.prices }));
+  if (route.key === "prices") root.append(createPricesPage({ context, adapter: adapters.prices, focusResourceId: routeQuery.get("resourceId") ?? "" }));
   if (route.key === "progress") root.append(createProgressPage({ context, adapter: adapters.progress }));
   if (route.key === "invoices") root.append(createInvoicesPage({ context, adapter: adapters.invoices }));
   if (route.key === "invoice-files") root.append(createInvoiceFilesPage({ context, adapter: adapters.attachments }));
@@ -96,7 +116,7 @@ function renderRoute(route, context, adapters) {
 }
 
 try {
-  const context = resolveContext();
+  let context = resolveContext();
   const allowedMockStates = new Set(["success", "empty", "error"]);
   const requestedMockState = new URLSearchParams(window.location.search).get("settingsState");
   const settingsState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedMockState) ? requestedMockState : "success";
@@ -116,18 +136,7 @@ try {
   const auditState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedAuditState) ? requestedAuditState : "success";
   let adapters;
   if (document.body.dataset.financeRuntime === "host") {
-    const client = createApiClient();
-    const invoices = createApiInvoicesAdapter(context, client);
-    adapters = Object.freeze({
-      settings: createApiSettingsAdapter(context, client),
-      financialItems: createApiFinancialItemsAdapter(context, client),
-      prices: createApiPricesAdapter(context, client),
-      progress: createApiProgressAdapter(context, client),
-      invoices,
-      attachments: createApiAttachmentsAdapter(context, client, invoices),
-      reports: createApiReportsAdapter(context, client),
-      audit: createApiAuditAdapter(context, client),
-    });
+    adapters = createHostAdapters(context);
   } else {
     const invoices = createMockInvoicesAdapter(context, { initialState: invoicesState });
     adapters = Object.freeze({
@@ -142,14 +151,27 @@ try {
     });
   }
   let activeRoute = null;
+  let activeRouteQuery = new URLSearchParams();
   renderContext(context);
-  createHashRouter({ routes: ROUTES, defaultPath: DEFAULT_ROUTE, onNavigate: (route) => {
+  createHashRouter({ routes: ROUTES, defaultPath: DEFAULT_ROUTE, onNavigate: (route, routeQuery) => {
     activeRoute = route;
-    renderRoute(route, context, adapters);
+    activeRouteQuery = routeQuery;
+    renderRoute(route, context, adapters, routeQuery);
   } }).start();
   window.addEventListener(DISPLAY_CURRENCY_CHANGED_EVENT, () => {
-    if (activeRoute) renderRoute(activeRoute, context, adapters);
+    if (activeRoute) renderRoute(activeRoute, context, adapters, activeRouteQuery);
   });
+  if (document.body.dataset.financeRuntime === "host") {
+    subscribeHostProjectContext((nextContext) => {
+      context = nextContext;
+      adapters = createHostAdapters(context);
+      renderContext(context);
+      if (activeRoute) renderRoute(activeRoute, context, adapters, activeRouteQuery);
+      liveRegion.textContent = `اطلاعات مالی پروژه ${context.projectName || context.projectId} بارگذاری شد.`;
+    }, (error) => {
+      liveRegion.textContent = `تغییر پروژه انجام نشد: ${error.message}`;
+    });
+  }
 } catch (error) {
   const section = document.createElement("section");
   section.className = "state-card state-card--danger";

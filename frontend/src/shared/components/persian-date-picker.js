@@ -1,4 +1,5 @@
 import { getPersianMonthDays, getTehranTodayIso, gregorianIsoToPersian, persianToGregorianIso } from "../dates/persian-date.js";
+import { showAccessibleDialog } from "./accessible-dialog.js";
 
 const MONTH_NAMES = Object.freeze(["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]);
 const WEEKDAYS = Object.freeze(["ش", "ی", "د", "س", "چ", "پ", "ج"]);
@@ -121,7 +122,10 @@ export function createPersianDatePicker({ id, label, value = "", hint = "تار�
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
     document.body.append(dialog);
     renderMonth();
-    dialog.showModal();
+    showAccessibleDialog(dialog, {
+      opener: document.activeElement,
+      initialFocus: () => dialog.querySelector(".persian-calendar__day--selected, .persian-calendar__day--today, .persian-calendar__day"),
+    });
   }
 
   input.addEventListener("click", showCalendar);

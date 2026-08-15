@@ -2,7 +2,7 @@ const TYPE_LABELS = Object.freeze({
   material: "مصالح",
   labor: "نیروی انسانی",
   equipment: "تجهیزات",
-  general_cost: "هزینه عمومی",
+  general_cost: "هزینه‌های عمومی پروژه",
 });
 
 function exactInteger(value) {
@@ -13,12 +13,42 @@ function absolute(value) {
   return value < 0n ? -value : value;
 }
 
+function buildExactScale(entries) {
+  const maximum = entries.reduce((result, entry) => {
+    const value = absolute(exactInteger(entry.value));
+    return value > result ? value : result;
+  }, 0n);
+
+  return entries.map((entry) => ({
+    ...entry,
+    magnitude: maximum === 0n
+      ? 0
+      : Number((absolute(exactInteger(entry.value)) * 10000n) / maximum) / 100,
+  }));
+}
+
+export function buildOverviewComparisons(metrics = {}) {
+  return Object.freeze({
+    estimate: buildExactScale([
+      { key: "initial", label: "برآورد اولیه", value: String(metrics.initialEstimateIrr ?? "0") },
+      { key: "actual", label: "هزینه واقعی ثبت‌شده", value: String(metrics.actualCostIrr ?? "0") },
+      { key: "forecast", label: "پیش‌بینی هزینه نهایی", value: String(metrics.forecastFinalCostIrr ?? "0") },
+    ]),
+    work: buildExactScale([
+      { key: "executed", label: "ارزش روز کار انجام‌شده", value: String(metrics.currentExecutedValueIrr ?? "0") },
+      { key: "remaining", label: "هزینه کار باقی‌مانده", value: String(metrics.remainingPhysicalCostIrr ?? "0") },
+    ]),
+  });
+}
+
 export function buildBreakdownPresentation(rows = []) {
   const normalized = rows.map((row) => ({
     resourceType: row.resourceType,
     label: TYPE_LABELS[row.resourceType] ?? "نوع تعریف‌نشده",
     initialEstimateIrr: String(row.initialEstimateIrr ?? "0"),
+    revisedEstimateIrr: row.revisedEstimateIrr == null ? null : String(row.revisedEstimateIrr),
     actualCostIrr: String(row.actualCostIrr ?? "0"),
+    remainingPhysicalCostIrr: row.remainingPhysicalCostIrr == null ? null : String(row.remainingPhysicalCostIrr),
     forecastFinalIrr: String(row.forecastFinalIrr ?? "0"),
   }));
   const values = normalized.flatMap((row) => [row.initialEstimateIrr, row.actualCostIrr]).map((value) => absolute(exactInteger(value)));

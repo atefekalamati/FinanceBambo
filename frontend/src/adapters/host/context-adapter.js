@@ -1,5 +1,7 @@
 const PROJECT_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
+export const HOST_PROJECT_CONTEXT_CHANGED_EVENT = "bambo:project-context-changed";
+
 function normalizeContext(raw) {
   const context = {
     userId: raw?.userId ?? raw?.user_id,
@@ -24,6 +26,22 @@ function normalizeContext(raw) {
 export function getHostContext() {
   if (!window.__BAMBO_FINANCE_CONTEXT__) return null;
   return normalizeContext(window.__BAMBO_FINANCE_CONTEXT__);
+}
+
+export function subscribeHostProjectContext(onChange, onError = () => {}) {
+  function handleChange(event) {
+    try {
+      const raw = event.detail?.context ?? event.detail ?? window.__BAMBO_FINANCE_CONTEXT__;
+      const context = normalizeContext(raw);
+      window.__BAMBO_FINANCE_CONTEXT__ = raw;
+      onChange(context);
+    } catch (error) {
+      onError(error);
+    }
+  }
+
+  window.addEventListener(HOST_PROJECT_CONTEXT_CHANGED_EVENT, handleChange);
+  return () => window.removeEventListener(HOST_PROJECT_CONTEXT_CHANGED_EVENT, handleChange);
 }
 
 export { normalizeContext };

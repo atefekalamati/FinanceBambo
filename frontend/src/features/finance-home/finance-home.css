@@ -137,6 +137,151 @@
   font-size: 1.15rem;
 }
 
+/* --------------------------------------------------------------------------
+   Executive analysis panels
+   -------------------------------------------------------------------------- */
+
+.finance-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+  margin-block: .75rem;
+}
+
+.finance-analysis-card {
+  min-inline-size: 0;
+  padding: .85rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.finance-analysis-card h2,
+.finance-analysis-card p {
+  margin: 0;
+}
+
+.finance-analysis-card h2 {
+  font-size: var(--font-size-md);
+}
+
+.finance-analysis-card__heading p,
+.finance-analysis-card__empty {
+  margin-block-start: .25rem;
+  color: var(--color-text-muted);
+  font-size: .75rem;
+}
+
+.overview-comparison {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(5.5rem, 1fr));
+  align-items: end;
+  gap: .65rem;
+  min-inline-size: 20rem;
+  min-block-size: 11rem;
+  margin-block-start: .75rem;
+  overflow-x: auto;
+}
+
+.overview-comparison--2 {
+  grid-template-columns: repeat(2, minmax(7rem, 1fr));
+}
+
+.overview-comparison__item {
+  display: grid;
+  grid-template-rows: auto 7rem auto;
+  gap: .35rem;
+  min-inline-size: 0;
+  text-align: center;
+}
+
+.overview-comparison__value {
+  justify-content: center;
+  font-size: .72rem;
+}
+
+.overview-comparison__track {
+  position: relative;
+  inline-size: 2.25rem;
+  block-size: 7rem;
+  margin-inline: auto;
+  border-radius: .35rem .35rem 0 0;
+  background: var(--dash-grid);
+  overflow: hidden;
+}
+
+.overview-comparison__bar {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  block-size: var(--bar-height);
+  border-radius: .35rem .35rem 0 0;
+  background: var(--dash-plan);
+}
+
+.overview-comparison__item--actual .overview-comparison__bar,
+.overview-comparison__item--executed .overview-comparison__bar {
+  background: var(--dash-actual);
+}
+
+.overview-comparison__item--forecast .overview-comparison__bar,
+.overview-comparison__item--remaining .overview-comparison__bar {
+  background: var(--dash-sev-med);
+}
+
+.overview-comparison__item h3 {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: .72rem;
+  line-height: 1.5;
+}
+
+.finance-variance-card ol {
+  display: grid;
+  gap: .4rem;
+  margin: .75rem 0 0;
+  padding-inline-start: 1.4rem;
+}
+
+.finance-variance-card li {
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+.finance-variance-card__link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: .55rem;
+  min-block-size: 2.35rem;
+  padding-block: .35rem;
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.finance-variance-card__link:hover {
+  color: var(--color-accent);
+  background: var(--color-btn-action);
+}
+
+.finance-variance-card__link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.finance-variance-card__link strong {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.finance-variance-card__indicator {
+  color: var(--color-accent);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
 .finance-warnings {
   margin-block: .75rem var(--space-lg);
   padding: .75rem 1rem;
@@ -326,6 +471,10 @@
   }
 
   .finance-insights {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-analysis-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

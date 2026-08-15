@@ -1,6 +1,7 @@
 import { hasPermission } from "../../core/auth/permissions.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
@@ -84,7 +85,7 @@ function createUnitConversionDialog(adapter, onSaved) {
       { value: "project", label: "تبدیل اختصاصی پروژه" },
     ],
   });
-  const effectiveDate = createPersianDatePicker({ id: "conversionEffectiveDate", label: "تاریخ اثر", value: getTehranTodayIso(), hint: "تاریخ را براساس تقویم جلالی و زمان ایران انتخاب کنید." });
+  const effectiveDate = createPersianDatePicker({ id: "conversionEffectiveDate", label: "تاریخ اعتبار", value: getTehranTodayIso(), hint: "تاریخ را براساس تقویم جلالی و زمان ایران انتخاب کنید." });
   const notice = element("div", "inline-notice", "تبدیل فقط میان واحدهای هم‌بُعد مجاز است. ثبت جدید، تاریخچه قبلی را بازنویسی نمی‌کند.");
   const cancel = element("button", "button button--ghost", "لغو");
   cancel.type = "button";
@@ -144,7 +145,7 @@ function createPriceImportDialog(adapter, onSaved) {
   close.setAttribute("aria-label", "بستن پنجره");
   close.addEventListener("click", () => dialog.close());
   head.append(title, close);
-  const description = element("p", "price-import-dialog__description", "فایل باید شامل کد قلم، قیمت، واحد پول، تاریخ اثر و سطح قیمت باشد. پیش‌نمایش معتبر قبل از ثبت نهایی الزامی است.");
+  const description = element("p", "price-import-dialog__description", "فایل باید شامل کد قلم، قیمت، واحد پول، تاریخ اعتبار و سطح قیمت باشد. پیش‌نمایش معتبر قبل از ثبت نهایی الزامی است.");
   const form = element("form", "price-import-form");
   form.noValidate = true;
   const field = element("div", "form-field");
@@ -191,7 +192,7 @@ function createPriceImportDialog(adapter, onSaved) {
     table.append(element("caption", "sr-only", "پیش‌نمایش ردیف‌های فایل قیمت"));
     const tableHead = document.createElement("thead");
     const header = document.createElement("tr");
-    ["ردیف", "قلم مالی", "قیمت", "واحد پول", "تاریخ اثر", "سطح قیمت", "نتیجه بررسی"].forEach((labelText) => header.append(element("th", "", labelText)));
+    ["ردیف", "قلم هزینه", "قیمت", "واحد پول", "تاریخ اعتبار", "سطح قیمت", "نتیجه بررسی"].forEach((labelText) => header.append(element("th", "", labelText)));
     tableHead.append(header);
     const body = document.createElement("tbody");
     preview.rows.forEach((row) => {
@@ -260,7 +261,7 @@ function createPriceImportDialog(adapter, onSaved) {
       });
       dialog.after(confirmation);
       confirmation.addEventListener("close", () => confirmation.remove(), { once: true });
-      confirmation.showModal();
+      showAccessibleDialog(confirmation);
     });
     resultRegion.append(summary, wrapper, notice, resultActions);
   }
@@ -310,7 +311,7 @@ function createPriceDialog(adapter, currentPrices, onSaved) {
   form.noValidate = true;
   const resource = createSelect({
     id: "priceResource",
-    label: "قلم مالی",
+    label: "قلم هزینه",
     options: currentPrices.map((item) => ({ value: item.resource.resourceId, label: `${item.resource.code} · ${item.resource.title}` })),
   });
   const scope = createSelect({
@@ -322,7 +323,7 @@ function createPriceDialog(adapter, currentPrices, onSaved) {
     ],
   });
   const amount = createInput({ id: "unitPriceIRR", label: `قیمت واحد (${getDisplayCurrencyLabel()})`, hint: `مبلغ با واحد نمایش انتخاب‌شده وارد می‌شود و برای Backend به ${CURRENCY_LABELS.IRR} ارسال خواهد شد.`, inputMode: "decimal" });
-  const effectiveFrom = createPersianDatePicker({ id: "priceEffectiveFrom", label: "تاریخ اثر", value: getTehranTodayIso(), hint: "تاریخ را براساس تقویم جلالی و زمان ایران انتخاب کنید." });
+  const effectiveFrom = createPersianDatePicker({ id: "priceEffectiveFrom", label: "تاریخ اعتبار", value: getTehranTodayIso(), hint: "تاریخ را براساس تقویم جلالی و زمان ایران انتخاب کنید." });
   const notice = element("div", "inline-notice", "ثبت قیمت، نسخه جدید می‌سازد. نسخه‌های قبلی و گزارش‌های صادرشده بازنویسی نمی‌شوند.");
   const cancel = element("button", "button button--ghost", "لغو");
   cancel.type = "button";
@@ -410,17 +411,21 @@ function createPriceTrend(item, history) {
   return container;
 }
 
-function renderCurrentPrices(items, history) {
+function renderCurrentPrices(items, history, focusResourceId = "") {
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table current-prices-table");
-  table.append(element("caption", "sr-only", "فهرست قیمت جاری اقلام مالی"));
+  table.append(element("caption", "sr-only", "فهرست قیمت روز اقلام پروژه"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  ["قلم مالی", "واحد پایه", "قیمت پایه سازمان", "قیمت اختصاصی پروژه", "قیمت جاری", "روند نسخه‌ها", "مبنای قیمت جاری", "تاریخ اثر"].forEach((label) => header.append(element("th", "", label)));
+  ["قلم هزینه", "واحد پایه", "قیمت پایه سازمان", "قیمت اختصاصی پروژه", "قیمت روز", "روند", "منبع قیمت", "تاریخ اعتبار"].forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
   items.forEach((item) => {
     const row = document.createElement("tr");
+    if (focusResourceId && item.resource.resourceId === focusResourceId) {
+      row.classList.add("deep-link-target");
+      row.tabIndex = -1;
+    }
     const resource = document.createElement("td");
     resource.append(element("strong", "", item.resource.title), element("small", "table-subtext numeric", item.resource.code));
     const currentScope = item.currentPrice ? SCOPE_LABELS[item.currentPrice.scope] : "بدون قیمت";
@@ -447,10 +452,10 @@ function renderPriceFilters(filters, onApply, onReset) {
   const search = element("input", "app-input");
   search.type = "search";
   search.value = filters.query;
-  search.placeholder = "جست‌وجوی عنوان یا کد قلم مالی";
-  search.setAttribute("aria-label", "جست‌وجوی قلم مالی");
+  search.placeholder = "جست‌وجوی عنوان یا کد قلم هزینه";
+  search.setAttribute("aria-label", "جست‌وجوی قلم هزینه");
   const scope = element("select", "app-select");
-  scope.setAttribute("aria-label", "فیلتر مبنای قیمت جاری");
+  scope.setAttribute("aria-label", "فیلتر منبع قیمت روز");
   [["all", "همه مبناها"], ["project", "اختصاصی پروژه"], ["organization", "پایه سازمان"], ["missing", "بدون قیمت"]].forEach(([value, label]) => {
     const node = element("option", "", label);
     node.value = value;
@@ -479,7 +484,7 @@ function renderPriceSummary(workspace) {
   [
     ["قیمت اختصاصی فعال", projectOverrides, "قلم دارای قیمت مقدم پروژه"],
     ["قیمت نیازمند تکمیل", missingPrices, "قلم بدون قیمت معتبر جاری"],
-    ["پوشش تاریخچه قیمت", versionedResources, `از ${formatDisplayNumber(String(workspace.currentPrices.length))} قلم مالی`],
+    ["پوشش تاریخچه قیمت", versionedResources, `از ${formatDisplayNumber(String(workspace.currentPrices.length))} قلم هزینه`],
   ].forEach(([title, value, description]) => {
     const card = element("article", "price-summary-card");
     card.append(element("h3", "", title), element("strong", "numeric", formatDisplayNumber(String(value))), element("p", "", description));
@@ -495,7 +500,7 @@ function renderHistory(history, currentPrices) {
   table.append(element("caption", "sr-only", "تاریخچه تغییرناپذیر قیمت‌ها"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  ["قلم مالی", "سطح", `قیمت واحد (${getDisplayCurrencyLabel()})`, "تاریخ اثر", "ثبت‌کننده", "زمان ثبت"].forEach((label) => header.append(element("th", "", label)));
+  ["قلم هزینه", "سطح", `قیمت واحد (${getDisplayCurrencyLabel()})`, "تاریخ اعتبار", "ثبت‌کننده", "زمان ثبت"].forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
   history.forEach((price) => {
@@ -522,7 +527,7 @@ function renderCurrentConversions(items) {
   table.append(element("caption", "sr-only", "فهرست تبدیل‌های واحد جاری"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  ["تبدیل", "بُعد", "ضریب پایه سازمان", "ضریب اختصاصی پروژه", "ضریب جاری", "مبنای جاری", "تاریخ اثر"].forEach((label) => header.append(element("th", "", label)));
+  ["تبدیل", "نوع واحد", "ضریب پایه سازمان", "تبدیل اختصاصی پروژه", "ضریب جاری", "مبنای جاری", "تاریخ اعتبار"].forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
   items.forEach((item) => {
@@ -551,7 +556,7 @@ function renderConversionHistory(history) {
   table.append(element("caption", "sr-only", "تاریخچه نسخه‌های تبدیل واحد"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  ["واحد مبدأ", "واحد مقصد", "بُعد", "ضریب", "سطح", "تاریخ اثر", "ثبت‌کننده", "زمان ثبت"].forEach((label) => header.append(element("th", "", label)));
+  ["واحد مبدأ", "واحد مقصد", "نوع واحد", "ضریب تبدیل", "سطح", "تاریخ اعتبار", "ثبت‌کننده", "زمان ثبت"].forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
   history.forEach((conversion) => {
@@ -574,7 +579,7 @@ function renderConversionHistory(history) {
   return wrapper;
 }
 
-export function createPricesPage({ context, adapter }) {
+export function createPricesPage({ context, adapter, focusResourceId = "" }) {
   const root = element("div", "prices-page");
   const canEdit = hasPermission(context, "finance.edit");
   let state = createRequestState(REQUEST_STATUS.LOADING);
@@ -595,7 +600,7 @@ export function createPricesPage({ context, adapter }) {
   function renderHeader() {
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "قیمت جاری و تاریخچه"), element("h1", "", "قیمت‌های مالی"), element("p", "", "قیمت پایه سازمان و قیمت اختصاصی پروژه را بدون بازنویسی نسخه‌های قبلی مدیریت کنید."));
+    copy.append(element("span", "feature-header__eyebrow", "قیمت روز و تاریخچه قیمت"), element("h1", "", "قیمت روز"), element("p", "", "قیمت پایه سازمان و قیمت اختصاصی پروژه را بدون بازنویسی نسخه‌های قبلی مدیریت کنید."));
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.href = "#/finance";
     header.append(copy, back);
@@ -608,7 +613,7 @@ export function createPricesPage({ context, adapter }) {
       paint();
     });
     root.append(dialog);
-    dialog.showModal();
+    showAccessibleDialog(dialog);
   }
 
   function openConversionEditor() {
@@ -617,7 +622,7 @@ export function createPricesPage({ context, adapter }) {
       paint();
     });
     root.append(dialog);
-    dialog.showModal();
+    showAccessibleDialog(dialog);
   }
 
   function renderEmpty() {
@@ -638,7 +643,7 @@ export function createPricesPage({ context, adapter }) {
   function renderContent(workspace) {
     const fragment = document.createDocumentFragment();
     const toolbar = element("div", "prices-toolbar");
-    toolbar.append(element("p", "", "قیمت جاری، آخرین قیمت معتبر است و قیمت اختصاصی پروژه بر قیمت پایه سازمان اولویت دارد."));
+    toolbar.append(element("p", "", "قیمت روز، آخرین قیمت معتبر است و قیمت اختصاصی پروژه بر قیمت پایه سازمان اولویت دارد."));
     if (canEdit) {
       const addConversion = element("button", "button button--ghost", "ثبت تبدیل واحد");
       addConversion.type = "button";
@@ -651,7 +656,7 @@ export function createPricesPage({ context, adapter }) {
           paint();
         });
         root.append(dialog);
-        dialog.showModal();
+        showAccessibleDialog(dialog);
       });
       const add = element("button", "button button--primary", "ثبت نسخه جدید قیمت");
       add.type = "button";
@@ -670,22 +675,27 @@ export function createPricesPage({ context, adapter }) {
     const current = element("section", "prices-section prices-section--current");
     const currentHeading = element("div", "prices-section-heading");
     currentHeading.append(element("div", "", ""), element("span", "section-count numeric", `${formatDisplayNumber(String(filteredPrices.length))} قلم`));
-    currentHeading.firstElementChild.append(element("h2", "", "قیمت جاری اقلام"), element("p", "prices-section__hint", `قیمت‌ها به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند و نمودار کوچک، روند نسخه‌های ثبت‌شده هر قلم را نشان می‌دهد.`));
+    currentHeading.firstElementChild.append(element("h2", "", "قیمت روز اقلام"), element("p", "prices-section__hint", `قیمت‌ها به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند و نمودار کوچک، روند تغییرات هر قلم را نشان می‌دهد.`));
     current.append(currentHeading, filters);
-    if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history));
+    if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history, focusResourceId));
     else current.append(element("div", "state-card price-filter-empty", "قلمی مطابق فیلترهای انتخاب‌شده پیدا نشد."));
     const history = element("section", "prices-section");
     history.append(element("h2", "", "تاریخچه قیمت‌ها"), element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."), renderHistory(workspace.history, workspace.currentPrices));
     const conversions = element("section", "prices-section");
     conversions.append(element("h2", "", "تبدیل واحد جاری"), element("p", "prices-section__hint", "تبدیل اختصاصی پروژه بر تبدیل پایه سازمان مقدم است و فقط میان واحدهای هم‌بُعد اعمال می‌شود."), renderCurrentConversions(workspace.currentConversions));
     const conversionHistory = element("section", "prices-section");
-    conversionHistory.append(element("h2", "", "تاریخچه تبدیل واحد"), element("p", "prices-section__hint", "هر ثبت یک نسخه جدید است و نسخه‌های قبلی برای ممیزی حفظ می‌شوند."), renderConversionHistory(workspace.conversionHistory));
+    conversionHistory.append(element("h2", "", "تاریخچه تبدیل واحد"), element("p", "prices-section__hint", "هر ثبت یک نسخه جدید است و نسخه‌های قبلی در تاریخچه تغییرات حفظ می‌شوند."), renderConversionHistory(workspace.conversionHistory));
     fragment.append(toolbar, current, renderPriceSummary(workspace), conversions, history, conversionHistory);
     return fragment;
   }
 
   function paint() {
     root.replaceChildren(renderHeader(), renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    const target = root.querySelector(".deep-link-target");
+    if (target) queueMicrotask(() => {
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+      target.focus({ preventScroll: true });
+    });
   }
 
   load();

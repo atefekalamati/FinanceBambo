@@ -1,6 +1,7 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { ACTION_LABELS, ENTITY_LABELS, filterAuditEvents } from "./audit-model.js";
@@ -10,7 +11,7 @@ const VALUE_LABELS = Object.freeze({
   fileId: "شناسه فایل",
   finalAmountIrr: "مبلغ نهایی",
   overrideValue: "مقدار جایگزین",
-  progressSnapshotId: "شناسه نسخه پیشرفت",
+  progressSnapshotId: "شناسه نسخه پیشرفت پروژه",
   reportingDate: "تاریخ گزارش",
   status: "وضعیت",
   unitPriceIrr: "قیمت واحد",
@@ -56,12 +57,12 @@ function createDetailDialog(event) {
   dialog.setAttribute("aria-labelledby", "audit-detail-title");
   const head = element("header", "audit-detail__head");
   const title = element("div");
-  const heading = element("h2", "", ACTION_LABELS[event.action] ?? "رویداد ممیزی");
+  const heading = element("h2", "", ACTION_LABELS[event.action] ?? "رویداد تغییر");
   heading.id = "audit-detail-title";
   title.append(heading, element("p", "", `${ENTITY_LABELS[event.entityType] ?? "موجودیت مالی"} · ${formatSystemDateTime(event.occurredAt)}`));
   const close = element("button", "dialog-close", "×");
   close.type = "button";
-  close.setAttribute("aria-label", "بستن جزئیات ممیزی");
+  close.setAttribute("aria-label", "بستن جزئیات تغییر");
   close.addEventListener("click", () => dialog.close());
   head.append(title, close);
   const identity = element("dl", "audit-detail__identity");
@@ -107,7 +108,7 @@ export function createAuditPage({ adapter }) {
     const fragment = document.createDocumentFragment();
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "ردیابی تغییرات حساس"), element("h1", "", "تاریخچه و ممیزی"), element("p", "", "رویدادها فقط‌خواندنی و براساس زمان ثبت Backend نمایش داده می‌شوند."));
+    copy.append(element("span", "feature-header__eyebrow", "ردیابی تغییرات حساس"), element("h1", "", "تاریخچه تغییرات مالی"), element("p", "", "رویدادهای تغییر فقط‌خواندنی و براساس زمان ثبت سیستم نمایش داده می‌شوند."));
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.href = "#/finance";
     header.append(copy, back);
@@ -117,7 +118,7 @@ export function createAuditPage({ adapter }) {
     query.type = "search";
     query.value = filters.query;
     query.placeholder = "جست‌وجوی کاربر، شناسه یا دلیل";
-    query.setAttribute("aria-label", "جست‌وجوی رویدادهای ممیزی");
+    query.setAttribute("aria-label", "جست‌وجوی رویدادهای تغییر");
     const actions = [...new Set(events.map((event) => event.action))].sort().map((value) => [value, ACTION_LABELS[value] ?? "عملیات تعریف‌نشده"]);
     const entities = [...new Set(events.map((event) => event.entityType))].sort().map((value) => [value, ENTITY_LABELS[value] ?? "موجودیت تعریف‌نشده"]);
     const action = createSelect("همه عملیات", actions);
@@ -142,7 +143,7 @@ export function createAuditPage({ adapter }) {
     const summary = element("p", "audit-result-count", `${formatDisplayNumber(String(filtered.length))} رویداد از ${formatDisplayNumber(String(events.length))} رویداد نمایش داده می‌شود.`);
     const wrapper = element("div", "table-scroll");
     const table = element("table", "data-table audit-table");
-    table.append(element("caption", "sr-only", "فهرست رویدادهای ممیزی مالی"));
+    table.append(element("caption", "sr-only", "فهرست رویدادهای تغییر مالی"));
     const head = document.createElement("thead");
     const headerRow = document.createElement("tr");
     ["زمان", "عملیات", "موجودیت", "کاربر", "دلیل", "جزئیات"].forEach((label) => headerRow.append(element("th", "", label)));
@@ -157,7 +158,7 @@ export function createAuditPage({ adapter }) {
         const dialog = createDetailDialog(auditEvent);
         root.append(dialog);
         dialog.addEventListener("close", () => dialog.remove(), { once: true });
-        dialog.showModal();
+        showAccessibleDialog(dialog);
       });
       detailCell.append(detail);
       row.append(

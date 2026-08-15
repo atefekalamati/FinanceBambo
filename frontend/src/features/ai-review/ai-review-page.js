@@ -1,6 +1,7 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { hasPermission } from "../../core/auth/permissions.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
+import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
@@ -9,12 +10,12 @@ const FIELD_LABELS = Object.freeze({
   invoiceNumber: "شماره فاکتور",
   invoiceDate: "تاریخ فاکتور",
   vendorName: "فروشنده یا ارائه‌دهنده",
-  resourceId: "تخصیص به قلم مالی",
+  resourceId: "تخصیص به قلم هزینه",
   totalIRR: "مبلغ نهایی",
 });
 
 const REVIEW_LABELS = Object.freeze({
-  awaitingReview: "در انتظار بازبینی",
+  awaitingReview: "نیازمند بررسی",
   accepted: "پذیرفته‌شده",
   rejected: "ردشده",
 });
@@ -65,7 +66,7 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
   const card = element("article", "ai-review-card");
   const header = element("header", "ai-review-card__header");
   const title = element("div");
-  title.append(element("span", "feature-header__eyebrow", draft.file.logicalType === "invoice_image" ? "استخراج از تصویر" : "استخراج از صدای فارسی"), element("h2", "", draft.file.originalNameSafe));
+  title.append(element("span", "feature-header__eyebrow", draft.file.logicalType === "invoice_image" ? "پردازش تصویر فاکتور" : "پردازش صدای فارسی"), element("h2", "", draft.file.originalNameSafe));
   header.append(title, element("span", `file-status ai-review-status--${draft.reviewStatus}`, REVIEW_LABELS[draft.reviewStatus] ?? "نامشخص"));
   card.append(header);
 
@@ -79,7 +80,7 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
     const wrapper = element("label", `ai-field${field.confidence < 0.8 ? " ai-field--low" : ""}`);
     const labelRow = element("span", "ai-field__label");
     const fieldLabel = field.key === "totalIRR" ? `${FIELD_LABELS[field.key]} به ${getDisplayCurrencyLabel()}` : FIELD_LABELS[field.key];
-    labelRow.append(element("strong", "", fieldLabel ?? "فیلد استخراج‌شده"), element("small", "", confidenceLabel(field.confidence)));
+    labelRow.append(element("strong", "", fieldLabel ?? "اطلاعات خوانده‌شده"), element("small", "", confidenceLabel(field.confidence)));
     let input;
     if (field.key === "invoiceDate") {
       const picker = createPersianDatePicker({ id: `ai-${draft.draftId}-date`, label: "", value: field.confirmedValue ?? field.extractedValue });
@@ -87,9 +88,9 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
       wrapper.append(labelRow, picker.field);
     } else if (field.key === "resourceId") {
       const select = element("select", "app-select");
-      select.append(element("option", "", "انتخاب قلم مالی"));
+      select.append(element("option", "", "انتخاب قلم هزینه"));
       targets.forEach((target) => {
-        const option = element("option", "", `${target.label} · ${target.targetType === "general_cost" ? "هزینه عمومی" : "خط برآورد"}`);
+        const option = element("option", "", `${target.label} · ${target.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : "ردیف برآورد"}`);
         option.value = target.targetId;
         select.append(option);
       });
@@ -140,14 +141,14 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
       retry.disabled = false;
     }
   });
-  const reject = element("button", "button button--danger", "رد استخراج");
+  const reject = element("button", "button button--danger", "رد پیش‌نویس");
   reject.type = "button";
   reject.disabled = !canEdit;
   reject.addEventListener("click", () => {
-    const dialog = confirmationDialog({ title: "رد استخراج", message: "استخراج رد می‌شود، اما فایل اصلی حذف نخواهد شد و ورود دستی همچنان در دسترس است.", confirmLabel: "تأیید رد استخراج", onConfirm: async () => { await adapter.rejectExtraction({ draftId: draft.draftId, expectedVersion: draft.version }); await onChanged(); } });
+    const dialog = confirmationDialog({ title: "رد پیش‌نویس هوشمند", message: "پیش‌نویس رد می‌شود، اما فایل اصلی حذف نخواهد شد و ورود دستی همچنان در دسترس است.", confirmLabel: "تأیید رد پیش‌نویس", onConfirm: async () => { await adapter.rejectExtraction({ draftId: draft.draftId, expectedVersion: draft.version }); await onChanged(); } });
     root.append(dialog);
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
-    dialog.showModal();
+    showAccessibleDialog(dialog);
   });
   const confirm = element("button", "button button--primary", "تأیید انسانی و ثبت فاکتور");
   confirm.type = "button";
@@ -155,15 +156,15 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
   confirm.addEventListener("click", () => {
     const values = Object.fromEntries([...controls].map(([key, control]) => [key, control.getValue()]));
     if (!values.invoiceDate || !values.vendorName || !values.resourceId || !/^\d+$/.test(values.totalIRR)) {
-      feedback.textContent = `تاریخ، فروشنده، تخصیص قلم مالی و مبلغ صحیح ${getDisplayCurrencyLabel()} برای تأیید الزامی است.`;
+      feedback.textContent = `تاریخ، فروشنده، تخصیص قلم هزینه و مبلغ صحیح ${getDisplayCurrencyLabel()} برای تأیید الزامی است.`;
       feedback.className = "form-message form-message--error";
       return;
     }
     const fieldConfirmations = draft.fields.filter((field) => values[field.key] !== String(field.extractedValue ?? "")).map((field) => ({ key: field.key, confirmedValue: values[field.key] }));
-    const dialog = confirmationDialog({ title: "تأیید استخراج و ایجاد فاکتور", message: "پس از این تأیید، داده بازبینی‌شده به فاکتور تأییدشده تبدیل می‌شود و اثر مالی ایجاد می‌کند.", confirmLabel: "تأیید نهایی", onConfirm: async () => { await adapter.confirmExtraction({ draftId: draft.draftId, expectedVersion: draft.version, idempotencyKey: crypto.randomUUID(), fieldConfirmations, invoice: values }); await onChanged(); } });
+    const dialog = confirmationDialog({ title: "تأیید نهایی و ایجاد فاکتور", message: "پس از این تأیید، پیش‌نویس بررسی‌شده به فاکتور تأییدشده تبدیل می‌شود و اثر مالی ایجاد می‌کند.", confirmLabel: "تأیید نهایی", onConfirm: async () => { await adapter.confirmExtraction({ draftId: draft.draftId, expectedVersion: draft.version, idempotencyKey: crypto.randomUUID(), fieldConfirmations, invoice: values }); await onChanged(); } });
     root.append(dialog);
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
-    dialog.showModal();
+    showAccessibleDialog(dialog);
   });
   actions.append(retry, reject, confirm);
   card.append(feedback, actions);
@@ -190,7 +191,7 @@ export function createAiReviewPage({ context, adapter }) {
   function paint() {
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "کنترل انسانی الزامی"), element("h1", "", "بازبینی استخراج فاکتور"), element("p", "", "مقادیر استخراج‌شده را با فایل اصلی تطبیق دهید؛ فیلدهای کم‌اطمینان را اصلاح و سپس تصمیم نهایی را ثبت کنید."));
+    copy.append(element("span", "feature-header__eyebrow", "کنترل انسانی الزامی"), element("h1", "", "بررسی هوشمند فاکتور"), element("p", "", "اطلاعات خوانده‌شده را با فایل اصلی تطبیق دهید؛ موارد کم‌اطمینان را اصلاح و سپس تصمیم نهایی را ثبت کنید."));
     const actions = element("div", "feature-header__actions");
     const files = element("a", "button button--ghost", "بازگشت به فایل‌ها");
     files.href = "#/invoice-files";
@@ -200,12 +201,12 @@ export function createAiReviewPage({ context, adapter }) {
     header.append(copy, actions);
 
     if (state.status === REQUEST_STATUS.LOADING) {
-      root.replaceChildren(header, element("section", "state-card", "در حال دریافت پیش‌نویس‌های استخراج…"));
+      root.replaceChildren(header, element("section", "state-card", "در حال دریافت پیش‌نویس‌های هوشمند فاکتور…"));
       return;
     }
     if (state.status === REQUEST_STATUS.EMPTY) {
       const empty = element("section", "state-card");
-      empty.append(element("h2", "", "استخراجی برای بازبینی وجود ندارد"), element("p", "", "ابتدا یک تصویر یا فایل صوتی بارگذاری و پردازش را شروع کنید."));
+      empty.append(element("h2", "", "پیش‌نویسی برای بررسی وجود ندارد"), element("p", "", "ابتدا یک تصویر یا فایل صوتی بارگذاری و پردازش را شروع کنید."));
       root.replaceChildren(header, empty);
       return;
     }

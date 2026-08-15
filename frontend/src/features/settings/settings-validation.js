@@ -22,7 +22,7 @@ export function validateEffectiveDate(value) {
   const date = match ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))) : null;
   const valid = Boolean(date) && date.getUTCFullYear() === Number(match[1]) && date.getUTCMonth() === Number(match[2]) - 1 && date.getUTCDate() === Number(match[3]);
   if (!valid) {
-    return { valid: false, value: normalized, message: "تاریخ اثر معتبر نیست." };
+    return { valid: false, value: normalized, message: "تاریخ اعمال تغییر معتبر نیست." };
   }
   return { valid: true, value: normalized, message: "" };
 }
