@@ -61,7 +61,7 @@ function renderSnapshotList(items, selectedId, onSelect) {
       ["شناسه نسخه فایل", snapshot.sourceFileVersionId],
     ];
     fields.forEach(([label, value]) => meta.append(element("dt", "", label), element("dd", "numeric", value)));
-    const button = element("button", snapshot.progressSnapshotId === selectedId ? "button button--primary" : "button button--ghost", snapshot.progressSnapshotId === selectedId ? "در حال نمایش" : "مشاهده خوراک مالی");
+    const button = element("button", snapshot.progressSnapshotId === selectedId ? "button button--primary" : "button button--ghost", snapshot.progressSnapshotId === selectedId ? "در حال نمایش" : "مشاهده پیشرفت اجرایی");
     button.type = "button";
     button.disabled = snapshot.progressSnapshotId === selectedId;
     button.addEventListener("click", () => onSelect(snapshot.progressSnapshotId));
@@ -214,7 +214,7 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
 function renderAssignments(assignments, { canOverride, onOverride }) {
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table progress-feed-table");
-  table.append(element("caption", "sr-only", "خوراک فقط‌خواندنی تخصیص‌های مالی نسخه پیشرفت"));
+  table.append(element("caption", "sr-only", "اطلاعات فقط‌خواندنی پیشرفت اجرایی و تخصیص‌های مالی"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
   ["فعالیت", "قلم هزینه", "واحد", "مقادیر برنامه، انجام‌شده و باقی‌مانده", "کار برنامه، انجام‌شده و باقی‌مانده", "درصدهای پیشرفت", "مبنای محاسبه و کیفیت", "بازه فعالیت", "اصلاح دستی مقدار"].forEach((label) => header.append(element("th", "", label)));
@@ -300,7 +300,7 @@ export function createProgressPage({ context, adapter }) {
   function renderHeader() {
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "خوراک گزارش پیشرفت"), element("h1", "", "نسخه‌های پیشرفت پروژه"), element("p", "", "نسخه‌های ثبت‌شده گزارش پیشرفت و تخصیص‌های فعالیت و قلم هزینه را به‌صورت فقط‌خواندنی مشاهده کنید."));
+    copy.append(element("span", "feature-header__eyebrow", "پیشرفت اجرایی پروژه"), element("h1", "", "نسخه‌های پیشرفت پروژه"), element("p", "", "نسخه‌های ثبت‌شده گزارش پیشرفت و تخصیص‌های فعالیت و قلم هزینه را به‌صورت فقط‌خواندنی مشاهده کنید."));
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.href = "#/finance";
     header.append(copy, back);
@@ -309,7 +309,7 @@ export function createProgressPage({ context, adapter }) {
 
   function renderEmpty() {
     const card = element("section", "state-card progress-empty");
-    card.append(element("h2", "", "نسخه پیشرفت پروژه موجود نیست"), element("p", "", "ماژول مالی فایل برنامه را مستقیماً باز نمی‌کند. پس از انتشار نسخه توسط گزارش پیشرفت، خوراک فقط‌خواندنی اینجا نمایش داده می‌شود."));
+    card.append(element("h2", "", "نسخه پیشرفت پروژه موجود نیست"), element("p", "", "ماژول مالی فایل برنامه را مستقیماً باز نمی‌کند. پس از انتشار نسخه توسط گزارش پیشرفت، اطلاعات فقط‌خواندنی پیشرفت اجرایی اینجا نمایش داده می‌شود."));
     return card;
   }
 
@@ -346,7 +346,7 @@ export function createProgressPage({ context, adapter }) {
     const snapshots = element("section", "progress-snapshots-section");
     const heading = element("div", "progress-section-heading");
     heading.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(items.length))));
-    heading.firstElementChild.append(element("h2", "", "فهرست نسخه‌های پیشرفت"), element("p", "", "نسخه موردنظر را برای مشاهده Metadata و خوراک تخصیص‌ها انتخاب کنید."));
+    heading.firstElementChild.append(element("h2", "", "فهرست نسخه‌های پیشرفت"), element("p", "", "نسخه موردنظر را برای مشاهده مشخصات و اطلاعات تخصیص‌ها انتخاب کنید."));
     snapshots.append(heading, renderSnapshotList(items, selectedId, selectSnapshot));
     const feed = element("div", "progress-feed-state");
     if (feedState.status !== REQUEST_STATUS.IDLE) feed.append(renderPageState(feedState, { renderContent: renderFeed, renderEmpty: () => element("section", "state-card", "این نسخه تخصیص مالی ندارد."), onRetry: () => selectSnapshot(selectedId) }));
