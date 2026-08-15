@@ -11,7 +11,7 @@ import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
 
 const SOURCE_LABELS = Object.freeze({
-  progress_feed: "خوراک پیشرفت",
+  progress_feed: "پیشرفت اجرایی",
   excel_import: "اکسل",
   manual_entry: "ورود دستی",
 });
@@ -750,24 +750,12 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
       stats.append(card);
     });
 
-    const toolbar = element("div", "items-toolbar");
-    const summary = element("p", "", `${formatDisplayNumber(String(workspace.resources.length))} قلم هزینه · ${formatDisplayNumber(String(workspace.estimateLines.length))} ردیف برآورد`);
-    toolbar.append(summary);
+    const lineActions = element("div", "items-section__actions");
     if (canEdit) {
-      const addResource = element("button", "button button--ghost", "قلم جدید");
-      addResource.type = "button";
       const addLine = element("button", "button button--primary", "خط متره جدید");
       addLine.type = "button";
       const importEstimate = element("button", "button button--ghost", "ورود گروهی برآورد");
       importEstimate.type = "button";
-      addResource.addEventListener("click", () => {
-        const dialog = createResourceDialog(adapter, workspace, (next) => {
-          state = createRequestState(REQUEST_STATUS.SUCCESS, next);
-          paint();
-        });
-        root.append(dialog);
-        showAccessibleDialog(dialog);
-      });
       addLine.addEventListener("click", () => {
         const dialog = createEstimateLineDialog(adapter, workspace, (next) => {
           state = createRequestState(REQUEST_STATUS.SUCCESS, next);
@@ -784,20 +772,38 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
         root.append(dialog);
         showAccessibleDialog(dialog);
       });
-      const actions = element("div", "items-toolbar__actions");
-      actions.append(addResource, addLine, importEstimate);
-      toolbar.append(actions);
+      lineActions.append(addLine, importEstimate);
     }
 
-    const resourcesSection = element("section", "items-section");
-    const resourceHead = element("div", "items-section__head");
-    resourceHead.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(workspace.resources.length))));
+    const resourcesSection = element("details", "items-section resources-disclosure");
+    const resourceHead = element("summary", "items-section__head resources-disclosure__summary");
+    const resourceMeta = element("div", "resources-disclosure__meta");
+    if (canEdit) {
+      const addResource = element("button", "button button--ghost resources-disclosure__add", "قلم جدید");
+      addResource.type = "button";
+      addResource.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const dialog = createResourceDialog(adapter, workspace, (next) => {
+          state = createRequestState(REQUEST_STATUS.SUCCESS, next);
+          paint();
+        });
+        root.append(dialog);
+        showAccessibleDialog(dialog);
+      });
+      resourceMeta.append(addResource);
+    }
+    resourceHead.append(element("div", "", ""), resourceMeta);
     resourceHead.firstElementChild.append(element("h2", "", "فهرست اقلام پروژه"), element("p", "", "فهرست چهار نوع قلم هزینه و واحد پایه هر قلم"));
-    resourcesSection.append(resourceHead, renderResourceTable(workspace.resources));
+    const resourcesContent = element("div", "resources-disclosure__content");
+    resourcesContent.append(renderResourceTable(workspace.resources), stats);
+    resourcesSection.append(resourceHead, resourcesContent);
 
     const linesSection = element("section", "items-section");
-    const linesHead = element("div", "items-section__head");
-    linesHead.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(workspace.estimateLines.length))));
+    const linesHead = element("div", "items-section__head lines-section__head");
+    const linesMeta = element("div", "items-section__meta");
+    linesMeta.append(lineActions);
+    linesHead.append(element("div", "", ""), linesMeta);
     linesHead.firstElementChild.append(element("h2", "", "ریز برآورد پروژه"), element("p", "", "هر ردیف، مقدار برآوردشده یک قلم هزینه را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا برآورد، اصلاحات و پیشرفت هر فعالیت مستقل و قابل پیگیری بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت روز و فاکتورهای تأییدشده محاسبه می‌شوند."));
     linesSection.append(linesHead, renderEstimateLineTable(workspace.estimateLines, workspace.resources, {
       canEdit,
@@ -818,7 +824,7 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
       },
     }));
 
-    fragment.append(stats, toolbar, resourcesSection, linesSection);
+    fragment.append(linesSection, resourcesSection);
     return fragment;
   }
 
