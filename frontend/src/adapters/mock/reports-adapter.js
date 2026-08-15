@@ -25,13 +25,19 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
         forecastPerSquareMeterIrr: "4200000",
       },
       breakdown: [
-        { resourceType: "material", initialEstimateIrr: "9800000000", actualCostIrr: "3920000000", forecastFinalIrr: "9360000000" },
-        { resourceType: "labor", initialEstimateIrr: "4100000000", actualCostIrr: "1380000000", forecastFinalIrr: "3980000000" },
-        { resourceType: "equipment", initialEstimateIrr: "2750000000", actualCostIrr: "610000000", forecastFinalIrr: "2540000000" },
-        { resourceType: "general_cost", initialEstimateIrr: "2000000000", actualCostIrr: "330000000", forecastFinalIrr: "1970000000" },
+        { resourceType: "material", initialEstimateIrr: "9800000000", revisedEstimateIrr: "10200000000", actualCostIrr: "3920000000", remainingPhysicalCostIrr: "5440000000", forecastFinalIrr: "9360000000" },
+        { resourceType: "labor", initialEstimateIrr: "4100000000", revisedEstimateIrr: "4250000000", actualCostIrr: "1380000000", remainingPhysicalCostIrr: "2600000000", forecastFinalIrr: "3980000000" },
+        { resourceType: "equipment", initialEstimateIrr: "2750000000", revisedEstimateIrr: "2680000000", actualCostIrr: "610000000", remainingPhysicalCostIrr: "1930000000", forecastFinalIrr: "2540000000" },
+        { resourceType: "general_cost", initialEstimateIrr: "2000000000", revisedEstimateIrr: "2050000000", actualCostIrr: "330000000", remainingPhysicalCostIrr: "1640000000", forecastFinalIrr: "1970000000" },
       ],
-      topPriceVariances: [],
-      topQuantityVariances: [],
+      topPriceVariances: [
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", varianceIrr: "460000000" },
+        { resourceId: "20000000-0000-4000-8000-000000000003", estimateLineId: "30000000-0000-4000-8000-000000000004", resourceCode: "EQ-CRANE", resourceTitle: "جرثقیل", resourceType: "equipment", varianceIrr: "185000000" },
+      ],
+      topQuantityVariances: [
+        { resourceId: "20000000-0000-4000-8000-000000000002", estimateLineId: "30000000-0000-4000-8000-000000000003", resourceCode: "LAB-FORM", resourceTitle: "اکیپ قالب‌بندی", resourceType: "labor", varianceQuantity: "125.75" },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000002", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", varianceQuantity: "42.5" },
+      ],
       warnings: [{ code: "CURRENT_PRICE_MISSING", message: "Current price is missing.", estimateLineId: null }],
       scope: { organizationId: context.organizationId, projectId: context.projectId },
     };

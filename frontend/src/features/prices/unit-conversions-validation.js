@@ -19,7 +19,7 @@ function validateDate(value) {
     && date.getUTCFullYear() === Number(match[1])
     && date.getUTCMonth() === Number(match[2]) - 1
     && date.getUTCDate() === Number(match[3]);
-  return { value: normalized, message: valid ? "" : "تاریخ اثر معتبر نیست." };
+  return { value: normalized, message: valid ? "" : "تاریخ اعتبار معتبر نیست." };
 }
 
 export function getUnitDefinition(value) {

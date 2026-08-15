@@ -55,7 +55,141 @@
 }
 
 .report-table__type {
-  inline-size: 22%;
+  inline-size: 18%;
+}
+
+.report-table {
+  min-inline-size: 62rem;
+}
+
+/* --------------------------------------------------------------------------
+   Financial impact and variance analysis
+   -------------------------------------------------------------------------- */
+
+.report-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+.report-analysis-section {
+  align-content: start;
+  min-inline-size: 0;
+}
+
+.report-analysis-heading h2,
+.report-analysis-heading p {
+  margin: 0;
+}
+
+.report-analysis-heading p,
+.report-analysis-empty {
+  margin-block-start: var(--space-xs);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+}
+
+.price-impact-chart {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.price-impact-chart__row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) minmax(7rem, 1.6fr) minmax(7.5rem, auto);
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.price-impact-chart__row:hover {
+  border-color: var(--color-accent);
+  background: var(--color-btn-action);
+}
+
+.price-impact-chart__row:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.price-impact-chart__identity,
+.price-impact-chart__value {
+  display: grid;
+  gap: .15rem;
+  min-inline-size: 0;
+}
+
+.price-impact-chart__identity strong,
+.price-impact-chart__identity small {
+  overflow-wrap: anywhere;
+}
+
+.price-impact-chart__identity small,
+.price-impact-chart__value small {
+  color: var(--color-text-muted);
+  font-size: .7rem;
+}
+
+.price-impact-chart__track {
+  position: relative;
+  block-size: .65rem;
+  border-radius: var(--radius-pill);
+  background: var(--dash-grid);
+  overflow: hidden;
+}
+
+.price-impact-chart__bar {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: var(--impact-width);
+  border-radius: inherit;
+  background: var(--dash-sev-med);
+}
+
+.price-impact-chart__row--decrease .price-impact-chart__bar {
+  background: var(--dash-actual);
+}
+
+.price-impact-chart__row--stable .price-impact-chart__bar {
+  background: var(--color-text-muted);
+}
+
+.report-variance-table {
+  min-inline-size: 42rem;
+}
+
+.variance-direction {
+  white-space: nowrap;
+}
+
+.variance-direction--increase {
+  color: var(--dash-sev-med);
+}
+
+.variance-direction--decrease {
+  color: var(--dash-sev-good);
+}
+
+.report-warning-section ul {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}
+
+.report-warning-section li {
+  line-height: 1.8;
+}
+
+.report-warning-section .table-action {
+  margin-inline-start: var(--space-sm);
 }
 
 .report-snapshot {
@@ -103,6 +237,10 @@
   .report-snapshot__details {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .report-analysis-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 36rem) {
@@ -125,6 +263,15 @@
   .report-snapshot__details {
     grid-template-columns: 1fr;
   }
+
+  .price-impact-chart__row {
+    grid-template-columns: minmax(0, 1fr) minmax(7rem, auto);
+  }
+
+  .price-impact-chart__track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 
 @media print {
@@ -145,5 +292,9 @@
 
   .report-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .price-impact-chart {
+    display: none;
   }
 }

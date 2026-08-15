@@ -4,6 +4,7 @@ import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUn
 import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
+import { getDialogOpener, showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { hasPermission } from "../../core/auth/permissions.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
@@ -128,13 +129,13 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
   function renderLinesStep() {
     const section = element("div", "invoice-lines-editor");
     const targetField = element("label", "form-field");
-    targetField.append(element("span", "form-label", "اتصال به خط برآورد یا هزینه عمومی"));
+    targetField.append(element("span", "form-label", "اتصال به ردیف برآورد یا هزینه‌های عمومی پروژه"));
     const targetSelect = element("select", "app-select");
-    targetSelect.append(option("", "انتخاب کنید"), ...targets.map((target) => option(target.targetId, `${target.label} · ${target.targetType === "general_cost" ? "هزینه عمومی" : formatUnitLabel(target.unit)}`)));
+    targetSelect.append(option("", "انتخاب کنید"), ...targets.map((target) => option(target.targetId, `${target.label} · ${target.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : formatUnitLabel(target.unit)}`)));
     targetField.append(targetSelect);
     const quantity = inputField("مقدار", "quantity", { inputMode: "decimal" });
     const unitPrice = inputField(`قیمت واحد به ${getDisplayCurrencyLabel()}`, "unitPriceIRR", { inputMode: "decimal" });
-    const amount = inputField(`مبلغ خط هزینه عمومی به ${getDisplayCurrencyLabel()}`, "amountIRR", { inputMode: "decimal" });
+    const amount = inputField(`مبلغ هزینه عمومی پروژه به ${getDisplayCurrencyLabel()}`, "amountIRR", { inputMode: "decimal" });
     amount.field.hidden = true;
     targetSelect.addEventListener("change", () => {
       const target = targets.find((item) => item.targetId === targetSelect.value);
@@ -206,7 +207,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
       effectSelect.value = String(financialEffectSign);
       effectField.append(effectSelect);
       const reasonField = element("label", "form-field");
-      reasonField.append(element("span", "form-label", "دلیل ممیزی اصلاح"));
+      reasonField.append(element("span", "form-label", "دلیل اصلاح فاکتور"));
       correctionReasonInput = element("textarea", "app-textarea");
       correctionReasonInput.rows = 3;
       correctionReasonInput.maxLength = 500;
@@ -311,7 +312,7 @@ function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm, on
     const row = document.createElement("tr");
     row.append(
       element("td", "numeric", formatDisplayNumber(String(index + 1))),
-      element("td", "", `${line.targetLabel} · ${line.targetType === "general_cost" ? "هزینه عمومی" : "خط برآورد"}`),
+      element("td", "", `${line.targetLabel} · ${line.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : "ردیف برآورد"}`),
       element("td", "numeric", line.quantity === null ? "بدون مقدار فیزیکی" : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)}`),
       element("td", "numeric", line.unitPriceIRR === null ? "—" : formatTomanFromIrr(line.unitPriceIRR)),
       element("td", "numeric", formatTomanFromIrr(line.lineAmountIRR)),
@@ -443,7 +444,7 @@ function createVoidInvoiceDialog({ invoice, adapter, onSaved }) {
   title.id = "invoice-void-title";
   const warning = element("div", "invoice-warning", "فاکتور اصلی حذف یا ویرایش نمی‌شود. یک سند برگشت مرتبط با اثر مالی منفی ایجاد خواهد شد.");
   const reasonField = element("label", "form-field");
-  reasonField.append(element("span", "form-label", "دلیل ممیزی ابطال"));
+  reasonField.append(element("span", "form-label", "دلیل ابطال فاکتور"));
   const reason = element("textarea", "app-textarea");
   reason.rows = 4;
   reason.maxLength = 500;
@@ -533,37 +534,41 @@ export function createInvoicesPage({ context, adapter }) {
         canEdit: canCreate,
         currentUserId: context.userId,
         onSubmit: (draft, detailDialog) => {
+          const opener = getDialogOpener(detailDialog);
           detailDialog.close();
           const confirmation = createSubmitDraftDialog({ invoice: draft, adapter, onSaved: load });
           root.append(confirmation);
           confirmation.addEventListener("close", () => confirmation.remove(), { once: true });
-          confirmation.showModal();
+          showAccessibleDialog(confirmation, { opener });
         },
         onConfirm: (awaitingInvoice, detailDialog) => {
+          const opener = getDialogOpener(detailDialog);
           detailDialog.close();
           const confirmation = createConfirmInvoiceDialog({ invoice: awaitingInvoice, adapter, onSaved: load });
           root.append(confirmation);
           confirmation.addEventListener("close", () => confirmation.remove(), { once: true });
-          confirmation.showModal();
+          showAccessibleDialog(confirmation, { opener });
         },
         onVoid: (confirmedInvoice, detailDialog) => {
+          const opener = getDialogOpener(detailDialog);
           detailDialog.close();
           const voidDialog = createVoidInvoiceDialog({ invoice: confirmedInvoice, adapter, onSaved: load });
           root.append(voidDialog);
           voidDialog.addEventListener("close", () => voidDialog.remove(), { once: true });
-          voidDialog.showModal();
+          showAccessibleDialog(voidDialog, { opener });
         },
         onCorrective: (confirmedInvoice, detailDialog) => {
+          const opener = getDialogOpener(detailDialog);
           detailDialog.close();
           const correctiveDialog = createInvoiceWizard({ adapter, onSaved: load, mode: "corrective", originalInvoice: confirmedInvoice });
           root.append(correctiveDialog);
           correctiveDialog.addEventListener("close", () => correctiveDialog.remove(), { once: true });
-          correctiveDialog.showModal();
+          showAccessibleDialog(correctiveDialog, { opener });
         },
       });
       root.append(dialog);
       dialog.addEventListener("close", () => dialog.remove(), { once: true });
-      dialog.showModal();
+      showAccessibleDialog(dialog);
     } catch (error) {
       detailMessage.textContent = `${error.message || "دریافت جزئیات انجام نشد."}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
       detailMessage.className = "form-message form-message--error invoice-detail-message";
@@ -585,7 +590,7 @@ export function createInvoicesPage({ context, adapter }) {
       const dialog = createInvoiceWizard({ adapter, onSaved: () => { filters.page = 1; load(); } });
       root.append(dialog);
       dialog.addEventListener("close", () => dialog.remove(), { once: true });
-      dialog.showModal();
+      showAccessibleDialog(dialog);
     });
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.href = "#/finance";

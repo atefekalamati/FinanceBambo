@@ -3,36 +3,36 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
-import { buildBreakdownPresentation } from "./report-presentation.js";
+import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
-  ["actualCostIrr", "هزینه واقعی", "فقط اسناد مالی تأییدشده"],
-  ["currentExecutedValueIrr", "ارزش روز کار اجراشده", "مقدار اجراشده با قیمت روز"],
-  ["remainingPhysicalCostIrr", "هزینه فیزیکی باقیمانده", "کار باقیمانده با قیمت روز"],
-  ["moneyRequiredToContinueIrr", "پول موردنیاز برای ادامه", "با لحاظ خرید ثبت‌شده مصالح"],
+  ["actualCostIrr", "هزینه واقعی ثبت‌شده", "فقط اسناد مالی تأییدشده"],
+  ["currentExecutedValueIrr", "ارزش روز کار انجام‌شده", "مقدار اجراشده با قیمت روز"],
+  ["remainingPhysicalCostIrr", "هزینه کار باقی‌مانده", "کار باقیمانده با قیمت روز"],
+  ["moneyRequiredToContinueIrr", "بودجه موردنیاز تا تکمیل", "با لحاظ خرید ثبت‌شده مصالح"],
   ["forecastFinalCostIrr", "پیش‌بینی هزینه نهایی", "هزینه واقعی به‌اضافه پول ادامه"],
   ["actualCostPerSquareMeterIrr", "هزینه واقعی هر مترمربع", "براساس زیربنای کل پروژه"],
-  ["forecastPerSquareMeterIrr", "پیش‌بینی هر مترمربع", "پیش‌بینی نهایی تقسیم بر زیربنا"],
+  ["forecastPerSquareMeterIrr", "پیش‌بینی هزینه هر مترمربع", "پیش‌بینی نهایی تقسیم بر زیربنا"],
 ]);
 
 const WARNING_LABELS = Object.freeze({
   UNIT_CONVERSION_MISSING: "تبدیل واحد لازم برای بخشی از مقدار خریداری‌شده تعریف نشده است.",
   PROGRESS_MISSING: "برای یکی از خطوط برآورد، مقدار معتبر پیشرفت موجود نیست.",
-  QUANTITY_OVERRUN: "مقدار اجراشده یکی از خطوط از مقدار اصلاح‌شده بیشتر است.",
+  QUANTITY_OVERRUN: "مقدار انجام‌شده یکی از ردیف‌ها از آخرین مقدار برآورد بیشتر است.",
   CURRENT_PRICE_MISSING: "قیمت روز یکی از اقلام ثبت نشده و از محاسبات زنده آن خط کنار گذاشته شده است.",
-  GENERAL_COST_OVERRUN: "هزینه عمومی واقعی از برآورد اصلاح‌شده هزینه عمومی بیشتر است.",
+  GENERAL_COST_OVERRUN: "هزینه واقعی ثبت‌شده عمومی پروژه از آخرین برآورد هزینه‌های عمومی بیشتر است.",
   GROSS_AREA_MISSING: "زیربنای کل ثبت نشده؛ شاخص‌های هر مترمربع قابل محاسبه نیستند.",
 });
 
 const WORK_AREAS = Object.freeze([
-  { key: "financial-items", title: "اقلام و متره", description: "مدیریت اقلام مالی، خطوط فعالیت و مقدارهای اولیه و اصلاح‌شده", meta: "اقلام · برآورد · بازنگری", href: "#/financial-items" },
-  { key: "prices", title: "قیمت‌ها و تبدیل واحد", description: "ثبت قیمت پایه، جایگزینی پروژه و مشاهده تاریخچه تغییرات", meta: "قیمت روز · تاریخچه · واحد", href: "#/prices" },
-  { key: "progress", title: "پیشرفت و مقادیر اجرا", description: "مشاهده نسخه ثبت‌شده پیشرفت، کیفیت داده و جایگزینی ممیزی‌شده", meta: "نسخه ثبت‌شده · اجرا · هشدار", href: "#/progress" },
+  { key: "financial-items", title: "اقلام و برآورد", description: "مدیریت اقلام پروژه، ریز برآورد و مقدارهای اولیه و اصلاح‌شده", meta: "اقلام · برآورد · اصلاحات", href: "#/financial-items" },
+  { key: "prices", title: "قیمت روز و تبدیل واحد", description: "ثبت قیمت پایه سازمان، قیمت اختصاصی پروژه و مشاهده تاریخچه قیمت", meta: "قیمت روز · تاریخچه · واحد", href: "#/prices" },
+  { key: "progress", title: "پیشرفت و مقادیر انجام‌شده", description: "مشاهده نسخه پیشرفت پروژه، کیفیت داده و اصلاح دستی مقدار", meta: "نسخه پیشرفت · مقدار انجام‌شده · هشدار", href: "#/progress" },
   { key: "invoices", title: "فاکتورها", description: "مشاهده فهرست، وضعیت، منبع، فروشنده، مبلغ و جزئیات خطوط", meta: "فهرست · جزئیات · وضعیت", href: "#/invoices" },
   { key: "settings", title: "تنظیمات مالی", description: "زیربنای کل، واحد پول نمایشی و تنظیمات سطح پروژه", meta: "زیربنا · واحد نمایش · دسترسی", href: "#/settings" },
-  { key: "reports", title: "گزارش مالی", description: "مشاهده گزارش زنده، صدور نسخه تغییرناپذیر و دریافت خروجی", meta: "گزارش زنده · نسخه ثابت · چاپ", href: "#/reports" },
-  { key: "audit", title: "تاریخچه تغییرات مالی", description: "ردیابی بازنگری، جایگزینی، تأییدها و عملیات حساس مالی", meta: "کاربر · زمان · دلیل", href: "#/audit" },
+  { key: "reports", title: "گزارش مالی", description: "مشاهده گزارش به‌روز، ثبت گزارش دوره‌ای و دریافت خروجی", meta: "گزارش به‌روز · گزارش ثبت‌شده · چاپ", href: "#/reports" },
+  { key: "audit", title: "تاریخچه تغییرات مالی", description: "ردیابی اصلاحات، تأییدها و عملیات حساس مالی", meta: "انجام‌دهنده · زمان · دلیل", href: "#/audit" },
 ]);
 
 function createTomanDisplay(value) {
@@ -124,7 +124,7 @@ function createBreakdownChart(rows) {
   const chart = document.createElement("div");
   chart.className = "breakdown-chart";
   chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", "نمودار مقایسه برآورد اولیه و هزینه واقعی به تفکیک نوع قلم مالی");
+  chart.setAttribute("aria-label", "نمودار مقایسه برآورد اولیه و هزینه واقعی به تفکیک نوع قلم هزینه");
   rows.forEach((row) => {
     const group = document.createElement("article");
     group.className = "breakdown-chart__group";
@@ -173,10 +173,10 @@ function createBreakdownChart(rows) {
   const table = document.createElement("table");
   table.className = "data-table breakdown-table";
   const caption = document.createElement("caption");
-  caption.textContent = "جدول جایگزین نمودار ترکیب هزینه به تفکیک نوع قلم مالی";
+  caption.textContent = "جدول جایگزین نمودار ترکیب هزینه به تفکیک نوع قلم هزینه";
   const thead = document.createElement("thead");
   const header = document.createElement("tr");
-  ["نوع قلم مالی", "برآورد اولیه", "هزینه واقعی", "پیش‌بینی نهایی"].forEach((text) => {
+  ["نوع قلم هزینه", "برآورد اولیه", "هزینه واقعی ثبت‌شده", "پیش‌بینی هزینه نهایی"].forEach((text) => {
     const cell = document.createElement("th");
     cell.textContent = text;
     header.append(cell);
@@ -199,27 +199,113 @@ function createBreakdownChart(rows) {
   return section;
 }
 
+function createComparisonPanel(title, description, entries) {
+  const section = document.createElement("section");
+  section.className = "finance-analysis-card";
+  const heading = document.createElement("div");
+  heading.className = "finance-analysis-card__heading";
+  const headingTitle = document.createElement("h2");
+  headingTitle.textContent = title;
+  const headingDescription = document.createElement("p");
+  headingDescription.textContent = description;
+  heading.append(headingTitle, headingDescription);
+
+  const chart = document.createElement("div");
+  chart.className = `overview-comparison overview-comparison--${entries.length}`;
+  chart.setAttribute("role", "img");
+  chart.setAttribute("aria-label", title);
+  entries.forEach((entry) => {
+    const item = document.createElement("article");
+    item.className = `overview-comparison__item overview-comparison__item--${entry.key}`;
+    const value = createTomanDisplay(entry.value);
+    value.classList.add("overview-comparison__value");
+    const track = document.createElement("div");
+    track.className = "overview-comparison__track";
+    const bar = document.createElement("span");
+    bar.className = "overview-comparison__bar";
+    bar.style.setProperty("--bar-height", `${entry.magnitude}%`);
+    track.append(bar);
+    const label = document.createElement("h3");
+    label.textContent = entry.label;
+    item.append(value, track, label);
+    chart.append(item);
+  });
+  section.append(heading, chart);
+  return section;
+}
+
+function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
+  const section = document.createElement("section");
+  section.className = "finance-analysis-card finance-variance-card";
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+  section.append(heading);
+  if (!rows?.length) {
+    const empty = document.createElement("p");
+    empty.className = "finance-analysis-card__empty";
+    empty.textContent = "برای این تحلیل هنوز داده معتبری ثبت نشده است.";
+    section.append(empty);
+    return section;
+  }
+  const list = document.createElement("ol");
+  rows.slice(0, 5).forEach((row) => {
+    const item = document.createElement("li");
+    const link = document.createElement("a");
+    link.className = "finance-variance-card__link";
+    const target = new URLSearchParams();
+    if (row.resourceId) target.set("resourceId", row.resourceId);
+    if (row.estimateLineId) target.set("estimateLineId", row.estimateLineId);
+    link.href = `${baseHref}${target.size ? `?${target.toString()}` : ""}`;
+    link.setAttribute("aria-label", `${row.resourceTitle || row.resourceCode || "قلم هزینه بدون عنوان"}؛ مشاهده جزئیات ${title}`);
+    const identity = document.createElement("span");
+    identity.textContent = row.resourceTitle || row.resourceCode || "قلم هزینه بدون عنوان";
+    const value = document.createElement("strong");
+    value.className = "numeric";
+    value.textContent = valueFormatter(row[valueKey]);
+    const indicator = document.createElement("span");
+    indicator.className = "finance-variance-card__indicator";
+    indicator.setAttribute("aria-hidden", "true");
+    indicator.textContent = "‹";
+    link.append(identity, value, indicator);
+    item.append(link);
+    list.append(item);
+  });
+  section.append(list);
+  return section;
+}
+
 function renderFinanceHome(data) {
   const fragment = document.createDocumentFragment();
   const pageTitle = document.createElement("h1");
   pageTitle.className = "finance-page-title";
-  pageTitle.textContent = "امور مالی";
+  pageTitle.textContent = "نمای کلی مالی";
 
   const summaryHeader = document.createElement("div");
   summaryHeader.className = "section-heading";
   const summaryHeading = document.createElement("div");
   const summaryEyebrow = document.createElement("span");
-  summaryEyebrow.textContent = "نمای زنده";
+  summaryEyebrow.textContent = "وضعیت مالی پروژه";
   const summaryTitle = document.createElement("h2");
-  summaryTitle.textContent = "وضعیت مالی در یک نگاه";
+  summaryTitle.textContent = "شاخص‌های اصلی در یک نگاه";
   summaryHeading.append(summaryEyebrow, summaryTitle);
   const reportMeta = document.createElement("small");
-  reportMeta.textContent = `تاریخ گزارش ${formatBusinessDate(data.reportingDate)} · نسخه پیشرفت انتخاب‌شده`;
+  reportMeta.textContent = `تاریخ گزارش ${formatBusinessDate(data.reportingDate)} · نسخه پیشرفت پروژه`;
   summaryHeader.append(summaryHeading, reportMeta);
   const summary = document.createElement("section");
   summary.className = "summary-grid";
   summary.setAttribute("aria-label", "خلاصه وضعیت مالی");
   SUMMARY_ITEMS.forEach(([key, label, description]) => summary.append(createSummaryCard(key, label, description, data.metrics)));
+
+  const comparisons = buildOverviewComparisons(data.metrics);
+  const analysis = document.createElement("section");
+  analysis.className = "finance-analysis-grid";
+  analysis.setAttribute("aria-label", "تحلیل‌های مالی پروژه");
+  analysis.append(
+    createComparisonPanel("برآورد، هزینه واقعی و پیش‌بینی نهایی", "مقایسه سه شاخص کلیدی هزینه پروژه", comparisons.estimate),
+    createComparisonPanel("ارزش انجام‌شده و کار باقی‌مانده", "ارزش روز کار انجام‌شده در برابر هزینه کار باقی‌مانده", comparisons.work),
+    createVariancePanel("بیشترین انحراف قیمت", data.topPriceVariances, "varianceIrr", formatTomanFromIrr, "#/prices"),
+    createVariancePanel("بیشترین انحراف مقدار", data.topQuantityVariances, "varianceQuantity", formatDisplayNumber, "#/financial-items"),
+  );
 
   const warnings = document.createElement("section");
   warnings.className = "finance-warnings";
@@ -254,7 +340,7 @@ function renderFinanceHome(data) {
   areas.setAttribute("aria-label", "بخش‌های امور مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  fragment.append(pageTitle, summaryHeader, summary, insights, areasHeader, areas);
+  fragment.append(pageTitle, summaryHeader, summary, analysis, insights, areasHeader, areas);
   return fragment;
 }
 
@@ -287,7 +373,7 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
     const title = document.createElement("h1");
     title.textContent = "خلاصه مالی هنوز قابل محاسبه نیست";
     const message = document.createElement("p");
-    message.textContent = "برای محاسبه شاخص‌های مالی، حداقل یک نسخه پیشرفت آماده لازم است.";
+    message.textContent = "برای محاسبه شاخص‌های مالی، حداقل یک نسخه پیشرفت پروژه لازم است.";
     const link = document.createElement("a");
     link.className = "button button--primary";
     link.href = "#/progress";

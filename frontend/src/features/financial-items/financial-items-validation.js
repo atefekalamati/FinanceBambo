@@ -20,7 +20,7 @@ export function validateResource(values) {
     errors: {
       title: title.message,
       code: code.message,
-      type: typeValid ? "" : "نوع قلم مالی معتبر نیست.",
+      type: typeValid ? "" : "نوع قلم هزینه معتبر نیست.",
       baseUnit: baseUnit.message,
     },
   };
@@ -44,11 +44,11 @@ export function validateActivity(values) {
 
 export function validateEstimateLine(values) {
   const activityExternalId = requiredText(values.activityExternalId, "فعالیت");
-  const resourceId = requiredText(values.resourceId, "قلم مالی");
+  const resourceId = requiredText(values.resourceId, "قلم هزینه");
   const originalQuantity = validatePositiveDecimal(values.originalQuantity, {
     precision: 4,
-    requiredMessage: "مقدار اولیه الزامی است.",
-    invalidMessage: "مقدار اولیه باید بزرگ‌تر از صفر و حداکثر چهار رقم اعشار باشد.",
+    requiredMessage: "مقدار برآورد اولیه الزامی است.",
+    invalidMessage: "مقدار برآورد اولیه باید بزرگ‌تر از صفر و حداکثر چهار رقم اعشار باشد.",
   });
 
   return {
@@ -69,8 +69,8 @@ export function validateEstimateLine(values) {
 export function validateEstimateRevision(values, { isGeneralCost = false } = {}) {
   const revisedValue = validatePositiveDecimal(values.revisedValue, {
     precision: isGeneralCost ? 2 : 4,
-    requiredMessage: isGeneralCost ? "مبلغ اصلاح‌شده الزامی است." : "مقدار اصلاح‌شده الزامی است.",
-    invalidMessage: isGeneralCost ? `مبلغ اصلاح‌شده باید عدد مثبت به ${getDisplayCurrencyLabel()} باشد.` : "مقدار اصلاح‌شده باید مثبت و حداکثر چهار رقم اعشار باشد.",
+    requiredMessage: isGeneralCost ? "آخرین مبلغ برآورد الزامی است." : "آخرین مقدار برآورد الزامی است.",
+    invalidMessage: isGeneralCost ? `آخرین مبلغ برآورد باید عدد مثبت به ${getDisplayCurrencyLabel()} باشد.` : "آخرین مقدار برآورد باید مثبت و حداکثر چهار رقم اعشار باشد.",
   });
   if (isGeneralCost && revisedValue.valid) {
     if (revisedValue.value.includes(".")) {
@@ -80,10 +80,10 @@ export function validateEstimateRevision(values, { isGeneralCost = false } = {})
         : `مبلغ ${getDisplayCurrencyLabel()} باید عدد صحیح باشد.`;
     }
   }
-  const reason = requiredText(values.reason, "دلیل بازنگری");
+  const reason = requiredText(values.reason, "دلیل اصلاح");
   if (reason.valid && reason.value.length < 3) {
     reason.valid = false;
-    reason.message = "دلیل بازنگری باید حداقل سه نویسه داشته باشد.";
+    reason.message = "دلیل اصلاح باید حداقل سه نویسه داشته باشد.";
   }
 
   return {

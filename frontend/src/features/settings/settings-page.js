@@ -1,6 +1,7 @@
 import { hasPermission } from "../../core/auth/permissions.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
@@ -42,7 +43,7 @@ function createRevisionTable(revisions) {
   const caption = element("caption", "sr-only", "تاریخچه تغییر زیربنای کل");
   const head = document.createElement("thead");
   const headerRow = document.createElement("tr");
-  ["تاریخ اثر", "مقدار قبلی", "مقدار جدید", "دلیل", "ثبت‌کننده", "زمان ثبت"].forEach((title) => headerRow.append(element("th", "", title)));
+  ["تاریخ اعمال تغییر", "مقدار قبلی", "مقدار جدید", "دلیل", "ثبت‌کننده", "زمان ثبت"].forEach((title) => headerRow.append(element("th", "", title)));
   head.append(headerRow);
   const body = document.createElement("tbody");
   revisions.forEach((revision) => {
@@ -84,7 +85,7 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.href = "#/finance";
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "تنظیمات سطح پروژه"), element("h1", "", "تنظیمات مالی"), element("p", "", "زیربنای کل و سیاست نمایش پول پروژه را مدیریت کنید. تمام تغییرات زیربنا با دلیل و تاریخ اثر ثبت می‌شوند."));
+    copy.append(element("span", "feature-header__eyebrow", "تنظیمات سطح پروژه"), element("h1", "", "تنظیمات مالی"), element("p", "", "زیربنای کل و سیاست نمایش پول پروژه را مدیریت کنید. تمام تغییرات زیربنا با دلیل و تاریخ اعمال تغییر ثبت می‌شوند."));
     header.append(copy, back);
     return header;
   }
@@ -132,7 +133,7 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
     const form = element("form", "settings-form");
     form.noValidate = true;
     const area = createField({ id: "grossBuiltArea", label: "زیربنای کل (مترمربع)", value: current?.grossBuiltArea ?? "", hint: "عدد مثبت با حداکثر چهار رقم اعشار؛ ارقام فارسی نیز پذیرفته می‌شوند.", inputMode: "decimal", required: true });
-    const date = createPersianDatePicker({ id: "effectiveDate", label: "تاریخ اثر", value: getTehranTodayIso(), hint: "تاریخ را براساس تقویم جلالی و زمان ایران انتخاب کنید." });
+    const date = createPersianDatePicker({ id: "effectiveDate", label: "تاریخ اعمال تغییر", value: getTehranTodayIso(), hint: "تاریخ را براساس تقویم جلالی و زمان ایران انتخاب کنید." });
     const reasonField = element("div", "form-field form-field--wide");
     const reasonLabel = element("label", "form-label", "دلیل تغییر");
     reasonLabel.htmlFor = "reason";
@@ -192,7 +193,7 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
         return;
       }
       pendingValues = validation.values;
-      dialog.showModal();
+      showAccessibleDialog(dialog);
     });
     cancel.addEventListener("click", () => dialog.close());
     confirm.addEventListener("click", async () => {
@@ -231,7 +232,7 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
     const history = element("section", "settings-card settings-history-card");
     const historyHead = element("div", "settings-card__head");
     historyHead.append(element("div", "settings-card__icon", "↺"), element("div", "", ""));
-    historyHead.lastElementChild.append(element("h2", "", "تاریخچه تغییر زیربنا"), element("p", "", "مقدار اولیه و همه بازنگری‌ها به‌صورت تغییرناپذیر نمایش داده می‌شوند."));
+    historyHead.lastElementChild.append(element("h2", "", "تاریخچه تغییر زیربنا"), element("p", "", "مقدار اولیه و همه اصلاحات ثبت‌شده به‌صورت تغییرناپذیر نمایش داده می‌شوند."));
     history.append(historyHead, createRevisionTable(data.revisions));
     fragment.append(overview, renderCurrencyPolicy(), renderEditor(data), history);
     return fragment;

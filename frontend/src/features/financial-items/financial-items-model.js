@@ -2,7 +2,7 @@ export const RESOURCE_TYPES = Object.freeze([
   { value: "material", label: "متریال" },
   { value: "labor", label: "نیروی انسانی" },
   { value: "equipment", label: "دستگاه و تجهیزات" },
-  { value: "general_cost", label: "هزینه عمومی" },
+  { value: "general_cost", label: "هزینه‌های عمومی پروژه" },
 ]);
 
 const RESOURCE_TYPE_MAP = new Map(RESOURCE_TYPES.map((type) => [type.value, type.label]));
