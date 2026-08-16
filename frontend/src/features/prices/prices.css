@@ -86,43 +86,6 @@
   padding: var(--space-xl);
 }
 
-.price-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-lg);
-}
-
-.price-summary-card {
-  min-inline-size: 0;
-  display: grid;
-  gap: .45rem;
-  padding: var(--space-xl);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--app-card-navy);
-  box-shadow: var(--dash-shadow), var(--dash-inner);
-}
-
-.price-summary-card h3,
-.price-summary-card p {
-  margin: 0;
-}
-
-.price-summary-card h3 {
-  font-size: var(--font-size-md);
-}
-
-.price-summary-card strong {
-  color: var(--dash-actual);
-  font-size: 1.55rem;
-}
-
-.price-summary-card p {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-}
-
-
 .app-input , .app-select{
   color: var(--color-text-primary);
   background: none;
@@ -338,8 +301,32 @@ html[data-theme="light"] .price-form select {
 }
 
 .price-form .inline-notice,
+.price-form .conversion-preview,
+.price-form .conversion-scope-hint,
 .price-form .form-actions {
   grid-column: 1 / -1;
+}
+
+.conversion-preview {
+  display: grid;
+  gap: .35rem;
+  padding: var(--space-lg);
+  border: 1px solid rgb(0 172 88 / 28%);
+  border-radius: var(--radius-md);
+  background: var(--grad-accent-soft);
+}
+
+.conversion-preview p {
+  margin: 0;
+  color: var(--color-text-primary);
+  line-height: 1.9;
+}
+
+.conversion-preview small,
+.conversion-scope-hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.8;
 }
 
 .prices-empty {
@@ -515,8 +502,7 @@ html[data-theme="light"] .price-form select {
     grid-template-columns: 1fr;
   }
 
-  .price-list-filters,
-  .price-summary-grid {
+  .price-list-filters {
     grid-template-columns: 1fr;
   }
 

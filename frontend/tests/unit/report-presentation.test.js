@@ -48,4 +48,5 @@ test("builds exact overview comparisons without binary financial arithmetic", ()
   });
   assert.deepEqual(result.estimate.map((entry) => entry.magnitude), [80, 40, 100]);
   assert.deepEqual(result.work.map((entry) => entry.magnitude), [33.33, 100]);
+  assert.deepEqual(result.management.map((entry) => entry.magnitude), [80, 40, 60, 100]);
 });

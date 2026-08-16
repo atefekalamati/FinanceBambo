@@ -10,6 +10,10 @@ export const UNIT_OPTIONS = Object.freeze([
 
 const UNIT_MAP = new Map(UNIT_OPTIONS.map((unit) => [unit.value, unit]));
 const SCOPES = new Set(["organization", "project"]);
+const ALLOWED_CONVERSION_DIRECTIONS = new Map([
+  ["ton", new Set(["kg"])],
+  ["equipment_day", new Set(["hour"])],
+]);
 
 function validateDate(value) {
   const normalized = String(value ?? "").trim();
@@ -24,6 +28,17 @@ function validateDate(value) {
 
 export function getUnitDefinition(value) {
   return UNIT_MAP.get(value) ?? null;
+}
+
+export function getCompatibleTargetUnits(sourceUnit) {
+  const source = getUnitDefinition(sourceUnit);
+  if (!source) return [];
+  const allowedTargets = ALLOWED_CONVERSION_DIRECTIONS.get(source.value) ?? new Set();
+  return UNIT_OPTIONS.filter((unit) => unit.dimension === source.dimension && allowedTargets.has(unit.value));
+}
+
+export function isSupportedConversionDirection(sourceUnit, targetUnit) {
+  return ALLOWED_CONVERSION_DIRECTIONS.get(sourceUnit)?.has(targetUnit) ?? false;
 }
 
 export function validateUnitConversion(values) {
@@ -45,6 +60,9 @@ export function validateUnitConversion(values) {
     scope: SCOPES.has(scope) ? "" : "سطح تبدیل معتبر نیست.",
     effectiveDate: effectiveDate.message,
     dimension: source && target && source.dimension !== target.dimension ? "تبدیل بین دو بُعد ناسازگار مجاز نیست." : "",
+    direction: source && target && source.dimension === target.dimension && !isSupportedConversionDirection(sourceUnit, targetUnit)
+      ? "جهت تبدیل مجاز نیست؛ تبدیل فقط از واحد بزرگ‌تر به واحد پایه کوچک‌تر ثبت می‌شود."
+      : "",
   };
   if (sourceUnit && sourceUnit === targetUnit) errors.targetUnit = "واحد مبدأ و مقصد باید متفاوت باشند.";
   return {

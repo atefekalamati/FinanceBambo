@@ -139,10 +139,11 @@ try {
     adapters = createHostAdapters(context);
   } else {
     const invoices = createMockInvoicesAdapter(context, { initialState: invoicesState });
+    const financialItems = createMockFinancialItemsAdapter(context, { initialState: itemsState });
     adapters = Object.freeze({
       settings: createMockSettingsAdapter(context, { initialState: settingsState }),
-      financialItems: createMockFinancialItemsAdapter(context, { initialState: itemsState }),
-      prices: createMockPricesAdapter(context, { initialState: pricesState }),
+      financialItems,
+      prices: createMockPricesAdapter(context, { initialState: pricesState, resourceProvider: () => financialItems.getResourceSnapshot() }),
       progress: createMockProgressAdapter(context, { initialState: progressState }),
       invoices,
       attachments: createMockAttachmentsAdapter(context, { initialState: filesState, invoiceAdapter: invoices }),

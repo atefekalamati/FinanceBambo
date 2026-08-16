@@ -119,3 +119,16 @@ test("returns UNIT_MISMATCH for incompatible unit dimensions", async () => {
     (error) => error.code === "UNIT_MISMATCH",
   );
 });
+test("reads newly defined project resources from the shared resource catalog", async () => {
+  const resources = [
+    { resourceId: "resource-new", type: "material", code: "MAT-CEMENT", title: "سیمان", baseUnit: "kg" },
+  ];
+  const adapter = createMockPricesAdapter(context, { resourceProvider: () => structuredClone(resources) });
+  const before = await adapter.getPrices();
+  assert.equal(before.currentPrices.length, 1);
+  assert.equal(before.currentPrices[0].resource.code, "MAT-CEMENT");
+  assert.equal(before.currentPrices[0].currentPrice, null);
+
+  const after = await adapter.createPriceVersion({ resourceId: "resource-new", scope: "project", unitPriceIRR: "125000", effectiveFrom: "2026-08-08" });
+  assert.equal(after.currentPrices[0].currentPrice.unitPriceIRR, "125000");
+});
