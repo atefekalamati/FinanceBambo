@@ -66,7 +66,7 @@ class FinanceLiveReportService:
 
     async def live(self,scope,reporting_date:date,progress_snapshot_id=None):
         report,_data,snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
-        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count}
+        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality}
 
     async def overview(self,scope,reporting_date:date,progress_snapshot_id=None):
         return await self.live(scope,reporting_date,progress_snapshot_id)
@@ -106,7 +106,8 @@ class FinanceLiveReportService:
             "topPriceVariances":report.price_variances,"topQuantityVariances":report.quantity_variances,
             "priceVariances":report.all_price_variances,"quantityVariances":report.all_quantity_variances,
             "calculationStatus":report.calculation_status,"incompleteMetricKeys":report.incomplete_metric_keys,
-            "missingPriceCount":report.missing_price_count,"warnings":report.warnings})
+            "missingPriceCount":report.missing_price_count,"excludedEstimateLineCount":report.excluded_estimate_line_count,
+            "excludedEstimateLineIds":report.excluded_estimate_line_ids,"progressQuality":report.progress_quality,"warnings":report.warnings})
         await self.repo.issue(scope,value,payload,self.ids())
         return self._response(scope,value)
 

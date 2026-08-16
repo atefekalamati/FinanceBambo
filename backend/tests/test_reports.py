@@ -104,7 +104,7 @@ class LiveReportDomainTests(unittest.TestCase):
         warning=next(item for item in report.warnings if item["code"]=="CURRENT_PRICE_MISSING")
         self.assertEqual((str(MATERIAL_LINE),str(MATERIAL),"mat",True),(warning["estimateLineId"],warning["resourceId"],warning["resourceCode"],warning["excludedFromCalculation"]))
 
-    def test_general_cost_remaining_is_allocated_per_line_without_double_subtraction(self):
+    def test_general_cost_remaining_uses_category_formula_without_line_double_subtraction(self):
         line2=UUID("10000000-0000-4000-8000-000000000004");res2=UUID("20000000-0000-4000-8000-000000000004")
         estimates=[estimate(GENERAL_LINE,GENERAL,"general_cost",None,"1000","1000",None,None),estimate(line2,res2,"general_cost",None,"500","500",None,None)]
         invoices=[
@@ -113,7 +113,59 @@ class LiveReportDomainTests(unittest.TestCase):
             {"estimate_line_id":line2,"resource_id":res2,"quantity":None,"unit":None,"base_unit":None,"dimension":"lump_sum","final_line_amount_irr":"700","financial_effect_sign":1,"resource_type":"general_cost"},
         ]
         row={item["resourceType"]:item for item in calculate_live_report(estimates,invoices,[],[],"10").breakdown}["general_cost"]
-        self.assertEqual((Decimal("1500"),Decimal("1400"),Decimal("300"),Decimal("1700")),(row["revisedEstimateIrr"],row["actualCostIrr"],row["remainingPhysicalCostIrr"],row["forecastFinalIrr"]))
+        self.assertEqual((Decimal("1500"),Decimal("1400"),Decimal("100"),Decimal("1500")),(row["revisedEstimateIrr"],row["actualCostIrr"],row["remainingPhysicalCostIrr"],row["forecastFinalIrr"]))
+
+    def test_resource_level_purchase_is_allocated_once_across_multiple_estimate_lines(self):
+        line2=UUID("10000000-0000-4000-8000-000000000004")
+        estimates=[estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-1"),estimate(line2,MATERIAL,"material","10","10","100","100","a-2")]
+        invoices=[{"estimate_line_id":None,"resource_id":MATERIAL,"quantity":"10","unit":"each","base_unit":"each","dimension":"count","final_line_amount_irr":"1000","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"}]
+        assignments=[{"assignmentExternalId":"a-1","actualQuantity":"0","task":{}},{"assignmentExternalId":"a-2","actualQuantity":"0","task":{}}]
+        report=calculate_live_report(estimates,invoices,assignments,[],"10")
+        self.assertEqual(Decimal("1000"),report.metrics["moneyRequiredToContinueIrr"])
+        self.assertEqual(Decimal("2000"),report.metrics["forecastFinalCostIrr"])
+        self.assertEqual(Decimal("1000"),{row["resourceType"]:row for row in report.breakdown}["material"]["actualCostIrr"])
+
+    def test_resource_level_actual_cost_is_not_duplicated_across_lines(self):
+        line2=UUID("10000000-0000-4000-8000-000000000004")
+        estimates=[estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-1"),estimate(line2,MATERIAL,"material","10","10","100","100","a-2")]
+        invoices=[{"estimate_line_id":None,"resource_id":MATERIAL,"quantity":"1","unit":"each","base_unit":"each","dimension":"count","final_line_amount_irr":"1000","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"}]
+        assignments=[{"assignmentExternalId":"a-1","actualQuantity":"0","task":{}},{"assignmentExternalId":"a-2","actualQuantity":"0","task":{}}]
+        report=calculate_live_report(estimates,invoices,assignments,[],"10")
+        actual_sum=sum(item["actualCostIrr"] for item in report.all_price_variances if item["resourceId"]==str(MATERIAL))
+        self.assertLessEqual(actual_sum,Decimal("1000"))
+        self.assertEqual(Decimal("1000"),actual_sum)
+
+    def test_line_linked_and_resource_level_purchases_are_combined_without_duplication(self):
+        line2=UUID("10000000-0000-4000-8000-000000000004")
+        estimates=[estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-1"),estimate(line2,MATERIAL,"material","10","10","100","100","a-2")]
+        invoices=[
+            {"estimate_line_id":MATERIAL_LINE,"resource_id":MATERIAL,"quantity":"4","unit":"each","base_unit":"each","dimension":"count","final_line_amount_irr":"400","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"},
+            {"estimate_line_id":None,"resource_id":MATERIAL,"quantity":"10","unit":"each","base_unit":"each","dimension":"count","final_line_amount_irr":"1000","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"},
+        ]
+        assignments=[{"assignmentExternalId":"a-1","actualQuantity":"0","task":{}},{"assignmentExternalId":"a-2","actualQuantity":"0","task":{}}]
+        report=calculate_live_report(estimates,invoices,assignments,[],"10")
+        self.assertEqual(Decimal("600"),report.metrics["moneyRequiredToContinueIrr"])
+        self.assertEqual(Decimal("2000"),report.metrics["forecastFinalCostIrr"])
+
+    def test_missing_conversion_marks_purchase_dependent_forecast_incomplete(self):
+        row=estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-m")
+        invoice={"estimate_line_id":None,"resource_id":MATERIAL,"quantity":"5","unit":"box","base_unit":"each","dimension":"count","final_line_amount_irr":"500","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"}
+        report=calculate_live_report([row],[invoice],[{"assignmentExternalId":"a-m","actualQuantity":"0","task":{}}],[],"10")
+        self.assertEqual("incomplete",report.calculation_status)
+        self.assertIsNone(report.metrics["moneyRequiredToContinueIrr"])
+        self.assertIsNone(report.metrics["forecastFinalCostIrr"])
+        warning=next(item for item in report.warnings if item["code"]=="UNIT_CONVERSION_MISSING")
+        self.assertEqual((str(MATERIAL),"mat",True),(warning["resourceId"],warning["resourceCode"],warning["excludedFromCalculation"]))
+        self.assertIn("forecastFinalCostIrr",warning["affectedMetricKeys"])
+
+    def test_progress_quality_metadata_counts_sources(self):
+        estimates=[estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-1"),estimate(LABOR_LINE,LABOR,"labor","10","10","100","100","a-2")]
+        assignments=[
+            {"assignmentExternalId":"a-1","actualQuantity":"3","manualOverride":{"previousCalculatedValue":"3","newValue":"4","reason":"field correction","userId":str(UUID(int=8)),"occurredAt":"2026-08-02T00:00:00+00:00","progressSnapshotId":str(SNAPSHOT),"source":"manual_override"},"task":{}},
+            {"assignmentExternalId":"a-2","plannedQuantity":"10","task":{"taskProgressPercent":"50"}},
+        ]
+        report=calculate_live_report(estimates,[],assignments,[],"10")
+        self.assertEqual({"complete":False,"manualOverrideCount":1,"taskFallbackCount":1,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0},report.progress_quality)
 
     def test_quantity_overrun_warns_with_deviation_without_clamping(self):
         row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-m")
