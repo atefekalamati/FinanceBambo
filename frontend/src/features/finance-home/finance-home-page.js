@@ -3,7 +3,7 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
-import { buildBreakdownPresentation } from "./report-presentation.js";
+import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -18,6 +18,12 @@ const SUMMARY_ITEMS = Object.freeze([
 
 const PRIMARY_SUMMARY_KEYS = new Set(["initialEstimateIrr", "actualCostIrr", "remainingPhysicalCostIrr", "forecastFinalCostIrr"]);
 const RELATED_SUMMARY_KEYS = new Set(["actualCostPerSquareMeterIrr", "forecastPerSquareMeterIrr"]);
+const SUPPLEMENTARY_SUMMARY_KEYS = new Set([
+  "actualCostPerSquareMeterIrr",
+  "currentExecutedValueIrr",
+  "forecastPerSquareMeterIrr",
+  "moneyRequiredToContinueIrr",
+]);
 
 const WARNING_LABELS = Object.freeze({
   UNIT_CONVERSION_MISSING: "تبدیل واحد لازم برای بخشی از مقدار خریداری‌شده تعریف نشده است.",
@@ -287,6 +293,32 @@ function createManagerialComparisonPanel(metrics, entries) {
   return section;
 }
 
+function createSupplementarySummary(metrics) {
+  const section = document.createElement("aside");
+  section.className = "finance-supplementary-summary";
+  section.setAttribute("aria-label", "اطلاعات تکمیلی وضعیت مالی");
+  const heading = document.createElement("div");
+  heading.className = "finance-supplementary-summary__heading";
+  const eyebrow = document.createElement("span");
+  eyebrow.textContent = "شاخص‌های مکمل";
+  const title = document.createElement("h2");
+  title.textContent = "اطلاعات تکمیلی";
+  const description = document.createElement("p");
+  description.textContent = "جزئیات مؤثر برای تفسیر تصویر مالی پروژه";
+  heading.append(eyebrow, title, description);
+  const list = document.createElement("div");
+  list.className = "finance-supplementary-summary__list";
+  SUMMARY_ITEMS
+    .filter(([key]) => SUPPLEMENTARY_SUMMARY_KEYS.has(key))
+    .forEach(([key, label, detail]) => {
+      const item = createSummaryCard(key, label, detail, metrics);
+      item.classList.add("summary-card--compact");
+      list.append(item);
+    });
+  section.append(heading, list);
+  return section;
+}
+
 function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
   const section = document.createElement("section");
   section.className = "finance-analysis-card finance-variance-card";
@@ -344,14 +376,16 @@ function renderFinanceHome(data) {
   const reportMeta = document.createElement("small");
   reportMeta.textContent = `تاریخ گزارش ${formatBusinessDate(data.reportingDate)} · نسخه پیشرفت پروژه`;
   summaryHeader.append(summaryHeading, reportMeta);
-  const summary = document.createElement("section");
-  summary.className = "summary-grid";
-  summary.setAttribute("aria-label", "خلاصه وضعیت مالی");
-  SUMMARY_ITEMS.forEach(([key, label, description]) => summary.append(createSummaryCard(key, label, description, data.metrics)));
-
+  const comparisons = buildOverviewComparisons(data.metrics);
   const overviewPanel = document.createElement("section");
   overviewPanel.className = "finance-overview-panel";
-  overviewPanel.append(summaryHeader, summary);
+  const overviewLayout = document.createElement("div");
+  overviewLayout.className = "finance-overview-layout";
+  overviewLayout.append(
+    createManagerialComparisonPanel(data.metrics, comparisons.management),
+    createSupplementarySummary(data.metrics),
+  );
+  overviewPanel.append(summaryHeader, overviewLayout);
 
   const warnings = document.createElement("section");
   warnings.className = "finance-warnings";
