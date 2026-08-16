@@ -98,6 +98,74 @@ class LiveReportDomainTests(unittest.TestCase):
         self.assertEqual({"PROGRESS_MISSING", "CURRENT_PRICE_MISSING", "UNIT_CONVERSION_MISSING", "GROSS_AREA_MISSING"},
                          {warning["code"] for warning in report.warnings})
         self.assertIsNone(report.metrics["actualCostPerSquareMeterIrr"])
+        self.assertEqual(("incomplete",1),(report.calculation_status,report.missing_price_count))
+        self.assertIsNone(report.metrics["forecastFinalCostIrr"])
+        self.assertIn("forecastFinalCostIrr",report.incomplete_metric_keys)
+        warning=next(item for item in report.warnings if item["code"]=="CURRENT_PRICE_MISSING")
+        self.assertEqual((str(MATERIAL_LINE),str(MATERIAL),"mat",True),(warning["estimateLineId"],warning["resourceId"],warning["resourceCode"],warning["excludedFromCalculation"]))
+
+    def test_general_cost_remaining_uses_category_formula_without_line_double_subtraction(self):
+        line2=UUID("10000000-0000-4000-8000-000000000004");res2=UUID("20000000-0000-4000-8000-000000000004")
+        estimates=[estimate(GENERAL_LINE,GENERAL,"general_cost",None,"1000","1000",None,None),estimate(line2,res2,"general_cost",None,"500","500",None,None)]
+        invoices=[
+            {"estimate_line_id":GENERAL_LINE,"resource_id":GENERAL,"quantity":None,"unit":None,"base_unit":None,"dimension":"lump_sum","final_line_amount_irr":"800","financial_effect_sign":1,"resource_type":"general_cost"},
+            {"estimate_line_id":GENERAL_LINE,"resource_id":GENERAL,"quantity":None,"unit":None,"base_unit":None,"dimension":"lump_sum","final_line_amount_irr":"100","financial_effect_sign":-1,"resource_type":"general_cost"},
+            {"estimate_line_id":line2,"resource_id":res2,"quantity":None,"unit":None,"base_unit":None,"dimension":"lump_sum","final_line_amount_irr":"700","financial_effect_sign":1,"resource_type":"general_cost"},
+        ]
+        row={item["resourceType"]:item for item in calculate_live_report(estimates,invoices,[],[],"10").breakdown}["general_cost"]
+        self.assertEqual((Decimal("1500"),Decimal("1400"),Decimal("100"),Decimal("1500")),(row["revisedEstimateIrr"],row["actualCostIrr"],row["remainingPhysicalCostIrr"],row["forecastFinalIrr"]))
+
+    def test_resource_level_purchase_is_allocated_once_across_multiple_estimate_lines(self):
+        line2=UUID("10000000-0000-4000-8000-000000000004")
+        estimates=[estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-1"),estimate(line2,MATERIAL,"material","10","10","100","100","a-2")]
+        invoices=[{"estimate_line_id":None,"resource_id":MATERIAL,"quantity":"10","unit":"each","base_unit":"each","dimension":"count","final_line_amount_irr":"1000","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"}]
+        assignments=[{"assignmentExternalId":"a-1","actualQuantity":"0","task":{}},{"assignmentExternalId":"a-2","actualQuantity":"0","task":{}}]
+        report=calculate_live_report(estimates,invoices,assignments,[],"10")
+        self.assertEqual(Decimal("1000"),report.metrics["moneyRequiredToContinueIrr"])
+        self.assertEqual(Decimal("2000"),report.metrics["forecastFinalCostIrr"])
+        self.assertEqual(Decimal("1000"),{row["resourceType"]:row for row in report.breakdown}["material"]["actualCostIrr"])
+
+    def test_resource_level_actual_cost_is_not_duplicated_across_lines(self):
+        line2=UUID("10000000-0000-4000-8000-000000000004")
+        estimates=[estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-1"),estimate(line2,MATERIAL,"material","10","10","100","100","a-2")]
+        invoices=[{"estimate_line_id":None,"resource_id":MATERIAL,"quantity":"1","unit":"each","base_unit":"each","dimension":"count","final_line_amount_irr":"1000","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"}]
+        assignments=[{"assignmentExternalId":"a-1","actualQuantity":"0","task":{}},{"assignmentExternalId":"a-2","actualQuantity":"0","task":{}}]
+        report=calculate_live_report(estimates,invoices,assignments,[],"10")
+        actual_sum=sum(item["actualCostIrr"] for item in report.all_price_variances if item["resourceId"]==str(MATERIAL))
+        self.assertLessEqual(actual_sum,Decimal("1000"))
+        self.assertEqual(Decimal("1000"),actual_sum)
+
+    def test_line_linked_and_resource_level_purchases_are_combined_without_duplication(self):
+        line2=UUID("10000000-0000-4000-8000-000000000004")
+        estimates=[estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-1"),estimate(line2,MATERIAL,"material","10","10","100","100","a-2")]
+        invoices=[
+            {"estimate_line_id":MATERIAL_LINE,"resource_id":MATERIAL,"quantity":"4","unit":"each","base_unit":"each","dimension":"count","final_line_amount_irr":"400","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"},
+            {"estimate_line_id":None,"resource_id":MATERIAL,"quantity":"10","unit":"each","base_unit":"each","dimension":"count","final_line_amount_irr":"1000","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"},
+        ]
+        assignments=[{"assignmentExternalId":"a-1","actualQuantity":"0","task":{}},{"assignmentExternalId":"a-2","actualQuantity":"0","task":{}}]
+        report=calculate_live_report(estimates,invoices,assignments,[],"10")
+        self.assertEqual(Decimal("600"),report.metrics["moneyRequiredToContinueIrr"])
+        self.assertEqual(Decimal("2000"),report.metrics["forecastFinalCostIrr"])
+
+    def test_missing_conversion_marks_purchase_dependent_forecast_incomplete(self):
+        row=estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-m")
+        invoice={"estimate_line_id":None,"resource_id":MATERIAL,"quantity":"5","unit":"box","base_unit":"each","dimension":"count","final_line_amount_irr":"500","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"}
+        report=calculate_live_report([row],[invoice],[{"assignmentExternalId":"a-m","actualQuantity":"0","task":{}}],[],"10")
+        self.assertEqual("incomplete",report.calculation_status)
+        self.assertIsNone(report.metrics["moneyRequiredToContinueIrr"])
+        self.assertIsNone(report.metrics["forecastFinalCostIrr"])
+        warning=next(item for item in report.warnings if item["code"]=="UNIT_CONVERSION_MISSING")
+        self.assertEqual((str(MATERIAL),"mat",True),(warning["resourceId"],warning["resourceCode"],warning["excludedFromCalculation"]))
+        self.assertIn("forecastFinalCostIrr",warning["affectedMetricKeys"])
+
+    def test_progress_quality_metadata_counts_sources(self):
+        estimates=[estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-1"),estimate(LABOR_LINE,LABOR,"labor","10","10","100","100","a-2")]
+        assignments=[
+            {"assignmentExternalId":"a-1","actualQuantity":"3","manualOverride":{"previousCalculatedValue":"3","newValue":"4","reason":"field correction","userId":str(UUID(int=8)),"occurredAt":"2026-08-02T00:00:00+00:00","progressSnapshotId":str(SNAPSHOT),"source":"manual_override"},"task":{}},
+            {"assignmentExternalId":"a-2","plannedQuantity":"10","task":{"taskProgressPercent":"50"}},
+        ]
+        report=calculate_live_report(estimates,[],assignments,[],"10")
+        self.assertEqual({"complete":False,"manualOverrideCount":1,"taskFallbackCount":1,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0},report.progress_quality)
 
     def test_quantity_overrun_warns_with_deviation_without_clamping(self):
         row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-m")
@@ -137,6 +205,13 @@ class Provider:
     async def get_snapshot(self, organization_id, project_id, snapshot_id):
         return {"snapshot": {"organizationId": str(self.organization_id), "projectId": self.project_id,
                              "progressSnapshotId": str(self.snapshot_id)}, "assignments": []}
+
+
+class AssignmentProvider(Provider):
+    async def get_snapshot(self, organization_id, project_id, snapshot_id):
+        feed=await super().get_snapshot(organization_id, project_id, snapshot_id)
+        feed["assignments"]=[{"assignmentExternalId":"a-m","actualQuantity":"4","task":{}}]
+        return feed
 
 
 class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -200,6 +275,18 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((1,2,1),(page["page"],page["total_items"],len(page["items"])))
         self.assertEqual(1,len(live["top_price_variances"]))
 
+    async def test_progress_override_affects_live_variances_breakdown_and_snapshot_payload(self):
+        organization_id=UUID("40000000-0000-4000-8000-000000000001")
+        scope=SimpleNamespace(organization_id=organization_id,project_id="sample_site_01",actor_user_id=UUID(int=8),locale="en")
+        repository=SnapshotRepository()
+        repository.overrides=[{"estimate_line_id":MATERIAL_LINE,"computed_value":Decimal("4"),"override_value":Decimal("7"),"reason":"field correction","created_by":UUID(int=8),"created_at":__import__("datetime").datetime(2026,8,2,tzinfo=__import__("datetime").timezone.utc),"activity_external_id":None,"assignment_external_id":"a-m"}]
+        service=FinanceLiveReportService(repository,AssignmentProvider(organization_id,scope.project_id),lambda:UUID(int=10))
+        live=await service.live(scope,date(2026,8,2),SNAPSHOT)
+        self.assertEqual((Decimal("700"),Decimal("300"),Decimal("300"),Decimal("1000")),(live["metrics"]["currentExecutedValueIrr"],live["metrics"]["remainingPhysicalCostIrr"],live["breakdown"][0]["remainingPhysicalCostIrr"],live["metrics"]["forecastFinalCostIrr"]))
+        self.assertEqual((Decimal("7"),"manual_override"),(live["top_quantity_variances"][0]["executedQuantity"],live["top_quantity_variances"][0]["sourceMethod"]))
+        await service.issue(scope,date(2026,8,2),SNAPSHOT)
+        self.assertEqual("7",repository.payload["progressSnapshot"]["assignments"][0]["manualOverride"]["newValue"])
+
     def test_reporting_repository_reads_only_effective_invoices_and_never_extractions(self):
         source=inspect.getsource(PsycopgLiveReportRepository.load)
         self.assertIn("i.status IN ('confirmed','voided','corrected')",source)
@@ -232,6 +319,7 @@ class SnapshotRepository(Repository):
         self.source_estimate=estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-m")
         self.source_estimate.update({"estimate_version_id":MATERIAL_LINE,"price_version_id":UUID(int=5)})
         self.payload=None
+        self.overrides=[]
 
     async def load(self,scope,reporting_date):
         return {"snapshot":self.selected,"settings_id":UUID(int=7),"gross_area":"100",
@@ -246,6 +334,9 @@ class SnapshotRepository(Repository):
     async def export_payload(self,scope,report_id):
         if self.payload is None or report_id!=self.value["report_snapshot_id"]:return None
         return {"report_snapshot_id":report_id,"reporting_date":self.value["reporting_date"],"snapshot_payload":self.payload}
+
+    async def latest_overrides(self,scope,progress_snapshot_ref_id):
+        return self.overrides
 
 
 if __name__ == "__main__":

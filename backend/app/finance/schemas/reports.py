@@ -11,10 +11,10 @@ from .base import ApiModel
 class LiveMetrics(ApiModel):
     initial_estimate_irr: Decimal
     actual_cost_irr: Decimal
-    current_executed_value_irr: Decimal
-    remaining_physical_cost_irr: Decimal
-    money_required_to_continue_irr: Decimal
-    forecast_final_cost_irr: Decimal
+    current_executed_value_irr: Decimal | None
+    remaining_physical_cost_irr: Decimal | None
+    money_required_to_continue_irr: Decimal | None
+    forecast_final_cost_irr: Decimal | None
     actual_cost_per_square_meter_irr: Decimal | None
     forecast_per_square_meter_irr: Decimal | None
 
@@ -62,6 +62,15 @@ class ReportWarning(ApiModel):
     severity:str|None=None;excluded_from_calculation:bool|None=None;affected_metric_keys:list[str]|None=None
 
 
+class ProgressQuality(ApiModel):
+    complete:bool
+    manual_override_count:int=0
+    task_fallback_count:int=0
+    missing_count:int=0
+    assignment_actual_count:int=0
+    assignment_percent_fallback_count:int=0
+
+
 class LiveReportResponse(ApiModel):
     reporting_date:date
     progress_snapshot_id:UUID
@@ -70,6 +79,12 @@ class LiveReportResponse(ApiModel):
     top_price_variances:list[PriceVariance]
     top_quantity_variances:list[QuantityVariance]
     warnings:list[ReportWarning]
+    calculation_status:Literal["complete","incomplete"]="complete"
+    incomplete_metric_keys:list[str]=Field(default_factory=list)
+    missing_price_count:int=0
+    excluded_estimate_line_count:int=0
+    excluded_estimate_line_ids:list[UUID]=Field(default_factory=list)
+    progress_quality:ProgressQuality|None=None
 
 
 class ReportVarianceListResponse(ApiModel):
