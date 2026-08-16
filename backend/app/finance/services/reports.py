@@ -32,6 +32,17 @@ def _export_cell(value):
     except Exception:return "'"+value
 
 
+REPORT_LABELS={
+    "fa":{"section":"بخش","key":"کلید","value":"مقدار","summary":"خلاصه","metric":"شاخص","valueIrr":"مقدار (ریال)","breakdown":"تفکیک هزینه","resourceType":"نوع قلم","initialEstimate":"برآورد اولیه (ریال)","revisedEstimate":"برآورد اصلاح‌شده (ریال)","actualCost":"هزینه واقعی (ریال)","remainingPhysicalCost":"هزینه باقی‌مانده (ریال)","forecastFinal":"پیش‌بینی نهایی (ریال)","priceVariance":"انحراف قیمت","quantityVariance":"انحراف مقدار","resourceCode":"کد قلم","resourceTitle":"عنوان قلم","variance":"انحراف","costBreakdown":"تفکیک هزینه","irr":"ریال"},
+    "en":{"section":"section","key":"key","value":"value","summary":"Summary","metric":"Metric","valueIrr":"Value (IRR)","breakdown":"Breakdown","resourceType":"Resource Type","initialEstimate":"Initial Estimate (IRR)","revisedEstimate":"Revised Estimate (IRR)","actualCost":"Actual Cost (IRR)","remainingPhysicalCost":"Remaining Physical Cost (IRR)","forecastFinal":"Forecast Final (IRR)","priceVariance":"Price Variance","quantityVariance":"Quantity Variance","resourceCode":"Resource Code","resourceTitle":"Resource Title","variance":"Variance","costBreakdown":"Cost Breakdown","irr":"IRR"},
+    "ar":{"section":"القسم","key":"المفتاح","value":"القيمة","summary":"الملخص","metric":"المؤشر","valueIrr":"القيمة (ريال)","breakdown":"تفصيل التكلفة","resourceType":"نوع البند","initialEstimate":"التقدير الأولي (ريال)","revisedEstimate":"التقدير المعدل (ريال)","actualCost":"التكلفة الفعلية (ريال)","remainingPhysicalCost":"تكلفة الأعمال المتبقية (ريال)","forecastFinal":"التكلفة النهائية المتوقعة (ريال)","priceVariance":"انحراف السعر","quantityVariance":"انحراف الكمية","resourceCode":"رمز البند","resourceTitle":"عنوان البند","variance":"الانحراف","costBreakdown":"تفصيل التكلفة","irr":"ريال"},
+}
+
+
+def _labels(locale):
+    return REPORT_LABELS.get(locale,REPORT_LABELS["fa"])
+
+
 class FinanceLiveReportService:
     def __init__(self,repository,progress_provider,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):
         self.repo,self.provider,self.ids,self.clock=repository,progress_provider,id_factory,clock
@@ -46,12 +57,28 @@ class FinanceLiveReportService:
                 or metadata.get("projectId")!=scope.project_id
                 or str(metadata.get("progressSnapshotId"))!=str(snapshot["progress_snapshot_id"])):
             raise FinanceRecordNotFound("progress snapshot not found")
+        for row in data["estimates"]:row["progress_snapshot_id"]=snapshot["progress_snapshot_id"]
         report=calculate_live_report(data["estimates"],data["invoices"],feed.get("assignments",[]),data["conversions"],data["gross_area"])
         return report,data,snapshot,feed
 
     async def live(self,scope,reporting_date:date,progress_snapshot_id=None):
         report,_data,snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
         return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings}
+
+    async def variances(self,scope,reporting_date:date,progress_snapshot_id=None,variance_type="all",resource_type=None,query=None,page=1,page_size=50,sort_by=None,sort_direction="desc"):
+        report,_data,_snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
+        items=[]
+        if variance_type in ("price","all"):items.extend(report.all_price_variances)
+        if variance_type in ("quantity","all"):items.extend(report.all_quantity_variances)
+        if resource_type:items=[item for item in items if item.get("resourceType")==resource_type]
+        if query:
+            term=query.casefold()
+            items=[item for item in items if term in str(item.get("resourceCode","")).casefold() or term in str(item.get("resourceTitle","")).casefold() or term in str(item.get("activityExternalId","")).casefold()]
+        key=sort_by or ("varianceIrr" if variance_type=="price" else "varianceQuantity")
+        reverse=sort_direction!="asc"
+        items.sort(key=lambda item:abs(item.get(key) or Decimal(0)),reverse=reverse)
+        total=len(items);start=(page-1)*page_size;end=start+page_size
+        return {"items":items[start:end],"page":page,"page_size":page_size,"total_items":total,"total_pages":0 if total==0 else ((total-1)//page_size)+1}
 
     async def issue(self,scope,reporting_date,progress_snapshot_id=None):
         report,data,snapshot,feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
@@ -70,7 +97,8 @@ class FinanceLiveReportService:
         payload=_json_value({"reportingDate":reporting_date,"settingsId":data["settings_id"],"grossBuiltArea":data["gross_area"],
             "progressSnapshot":feed,"estimateInputs":data["estimates"],"invoiceInputs":data["invoices"],
             "unitConversions":data["conversions"],"metrics":report.metrics,"breakdown":report.breakdown,
-            "topPriceVariances":report.price_variances,"topQuantityVariances":report.quantity_variances,"warnings":report.warnings})
+            "topPriceVariances":report.price_variances,"topQuantityVariances":report.quantity_variances,
+            "priceVariances":report.all_price_variances,"quantityVariances":report.all_quantity_variances,"warnings":report.warnings})
         await self.repo.issue(scope,value,payload,self.ids())
         return self._response(scope,value)
 
@@ -83,13 +111,15 @@ class FinanceLiveReportService:
         value=await self.repo.export_payload(scope,report_id)
         if value is None:raise FinanceRecordNotFound("report snapshot not found")
         payload=value["snapshot_payload"]
-        return self._csv(payload) if kind=="csv" else self._xlsx(payload)
+        locale=getattr(scope,"locale","fa")
+        return self._csv(payload,locale) if kind=="csv" else self._xlsx(payload,locale)
 
     @staticmethod
-    def _csv(payload):
+    def _csv(payload,locale="fa"):
+        labels=_labels(locale)
         stream=io.StringIO(newline="")
         writer=csv.writer(stream)
-        writer.writerow(("section","key","value"))
+        writer.writerow((labels["section"],labels["key"],labels["value"]))
         for key,value in payload.get("metrics",{}).items():writer.writerow(("metrics",_export_cell(key),_export_cell(value)))
         for row in payload.get("breakdown",[]):
             kind=row.get("resourceType","")
@@ -101,24 +131,26 @@ class FinanceLiveReportService:
         return ("\ufeff"+stream.getvalue()).encode("utf-8")
 
     @staticmethod
-    def _xlsx(payload):
+    def _xlsx(payload,locale="fa"):
+        labels=_labels(locale)
         workbook=Workbook()
-        summary=workbook.active;summary.title="Summary";summary.sheet_view.rightToLeft=True
-        summary.append(("Metric","Value (IRR)"))
+        rtl=locale in ("fa","ar")
+        summary=workbook.active;summary.title=labels["summary"];summary.sheet_view.rightToLeft=rtl
+        summary.append((labels["metric"],labels["valueIrr"]))
         for key,value in payload.get("metrics",{}).items():summary.append((_export_cell(key),_export_cell(value)))
-        breakdown=workbook.create_sheet("Breakdown");breakdown.sheet_view.rightToLeft=True
-        breakdown.append(("Resource Type","Initial Estimate (IRR)","Actual Cost (IRR)","Forecast Final (IRR)"))
-        for row in payload.get("breakdown",[]):breakdown.append(tuple(_export_cell(value) for value in (row.get("resourceType"),row.get("initialEstimateIrr"),row.get("actualCostIrr"),row.get("forecastFinalIrr"))))
-        for title,key,variance in (("Price Variance","topPriceVariances","varianceIrr"),("Quantity Variance","topQuantityVariances","varianceQuantity")):
-            sheet=workbook.create_sheet(title);sheet.sheet_view.rightToLeft=True
-            sheet.append(("Resource Code","Resource Title","Resource Type","Variance"))
+        breakdown=workbook.create_sheet(labels["breakdown"]);breakdown.sheet_view.rightToLeft=rtl
+        breakdown.append((labels["resourceType"],labels["initialEstimate"],labels["revisedEstimate"],labels["actualCost"],labels["remainingPhysicalCost"],labels["forecastFinal"]))
+        for row in payload.get("breakdown",[]):breakdown.append(tuple(_export_cell(value) for value in (row.get("resourceType"),row.get("initialEstimateIrr"),row.get("revisedEstimateIrr"),row.get("actualCostIrr"),row.get("remainingPhysicalCostIrr"),row.get("forecastFinalIrr"))))
+        for title,key,variance in ((labels["priceVariance"],"topPriceVariances","varianceIrr"),(labels["quantityVariance"],"topQuantityVariances","varianceQuantity")):
+            sheet=workbook.create_sheet(title);sheet.sheet_view.rightToLeft=rtl
+            sheet.append((labels["resourceCode"],labels["resourceTitle"],labels["resourceType"],labels["variance"]))
             for row in payload.get(key,[]):sheet.append(tuple(_export_cell(value) for value in (row.get("resourceCode"),row.get("resourceTitle"),row.get("resourceType"),row.get(variance))))
         for sheet in workbook.worksheets:
             for cell in sheet[1]:cell.font=Font(bold=True)
             sheet.freeze_panes="A2";sheet.auto_filter.ref=sheet.dimensions
             for column in sheet.columns:sheet.column_dimensions[column[0].column_letter].width=min(45,max(14,max(len(str(cell.value or "")) for cell in column)+2))
         if breakdown.max_row>1:
-            chart=BarChart();chart.title="Cost Breakdown";chart.y_axis.title="IRR";chart.x_axis.title="Resource Type"
+            chart=BarChart();chart.title=labels["costBreakdown"];chart.y_axis.title=labels["irr"];chart.x_axis.title=labels["resourceType"]
             chart.add_data(Reference(breakdown,min_col=2,max_col=4,min_row=1,max_row=breakdown.max_row),titles_from_data=True)
             chart.set_categories(Reference(breakdown,min_col=1,min_row=2,max_row=breakdown.max_row));breakdown.add_chart(chart,"F2")
         output=io.BytesIO();workbook.save(output);return output.getvalue()

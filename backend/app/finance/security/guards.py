@@ -19,6 +19,7 @@ class FinanceScope:
     organization_id: UUID
     project_id: str
     actor_user_id: UUID | None = None
+    locale: str = "fa"
 
 
 class FinanceNotFound(Exception):
@@ -51,6 +52,7 @@ async def authorize_finance_request(
         organization_id=context.organization_id,
         project_id=project_id,
         actor_user_id=context.user_id,
+        locale=context.locale,
     )
 
 

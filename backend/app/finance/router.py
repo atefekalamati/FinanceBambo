@@ -25,7 +25,7 @@ from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResp
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoiceListResponse,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from .schemas.attachments import AttachmentListResponse,AttachmentResponse
 from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionListResponse,ExtractionReject,ExtractionRetry,ExtractionStart
-from .schemas.reports import LiveReportResponse,ReportSnapshotCreate,ReportSnapshotReference
+from .schemas.reports import LiveReportResponse,ReportSnapshotCreate,ReportSnapshotReference,ReportVarianceListResponse
 from .schemas.audit import AuditEventResponse
 from datetime import date
 
@@ -314,6 +314,14 @@ async def confirm_extraction(projectId:str,draftId:UUID,payload:ExtractionConfir
 async def live_report(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None):
     scope=await _resource_scope(projectId,request,"finance_report.view")
     return await request.app.state.finance_live_report_service.live(scope,reportingDate,progressSnapshotId)
+
+@router.get("/reports/live/variances",response_model=ReportVarianceListResponse)
+async def live_report_variances(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None,
+    varianceType:str=Query("all",pattern="^(price|quantity|all)$"),resourceType:str|None=Query(None,pattern="^(material|labor|equipment|general_cost)$"),
+    query:str|None=Query(None,min_length=1,max_length=200),page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),
+    sortBy:str|None=None,sortDirection:str=Query("desc",pattern="^(asc|desc)$")):
+    scope=await _resource_scope(projectId,request,"finance_report.view")
+    return await request.app.state.finance_live_report_service.variances(scope,reportingDate,progressSnapshotId,varianceType,resourceType,query,page,pageSize,sortBy,sortDirection)
 
 @router.post("/report-snapshots",response_model=ReportSnapshotReference,status_code=201)
 async def issue_report_snapshot(projectId:str,payload:ReportSnapshotCreate,request:Request):

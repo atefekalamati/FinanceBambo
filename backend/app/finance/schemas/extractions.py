@@ -9,6 +9,7 @@ from pydantic import ConfigDict, Field, field_serializer, field_validator, model
 from .attachments import AttachmentResponse
 from .base import ApiModel
 from .invoices import DirectAdjustmentAllocation, InvoiceLineCreate
+from .numeric import strict_decimal
 
 
 class ExtractionFieldDto(ApiModel):
@@ -17,6 +18,11 @@ class ExtractionFieldDto(ApiModel):
     confirmed_value: Any = None
     confidence: float = Field(ge=0, le=1)
     edited_by_user: bool = False
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def strict_confidence(cls, value):
+        return strict_decimal(value)
 
     @field_validator("key")
     @classmethod
@@ -73,6 +79,11 @@ class ReviewedInvoiceCreate(ApiModel):
     other_costs_irr: Decimal = Field(default=0, ge=0, max_digits=18, decimal_places=0)
     direct_adjustment_allocations: list[DirectAdjustmentAllocation] = Field(default_factory=list)
     lines: list[InvoiceLineCreate] = Field(min_length=1)
+
+    @field_validator("discount_irr", "tax_irr", "shipping_irr", "other_costs_irr", mode="before")
+    @classmethod
+    def strict_reviewed_money(cls, value):
+        return strict_decimal(value)
 
     @field_validator("vendor_name")
     @classmethod
