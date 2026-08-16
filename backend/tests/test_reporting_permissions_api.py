@@ -40,10 +40,12 @@ class PermissionAuthorizer:
 
 
 class Reports:
+    async def overview(self,scope,reporting_date,progress_snapshot_id=None):
+        return await self.live(scope,reporting_date,progress_snapshot_id)
     async def live(self,_scope,reporting_date,progress_snapshot_id=None):
         return {"reportingDate":reporting_date,"progressSnapshotId":progress_snapshot_id or SNAPSHOT,
             "metrics":{"initialEstimateIrr":"100","actualCostIrr":"50","currentExecutedValueIrr":"40","remainingPhysicalCostIrr":"60","moneyRequiredToContinueIrr":"50","forecastFinalCostIrr":"100","actualCostPerSquareMeterIrr":"5","forecastPerSquareMeterIrr":"10"},
-            "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[]}
+            "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":0}
     async def get_snapshot(self,scope,report_id):
         return {"reportSnapshotId":report_id,"organizationId":scope.organization_id,"projectId":scope.project_id,
             "issuedAt":"2026-08-09T00:00:00Z","issuedBy":ACTOR,"progressSnapshotId":SNAPSHOT,
@@ -85,7 +87,11 @@ class ReportingPermissionApiTests(unittest.TestCase):
     def test_finance_view_only_keeps_operational_summary_but_cannot_read_live_report(self):
         with client(("finance.view",)) as api:
             denied=api.get(f"/api/projects/{PROJECT}/finance/reports/live",params={"reportingDate":"2026-08-09"})
-        self.assertEqual(403,denied.status_code)
+            overview=api.get(f"/api/projects/{PROJECT}/finance/overview",params={"reportingDate":"2026-08-09"})
+            issue=api.post(f"/api/projects/{PROJECT}/finance/report-snapshots",json={"reportingDate":"2026-08-09"})
+            issued=api.get(f"/api/projects/{PROJECT}/finance/report-snapshots/{REPORT}")
+        self.assertEqual((403,200,403,403),(denied.status_code,overview.status_code,issue.status_code,issued.status_code))
+        self.assertEqual("complete",overview.json()["calculationStatus"])
 
 
 if __name__=="__main__":unittest.main()

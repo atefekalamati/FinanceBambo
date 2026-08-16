@@ -1,6 +1,6 @@
 from datetime import datetime,timezone
 from uuid import uuid4
-from ..domain.progress import ProgressOverride,consumed_quantity,resolve_progress_quantity
+from ..domain.progress import ProgressOverride,apply_progress_overrides,consumed_quantity,resolve_progress_quantity
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
 class ProgressMappingError(FinanceDomainError):status=422;code="PROGRESS_LINE_MAPPING_MISSING"
@@ -13,11 +13,9 @@ class ProgressService:
   feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(snapshot_id))
   meta=feed["snapshot"]
   if str(meta["organizationId"])!=str(s.organization_id) or meta["projectId"]!=s.project_id or str(meta["progressSnapshotId"])!=str(snapshot_id):raise FinanceRecordNotFound("progress snapshot not found")
-  overrides=await self.repo.latest_overrides(s,ref["id"]);by_assignment={row["assignment_external_id"]:row for row in overrides if row["assignment_external_id"]};by_activity={row["activity_external_id"]:row for row in overrides if row["activity_external_id"]}
+  overrides=await self.repo.latest_overrides(s,ref["id"])
   assignments=[]
-  for source in feed.get("assignments",[]):
-   row=dict(source);override=by_assignment.get(row.get("assignmentExternalId")) or by_activity.get((row.get("task") or {}).get("activityCode"))
-   if override is not None:row["manualOverride"]={"previousCalculatedValue":str(override["computed_value"]),"newValue":str(override["override_value"]),"reason":override["reason"],"userId":str(override["created_by"]),"occurredAt":override["created_at"].isoformat(),"source":"manual_override","progressSnapshotId":str(snapshot_id)}
+  for row in apply_progress_overrides(feed.get("assignments",[]),overrides,snapshot_id):
    try:
     resolved=resolve_progress_quantity(row)
     row["computedExecutedQuantity"]=format(resolved["computed_quantity"],"f")

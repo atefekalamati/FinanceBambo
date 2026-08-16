@@ -315,6 +315,11 @@ async def live_report(projectId:str,request:Request,reportingDate:date,progressS
     scope=await _resource_scope(projectId,request,"finance_report.view")
     return await request.app.state.finance_live_report_service.live(scope,reportingDate,progressSnapshotId)
 
+@router.get("/overview",response_model=LiveReportResponse,summary="Operational Finance Overview")
+async def finance_overview(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None):
+    scope=await _resource_scope(projectId,request,"finance.view")
+    return await request.app.state.finance_live_report_service.overview(scope,reportingDate,progressSnapshotId)
+
 @router.get("/reports/live/variances",response_model=ReportVarianceListResponse)
 async def live_report_variances(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None,
     varianceType:str=Query("all",pattern="^(price|quantity|all)$"),resourceType:str|None=Query(None,pattern="^(material|labor|equipment|general_cost)$"),

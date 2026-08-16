@@ -34,3 +34,8 @@ class PsycopgLiveReportRepository:
         async with self.db.cursor(row_factory=dict_row) as cursor:
             await cursor.execute("SELECT id report_snapshot_id,reporting_date,snapshot_payload FROM report_snapshots WHERE organization_id=%s AND project_id=%s AND id=%s",(scope.organization_id,scope.project_id,report_id))
             return await cursor.fetchone()
+
+    async def latest_overrides(self,scope,progress_snapshot_ref_id):
+        async with self.db.cursor(row_factory=dict_row) as cursor:
+            await cursor.execute("""SELECT DISTINCT ON (o.estimate_line_id) o.estimate_line_id,o.computed_value,o.override_value,o.reason,o.created_by,o.created_at,l.activity_external_id,l.assignment_external_id FROM progress_overrides o JOIN estimate_lines l ON l.organization_id=o.organization_id AND l.project_id=o.project_id AND l.id=o.estimate_line_id WHERE o.organization_id=%s AND o.project_id=%s AND o.progress_snapshot_ref_id=%s ORDER BY o.estimate_line_id,o.created_at DESC,o.id DESC""",(scope.organization_id,scope.project_id,progress_snapshot_ref_id))
+            return await cursor.fetchall()
