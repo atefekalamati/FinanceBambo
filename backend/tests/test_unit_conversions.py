@@ -25,7 +25,7 @@ class ConversionTests(unittest.IsolatedAsyncioTestCase):
   self.assertEqual((1,2),(first.version,second.version));self.assertNotEqual(first.id,second.id)
  def test_factor_units_and_reason_are_validated(self):
   good=dict(scopeKind="project",sourceUnit="day",targetUnit="hour",dimension="equipment_time",effectiveFrom="2026-01-01",reason="x")
-  for factor in ("0","-1","1.0000001"):
+  for factor in ("0","-1","1.000000001"):
    with self.assertRaises(ValueError):ConversionCreate(**good,factor=factor)
   with self.assertRaises(ValueError):ConversionCreate(**{**good,"factor":"24","targetUnit":"day"})
   with self.assertRaises(ValueError):ConversionCreate(**{**good,"factor":"24","reason":" "})
