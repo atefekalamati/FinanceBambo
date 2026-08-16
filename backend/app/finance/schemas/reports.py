@@ -11,10 +11,10 @@ from .base import ApiModel
 class LiveMetrics(ApiModel):
     initial_estimate_irr: Decimal
     actual_cost_irr: Decimal
-    current_executed_value_irr: Decimal
-    remaining_physical_cost_irr: Decimal
-    money_required_to_continue_irr: Decimal
-    forecast_final_cost_irr: Decimal
+    current_executed_value_irr: Decimal | None
+    remaining_physical_cost_irr: Decimal | None
+    money_required_to_continue_irr: Decimal | None
+    forecast_final_cost_irr: Decimal | None
     actual_cost_per_square_meter_irr: Decimal | None
     forecast_per_square_meter_irr: Decimal | None
 
@@ -70,6 +70,9 @@ class LiveReportResponse(ApiModel):
     top_price_variances:list[PriceVariance]
     top_quantity_variances:list[QuantityVariance]
     warnings:list[ReportWarning]
+    calculation_status:Literal["complete","incomplete"]="complete"
+    incomplete_metric_keys:list[str]=Field(default_factory=list)
+    missing_price_count:int=0
 
 
 class ReportVarianceListResponse(ApiModel):

@@ -9,6 +9,7 @@ from openpyxl.chart import BarChart,Reference
 from openpyxl.styles import Font
 
 from ..domain.reports import calculate_live_report
+from ..domain.progress import apply_progress_overrides
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
 
@@ -58,12 +59,17 @@ class FinanceLiveReportService:
                 or str(metadata.get("progressSnapshotId"))!=str(snapshot["progress_snapshot_id"])):
             raise FinanceRecordNotFound("progress snapshot not found")
         for row in data["estimates"]:row["progress_snapshot_id"]=snapshot["progress_snapshot_id"]
-        report=calculate_live_report(data["estimates"],data["invoices"],feed.get("assignments",[]),data["conversions"],data["gross_area"])
-        return report,data,snapshot,feed
+        overrides=await self.repo.latest_overrides(scope,snapshot["progress_snapshot_ref_id"]) if hasattr(self.repo,"latest_overrides") else []
+        effective_feed={**feed,"assignments":apply_progress_overrides(feed.get("assignments",[]),overrides,snapshot["progress_snapshot_id"])}
+        report=calculate_live_report(data["estimates"],data["invoices"],effective_feed.get("assignments",[]),data["conversions"],data["gross_area"])
+        return report,data,snapshot,effective_feed
 
     async def live(self,scope,reporting_date:date,progress_snapshot_id=None):
         report,_data,snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
-        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings}
+        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count}
+
+    async def overview(self,scope,reporting_date:date,progress_snapshot_id=None):
+        return await self.live(scope,reporting_date,progress_snapshot_id)
 
     async def variances(self,scope,reporting_date:date,progress_snapshot_id=None,variance_type="all",resource_type=None,query=None,page=1,page_size=50,sort_by=None,sort_direction="desc"):
         report,_data,_snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
@@ -98,7 +104,9 @@ class FinanceLiveReportService:
             "progressSnapshot":feed,"estimateInputs":data["estimates"],"invoiceInputs":data["invoices"],
             "unitConversions":data["conversions"],"metrics":report.metrics,"breakdown":report.breakdown,
             "topPriceVariances":report.price_variances,"topQuantityVariances":report.quantity_variances,
-            "priceVariances":report.all_price_variances,"quantityVariances":report.all_quantity_variances,"warnings":report.warnings})
+            "priceVariances":report.all_price_variances,"quantityVariances":report.all_quantity_variances,
+            "calculationStatus":report.calculation_status,"incompleteMetricKeys":report.incomplete_metric_keys,
+            "missingPriceCount":report.missing_price_count,"warnings":report.warnings})
         await self.repo.issue(scope,value,payload,self.ids())
         return self._response(scope,value)
 

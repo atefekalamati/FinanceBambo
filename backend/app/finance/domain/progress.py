@@ -31,6 +31,20 @@ def consumed_quantity(a):
  resolved=resolve_progress_quantity(a)
  return resolved["effective_quantity"],resolved["source_method"]
 
+def _override_payload(row,snapshot_id):
+ return {"previousCalculatedValue":str(row["computed_value"]),"newValue":str(row["override_value"]),"reason":row["reason"],"userId":str(row["created_by"]),"occurredAt":row["created_at"].isoformat(),"source":"manual_override","progressSnapshotId":str(snapshot_id)}
+
+def apply_progress_overrides(assignments,overrides,snapshot_id):
+ by_assignment={row["assignment_external_id"]:row for row in overrides if row.get("assignment_external_id")}
+ by_activity={row["activity_external_id"]:row for row in overrides if row.get("activity_external_id")}
+ result=[]
+ for source in assignments:
+  row=dict(source)
+  override=by_assignment.get(row.get("assignmentExternalId")) or by_activity.get((row.get("task") or {}).get("activityCode"))
+  if override is not None:row["manualOverride"]=_override_payload(override,snapshot_id)
+  result.append(row)
+ return result
+
 @dataclass(frozen=True)
 class ProgressOverride:
  id:UUID;organization_id:UUID;project_id:str;estimate_line_id:UUID;progress_snapshot_ref_id:UUID;progress_snapshot_id:UUID;computed_value:Decimal;override_value:Decimal;reason:str;created_by:UUID;created_at:datetime
