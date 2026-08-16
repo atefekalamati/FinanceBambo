@@ -3,18 +3,21 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
-import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
+import { buildBreakdownPresentation } from "./report-presentation.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
   ["actualCostIrr", "هزینه واقعی ثبت‌شده", "فقط اسناد مالی تأییدشده"],
+  ["actualCostPerSquareMeterIrr", "هزینه واقعی هر مترمربع", "براساس زیربنای کل پروژه"],
   ["currentExecutedValueIrr", "ارزش روز کار انجام‌شده", "مقدار اجراشده با قیمت روز"],
   ["remainingPhysicalCostIrr", "هزینه کار باقی‌مانده", "کار باقیمانده با قیمت روز"],
-  ["moneyRequiredToContinueIrr", "بودجه موردنیاز تا تکمیل", "با لحاظ خرید ثبت‌شده مصالح"],
   ["forecastFinalCostIrr", "پیش‌بینی هزینه نهایی", "هزینه واقعی به‌اضافه پول ادامه"],
-  ["actualCostPerSquareMeterIrr", "هزینه واقعی هر مترمربع", "براساس زیربنای کل پروژه"],
   ["forecastPerSquareMeterIrr", "پیش‌بینی هزینه هر مترمربع", "پیش‌بینی نهایی تقسیم بر زیربنا"],
+  ["moneyRequiredToContinueIrr", "بودجه موردنیاز تا تکمیل", "با لحاظ خرید ثبت‌شده مصالح"],
 ]);
+
+const PRIMARY_SUMMARY_KEYS = new Set(["initialEstimateIrr", "actualCostIrr", "remainingPhysicalCostIrr", "forecastFinalCostIrr"]);
+const RELATED_SUMMARY_KEYS = new Set(["actualCostPerSquareMeterIrr", "forecastPerSquareMeterIrr"]);
 
 const WARNING_LABELS = Object.freeze({
   UNIT_CONVERSION_MISSING: "تبدیل واحد لازم برای بخشی از مقدار خریداری‌شده تعریف نشده است.",
@@ -56,7 +59,9 @@ function createTomanDisplay(value) {
 function createSummaryCard(key, label, description, data) {
   const card = document.createElement("article");
   const unavailable = data?.[key] === null || data?.[key] === undefined;
-  card.className = `summary-card${unavailable ? " summary-card--unavailable" : ""}`;
+  const hierarchy = PRIMARY_SUMMARY_KEYS.has(key) ? "primary" : RELATED_SUMMARY_KEYS.has(key) ? "related" : "support";
+  card.className = `summary-card summary-card--${hierarchy}${unavailable ? " summary-card--unavailable" : ""}`;
+  card.dataset.metric = key;
   const title = document.createElement("h2");
   title.textContent = label;
   const value = document.createElement("p");
@@ -130,33 +135,24 @@ function createBreakdownChart(rows) {
     group.className = "breakdown-chart__group";
     const label = document.createElement("h3");
     label.textContent = row.label;
-    const bars = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    bars.classList.add("breakdown-chart__bars");
-    bars.setAttribute("viewBox", "0 0 72 108");
-    bars.setAttribute("preserveAspectRatio", "xMidYMax meet");
-    bars.setAttribute("aria-hidden", "true");
+    const bars = document.createElement("div");
+    bars.className = "breakdown-chart__bars";
     [["initial", row.bars.initial, row.initialEstimateIrr, "برآورد اولیه"], ["actual", row.bars.actual, row.actualCostIrr, "هزینه واقعی"]].forEach(([series, magnitude, value, seriesLabel]) => {
-      const index = { initial: 0, actual: 1 }[series];
-      const height = Number(magnitude) * .84;
-      const x = 15 + (index * 24);
-      const track = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      track.setAttribute("class", "breakdown-chart__track");
-      track.setAttribute("x", String(x));
-      track.setAttribute("y", "12");
-      track.setAttribute("width", "18");
-      track.setAttribute("height", "84");
-      track.setAttribute("rx", "3");
-      const bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      bar.setAttribute("class", `breakdown-chart__bar breakdown-chart__bar--${series}`);
-      bar.setAttribute("x", String(x));
-      bar.setAttribute("y", String(96 - height));
-      bar.setAttribute("width", "18");
-      bar.setAttribute("height", String(height));
-      bar.setAttribute("rx", "3");
-      const tooltip = document.createElementNS("http://www.w3.org/2000/svg", "title");
-      tooltip.textContent = `${seriesLabel}: ${formatTomanFromIrr(value)}`;
-      bar.append(tooltip);
-      bars.append(track, bar);
+      const seriesRow = document.createElement("div");
+      seriesRow.className = "breakdown-chart__series";
+      seriesRow.setAttribute("aria-label", `${seriesLabel}: ${formatTomanFromIrr(value)}`);
+      const track = document.createElement("div");
+      track.className = "breakdown-chart__track";
+      const bar = document.createElement("span");
+      bar.className = `breakdown-chart__bar breakdown-chart__bar--${series}`;
+      bar.style.setProperty("--bar-width", `${magnitude}%`);
+      bar.title = `${seriesLabel}: ${formatTomanFromIrr(value)}`;
+      track.append(bar);
+      const amount = document.createElement("span");
+      amount.className = "breakdown-chart__value numeric";
+      amount.textContent = formatTomanFromIrr(value);
+      seriesRow.append(track, amount);
+      bars.append(seriesRow);
     });
     group.append(label, bars);
     chart.append(group);
@@ -223,7 +219,7 @@ function createComparisonPanel(title, description, entries) {
     track.className = "overview-comparison__track";
     const bar = document.createElement("span");
     bar.className = "overview-comparison__bar";
-    bar.style.setProperty("--bar-height", `${entry.magnitude}%`);
+    bar.style.setProperty("--bar-size", `${entry.magnitude}%`);
     track.append(bar);
     const label = document.createElement("h3");
     label.textContent = entry.label;
@@ -231,6 +227,63 @@ function createComparisonPanel(title, description, entries) {
     chart.append(item);
   });
   section.append(heading, chart);
+  return section;
+}
+
+function createManagerialComparisonPanel(metrics, entries) {
+  const section = document.createElement("section");
+  section.className = "finance-analysis-card finance-managerial-comparison";
+  const heading = document.createElement("div");
+  heading.className = "finance-analysis-card__heading";
+  const headingTitle = document.createElement("h2");
+  headingTitle.textContent = "تصویر مدیریتی هزینه پروژه";
+  const headingDescription = document.createElement("p");
+  headingDescription.textContent = "مقایسه هزینه‌های پروژه با خط مرجع برآورد اولیه";
+  heading.append(headingTitle, headingDescription);
+
+  const chart = document.createElement("div");
+  chart.className = "managerial-combo-chart";
+  chart.setAttribute("role", "img");
+  chart.setAttribute("aria-label", "مقایسه برآورد اولیه، هزینه واقعی، هزینه باقی‌مانده و پیش‌بینی نهایی");
+  const plot = document.createElement("div");
+  plot.className = "managerial-combo-chart__plot";
+  const initialEntry = entries.find((entry) => entry.key === "initial");
+  const baseline = document.createElement("div");
+  baseline.className = "managerial-combo-chart__baseline";
+  baseline.style.setProperty("--baseline-offset", `${(initialEntry?.magnitude ?? 0) / 10}rem`);
+  const baselineLabel = document.createElement("span");
+  baselineLabel.textContent = "خط مرجع برآورد اولیه";
+  baseline.append(baselineLabel);
+  plot.append(baseline);
+
+  entries.forEach((entry) => {
+    const item = document.createElement("article");
+    item.className = `managerial-combo-chart__item managerial-combo-chart__item--${entry.key}`;
+    const column = document.createElement("div");
+    column.className = "managerial-combo-chart__column";
+    column.style.setProperty("--column-size", `${entry.magnitude}%`);
+    const value = createTomanDisplay(entry.value);
+    value.classList.add("managerial-combo-chart__value");
+    const label = document.createElement("h3");
+    label.textContent = entry.label;
+    item.append(value, column, label);
+    plot.append(item);
+  });
+  chart.append(plot);
+  const initial = /^-?\d+$/.test(String(metrics.initialEstimateIrr ?? "")) ? BigInt(metrics.initialEstimateIrr) : 0n;
+  const forecast = /^-?\d+$/.test(String(metrics.forecastFinalCostIrr ?? "")) ? BigInt(metrics.forecastFinalCostIrr) : 0n;
+  const deviation = forecast - initial;
+  const tone = deviation > 0n ? "increase" : deviation < 0n ? "decrease" : "stable";
+  const label = deviation > 0n ? "بیشتر از برآورد اولیه" : deviation < 0n ? "کمتر از برآورد اولیه" : "برابر با برآورد اولیه";
+  const summary = document.createElement("div");
+  summary.className = `managerial-deviation managerial-deviation--${tone}`;
+  const title = document.createElement("span");
+  title.textContent = "انحراف پیش‌بینی نهایی";
+  const value = document.createElement("strong");
+  value.className = "numeric";
+  value.textContent = deviation === 0n ? label : `${formatTomanFromIrr((deviation < 0n ? -deviation : deviation).toString())} ${label}`;
+  summary.append(title, value);
+  section.append(heading, chart, summary);
   return section;
 }
 
@@ -296,16 +349,9 @@ function renderFinanceHome(data) {
   summary.setAttribute("aria-label", "خلاصه وضعیت مالی");
   SUMMARY_ITEMS.forEach(([key, label, description]) => summary.append(createSummaryCard(key, label, description, data.metrics)));
 
-  const comparisons = buildOverviewComparisons(data.metrics);
-  const analysis = document.createElement("section");
-  analysis.className = "finance-analysis-grid";
-  analysis.setAttribute("aria-label", "تحلیل‌های مالی پروژه");
-  analysis.append(
-    createComparisonPanel("برآورد، هزینه واقعی و پیش‌بینی نهایی", "مقایسه سه شاخص کلیدی هزینه پروژه", comparisons.estimate),
-    createComparisonPanel("ارزش انجام‌شده و کار باقی‌مانده", "ارزش روز کار انجام‌شده در برابر هزینه کار باقی‌مانده", comparisons.work),
-    createVariancePanel("بیشترین انحراف قیمت", data.topPriceVariances, "varianceIrr", formatTomanFromIrr, "#/prices"),
-    createVariancePanel("بیشترین انحراف مقدار", data.topQuantityVariances, "varianceQuantity", formatDisplayNumber, "#/financial-items"),
-  );
+  const overviewPanel = document.createElement("section");
+  overviewPanel.className = "finance-overview-panel";
+  overviewPanel.append(summaryHeader, summary);
 
   const warnings = document.createElement("section");
   warnings.className = "finance-warnings";
@@ -330,7 +376,14 @@ function renderFinanceHome(data) {
   const insights = document.createElement("section");
   insights.className = "finance-insights";
   insights.setAttribute("aria-label", "تحلیل و هشدارهای مالی");
-  insights.append(breakdown, warnings);
+  const riskStack = document.createElement("div");
+  riskStack.className = "finance-risk-stack";
+  riskStack.append(
+    warnings,
+    createVariancePanel("بیشترین انحراف قیمت", data.topPriceVariances, "varianceIrr", formatTomanFromIrr, "#/prices"),
+    createVariancePanel("بیشترین انحراف مقدار", data.topQuantityVariances, "varianceQuantity", formatDisplayNumber, "#/financial-items"),
+  );
+  insights.append(breakdown, riskStack);
 
   const areasHeader = document.createElement("div");
   areasHeader.className = "section-heading";
@@ -340,7 +393,7 @@ function renderFinanceHome(data) {
   areas.setAttribute("aria-label", "بخش‌های امور مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  fragment.append(pageTitle, summaryHeader, summary, analysis, insights, areasHeader, areas);
+  fragment.append(pageTitle, overviewPanel, insights, areasHeader, areas);
   return fragment;
 }
 

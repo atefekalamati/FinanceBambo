@@ -92,6 +92,10 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
     return snapshot();
   }
 
+  function getResourceSnapshot() {
+    return clone(resources);
+  }
+
   async function createResource(values) {
     await wait(380);
     const validation = validateResource(values);
@@ -311,5 +315,5 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
     return snapshot();
   }
 
-  return Object.freeze({ getWorkspace, createResource, createActivity, createEstimateLine, previewEstimateImport, commitEstimateImport, reviseEstimateLine });
+  return Object.freeze({ getWorkspace, getResourceSnapshot, createResource, createActivity, createEstimateLine, previewEstimateImport, commitEstimateImport, reviseEstimateLine });
 }

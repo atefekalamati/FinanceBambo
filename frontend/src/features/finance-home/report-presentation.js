@@ -29,6 +29,12 @@ function buildExactScale(entries) {
 
 export function buildOverviewComparisons(metrics = {}) {
   return Object.freeze({
+    management: buildExactScale([
+      { key: "initial", label: "برآورد اولیه", value: String(metrics.initialEstimateIrr ?? "0") },
+      { key: "actual", label: "هزینه واقعی ثبت‌شده", value: String(metrics.actualCostIrr ?? "0") },
+      { key: "remaining", label: "هزینه کار باقی‌مانده با قیمت روز", value: String(metrics.remainingPhysicalCostIrr ?? "0") },
+      { key: "forecast", label: "پیش‌بینی هزینه نهایی", value: String(metrics.forecastFinalCostIrr ?? "0") },
+    ]),
     estimate: buildExactScale([
       { key: "initial", label: "برآورد اولیه", value: String(metrics.initialEstimateIrr ?? "0") },
       { key: "actual", label: "هزینه واقعی ثبت‌شده", value: String(metrics.actualCostIrr ?? "0") },
