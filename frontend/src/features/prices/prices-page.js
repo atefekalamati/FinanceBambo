@@ -9,7 +9,7 @@ import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUn
 import { formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { validatePriceVersion } from "./prices-validation.js";
-import { getCompatibleTargetUnits, getUnitDefinition, UNIT_OPTIONS, validateUnitConversion } from "./unit-conversions-validation.js";
+import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition, validateUnitConversion } from "./unit-conversions-validation.js";
 
 const SCOPE_LABELS = Object.freeze({ organization: "پایه سازمان", project: "اختصاصی پروژه" });
 
@@ -61,19 +61,15 @@ function createInput({ id, label, type = "text", value = "", hint = "", inputMod
   return { field, input, error };
 }
 
-function createUnitConversionDialog(adapter, workspace, onSaved) {
-  const dialog = document.createElement("dialog");
-  dialog.className = "confirm-dialog price-dialog";
+export function createUnitConversionForm(adapter, workspace, onSaved, onCancel = () => {}) {
+  const dialog = document.createElement("section");
+  dialog.className = "conversion-inline-editor";
   const head = element("header", "price-dialog__head");
-  const title = element("h2", "", "ثبت قاعده تبدیل واحد");
-  const close = element("button", "dialog-close", "×");
-  close.type = "button";
-  close.setAttribute("aria-label", "بستن پنجره");
-  close.addEventListener("click", () => dialog.close());
-  head.append(title, close);
-  const form = element("form", "price-form");
+  const title = element("h3", "", "تعریف قاعده کاری تبدیل واحد");
+  head.append(title);
+  const form = element("form", "price-form conversion-inline-form");
   form.noValidate = true;
-  const unitOptions = UNIT_OPTIONS.map((unit) => ({ value: unit.value, label: `${unit.label} (${unit.value}) · ${unit.dimensionLabel}` }));
+  const unitOptions = getConfigurableSourceUnits().map((unit) => ({ value: unit.value, label: `${unit.label} (${unit.value}) · ${unit.dimensionLabel}` }));
   const source = createSelect({ id: "conversionSourceUnit", label: "واحد مبدأ", options: unitOptions });
   const target = createSelect({ id: "conversionTargetUnit", label: "واحد مقصد سازگار", options: [] });
   target.select.disabled = true;
@@ -96,10 +92,10 @@ function createUnitConversionDialog(adapter, workspace, onSaved) {
   preview.append(previewTitle, previewSentence, currentRule);
   const scopeHint = element("div", "conversion-scope-hint", "سطح تبدیل را انتخاب کنید تا محدوده استفاده از این قاعده مشخص شود.");
   scopeHint.setAttribute("role", "status");
-  const notice = element("div", "inline-notice", "فقط واحدهای هم‌بُعد قابل انتخاب‌اند. ثبت جدید، نسخه‌های قبلی را تغییر یا حذف نمی‌کند.");
+  const notice = element("div", "inline-notice", "این فرم فقط برای قواعد کاری متغیر است. تبدیل‌های فیزیکی استاندارد مانند تن به کیلوگرم ثابت و غیرقابل‌ویرایش‌اند.");
   const cancel = element("button", "button button--ghost", "لغو");
   cancel.type = "button";
-  cancel.addEventListener("click", () => dialog.close());
+  cancel.addEventListener("click", onCancel);
   const submit = element("button", "button button--primary", "ثبت نسخه تبدیل");
   submit.type = "submit";
   const status = element("div", "form-status");
@@ -154,12 +150,12 @@ function createUnitConversionDialog(adapter, workspace, onSaved) {
     event.preventDefault();
     const validation = validateUnitConversion({ sourceUnit: source.select.value, targetUnit: target.select.value, factor: factor.input.value, scope: scope.select.value, effectiveDate: effectiveDate.getValue() });
     source.error.textContent = validation.errors.sourceUnit;
-    target.error.textContent = validation.errors.targetUnit || validation.errors.dimension || validation.errors.direction;
+    target.error.textContent = validation.errors.targetUnit || validation.errors.dimension || validation.errors.direction || validation.errors.policy;
     factor.error.textContent = validation.errors.factor;
     scope.error.textContent = validation.errors.scope;
     effectiveDate.error.textContent = validation.errors.effectiveDate;
     source.select.setAttribute("aria-invalid", String(Boolean(validation.errors.sourceUnit)));
-    target.select.setAttribute("aria-invalid", String(Boolean(validation.errors.targetUnit || validation.errors.dimension || validation.errors.direction)));
+    target.select.setAttribute("aria-invalid", String(Boolean(validation.errors.targetUnit || validation.errors.dimension || validation.errors.direction || validation.errors.policy)));
     factor.input.setAttribute("aria-invalid", String(Boolean(validation.errors.factor)));
     scope.select.setAttribute("aria-invalid", String(Boolean(validation.errors.scope)));
     effectiveDate.input.setAttribute("aria-invalid", String(Boolean(validation.errors.effectiveDate)));
@@ -173,7 +169,6 @@ function createUnitConversionDialog(adapter, workspace, onSaved) {
     status.textContent = "در حال ثبت تبدیل…";
     try {
       const workspace = await adapter.createUnitConversion(validation.values);
-      dialog.close();
       onSaved(workspace);
     } catch (error) {
       status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
@@ -182,6 +177,12 @@ function createUnitConversionDialog(adapter, workspace, onSaved) {
       cancel.disabled = false;
     }
   });
+  source.select.value = "equipment_day";
+  replaceTargetOptions();
+  target.select.value = "hour";
+  factor.input.value = "8";
+  scope.select.value = "project";
+  syncPreview();
   dialog.append(head, form);
   return dialog;
 }
@@ -555,7 +556,7 @@ function renderHistory(history, currentPrices) {
   return wrapper;
 }
 
-function renderCurrentConversions(items) {
+export function renderCurrentConversions(items) {
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table current-conversions-table");
   table.append(element("caption", "sr-only", "فهرست تبدیل‌های واحد جاری"));
@@ -584,7 +585,7 @@ function renderCurrentConversions(items) {
   return wrapper;
 }
 
-function renderConversionHistory(history) {
+export function renderConversionHistory(history) {
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table conversion-history-table");
   table.append(element("caption", "sr-only", "تاریخچه نسخه‌های تبدیل واحد"));
@@ -636,6 +637,7 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "قیمت روز و تاریخچه قیمت"), element("h1", "", "قیمت روز"), element("p", "", "قیمت پایه سازمان و قیمت اختصاصی پروژه را بدون بازنویسی نسخه‌های قبلی مدیریت کنید."));
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
     back.href = "#/finance";
     header.append(copy, back);
     return header;
@@ -650,16 +652,6 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
     showAccessibleDialog(dialog);
   }
 
-  async function openConversionEditor(workspace = state.data) {
-    const currentWorkspace = workspace ?? await adapter.getPrices();
-    const dialog = createUnitConversionDialog(adapter, currentWorkspace, (next) => {
-      state = createRequestState(REQUEST_STATUS.SUCCESS, next);
-      paint();
-    });
-    root.append(dialog);
-    showAccessibleDialog(dialog);
-  }
-
   function renderEmpty() {
     const card = element("section", "state-card prices-empty");
     card.append(element("h2", "", "هنوز قیمتی ثبت نشده است"), element("p", "", canEdit ? "اولین قیمت پایه سازمان یا قیمت اختصاصی پروژه را ثبت کنید." : "برای اقلام این پروژه هنوز قیمت قابل نمایشی وجود ندارد."));
@@ -667,10 +659,7 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
       const button = element("button", "button button--primary", "ثبت اولین قیمت");
       button.type = "button";
       button.addEventListener("click", async () => openEditor(await adapter.getPrices()));
-      const conversionButton = element("button", "button button--ghost", "ثبت اولین تبدیل واحد");
-      conversionButton.type = "button";
-      conversionButton.addEventListener("click", () => openConversionEditor());
-      card.append(button, conversionButton);
+      card.append(button);
     }
     return card;
   }
@@ -693,8 +682,10 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
       const add = element("button", "button button--primary", "ثبت نسخه جدید قیمت");
       add.type = "button";
       add.addEventListener("click", () => openEditor(workspace));
+      const conversions = element("a", "button button--ghost", "مدیریت تبدیل واحد");
+      conversions.href = "#/settings";
       const toolbarActions = element("div", "prices-toolbar__actions");
-      toolbarActions.append(importPrices, add);
+      toolbarActions.append(conversions, importPrices, add);
       toolbar.append(toolbarActions);
     }
     const normalizedQuery = listFilters.query.toLocaleLowerCase("fa-IR");
@@ -713,21 +704,7 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
     else current.append(element("div", "state-card price-filter-empty", "قلمی مطابق فیلترهای انتخاب‌شده پیدا نشد."));
     const history = element("section", "prices-section");
     history.append(element("h2", "", "تاریخچه قیمت‌ها"), element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."), renderHistory(workspace.history, workspace.currentPrices));
-    const conversions = element("section", "prices-section");
-    const conversionHeading = element("div", "prices-section-heading");
-    const conversionCopy = element("div", "");
-    conversionCopy.append(element("h2", "", "تبدیل واحد جاری"), element("p", "prices-section__hint", "تبدیل اختصاصی پروژه بر تبدیل پایه سازمان مقدم است و فقط میان واحدهای هم‌بُعد اعمال می‌شود."));
-    conversionHeading.append(conversionCopy);
-    if (canEdit) {
-      const addConversion = element("button", "button button--ghost", "ثبت تبدیل واحد");
-      addConversion.type = "button";
-      addConversion.addEventListener("click", () => openConversionEditor(workspace));
-      conversionHeading.append(addConversion);
-    }
-    conversions.append(conversionHeading, renderCurrentConversions(workspace.currentConversions));
-    const conversionHistory = element("section", "prices-section");
-    conversionHistory.append(element("h2", "", "تاریخچه تبدیل واحد"), element("p", "prices-section__hint", "هر ثبت یک نسخه جدید است و نسخه‌های قبلی در تاریخچه تغییرات حفظ می‌شوند."), renderConversionHistory(workspace.conversionHistory));
-    fragment.append(toolbar, current, conversions, history, conversionHistory);
+    fragment.append(toolbar, current, history);
     return fragment;
   }
 

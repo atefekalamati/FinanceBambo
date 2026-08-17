@@ -19,10 +19,16 @@ test("rejects reverse conversions even when both units share a dimension", () =>
   assert.match(equipmentTime.errors.direction, /جهت تبدیل مجاز نیست/);
 });
 
-test("accepts an exact same-dimension conversion factor", () => {
-  const result = validateUnitConversion({ sourceUnit: "ton", targetUnit: "kg", factor: "۱٬۰۰۰٫۰۰۰۰۰۰", scope: "organization", effectiveDate: "2026-08-08" });
+test("accepts an exact configurable working-time conversion factor", () => {
+  const result = validateUnitConversion({ sourceUnit: "equipment_day", targetUnit: "hour", factor: "۸٫۵۰۰۰۰۰", scope: "organization", effectiveDate: "2026-08-08" });
   assert.equal(result.valid, true);
-  assert.equal(result.values.factor, "1000.000000");
+  assert.equal(result.values.factor, "8.500000");
+});
+
+test("rejects changing a fixed physical conversion", () => {
+  const result = validateUnitConversion({ sourceUnit: "ton", targetUnit: "kg", factor: "1500", scope: "project", effectiveDate: "2026-08-08" });
+  assert.equal(result.valid, false);
+  assert.match(result.errors.policy, /ثابت است و قابل تغییر نیست/);
 });
 
 test("rejects conversions between incompatible dimensions", () => {

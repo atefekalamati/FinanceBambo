@@ -628,8 +628,8 @@
 
 @media print {
   @page {
-    size: A5 landscape;
-    margin: 7mm;
+    size: A4;
+    margin: 6mm;
   }
 
   .invoice-filters,
@@ -647,8 +647,12 @@
     visibility: visible;
   }
 
+  body:has(.invoice-detail-dialog[open]) .invoices-page > :not(.invoice-detail-dialog) {
+    display: none !important;
+  }
+
   .invoice-detail-dialog[open] {
-    position: absolute;
+    position: static;
     inset: 0;
     display: block;
     inline-size: 100%;
@@ -661,7 +665,7 @@
     background: #fff;
     box-shadow: none;
     overflow: visible;
-    font-size: 8pt;
+    font-size: 7pt;
   }
 
   .invoice-detail-dialog[open]::backdrop {
@@ -669,29 +673,27 @@
   }
 
   .invoice-detail-dialog__head {
-    margin-block-end: 3mm;
-    padding-block-end: 2mm;
+    margin-block-end: 2mm;
+    padding-block-end: 1.5mm;
     border-block-end: 1px solid #555;
   }
 
   .invoice-detail-dialog__head h2 {
-    margin-block-end: 1mm;
-    font-size: 13pt;
+    margin-block-end: .5mm;
+    font-size: 12pt;
   }
 
   .invoice-detail-dialog__head-actions,
   .invoice-detail-actions,
   .invoice-print-button,
-  .dialog-close,
-  .invoice-effect-notice,
-  .invoice-detail-grid__item--print-secondary {
+  .dialog-close {
     display: none !important;
   }
 
   .invoice-detail-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 1.5mm;
-    margin-block-end: 2.5mm;
+    gap: 1mm;
+    margin-block-end: 1.5mm;
   }
 
   .invoice-detail-grid__item,
@@ -707,26 +709,27 @@
   }
 
   .invoice-detail-grid__item {
-    gap: .5mm;
-    padding: 1.5mm;
-    border-radius: 1.5mm;
+    gap: .25mm;
+    padding: 1mm;
+    border-radius: 1mm;
   }
 
   .invoice-detail-grid__item dt {
-    font-size: 6.5pt;
+    font-size: 6pt;
   }
 
   .invoice-detail-grid__item dd {
-    font-size: 7.5pt;
-    line-height: 1.3;
+    font-size: 7pt;
+    line-height: 1.2;
   }
 
   .invoice-detail-dialog .inline-notice,
-  .invoice-detail-dialog .invoice-warning {
-    margin-block: 1.5mm;
-    padding: 1.5mm 2mm;
-    font-size: 7pt;
-    line-height: 1.35;
+  .invoice-detail-dialog .invoice-warning,
+  .invoice-detail-dialog .invoice-effect-notice {
+    margin-block: 1mm;
+    padding: 1mm 1.5mm;
+    font-size: 6.5pt;
+    line-height: 1.2;
   }
 
   .invoice-detail-grid__item dt,
@@ -745,7 +748,7 @@
     min-inline-size: 0;
     inline-size: 100%;
     color: #000;
-    font-size: 7pt;
+    font-size: 6.5pt;
   }
 
   .invoice-lines-table thead {
@@ -758,7 +761,7 @@
   }
 
   .invoice-lines-table :is(th, td) {
-    padding: 1.4mm 1.2mm;
+    padding: .8mm 1mm;
     border-color: #bbb;
     color: #000;
   }
@@ -767,8 +770,8 @@
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 1mm 4mm;
     max-inline-size: 65mm;
-    margin-block-start: 3mm;
-    padding: 2mm;
-    font-size: 7.5pt;
+    margin-block-start: 1.5mm;
+    padding: 1.5mm;
+    font-size: 7pt;
   }
 }

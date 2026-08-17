@@ -309,14 +309,25 @@
     padding: 0;
     border: 0;
     box-shadow: none;
-    break-inside: avoid;
   }
 
   .report-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.5mm;
   }
 
   .price-impact-chart {
-    display: none;
+    gap: 1mm;
+    min-inline-size: 0;
+  }
+
+  .reports-page,
+  .report-analysis-grid {
+    gap: 2mm;
+  }
+
+  .report-snapshot__details {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1mm;
   }
 }

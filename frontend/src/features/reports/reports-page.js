@@ -45,7 +45,6 @@ function renderMetrics(metrics) {
     const value = element("p", `summary-card__value${compactValue?.compact ? " compact-money" : ""}`, compactValue?.amount ?? "—");
     const unit = element("span", "summary-card__unit", compactValue?.unit ?? getDisplayCurrencyLabel());
     if (compactValue?.compact) {
-      value.title = compactValue.exact;
       value.dataset.exact = compactValue.exact;
       value.setAttribute("aria-label", compactValue.exact);
       value.tabIndex = 0;
@@ -115,7 +114,6 @@ function renderPriceVariances(rows = []) {
     bar.style.setProperty("--impact-width", `${row.magnitude}%`);
     track.append(bar);
     const value = element("span", "price-impact-chart__value numeric compact-money", formatCompactMoneyFromIrr(row.varianceIrr));
-    value.title = formatTomanFromIrr(row.varianceIrr);
     value.dataset.exact = formatTomanFromIrr(row.varianceIrr);
     value.setAttribute("aria-label", formatTomanFromIrr(row.varianceIrr));
     value.append(element("small", "", row.directionLabel));
@@ -175,14 +173,21 @@ function renderQuantityVariances(rows = []) {
   return section;
 }
 
-function renderReportWarnings(rows = []) {
-  if (!rows.length) return document.createDocumentFragment();
+function renderReportWarnings(rows = [], report = {}) {
+  const warnings = [...rows];
+  if (report.calculationStatus === "incomplete") {
+    warnings.unshift({
+      code: "CALCULATION_INCOMPLETE",
+      message: `محاسبات این گزارش کامل نیست؛ ${formatDisplayNumber(report.missingPriceCount ?? 0)} قیمت و ${formatDisplayNumber(report.excludedEstimateLineCount ?? 0)} ردیف برآورد از نتیجه نهایی کنار گذاشته شده است.`,
+    });
+  }
+  if (!warnings.length) return document.createDocumentFragment();
   const section = element("section", "report-section report-warning-section");
   section.append(element("h2", "", "هشدارهای مؤثر بر محاسبات"));
   const list = document.createElement("ul");
-  rows.forEach((warning) => {
+  warnings.forEach((warning) => {
     const item = document.createElement("li");
-    item.append(element("span", "", REPORT_WARNING_LABELS[warning.code] ?? "هشداری برای محاسبات این گزارش ثبت شده است."));
+    item.append(element("span", "", REPORT_WARNING_LABELS[warning.code] ?? warning.message ?? "هشداری برای محاسبات این گزارش ثبت شده است."));
     if (warning.estimateLineId) {
       const detail = element("a", "table-action", "مشاهده ردیف برآورد");
       detail.href = `#/financial-items?estimateLineId=${encodeURIComponent(warning.estimateLineId)}`;
@@ -242,7 +247,19 @@ export function createReportsPage({ context, adapter }) {
     paint();
     try {
       const report = await adapter.getLiveReport({ reportingDate });
-      state = report ? createRequestState(REQUEST_STATUS.SUCCESS, report) : createRequestState(REQUEST_STATUS.EMPTY);
+      if (report) {
+        const [priceVariances, quantityVariances] = await Promise.all([
+          adapter.getVariances({ reportingDate, progressSnapshotId: report.progressSnapshotId, varianceType: "price" }),
+          adapter.getVariances({ reportingDate, progressSnapshotId: report.progressSnapshotId, varianceType: "quantity" }),
+        ]);
+        state = createRequestState(REQUEST_STATUS.SUCCESS, {
+          ...report,
+          topPriceVariances: priceVariances.items,
+          topQuantityVariances: quantityVariances.items,
+        });
+      } else {
+        state = createRequestState(REQUEST_STATUS.EMPTY);
+      }
     } catch (error) {
       state = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
     }
@@ -323,7 +340,7 @@ export function createReportsPage({ context, adapter }) {
     const analysis = element("section", "report-analysis-grid");
     analysis.setAttribute("aria-label", "جزئیات اثر تغییرات و انحرافات مالی");
     analysis.append(renderPriceVariances(report.topPriceVariances), renderQuantityVariances(report.topQuantityVariances));
-    fragment.append(toolbar, renderMetrics(report.metrics), renderBreakdown(report.breakdown), analysis, renderReportWarnings(report.warnings));
+    fragment.append(toolbar, renderMetrics(report.metrics), renderBreakdown(report.breakdown), analysis, renderReportWarnings(report.warnings, report));
     if (actionError) fragment.append(element("p", "inline-notice state-card--danger", actionError));
     if (snapshot) fragment.append(renderSnapshot(snapshot, { canExport: hasPermission(context, "finance_report.export"), onDownload: downloadCsv }));
     return fragment;

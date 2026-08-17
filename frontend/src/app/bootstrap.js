@@ -94,6 +94,7 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
     root.append(createSettingsPage({
       context,
       adapter: adapters.settings,
+      pricesAdapter: adapters.prices,
     }));
   }
   liveRegion.textContent = `صفحه ${route.label} نمایش داده شد.`;

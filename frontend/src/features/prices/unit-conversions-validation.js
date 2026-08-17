@@ -14,6 +14,9 @@ const ALLOWED_CONVERSION_DIRECTIONS = new Map([
   ["ton", new Set(["kg"])],
   ["equipment_day", new Set(["hour"])],
 ]);
+const CONFIGURABLE_CONVERSION_DIRECTIONS = new Map([
+  ["equipment_day", new Set(["hour"])],
+]);
 
 function validateDate(value) {
   const normalized = String(value ?? "").trim();
@@ -41,6 +44,14 @@ export function isSupportedConversionDirection(sourceUnit, targetUnit) {
   return ALLOWED_CONVERSION_DIRECTIONS.get(sourceUnit)?.has(targetUnit) ?? false;
 }
 
+export function isConfigurableConversionDirection(sourceUnit, targetUnit) {
+  return CONFIGURABLE_CONVERSION_DIRECTIONS.get(sourceUnit)?.has(targetUnit) ?? false;
+}
+
+export function getConfigurableSourceUnits() {
+  return UNIT_OPTIONS.filter((unit) => CONFIGURABLE_CONVERSION_DIRECTIONS.has(unit.value));
+}
+
 export function validateUnitConversion(values) {
   const sourceUnit = String(values.sourceUnit ?? "").trim();
   const targetUnit = String(values.targetUnit ?? "").trim();
@@ -62,6 +73,9 @@ export function validateUnitConversion(values) {
     dimension: source && target && source.dimension !== target.dimension ? "تبدیل بین دو بُعد ناسازگار مجاز نیست." : "",
     direction: source && target && source.dimension === target.dimension && !isSupportedConversionDirection(sourceUnit, targetUnit)
       ? "جهت تبدیل مجاز نیست؛ تبدیل فقط از واحد بزرگ‌تر به واحد پایه کوچک‌تر ثبت می‌شود."
+      : "",
+    policy: source && target && isSupportedConversionDirection(sourceUnit, targetUnit) && !isConfigurableConversionDirection(sourceUnit, targetUnit)
+      ? "این تبدیل یک رابطه استاندارد و ثابت است و قابل تغییر نیست."
       : "",
   };
   if (sourceUnit && sourceUnit === targetUnit) errors.targetUnit = "واحد مبدأ و مقصد باید متفاوت باشند.";
