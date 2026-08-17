@@ -468,7 +468,8 @@ function renderCurrentPrices(items, history, focusResourceId = "") {
   table.append(element("caption", "sr-only", "فهرست قیمت روز اقلام پروژه"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  ["قلم هزینه", "واحد پایه", "قیمت پایه سازمان", "قیمت اختصاصی پروژه", "قیمت روز", "روند", "منبع قیمت", "تاریخ اعتبار"].forEach((label) => header.append(element("th", "", label)));
+  const displayCurrency = getDisplayCurrencyLabel();
+  ["قلم هزینه", "واحد پایه", `قیمت پایه سازمان (${displayCurrency})`, `قیمت اختصاصی پروژه (${displayCurrency})`, `قیمت روز (${displayCurrency})`, "روند", "منبع قیمت", "تاریخ اعتبار"].forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
   items.forEach((item) => {
@@ -483,9 +484,9 @@ function renderCurrentPrices(items, history, focusResourceId = "") {
     row.append(
       resource,
       element("td", "", formatUnitLabel(item.resource.baseUnit)),
-      element("td", "numeric", item.organizationPrice ? formatTomanFromIrr(item.organizationPrice.unitPriceIRR) : "—"),
-      element("td", "numeric", item.projectPrice ? formatTomanFromIrr(item.projectPrice.unitPriceIRR) : "—"),
-      element("td", "numeric price-current", item.currentPrice ? formatTomanFromIrr(item.currentPrice.unitPriceIRR) : "ثبت نشده"),
+      element("td", "numeric", item.organizationPrice ? formatTomanFromIrr(item.organizationPrice.unitPriceIRR, { withCurrency: false }) : "—"),
+      element("td", "numeric", item.projectPrice ? formatTomanFromIrr(item.projectPrice.unitPriceIRR, { withCurrency: false }) : "—"),
+      element("td", "numeric price-current", item.currentPrice ? formatTomanFromIrr(item.currentPrice.unitPriceIRR, { withCurrency: false }) : "ثبت نشده"),
       element("td", "", ""),
       element("td", "", currentScope),
       element("td", "", item.currentPrice ? formatBusinessDate(item.currentPrice.effectiveFrom) : "—"),

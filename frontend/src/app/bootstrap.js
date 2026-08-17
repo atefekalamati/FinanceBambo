@@ -30,11 +30,9 @@ import { createAiReviewPage } from "../features/ai-review/ai-review-page.js";
 import { createSettingsPage } from "../features/settings/settings-page.js";
 import { createReportsPage } from "../features/reports/reports-page.js";
 import { createAuditPage } from "../features/audit/audit-page.js";
-import { formatArea } from "../shared/formatters/display.js";
 import { DISPLAY_CURRENCY_CHANGED_EVENT } from "../shared/preferences/currency-preference.js";
 
 const root = document.querySelector("#finance-module-root");
-const contextSlot = document.querySelector("#project-context-slot");
 const liveRegion = document.querySelector("#finance-live-region");
 
 function createHostAdapters(context) {
@@ -56,18 +54,6 @@ function resolveContext() {
   const hostContext = getHostContext();
   document.body.dataset.financeRuntime = hostContext ? "host" : "standalone";
   return hostContext ?? getStandaloneContext();
-}
-
-function renderContext(context) {
-  const project = document.createElement("div");
-  const title = document.createElement("strong");
-  title.textContent = context.projectName || context.projectId;
-  const meta = document.createElement("small");
-  meta.textContent = `${context.projectCode || context.projectId} · ${formatArea(context.grossBuiltArea)}`;
-  project.append(title, document.createElement("br"), meta);
-  const organization = document.createElement("span");
-  organization.textContent = context.organizationName || "سازمان BAMBO";
-  contextSlot.replaceChildren(project, organization);
 }
 
 function renderDenied() {
@@ -108,7 +94,6 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
     root.append(createSettingsPage({
       context,
       adapter: adapters.settings,
-      onSettingsUpdated: (settings) => renderContext({ ...context, grossBuiltArea: settings.grossBuiltArea }),
     }));
   }
   liveRegion.textContent = `صفحه ${route.label} نمایش داده شد.`;
@@ -153,7 +138,6 @@ try {
   }
   let activeRoute = null;
   let activeRouteQuery = new URLSearchParams();
-  renderContext(context);
   createHashRouter({ routes: ROUTES, defaultPath: DEFAULT_ROUTE, onNavigate: (route, routeQuery) => {
     activeRoute = route;
     activeRouteQuery = routeQuery;
@@ -166,7 +150,6 @@ try {
     subscribeHostProjectContext((nextContext) => {
       context = nextContext;
       adapters = createHostAdapters(context);
-      renderContext(context);
       if (activeRoute) renderRoute(activeRoute, context, adapters, activeRouteQuery);
       liveRegion.textContent = `اطلاعات مالی پروژه ${context.projectName || context.projectId} بارگذاری شد.`;
     }, (error) => {

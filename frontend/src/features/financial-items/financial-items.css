@@ -92,12 +92,15 @@
 }
 
 .items-toolbar p {
+  min-inline-size: 0;
   margin: 0;
   color: var(--color-text-secondary);
+  overflow-wrap: break-word;
 }
 
 .items-toolbar__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-sm);
 }
 

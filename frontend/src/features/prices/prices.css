@@ -22,10 +22,12 @@
 }
 
 .prices-toolbar p {
+  min-inline-size: 0;
   max-inline-size: 52rem;
   margin: 0;
   color: var(--color-text-secondary);
   line-height: 1.8;
+  overflow-wrap: break-word;
 }
 
 .prices-toolbar__actions {
@@ -87,6 +89,7 @@
 }
 
 .app-input , .app-select{
+  max-inline-size: 100%;
   color: var(--color-text-primary);
   background: none;
   border: 1px solid var(--color-border);
@@ -504,6 +507,12 @@ html[data-theme="light"] .price-form select {
 
   .price-list-filters {
     grid-template-columns: 1fr;
+  }
+
+  .app-input,
+  .app-select {
+    inline-size: 100%;
+    min-inline-size: 0;
   }
 
   .prices-section-heading {

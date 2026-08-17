@@ -5,6 +5,8 @@
 .reports-page {
   display: grid;
   gap: var(--space-lg);
+  min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
 .report-toolbar,
@@ -259,7 +261,21 @@
     min-inline-size: 0;
   }
 
-  .report-metrics,
+  .report-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-sm);
+  }
+
+  .report-metrics .summary-card {
+    min-block-size: 7.25rem;
+    padding: .85rem;
+  }
+
+  .report-metrics .summary-card__value {
+    margin-block-start: .55rem;
+    font-size: clamp(.88rem, 4vw, 1.1rem);
+  }
+
   .report-snapshot__details {
     grid-template-columns: 1fr;
   }
@@ -271,6 +287,12 @@
   .price-impact-chart__track {
     grid-column: 1 / -1;
     grid-row: 2;
+  }
+}
+
+@media (max-width: 23rem) {
+  .report-metrics {
+    grid-template-columns: 1fr;
   }
 }
 

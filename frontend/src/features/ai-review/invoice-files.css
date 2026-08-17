@@ -147,6 +147,11 @@
   margin-block-start: var(--space-lg);
 }
 
+.uploaded-file-card__actions .button {
+  flex: 0 1 auto;
+  white-space: normal;
+}
+
 .file-processing-failure {
   margin-block-start: var(--space-lg);
   padding: var(--space-lg);

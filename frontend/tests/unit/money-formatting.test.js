@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatTomanFromIrr, irrToDisplayValue, irrToToman, tomanInputToIrr } from "../../src/shared/formatters/money.js";
+import { compactMoneyFromIrr, formatCompactMoneyFromIrr, formatTomanFromIrr, irrToDisplayValue, irrToToman, tomanInputToIrr } from "../../src/shared/formatters/money.js";
+
+const rtlMoney = (text) => `\u2067${text}\u2069`;
 
 test("converts canonical IRR to exact Toman without floating point", () => {
   assert.equal(irrToToman("12345678901234567891"), "1234567890123456789.1");
-  assert.equal(formatTomanFromIrr("1250"), "۱۲۵ تومان");
+  assert.equal(formatTomanFromIrr("1250"), rtlMoney("۱۲۵ تومان"));
 });
 
 test("converts Persian Toman input to canonical integer IRR", () => {
@@ -17,8 +19,31 @@ test("uses the selected IRR display without changing the canonical backend amoun
   globalThis.window = { localStorage: { getItem: () => "IRR" } };
   try {
     assert.equal(irrToDisplayValue("1250"), "1250");
-    assert.equal(formatTomanFromIrr("1250"), "۱٬۲۵۰ ریال");
+    assert.equal(formatTomanFromIrr("1250"), rtlMoney("۱٬۲۵۰ ریال"));
     assert.equal(tomanInputToIrr("۱٬۲۵۰"), "1250");
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test("compacts large Toman values without floating point and keeps the exact value", () => {
+  const result = compactMoneyFromIrr("189000000000");
+  assert.deepEqual(result, {
+    amount: "۱۸٫۹",
+    unit: "میلیارد تومان",
+    exact: rtlMoney("۱۸٬۹۰۰٬۰۰۰٬۰۰۰ تومان"),
+    compact: true,
+  });
+  assert.equal(formatCompactMoneyFromIrr("12500000"), rtlMoney("۱٫۲۵ میلیون تومان"));
+});
+
+test("keeps small values exact and compacts according to the selected IRR display", () => {
+  assert.equal(formatCompactMoneyFromIrr("1250"), rtlMoney("۱۲۵ تومان"));
+  const previousWindow = globalThis.window;
+  globalThis.window = { localStorage: { getItem: () => "IRR" } };
+  try {
+    assert.equal(formatCompactMoneyFromIrr("189000000000"), rtlMoney("۱۸۹ میلیارد ریال"));
   } finally {
     if (previousWindow === undefined) delete globalThis.window;
     else globalThis.window = previousWindow;

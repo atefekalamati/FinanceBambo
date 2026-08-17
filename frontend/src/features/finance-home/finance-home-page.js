@@ -1,7 +1,7 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
-import { formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
+import { compactMoneyFromIrr, formatCompactMoneyFromIrr, formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
 
@@ -44,21 +44,30 @@ const WORK_AREAS = Object.freeze([
   { key: "audit", title: "تاریخچه تغییرات مالی", description: "ردیابی اصلاحات، تأییدها و عملیات حساس مالی", meta: "انجام‌دهنده · زمان · دلیل", href: "#/audit" },
 ]);
 
-function createTomanDisplay(value) {
+function createTomanDisplay(value, { compact = false } = {}) {
   const display = document.createElement("span");
   display.className = "money-display";
   if (!/^-?\d+$/.test(String(value ?? ""))) {
     display.textContent = "قابل محاسبه نیست";
     return display;
   }
+  const compactValue = compact ? compactMoneyFromIrr(value) : null;
+  const exactValue = formatTomanFromIrr(value);
   const unit = document.createElement("span");
   unit.className = "money-display__unit";
-  unit.textContent = getDisplayCurrencyLabel();
+  unit.textContent = compactValue?.unit ?? getDisplayCurrencyLabel();
   const amount = document.createElement("bdi");
   amount.className = "money-display__amount numeric";
   amount.dir = "ltr";
-  amount.textContent = formatDisplayNumber(irrToDisplayValue(value));
+  amount.textContent = compactValue?.amount ?? formatDisplayNumber(irrToDisplayValue(value));
   display.append(unit, amount);
+  if (compactValue?.compact) {
+    display.classList.add("compact-money");
+    display.title = exactValue;
+    display.dataset.exact = exactValue;
+    display.setAttribute("aria-label", exactValue);
+    display.tabIndex = 0;
+  }
   return display;
 }
 
@@ -72,7 +81,7 @@ function createSummaryCard(key, label, description, data) {
   title.textContent = label;
   const value = document.createElement("p");
   value.className = "summary-card__value";
-  value.append(createTomanDisplay(data?.[key]));
+  value.append(createTomanDisplay(data?.[key], { compact: true }));
   const unit = document.createElement("span");
   unit.className = "summary-card__unit";
   unit.textContent = unavailable ? "داده مبنا موجود نیست" : description;
@@ -156,7 +165,12 @@ function createBreakdownChart(rows) {
       track.append(bar);
       const amount = document.createElement("span");
       amount.className = "breakdown-chart__value numeric";
-      amount.textContent = formatTomanFromIrr(value);
+      amount.textContent = formatCompactMoneyFromIrr(value);
+      amount.title = formatTomanFromIrr(value);
+      amount.dataset.exact = formatTomanFromIrr(value);
+      amount.classList.add("compact-money");
+      amount.setAttribute("aria-label", formatTomanFromIrr(value));
+      amount.tabIndex = 0;
       seriesRow.append(track, amount);
       bars.append(seriesRow);
     });
@@ -219,7 +233,7 @@ function createComparisonPanel(title, description, entries) {
   entries.forEach((entry) => {
     const item = document.createElement("article");
     item.className = `overview-comparison__item overview-comparison__item--${entry.key}`;
-    const value = createTomanDisplay(entry.value);
+    const value = createTomanDisplay(entry.value, { compact: true });
     value.classList.add("overview-comparison__value");
     const track = document.createElement("div");
     track.className = "overview-comparison__track";
@@ -253,22 +267,27 @@ function createManagerialComparisonPanel(metrics, entries) {
   chart.setAttribute("aria-label", "مقایسه برآورد اولیه، هزینه واقعی، هزینه باقی‌مانده و پیش‌بینی نهایی");
   const plot = document.createElement("div");
   plot.className = "managerial-combo-chart__plot";
-  const initialEntry = entries.find((entry) => entry.key === "initial");
   const baseline = document.createElement("div");
   baseline.className = "managerial-combo-chart__baseline";
-  baseline.style.setProperty("--baseline-offset", `${(initialEntry?.magnitude ?? 0) / 10}rem`);
-  const baselineLabel = document.createElement("span");
-  baselineLabel.textContent = "خط مرجع برآورد اولیه";
+  const baselineLabel = document.createElement("div");
+  baselineLabel.className = "managerial-combo-chart__reference";
+  const baselineSwatch = document.createElement("span");
+  baselineSwatch.setAttribute("aria-hidden", "true");
+  const baselineText = document.createElement("strong");
+  baselineText.textContent = "خط مرجع برآورد اولیه";
+  baselineLabel.append(baselineSwatch, baselineText);
   baseline.append(baselineLabel);
   plot.append(baseline);
 
+  let initialColumn = null;
   entries.forEach((entry) => {
     const item = document.createElement("article");
     item.className = `managerial-combo-chart__item managerial-combo-chart__item--${entry.key}`;
     const column = document.createElement("div");
     column.className = "managerial-combo-chart__column";
     column.style.setProperty("--column-size", `${entry.magnitude}%`);
-    const value = createTomanDisplay(entry.value);
+    if (entry.key === "initial") initialColumn = column;
+    const value = createTomanDisplay(entry.value, { compact: true });
     value.classList.add("managerial-combo-chart__value");
     const label = document.createElement("h3");
     label.textContent = entry.label;
@@ -276,6 +295,23 @@ function createManagerialComparisonPanel(metrics, entries) {
     plot.append(item);
   });
   chart.append(plot);
+  const syncBaseline = () => {
+    if (!initialColumn?.isConnected || !plot.isConnected) return;
+    const plotRect = plot.getBoundingClientRect();
+    const columnRect = initialColumn.getBoundingClientRect();
+    baseline.style.setProperty("--baseline-top", `${columnRect.top - plotRect.top}px`);
+  };
+  const scheduleBaselineSync = typeof requestAnimationFrame === "function"
+    ? requestAnimationFrame
+    : (callback) => setTimeout(callback, 0);
+
+  scheduleBaselineSync(() => {
+    syncBaseline();
+    if (typeof ResizeObserver === "function") {
+      const observer = new ResizeObserver(syncBaseline);
+      observer.observe(plot);
+    }
+  });
   const initial = /^-?\d+$/.test(String(metrics.initialEstimateIrr ?? "")) ? BigInt(metrics.initialEstimateIrr) : 0n;
   const forecast = /^-?\d+$/.test(String(metrics.forecastFinalCostIrr ?? "")) ? BigInt(metrics.forecastFinalCostIrr) : 0n;
   const deviation = forecast - initial;
@@ -287,7 +323,8 @@ function createManagerialComparisonPanel(metrics, entries) {
   title.textContent = "انحراف پیش‌بینی نهایی";
   const value = document.createElement("strong");
   value.className = "numeric";
-  value.textContent = deviation === 0n ? label : `${formatTomanFromIrr((deviation < 0n ? -deviation : deviation).toString())} ${label}`;
+  value.textContent = deviation === 0n ? label : `${formatCompactMoneyFromIrr((deviation < 0n ? -deviation : deviation).toString())} ${label}`;
+  if (deviation !== 0n) value.title = formatTomanFromIrr((deviation < 0n ? -deviation : deviation).toString());
   summary.append(title, value);
   section.append(heading, chart, summary);
   return section;
@@ -414,7 +451,7 @@ function renderFinanceHome(data) {
   riskStack.className = "finance-risk-stack";
   riskStack.append(
     warnings,
-    createVariancePanel("بیشترین انحراف قیمت", data.topPriceVariances, "varianceIrr", formatTomanFromIrr, "#/prices"),
+    createVariancePanel("بیشترین انحراف قیمت", data.topPriceVariances, "varianceIrr", formatCompactMoneyFromIrr, "#/prices"),
     createVariancePanel("بیشترین انحراف مقدار", data.topQuantityVariances, "varianceQuantity", formatDisplayNumber, "#/financial-items"),
   );
   insights.append(breakdown, riskStack);
