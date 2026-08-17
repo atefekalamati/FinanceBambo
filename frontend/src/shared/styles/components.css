@@ -69,6 +69,10 @@
   margin-block: var(--space-md) var(--space-lg);
 }
 
+.section-heading > * {
+  min-inline-size: 0;
+}
+
 .section-heading span {
   color: var(--dash-actual);
   font-size: .75rem;
@@ -96,6 +100,7 @@
 
 .summary-card,
 .state-card {
+  min-inline-size: 0;
   padding: 1.25rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -224,6 +229,7 @@
 }
 
 .button {
+  max-inline-size: 100%;
   min-block-size: 2.75rem;
   display: inline-flex;
   align-items: center;
@@ -231,6 +237,7 @@
   padding: var(--space-sm) var(--space-lg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
+  text-align: center;
   cursor: pointer;
   transition:
     background var(--duration-fast) var(--ease-standard),
@@ -271,6 +278,8 @@
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
   overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .data-table {
@@ -449,6 +458,11 @@
     inset 0 -1px 0 rgb(0 172 88 / 45%);
 }
 
+.summary-card :is(h2, p, small),
+.state-card :is(h1, h2, p, small) {
+  overflow-wrap: break-word;
+}
+
 .data-table tr.deep-link-target > td:first-child {
   box-shadow:
     inset -3px 0 0 var(--color-accent),
@@ -459,6 +473,47 @@
 .data-table tr.deep-link-target:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
+}
+
+/* --------------------------------------------------------------------------
+   Compact financial values
+   -------------------------------------------------------------------------- */
+
+.compact-money {
+  position: relative;
+  cursor: help;
+}
+
+.compact-money::after {
+  position: absolute;
+  z-index: var(--z-calendar-popup);
+  inset-block-end: calc(100% + .4rem);
+  inset-inline-start: 50%;
+  inline-size: max-content;
+  max-inline-size: min(18rem, 80vw);
+  padding: .35rem .55rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  background: var(--color-surface-canvas);
+  box-shadow: var(--shadow-toolbar);
+  content: attr(data-exact);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  line-height: 1.5;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(50%) translateY(.2rem);
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+  white-space: normal;
+}
+
+.compact-money:is(:hover, :focus-visible)::after,
+.price-impact-chart__row:focus-visible .compact-money::after {
+  opacity: 1;
+  transform: translateX(50%) translateY(0);
 }
 
 /* --------------------------------------------------------------------------
@@ -490,6 +545,11 @@
   .section-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .section-heading small {
+    max-inline-size: 100%;
+    overflow-wrap: break-word;
   }
 
   .work-area-card {

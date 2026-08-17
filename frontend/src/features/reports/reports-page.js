@@ -5,7 +5,7 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
-import { formatTomanFromIrr } from "../../shared/formatters/money.js";
+import { compactMoneyFromIrr, formatCompactMoneyFromIrr, formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { buildPriceVariancePresentation, buildQuantityVariancePresentation } from "./report-analysis.js";
 
@@ -41,7 +41,16 @@ function renderMetrics(metrics) {
   grid.setAttribute("aria-label", "شاخص‌های گزارش مالی");
   METRICS.forEach(([key, label]) => {
     const card = element("article", "summary-card");
-    card.append(element("h2", "", label), element("p", "summary-card__value", formatTomanFromIrr(metrics?.[key])), element("span", "summary-card__unit", getDisplayCurrencyLabel()));
+    const compactValue = compactMoneyFromIrr(metrics?.[key]);
+    const value = element("p", `summary-card__value${compactValue?.compact ? " compact-money" : ""}`, compactValue?.amount ?? "—");
+    const unit = element("span", "summary-card__unit", compactValue?.unit ?? getDisplayCurrencyLabel());
+    if (compactValue?.compact) {
+      value.title = compactValue.exact;
+      value.dataset.exact = compactValue.exact;
+      value.setAttribute("aria-label", compactValue.exact);
+      value.tabIndex = 0;
+    }
+    card.append(element("h2", "", label), value, unit);
     grid.append(card);
   });
   return grid;
@@ -105,7 +114,10 @@ function renderPriceVariances(rows = []) {
     const bar = element("span", "price-impact-chart__bar");
     bar.style.setProperty("--impact-width", `${row.magnitude}%`);
     track.append(bar);
-    const value = element("span", "price-impact-chart__value numeric", formatTomanFromIrr(row.varianceIrr));
+    const value = element("span", "price-impact-chart__value numeric compact-money", formatCompactMoneyFromIrr(row.varianceIrr));
+    value.title = formatTomanFromIrr(row.varianceIrr);
+    value.dataset.exact = formatTomanFromIrr(row.varianceIrr);
+    value.setAttribute("aria-label", formatTomanFromIrr(row.varianceIrr));
     value.append(element("small", "", row.directionLabel));
     link.append(identity, track, value);
     chart.append(link);

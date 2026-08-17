@@ -64,6 +64,8 @@
 .audit-detail-dialog {
   inline-size: min(58rem, calc(100% - 2rem));
   max-inline-size: 58rem;
+  max-block-size: calc(100dvh - 2rem);
+  overflow-y: auto;
 }
 
 .audit-detail__head {
@@ -84,6 +86,7 @@
 .audit-detail__head p {
   margin-block-start: var(--space-xs);
   color: var(--color-text-muted);
+  overflow-wrap: anywhere;
 }
 
 .audit-detail__identity,

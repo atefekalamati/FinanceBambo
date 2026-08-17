@@ -16,6 +16,7 @@
 }
 
 .feature-header__copy {
+  min-inline-size: 0;
   max-inline-size: 52rem;
 }
 
@@ -33,6 +34,7 @@
 .feature-header p {
   margin: 0;
   color: var(--color-text-secondary);
+  overflow-wrap: break-word;
 }
 
 /* --------------------------------------------------------------------------
@@ -249,7 +251,10 @@ html[data-theme="light"] .form-field textarea {
    -------------------------------------------------------------------------- */
 
 .confirm-dialog {
+  inline-size: min(31rem, calc(100% - 1rem));
   max-inline-size: 31rem;
+  max-block-size: calc(100dvh - 1rem);
+  overflow-y: auto;
   padding: var(--space-xl);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);

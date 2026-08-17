@@ -3,7 +3,7 @@
    -------------------------------------------------------------------------- */
 
 .finance-page-title {
-  margin: 0 0 .75rem;
+  margin: 0;
   font-size: clamp(1.25rem, 2.5vw, 1.65rem);
   line-height: 1.4;
 }
@@ -14,6 +14,23 @@
 
 .finance-home-page .section-heading h2 {
   font-size: 1.05rem;
+}
+
+.finance-home-page {
+  --finance-section-gap: .75rem;
+  display: grid;
+  gap: var(--finance-section-gap);
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.finance-home-page > * {
+  min-inline-size: 0;
+  margin-block: 0;
+}
+
+.finance-home-page > .section-heading {
+  margin-block: 0;
 }
 
 .finance-overview-panel {
@@ -36,7 +53,7 @@
   display: grid;
   grid-template-columns: minmax(0, 4fr) minmax(15rem, 1.2fr);
   align-items: stretch;
-  gap: .75rem;
+  gap: var(--finance-section-gap);
 }
 
 .finance-overview-layout .finance-managerial-comparison {
@@ -47,6 +64,7 @@
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
+  block-size: 100%;
   padding: .85rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -77,20 +95,21 @@
 }
 
 .finance-supplementary-summary__list {
-  display: grid;
-  flex: 1;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: stretch;
   gap: .45rem;
   margin-block-start: .6rem;
 }
 
+.finance-supplementary-summary__list > .summary-card {
+  flex: 1 0 auto;
+  inline-size: 100%;
+}
+
 .finance-home-page .finance-supplementary-summary .summary-card--compact {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "title value"
-    "detail detail";
-  align-content: center;
-  gap: .2rem .6rem;
+  display: block;
   min-block-size: 0;
   padding: .6rem .7rem;
   border-color: transparent;
@@ -105,20 +124,19 @@
 }
 
 .finance-home-page .finance-supplementary-summary .summary-card--compact h2 {
-  grid-area: title;
-  align-self: center;
-  font-size: .7rem;
+  margin: 0;
+  font-size: .72rem;
+  font-weight: 700;
 }
 
 .finance-home-page .finance-supplementary-summary .summary-card--compact .summary-card__value {
-  grid-area: value;
-  align-self: center;
-  margin: 0;
-  font-size: .78rem;
+  margin: .35rem 0 .15rem;
+  font-size: .88rem;
+  font-weight: 900;
 }
 
 .finance-home-page .finance-supplementary-summary .summary-card--compact .summary-card__unit {
-  grid-area: detail;
+  display: block;
   color: var(--color-text-muted);
   font-size: .64rem;
 }
@@ -128,9 +146,6 @@
 }
 
 .finance-home-page .summary-grid {
-  grid-template-areas:
-    "initial actual remaining forecast"
-    "executed actual-area required forecast-area";
   gap: .75rem;
 }
 
@@ -180,42 +195,34 @@
 }
 
 .finance-home-page .summary-card[data-metric="initialEstimateIrr"] {
-  grid-area: initial;
   --summary-accent: var(--dash-plan);
 }
 
 .finance-home-page .summary-card[data-metric="actualCostIrr"] {
-  grid-area: actual;
   --summary-accent: var(--dash-actual);
 }
 
 .finance-home-page .summary-card[data-metric="actualCostPerSquareMeterIrr"] {
-  grid-area: actual-area;
   --summary-accent: var(--dash-actual);
 }
 
 .finance-home-page .summary-card[data-metric="currentExecutedValueIrr"] {
-  grid-area: executed;
   --summary-accent: var(--brand-teal);
 }
 
 .finance-home-page .summary-card[data-metric="remainingPhysicalCostIrr"] {
-  grid-area: remaining;
   --summary-accent: var(--dash-sev-med);
 }
 
 .finance-home-page .summary-card[data-metric="forecastFinalCostIrr"] {
-  grid-area: forecast;
   --summary-accent: var(--brand-green);
 }
 
 .finance-home-page .summary-card[data-metric="forecastPerSquareMeterIrr"] {
-  grid-area: forecast-area;
   --summary-accent: var(--brand-green);
 }
 
 .finance-home-page .summary-card[data-metric="moneyRequiredToContinueIrr"] {
-  grid-area: required;
   --summary-accent: var(--dash-sev-med);
 }
 
@@ -271,8 +278,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(18rem, .75fr);
   align-items: stretch;
-  gap: .75rem;
-  margin-block: .75rem var(--space-lg);
+  gap: var(--finance-section-gap);
+  margin-block: 0;
 }
 
 .finance-insights .finance-breakdown,
@@ -284,7 +291,7 @@
 .finance-risk-stack {
   display: grid;
   grid-template-rows: repeat(3, minmax(0, 1fr));
-  gap: .75rem;
+  gap: var(--finance-section-gap);
   min-inline-size: 0;
   min-block-size: 0;
 }
@@ -299,7 +306,7 @@
 
 .finance-home-page .work-area-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: .75rem;
+  gap: var(--finance-section-gap);
 }
 
 .finance-home-page .work-area-card {
@@ -365,8 +372,8 @@
 .finance-analysis-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: .75rem;
-  margin-block: .75rem;
+  gap: var(--finance-section-gap);
+  margin-block: 0;
 }
 
 .finance-analysis-grid--comparisons .finance-analysis-card {
@@ -379,59 +386,116 @@
 
 .finance-managerial-comparison {
   grid-column: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .managerial-combo-chart {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   inline-size: 100%;
+  min-block-size: 0;
   margin-block-start: 1rem;
-  padding: .75rem .9rem .25rem;
+  padding: .65rem .9rem .25rem;
   border-radius: var(--radius-md);
   background:
     linear-gradient(180deg, rgb(120 145 205 / 5%), transparent 70%),
     rgb(4 13 32 / 18%);
-  overflow: hidden;
+  overflow: visible;
+}
+
+.managerial-combo-chart__reference {
+  position: absolute;
+  z-index: 5;
+  inset-block-start: .4rem;
+  inset-inline-start: .35rem;
+  inline-size: 4.9rem;
+  display: grid;
+  justify-items: stretch;
+  gap: .3rem;
+  padding: .4rem .45rem;
+  border: 1px solid color-mix(in srgb, var(--brand-teal) 62%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--brand-teal) 18%, var(--app-card-navy));
+  box-shadow: 0 .3rem .9rem rgb(0 0 0 / 28%);
+  color: color-mix(in srgb, var(--brand-teal) 58%, white);
+  font-size: .61rem;
+  line-height: 1.45;
+  text-align: center;
+  white-space: normal;
+}
+
+.managerial-combo-chart__reference span {
+  inline-size: 100%;
+  border-block-start: 2px solid currentColor;
+  box-shadow: 0 0 .4rem currentColor;
+}
+
+.managerial-combo-chart__reference strong {
+  overflow-wrap: normal;
 }
 
 .managerial-combo-chart__plot {
   position: relative;
+  flex: 1 1 auto;
   display: grid;
-  grid-template-columns: repeat(4, minmax(5rem, 1fr));
+  grid-template-columns: repeat(4, minmax(4.5rem, 1fr));
   gap: clamp(.3rem, 1vw, .75rem);
-  min-inline-size: 25rem;
+  min-inline-size: 0;
   padding-inline: .25rem;
-  background:
-    repeating-linear-gradient(
-      to top,
-      transparent 0,
-      transparent calc(25% - 1px),
-      rgb(255 255 255 / 5%) calc(25% - 1px),
-      rgb(255 255 255 / 5%) 25%
-    );
+  background: none;
 }
 
 .managerial-combo-chart__item {
   position: relative;
   z-index: 2;
+  container-type: inline-size;
   display: grid;
-  grid-template-rows: 2.25rem 10rem minmax(2.75rem, auto);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 2.25rem minmax(10rem, 1fr) minmax(2.75rem, auto);
   align-items: end;
   justify-items: center;
+  inline-size: 100%;
   min-inline-size: 0;
   padding-inline: .3rem;
   border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, transparent 15%, rgb(120 145 205 / 4%));
+  background: none;
 }
 
 .managerial-combo-chart__value {
   align-self: center;
+  justify-self: stretch;
   justify-content: center;
-  font-size: .7rem;
-  white-space: nowrap;
+  flex-wrap: wrap;
+  gap: clamp(.12rem, 2cqi, .35rem);
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  color: var(--color-text-primary);
+  font-size: clamp(.62rem, 10cqi, .9rem);
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+}
+
+.managerial-combo-chart__value .money-display__amount {
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.managerial-combo-chart__value .money-display__unit {
+  flex: 0 0 auto;
+  font-size: clamp(.5rem, 7.5cqi, .68rem);
 }
 
 .managerial-combo-chart__column {
   align-self: end;
+  justify-self: center;
   inline-size: clamp(1.65rem, 4vw, 3.25rem);
+  margin-inline: auto;
   block-size: max(.25rem, var(--column-size));
   max-block-size: 100%;
   border-radius: .5rem .5rem .2rem .2rem;
@@ -456,9 +520,11 @@
 
 .managerial-combo-chart__item h3 {
   align-self: start;
+  max-inline-size: 100%;
   margin: .55rem 0 0;
   color: var(--color-text-secondary);
-  font-size: .7rem;
+  font-size: clamp(.62rem, 9cqi, .82rem);
+  font-weight: 800;
   line-height: 1.45;
   text-align: center;
 }
@@ -467,21 +533,34 @@
   position: absolute;
   z-index: 3;
   inset-inline: 0;
-  inset-block-end: calc(2.75rem + var(--baseline-offset));
-  border-block-start: 1px dashed color-mix(in srgb, var(--dash-plan) 82%, white);
+  inset-block-start: var(--baseline-top, 2.25rem);
+  border-block-start: 2px solid color-mix(in srgb, var(--dash-plan) 88%, white);
+  filter: drop-shadow(0 0 .3rem color-mix(in srgb, var(--dash-plan) 72%, transparent));
   pointer-events: none;
 }
 
-.managerial-combo-chart__baseline span {
-  position: absolute;
-  inset-inline-start: 0;
-  inset-block-end: .3rem;
-  padding: .15rem .4rem;
-  border-radius: var(--radius-pill);
-  background: var(--app-card-navy);
-  color: color-mix(in srgb, var(--dash-plan) 76%, white);
-  font-size: .64rem;
-  white-space: nowrap;
+@media (min-width: 64.01rem) {
+  .managerial-combo-chart__plot {
+    min-block-size: 17rem;
+  }
+
+  .managerial-combo-chart__value {
+    font-size: clamp(.78rem, 8cqi, .95rem);
+  }
+
+  .managerial-combo-chart__item h3 {
+    font-size: clamp(.74rem, 7.5cqi, .88rem);
+    font-weight: 900;
+  }
+
+  .breakdown-chart__group h3 {
+    font-size: .9rem;
+  }
+
+  .breakdown-chart__value {
+    font-size: .78rem;
+    font-weight: 900;
+  }
 }
 
 .managerial-deviation {
@@ -710,7 +789,7 @@
    -------------------------------------------------------------------------- */
 
 .finance-breakdown {
-  margin-block: var(--space-lg);
+  margin-block: 0;
   padding: .85rem 1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -737,6 +816,7 @@
   gap: var(--space-sm);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+  font-weight: 700;
 }
 
 .breakdown-legend li::before {
@@ -760,14 +840,8 @@
   gap: .8rem;
   min-inline-size: 38rem;
   padding: .9rem .75rem;
-  border-block: 1px solid var(--color-border-subtle);
-  background-image: repeating-linear-gradient(
-    to left,
-    transparent 0,
-    transparent calc(20% - 1px),
-    var(--dash-grid) calc(20% - 1px),
-    var(--dash-grid) 20%
-  );
+  border: 0;
+  background: none;
 }
 
 .breakdown-chart__group {
@@ -782,6 +856,7 @@
   margin: 0;
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
+  font-weight: 800;
   text-align: start;
 }
 
@@ -835,8 +910,9 @@
 }
 
 .breakdown-chart__value {
-  color: var(--color-text-muted);
-  font-size: .68rem;
+  color: var(--color-text-secondary);
+  font-size: .72rem;
+  font-weight: 800;
   white-space: nowrap;
 }
 
@@ -888,6 +964,7 @@
   }
 
   .finance-supplementary-summary__list {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -909,8 +986,24 @@
   }
 
   .managerial-combo-chart {
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
+    flex: none;
+    overflow: visible;
+  }
+
+  .managerial-combo-chart__plot {
+    flex: none;
+  }
+
+  .breakdown-chart {
+    min-inline-size: 0;
+  }
+
+  .breakdown-chart__group {
+    grid-template-columns: 6rem minmax(0, 1fr);
+  }
+
+  .breakdown-chart__series {
+    grid-template-columns: minmax(0, 1fr) 7rem;
   }
 
   .finance-home-page .work-area-grid {
@@ -924,8 +1017,7 @@
   }
 
   .managerial-combo-chart {
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
+    overflow: visible;
   }
 }
 
@@ -949,12 +1041,47 @@
   }
 
   .managerial-combo-chart__plot {
-    gap: .5rem;
-    min-inline-size: 25rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .2rem;
+    min-inline-size: 0;
+    background: none;
+  }
+
+  .managerial-combo-chart__item {
+    grid-template-rows: 2.4rem 6rem minmax(2.7rem, auto);
+    padding-inline: .1rem;
+    background: none;
+  }
+
+  .managerial-combo-chart__baseline {
+    display: block;
+  }
+
+  .managerial-combo-chart__reference {
+    display: none;
+  }
+
+  .managerial-combo-chart__value {
+    gap: .08rem;
+    font-size: clamp(.5rem, 11cqi, .6rem);
+  }
+
+  .managerial-combo-chart__value .money-display__unit {
+    font-size: clamp(.46rem, 9cqi, .54rem);
+  }
+
+  .managerial-combo-chart__item h3 {
+    margin-block-start: .35rem;
+    font-size: clamp(.54rem, 10cqi, .62rem);
+    line-height: 1.35;
+  }
+
+  .managerial-combo-chart__column {
+    inline-size: clamp(1.1rem, 6vw, 1.5rem);
   }
 
   .finance-supplementary-summary__list {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
   }
 
   .breakdown-legend {
@@ -963,7 +1090,21 @@
   }
 
   .breakdown-chart {
-    min-inline-size: 30rem;
+    min-inline-size: 0;
+    padding-inline: .5rem;
+  }
+
+  .breakdown-chart__group {
+    grid-template-columns: minmax(0, 1fr);
+    gap: .35rem;
+  }
+
+  .breakdown-chart__series {
+    grid-template-columns: minmax(0, 1fr) minmax(5.5rem, 6.5rem);
+  }
+
+  .breakdown-chart__value {
+    font-size: .68rem;
   }
 
   .breakdown-chart__bars {

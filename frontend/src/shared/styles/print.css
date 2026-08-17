@@ -12,8 +12,6 @@
     display: block;
   }
 
-  .host-preview-header,
-  .project-context,
   .skip-link,
   .button {
     display: none !important;
