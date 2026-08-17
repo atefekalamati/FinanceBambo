@@ -104,11 +104,11 @@ test("appends a unit conversion version and preserves previous records", async (
   const adapter = createMockPricesAdapter(context);
   const before = await adapter.getPrices();
   const oldIds = before.conversionHistory.map((conversion) => conversion.conversionId);
-  const after = await adapter.createUnitConversion({ sourceUnit: "ton", targetUnit: "kg", factor: "1020.000000", scope: "project", effectiveDate: "2026-08-08" });
+  const after = await adapter.createUnitConversion({ sourceUnit: "equipment_day", targetUnit: "hour", factor: "9.000000", scope: "project", effectiveDate: "2026-08-08" });
   assert.equal(after.conversionHistory.length, before.conversionHistory.length + 1);
   assert.ok(oldIds.every((id) => after.conversionHistory.some((conversion) => conversion.conversionId === id)));
-  const current = after.currentConversions.find((item) => item.sourceUnit === "ton" && item.targetUnit === "kg");
-  assert.equal(current.currentConversion.factor, "1020.000000");
+  const current = after.currentConversions.find((item) => item.sourceUnit === "equipment_day" && item.targetUnit === "hour");
+  assert.equal(current.currentConversion.factor, "9.000000");
   assert.equal(current.currentConversion.projectId, context.projectId);
 });
 

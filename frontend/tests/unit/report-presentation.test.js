@@ -22,7 +22,7 @@ test("uses absolute magnitude for negative financial effects without changing di
 
 test("returns zero-width bars for an all-zero breakdown", () => {
   const [row] = buildBreakdownPresentation([{ resourceType: "equipment", initialEstimateIrr: "0", actualCostIrr: "0", forecastFinalIrr: "0" }]);
-  assert.deepEqual(row.bars, { initial: 0, actual: 0, forecast: 0 });
+  assert.deepEqual(row.bars, { initial: 0, actual: 0 });
 });
 
 test("preserves optional revised estimate and remaining breakdown values", () => {
@@ -46,7 +46,5 @@ test("builds exact overview comparisons without binary financial arithmetic", ()
     currentExecutedValueIrr: "25000000000000000",
     remainingPhysicalCostIrr: "75000000000000000",
   });
-  assert.deepEqual(result.estimate.map((entry) => entry.magnitude), [80, 40, 100]);
-  assert.deepEqual(result.work.map((entry) => entry.magnitude), [33.33, 100]);
   assert.deepEqual(result.management.map((entry) => entry.magnitude), [80, 40, 60, 100]);
 });

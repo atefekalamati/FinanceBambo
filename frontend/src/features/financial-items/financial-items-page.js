@@ -712,6 +712,7 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
   function renderHeader() {
     const header = element("header", "feature-header");
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
     back.href = "#/finance";
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "اقلام پروژه و ریز برآورد"), element("h1", "", "اقلام و برآورد"), element("p", "", "هر اتصال فعالیت و قلم هزینه یک ردیف مستقل برآورد است؛ مقدار اولیه حفظ و آخرین مقدار برآورد جداگانه نمایش داده می‌شود."));

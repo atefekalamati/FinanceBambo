@@ -302,6 +302,7 @@ export function createProgressPage({ context, adapter }) {
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "پیشرفت اجرایی پروژه"), element("h1", "", "نسخه‌های پیشرفت پروژه"), element("p", "", "نسخه‌های ثبت‌شده گزارش پیشرفت و تخصیص‌های فعالیت و قلم هزینه را به‌صورت فقط‌خواندنی مشاهده کنید."));
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
     back.href = "#/finance";
     header.append(copy, back);
     return header;

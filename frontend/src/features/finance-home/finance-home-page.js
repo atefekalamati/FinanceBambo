@@ -39,7 +39,6 @@ const WORK_AREAS = Object.freeze([
   { key: "prices", title: "قیمت روز و تبدیل واحد", description: "ثبت قیمت پایه سازمان، قیمت اختصاصی پروژه و مشاهده تاریخچه قیمت", meta: "قیمت روز · تاریخچه · واحد", href: "#/prices" },
   { key: "progress", title: "پیشرفت و مقادیر انجام‌شده", description: "مشاهده نسخه پیشرفت پروژه، کیفیت داده و اصلاح دستی مقدار", meta: "نسخه پیشرفت · مقدار انجام‌شده · هشدار", href: "#/progress" },
   { key: "invoices", title: "فاکتورها", description: "مشاهده فهرست، وضعیت، منبع، فروشنده، مبلغ و جزئیات خطوط", meta: "فهرست · جزئیات · وضعیت", href: "#/invoices" },
-  { key: "settings", title: "تنظیمات مالی", description: "زیربنای کل، واحد پول نمایشی و تنظیمات سطح پروژه", meta: "زیربنا · واحد نمایش · دسترسی", href: "#/settings" },
   { key: "reports", title: "گزارش مالی", description: "مشاهده گزارش به‌روز، ثبت گزارش دوره‌ای و دریافت خروجی", meta: "گزارش به‌روز · گزارش ثبت‌شده · چاپ", href: "#/reports" },
   { key: "audit", title: "تاریخچه تغییرات مالی", description: "ردیابی اصلاحات، تأییدها و عملیات حساس مالی", meta: "انجام‌دهنده · زمان · دلیل", href: "#/audit" },
 ]);
@@ -63,7 +62,6 @@ function createTomanDisplay(value, { compact = false } = {}) {
   display.append(unit, amount);
   if (compactValue?.compact) {
     display.classList.add("compact-money");
-    display.title = exactValue;
     display.dataset.exact = exactValue;
     display.setAttribute("aria-label", exactValue);
     display.tabIndex = 0;
@@ -166,7 +164,6 @@ function createBreakdownChart(rows) {
       const amount = document.createElement("span");
       amount.className = "breakdown-chart__value numeric";
       amount.textContent = formatCompactMoneyFromIrr(value);
-      amount.title = formatTomanFromIrr(value);
       amount.dataset.exact = formatTomanFromIrr(value);
       amount.classList.add("compact-money");
       amount.setAttribute("aria-label", formatTomanFromIrr(value));
@@ -212,41 +209,6 @@ function createBreakdownChart(rows) {
   table.append(caption, thead, tbody);
   wrapper.append(table);
   section.append(heading, legend, chartViewport, wrapper);
-  return section;
-}
-
-function createComparisonPanel(title, description, entries) {
-  const section = document.createElement("section");
-  section.className = "finance-analysis-card";
-  const heading = document.createElement("div");
-  heading.className = "finance-analysis-card__heading";
-  const headingTitle = document.createElement("h2");
-  headingTitle.textContent = title;
-  const headingDescription = document.createElement("p");
-  headingDescription.textContent = description;
-  heading.append(headingTitle, headingDescription);
-
-  const chart = document.createElement("div");
-  chart.className = `overview-comparison overview-comparison--${entries.length}`;
-  chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", title);
-  entries.forEach((entry) => {
-    const item = document.createElement("article");
-    item.className = `overview-comparison__item overview-comparison__item--${entry.key}`;
-    const value = createTomanDisplay(entry.value, { compact: true });
-    value.classList.add("overview-comparison__value");
-    const track = document.createElement("div");
-    track.className = "overview-comparison__track";
-    const bar = document.createElement("span");
-    bar.className = "overview-comparison__bar";
-    bar.style.setProperty("--bar-size", `${entry.magnitude}%`);
-    track.append(bar);
-    const label = document.createElement("h3");
-    label.textContent = entry.label;
-    item.append(value, track, label);
-    chart.append(item);
-  });
-  section.append(heading, chart);
   return section;
 }
 
@@ -398,9 +360,17 @@ function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
 
 function renderFinanceHome(data) {
   const fragment = document.createDocumentFragment();
+  const pageHeader = document.createElement("header");
+  pageHeader.className = "finance-page-header";
   const pageTitle = document.createElement("h1");
   pageTitle.className = "finance-page-title";
   pageTitle.textContent = "نمای کلی مالی";
+  const settingsLink = document.createElement("a");
+  settingsLink.className = "finance-project-settings-link";
+  settingsLink.href = "#/settings";
+  settingsLink.textContent = "تنظیمات مالی پروژه";
+  settingsLink.setAttribute("aria-label", "ورود به تنظیمات مالی پروژه جاری");
+  pageHeader.append(pageTitle, settingsLink);
 
   const summaryHeader = document.createElement("div");
   summaryHeader.className = "section-heading";
@@ -427,13 +397,20 @@ function renderFinanceHome(data) {
   const warnings = document.createElement("section");
   warnings.className = "finance-warnings";
   warnings.setAttribute("aria-label", "هشدارهای محاسبات مالی");
-  if (data.warnings.length) {
+  const reportWarnings = [...(data.warnings ?? [])];
+  if (data.calculationStatus === "incomplete") {
+    reportWarnings.unshift({
+      code: "CALCULATION_INCOMPLETE",
+      message: `محاسبات مالی کامل نیست؛ ${formatDisplayNumber(data.missingPriceCount ?? 0)} قیمت و ${formatDisplayNumber(data.excludedEstimateLineCount ?? 0)} ردیف برآورد در محاسبه نهایی لحاظ نشده است.`,
+    });
+  }
+  if (reportWarnings.length) {
     const warningTitle = document.createElement("h2");
     warningTitle.textContent = "هشدارهای کیفیت محاسبه";
     const list = document.createElement("ul");
-    data.warnings.forEach((warning) => {
+    reportWarnings.forEach((warning) => {
       const item = document.createElement("li");
-      item.textContent = WARNING_LABELS[warning.code] ?? "برای بخشی از محاسبات مالی هشدار ثبت شده است.";
+      item.textContent = WARNING_LABELS[warning.code] ?? warning.message ?? "برای بخشی از محاسبات مالی هشدار ثبت شده است.";
       list.append(item);
     });
     warnings.append(warningTitle, list);
@@ -464,7 +441,7 @@ function renderFinanceHome(data) {
   areas.setAttribute("aria-label", "بخش‌های امور مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  fragment.append(pageTitle, overviewPanel, insights, areasHeader, areas);
+  fragment.append(pageHeader, overviewPanel, insights, areasHeader, areas);
   return fragment;
 }
 
@@ -482,7 +459,7 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
         state = createRequestState(REQUEST_STATUS.EMPTY);
       } else {
         const latest = snapshots[0].snapshot;
-        const report = await reportsAdapter.getLiveReport({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId });
+        const report = await reportsAdapter.getOverview({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId });
         state = report ? createRequestState(REQUEST_STATUS.SUCCESS, report) : createRequestState(REQUEST_STATUS.EMPTY);
       }
     } catch (error) {

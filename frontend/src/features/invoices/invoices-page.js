@@ -642,6 +642,7 @@ export function createInvoicesPage({ context, adapter }) {
       showAccessibleDialog(dialog);
     });
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
     back.href = "#/finance";
     const upload = element("a", "button button--ghost", "ورود از تصویر یا صدا");
     upload.href = "#/invoice-files";

@@ -17,7 +17,8 @@ const routes = [
   "audit",
   "settings",
 ];
-const widths = [1440, 1280, 1024, 768, 390, 360];
+
+const widths = [1440, 1280, 1024, 900, 768, 600, 480, 390, 360];
 const port = 49333;
 const profile = await mkdtemp(join(tmpdir(), "bambo-layout-audit-"));
 const chrome = spawn(chromePath, [
@@ -138,7 +139,24 @@ const measurementExpression = `(() => {
       });
     });
   });
-  return { viewportWidth, pageOverflow, unexpected, clippedLabels, cardOverlaps, title: document.title };
+  const tableFillGaps = [...document.querySelectorAll('.data-table')]
+    .map((table) => {
+      const wrapper = table.closest('.table-scroll');
+      if (!wrapper) return null;
+      const tableRect = table.getBoundingClientRect();
+      const availableWidth = wrapper.clientWidth;
+      const gap = availableWidth - tableRect.width;
+      if (gap <= 2) return null;
+      return {
+        className: String(table.className),
+        availableWidth,
+        tableWidth: tableRect.width,
+        gap,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+  return { viewportWidth, pageOverflow, unexpected, clippedLabels, cardOverlaps, tableFillGaps, title: document.title };
 })()`;
 
 const failures = [];
@@ -164,7 +182,7 @@ try {
         returnByValue: true,
       });
       const measurement = result.result.value;
-      if (measurement.pageOverflow > 2 || measurement.unexpected.length || measurement.clippedLabels.length || measurement.cardOverlaps.length || cdp.exceptions.length) {
+      if (measurement.pageOverflow > 2 || measurement.unexpected.length || measurement.clippedLabels.length || measurement.cardOverlaps.length || measurement.tableFillGaps.length || cdp.exceptions.length) {
         failures.push({ width, route, measurement, exceptions: cdp.exceptions });
       }
       cdp.close();
@@ -173,8 +191,8 @@ try {
   }
 } finally {
   chrome.kill();
-  await delay(300);
-  await rm(profile, { recursive: true, force: true });
+  await delay(800);
+  await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 });
 }
 
 console.log(JSON.stringify({ runs: routes.length * widths.length, failures }, null, 2));

@@ -35,15 +35,6 @@ export function buildOverviewComparisons(metrics = {}) {
       { key: "remaining", label: "هزینه کار باقی‌مانده با قیمت روز", value: String(metrics.remainingPhysicalCostIrr ?? "0") },
       { key: "forecast", label: "پیش‌بینی هزینه نهایی", value: String(metrics.forecastFinalCostIrr ?? "0") },
     ]),
-    estimate: buildExactScale([
-      { key: "initial", label: "برآورد اولیه", value: String(metrics.initialEstimateIrr ?? "0") },
-      { key: "actual", label: "هزینه واقعی ثبت‌شده", value: String(metrics.actualCostIrr ?? "0") },
-      { key: "forecast", label: "پیش‌بینی هزینه نهایی", value: String(metrics.forecastFinalCostIrr ?? "0") },
-    ]),
-    work: buildExactScale([
-      { key: "executed", label: "ارزش روز کار انجام‌شده", value: String(metrics.currentExecutedValueIrr ?? "0") },
-      { key: "remaining", label: "هزینه کار باقی‌مانده", value: String(metrics.remainingPhysicalCostIrr ?? "0") },
-    ]),
   });
 }
 
@@ -64,7 +55,6 @@ export function buildBreakdownPresentation(rows = []) {
     bars: {
       initial: maximum === 0n ? 0 : Number((absolute(exactInteger(row.initialEstimateIrr)) * 10000n) / maximum) / 100,
       actual: maximum === 0n ? 0 : Number((absolute(exactInteger(row.actualCostIrr)) * 10000n) / maximum) / 100,
-      forecast: maximum === 0n ? 0 : Number((absolute(exactInteger(row.forecastFinalIrr)) * 10000n) / maximum) / 100,
     },
   }));
 }

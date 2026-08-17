@@ -39,7 +39,42 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
         { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000002", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", varianceQuantity: "42.5" },
       ],
       warnings: [{ code: "CURRENT_PRICE_MISSING", message: "Current price is missing.", estimateLineId: null }],
+      calculationStatus: "complete",
+      incompleteMetricKeys: [],
+      missingPriceCount: 0,
+      excludedEstimateLineCount: 0,
+      excludedEstimateLineIds: [],
+      progressQuality: {
+        complete: true,
+        manualOverrideCount: 0,
+        taskFallbackCount: 0,
+        missingCount: 0,
+        assignmentActualCount: 2,
+        assignmentPercentFallbackCount: 0,
+      },
       scope: { organizationId: context.organizationId, projectId: context.projectId },
+    };
+  }
+
+  async function getOverview(options) {
+    return getLiveReport(options);
+  }
+
+  async function getVariances({ reportingDate, progressSnapshotId, varianceType = "all", page = 1, pageSize = 200 }) {
+    const report = await getLiveReport({ reportingDate, progressSnapshotId });
+    if (!report) return { items: [], page, pageSize, totalItems: 0, totalPages: 0 };
+    const items = varianceType === "price"
+      ? report.topPriceVariances
+      : varianceType === "quantity"
+        ? report.topQuantityVariances
+        : [...report.topPriceVariances, ...report.topQuantityVariances];
+    const start = (page - 1) * pageSize;
+    return {
+      items: items.slice(start, start + pageSize),
+      page,
+      pageSize,
+      totalItems: items.length,
+      totalPages: Math.ceil(items.length / pageSize),
     };
   }
 
@@ -79,5 +114,5 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     return Object.freeze({ blob: new Blob([`\uFEFF${rows.join("\r\n")}`], { type: "text/csv;charset=utf-8" }), fileName: `finance-report-${reportId}.csv` });
   }
 
-  return Object.freeze({ getLiveReport, issueSnapshot, getSnapshot, downloadSnapshotCsv });
+  return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv });
 }

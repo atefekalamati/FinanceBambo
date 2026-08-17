@@ -78,32 +78,6 @@
    Toolbar and content sections
    -------------------------------------------------------------------------- */
 
-.items-toolbar {
-  min-block-size: var(--toolbar-min-height);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-lg);
-  padding: var(--space-lg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-toolbar);
-  backdrop-filter: var(--glass-bg-pb-filter);
-}
-
-.items-toolbar p {
-  min-inline-size: 0;
-  margin: 0;
-  color: var(--color-text-secondary);
-  overflow-wrap: break-word;
-}
-
-.items-toolbar__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-}
-
 .items-section {
   min-inline-size: 0;
   padding: var(--space-xl);
@@ -697,16 +671,6 @@ html[data-theme="light"] .workspace-form select {
    -------------------------------------------------------------------------- */
 
 @media (max-width: 48rem) {
-  .items-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .items-toolbar__actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .lines-section__head,
   .items-section__meta {
     align-items: stretch;
@@ -767,10 +731,6 @@ html[data-theme="light"] .workspace-form select {
     padding: var(--space-lg);
   }
 
-  .items-toolbar__actions {
-    grid-template-columns: 1fr;
-  }
-
   .workspace-dialog {
     inline-size: calc(100% - 1rem);
     padding: var(--space-lg);
@@ -796,7 +756,6 @@ html[data-theme="light"] .workspace-form select {
    -------------------------------------------------------------------------- */
 
 @media print {
-  .items-toolbar,
   .items-section__actions,
   .workspace-dialog {
     display: none !important;

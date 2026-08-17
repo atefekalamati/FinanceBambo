@@ -110,6 +110,7 @@ export function createAuditPage({ adapter }) {
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "ردیابی تغییرات حساس"), element("h1", "", "تاریخچه تغییرات مالی"), element("p", "", "رویدادهای تغییر فقط‌خواندنی و براساس زمان ثبت سیستم نمایش داده می‌شوند."));
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
     back.href = "#/finance";
     header.append(copy, back);
 
