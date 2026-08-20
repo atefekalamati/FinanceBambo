@@ -49,3 +49,29 @@ test("keeps small values exact and compacts according to the selected IRR displa
     else globalThis.window = previousWindow;
   }
 });
+
+test("a shared compact scale keeps every axis tick in one unit", async () => {
+  const { compactMoneyScale } = await import("../../src/shared/formatters/money.js");
+  const scale = compactMoneyScale("1250000000");
+  assert.equal(scale.unit, "میلیون تومان");
+  assert.deepEqual(
+    ["0", "312500000", "625000000", "937500000", "1250000000"].map((tick) => scale.format(tick)),
+    ["۰", "۳۱٫۲۵", "۶۲٫۵", "۹۳٫۷۵", "۱۲۵"],
+    "a per-value formatter would label the low ticks in a smaller unit and silently mix scales on one axis",
+  );
+});
+
+test("the compact scale follows the maximum into a larger unit", async () => {
+  const { compactMoneyScale } = await import("../../src/shared/formatters/money.js");
+  const scale = compactMoneyScale("125000000000");
+  assert.equal(scale.unit, "میلیارد تومان");
+  assert.equal(scale.format("125000000000"), "۱۲٫۵");
+  assert.equal(scale.format("0"), "۰");
+});
+
+test("the compact scale rejects a non-integer maximum instead of guessing", async () => {
+  const { compactMoneyScale } = await import("../../src/shared/formatters/money.js");
+  assert.equal(compactMoneyScale("12.5"), null);
+  assert.equal(compactMoneyScale(null), null);
+  assert.equal(compactMoneyScale("1000000").format("12.5"), null);
+});

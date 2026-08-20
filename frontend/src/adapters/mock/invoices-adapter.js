@@ -11,8 +11,23 @@ function wait(duration = 320) {
   return new Promise((resolve) => setTimeout(resolve, duration));
 }
 
+/**
+ * The seed spans eight Gregorian months so the monthly trend on the overview
+ * has a real shape. Amounts and statuses are untouched; only the calendar
+ * position of each invoice moves.
+ */
+const SEED_MONTH_SPAN = 8;
+const SEED_FIRST_MONTH = 4; // 2026-04, which falls in فروردین ۱۴۰۵
+
+function seedInvoiceDate(index) {
+  const month = SEED_FIRST_MONTH + ((index - 1) % SEED_MONTH_SPAN);
+  const day = ((index * 7) % 27) + 1;
+  return `2026-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function makeInvoice(index, context) {
   const number = String(index).padStart(3, "0");
+  const invoiceDate = seedInvoiceDate(index);
   const status = STATUSES[(index - 1) % STATUSES.length];
   const source = SOURCES[(index - 1) % SOURCES.length];
   const rawTotalIRR = String(120000000 + (index * 1750000));
@@ -21,7 +36,7 @@ function makeInvoice(index, context) {
     organizationId: context.organizationId,
     projectId: context.projectId,
     invoiceNumber: `ف-${number}`,
-    invoiceDate: `2026-07-${String(((index - 1) % 28) + 1).padStart(2, "0")}`,
+    invoiceDate,
     vendorName: index % 3 === 0 ? "تأمین تجهیزات سازه نمونه" : index % 2 === 0 ? "شرکت مصالح پایدار نمونه" : "فروشگاه ساختمانی بامبو نمونه",
     description: index % 4 === 0 ? "خرید و تأمین اقلام موردنیاز عملیات اجرایی طبق صورت‌جلسه کارگاه" : "فاکتور نمایشی برای توسعه رابط کاربری",
     source,
@@ -37,7 +52,7 @@ function makeInvoice(index, context) {
     otherCostsIRR: "0",
     finalAmountIRR: String(BigInt(rawTotalIRR) - BigInt(index % 4 === 0 ? "500000" : "0") + BigInt(index % 3 === 0 ? "1200000" : "0") + BigInt(index % 5 === 0 ? "750000" : "0")),
     submittedBy: context.userId,
-    createdAt: `2026-07-${String(((index - 1) % 28) + 1).padStart(2, "0")}T08:30:00Z`,
+    createdAt: `${invoiceDate}T08:30:00Z`,
     confirmedBy: status === "confirmed" || status === "voided" || status === "corrected" ? context.userId : null,
     confirmedAt: status === "confirmed" || status === "voided" || status === "corrected" ? "2026-08-01T09:15:00Z" : null,
     relatedInvoiceId: status === "voided" || status === "corrected" ? "invoice-demo-001" : null,
@@ -50,8 +65,13 @@ function makeInvoice(index, context) {
   };
 }
 
+/** Shared with the mock reports adapter so both read one seed, not two. */
+export function buildSeedInvoices(context) {
+  return Array.from({ length: 53 }, (unused, index) => makeInvoice(index + 1, context));
+}
+
 export function createMockInvoicesAdapter(context, { initialState = "success" } = {}) {
-  const invoices = initialState === "empty" ? [] : Array.from({ length: 53 }, (_, index) => makeInvoice(index + 1, context));
+  const invoices = initialState === "empty" ? [] : buildSeedInvoices(context);
   const createRequests = new Map();
   const confirmationKeys = new Map();
   const linkedOperationKeys = new Map();

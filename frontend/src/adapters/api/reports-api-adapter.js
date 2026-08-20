@@ -56,5 +56,23 @@ export function createApiReportsAdapter(context, client) {
     return client.download(`${base}/report-snapshots/${encodeURIComponent(reportId)}/csv`);
   }
 
-  return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv });
+  /**
+   * No route returns a monthly series. LiveMetrics and TypeBreakdown have no
+   * time dimension, EstimateLine has no dates, and the only date-bearing money
+   * is the invoice list — which would give actual cost but never an estimate
+   * baseline, and only by paging the whole project.
+   *
+   * Reporting the series as unavailable is the honest answer: half a chart
+   * labelled as a comparison would read as "no overspend" when it is really
+   * "no baseline". Replace this once the Backend exposes the monthly report.
+   */
+  async function getMonthlyTrend() {
+    return {
+      months: [],
+      estimateSource: "unavailable",
+      unavailableReason: "سرویس گزارش مالی هنوز سری زمانی ماهانه ارائه نمی‌دهد.",
+    };
+  }
+
+  return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv, getMonthlyTrend });
 }

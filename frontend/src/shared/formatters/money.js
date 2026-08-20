@@ -74,6 +74,33 @@ export function compactMoneyFromIrr(value) {
   });
 }
 
+/**
+ * One compact scale shared by a whole axis.
+ *
+ * compactMoneyFromIrr picks a unit per value, so a set of axis ticks would mix
+ * میلیون and میلیارد on the same scale. This locks the unit to the one the
+ * maximum resolves to and renders every tick against it, leaving the label
+ * short enough for a chart axis and the unit stated once.
+ */
+export function compactMoneyScale(maximumIrr) {
+  const reference = compactMoneyFromIrr(maximumIrr);
+  if (!reference) return null;
+  const currencyDivisor = getDisplayCurrencyCode() === "IRR" ? 1n : 10n;
+  const matched = COMPACT_MONEY_SCALES.find((scale) => reference.unit.startsWith(scale.label));
+  const denominator = matched ? matched.threshold * currencyDivisor : currencyDivisor;
+  return Object.freeze({
+    unit: reference.unit,
+    format(value) {
+      if (!/^-?\d+$/.test(String(value ?? ""))) return null;
+      const canonical = BigInt(value);
+      const negative = canonical < 0n;
+      const absolute = negative ? -canonical : canonical;
+      const roundedHundredths = ((absolute * 100n) + (denominator / 2n)) / denominator;
+      return formatDisplayNumber(`${negative ? "-" : ""}${formatRoundedHundredths(roundedHundredths)}`);
+    },
+  });
+}
+
 export function formatCompactMoneyFromIrr(value, { fallback = "—" } = {}) {
   const result = compactMoneyFromIrr(value);
   return result ? isolateRtlMoney(`${result.amount} ${result.unit}`) : fallback;
