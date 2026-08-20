@@ -22,15 +22,16 @@ PROJECT_ID = "sample_site_01"
 
 
 class AuthProvider:
-    def __init__(self, permission_codes=("finance.view", "finance.edit")):
+    def __init__(self, permission_codes=("finance.view", "finance.edit"), organization_role="finance_viewer"):
         self.permission_codes = permission_codes
+        self.organization_role = organization_role
 
     async def current(self, _request):
         return AuthContext(
             userId=ACTOR_ID,
             organizationId=ORG_ID,
             projectId=PROJECT_ID,
-            organizationRole="finance_viewer",
+            organizationRole=self.organization_role,
             projectRole="editor",
             permissionCodes=self.permission_codes,
             locale="fa-IR",
@@ -69,10 +70,34 @@ class Repository:
             created_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
         )
 
+    def _revision(self, revision, area, effective_from, reason):
+        return FinanceProjectSettings(
+            id=uuid4(),
+            organization_id=ORG_ID,
+            project_id=PROJECT_ID,
+            gross_built_area=Decimal(area),
+            currency="IRR",
+            revision=revision,
+            effective_from=effective_from,
+            reason=reason,
+            created_by=ACTOR_ID,
+            created_at=datetime(2026, 8, revision, tzinfo=timezone.utc),
+        )
+
     async def get_current(self, scope):
         if scope.organization_id == ORG_ID and scope.project_id == PROJECT_ID:
             return self.current
         return None
+
+    async def list_revisions(self, scope):
+        if scope.organization_id != ORG_ID or scope.project_id != PROJECT_ID:
+            return []
+        # Newest first, exactly as the append-only table is read.
+        return [
+            self._revision(3, "4250.0000", date(2026, 8, 3), "اصلاح نقشه اجرایی"),
+            self._revision(2, "4100.0000", date(2026, 8, 2), "بازنگری زیربنا"),
+            self._revision(1, "4000.0000", date(2026, 8, 1), "ثبت اولیه"),
+        ]
 
     async def append_revision_with_audit(
         self,
@@ -103,11 +128,11 @@ class Repository:
         return self.current
 
 
-def client(permission_codes=("finance.view", "finance.edit")):
+def client(permission_codes=("finance.view", "finance.edit"), organization_role="finance_viewer"):
     from app.finance.services.settings import FinanceSettingsService
 
     application = create_app()
-    application.state.auth_context_provider = AuthProvider(permission_codes)
+    application.state.auth_context_provider = AuthProvider(permission_codes, organization_role)
     application.state.scope_authorizer = ScopeAuthorizer()
     application.state.permission_authorizer = PermissionAuthorizer()
     application.state.finance_settings_service = FinanceSettingsService(Repository())
@@ -150,6 +175,64 @@ class FinanceSettingsApiTests(unittest.TestCase):
             no_permission = api.get(f"/api/projects/{PROJECT_ID}/finance/settings")
         self.assertEqual(403, cross_project.status_code)
         self.assertEqual(403, no_permission.status_code)
+
+    def test_revision_trail_pairs_each_change_with_the_area_it_replaced(self):
+        with client() as api:
+            response = api.get(f"/api/projects/{PROJECT_ID}/finance/settings/revisions")
+        self.assertEqual(200, response.status_code)
+        rows = response.json()
+        self.assertEqual([3, 2, 1], [row["revision"] for row in rows])
+        self.assertEqual(
+            [("4250.0000", "4100.0000"), ("4100.0000", "4000.0000"), ("4000.0000", None)],
+            [(row["grossBuiltArea"], row["previousGrossBuiltArea"]) for row in rows],
+        )
+        # The oldest revision replaced nothing, so the UI can render it as the initial entry.
+        self.assertIsNone(rows[-1]["previousGrossBuiltArea"])
+        self.assertEqual(
+            {"id", "revision", "grossBuiltArea", "previousGrossBuiltArea",
+             "effectiveFrom", "reason", "createdBy", "createdAt"},
+            set(rows[0]),
+        )
+
+    def test_revision_trail_needs_only_view_permission_and_stays_tenant_scoped(self):
+        with client(permission_codes=("finance.view",)) as api:
+            allowed = api.get(f"/api/projects/{PROJECT_ID}/finance/settings/revisions")
+            other_project = api.get("/api/projects/other_site/finance/settings/revisions")
+        self.assertEqual(200, allowed.status_code)
+        self.assertEqual(403, other_project.status_code)
+
+    def test_revision_trail_is_denied_without_finance_view(self):
+        with client(permission_codes=()) as api:
+            response = api.get(f"/api/projects/{PROJECT_ID}/finance/settings/revisions")
+        self.assertEqual(403, response.status_code)
+        self.assertEqual("FINANCE_FORBIDDEN", response.json()["error"]["code"])
+
+    def test_reported_edit_capability_matches_what_the_patch_gate_enforces(self):
+        # An org chief holding only finance.view may revise the area; a plain viewer may not.
+        # The response has to say so, because the browser cannot know the role policy.
+        cases = (
+            (("finance.view",), "org_chief", True),
+            (("finance.view",), "finance_viewer", False),
+            (("finance.view", "finance.edit"), "finance_viewer", True),
+        )
+        for permission_codes, organization_role, expected in cases:
+            with self.subTest(role=organization_role, permissions=permission_codes):
+                with client(permission_codes, organization_role) as api:
+                    settings = api.get(f"/api/projects/{PROJECT_ID}/finance/settings")
+                    patch = api.patch(
+                        f"/api/projects/{PROJECT_ID}/finance/settings",
+                        json={"grossBuiltArea": "4600.0000", "effectiveFrom": "2026-08-12",
+                              "reason": "بازنگری", "expectedRevision": 1},
+                    )
+                self.assertEqual(200, settings.status_code)
+                self.assertEqual(expected, settings.json()["canEdit"])
+                # The claim is only useful if enforcement agrees with it.
+                self.assertEqual(expected, patch.status_code == 200)
+
+    def test_capability_is_a_hint_and_never_a_grant(self):
+        with client(permission_codes=(), organization_role="org_chief") as api:
+            settings = api.get(f"/api/projects/{PROJECT_ID}/finance/settings")
+        self.assertEqual(403, settings.status_code)
 
 
 if __name__ == "__main__":

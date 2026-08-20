@@ -4,14 +4,18 @@ from typing import Literal
 from uuid import UUID
 from pydantic import Field,field_serializer,field_validator
 from .base import ApiModel
-from .numeric import strict_decimal
+from .numeric import strict_decimal,strict_optional_decimal
 class ProgressSnapshotResponse(ApiModel):
  organization_id:UUID;project_id:str;progress_snapshot_id:UUID;source_file_version_id:UUID;source_file_name_safe:str;imported_at:datetime;imported_by:UUID;status:Literal["ready","superseded"];reporting_date:date
 class ProgressFeedResponse(ApiModel):
  snapshot:ProgressSnapshotResponse;assignments:list[dict]
 class ProgressOverrideCreate(ApiModel):
- progress_snapshot_id:UUID;computed_value:Decimal=Field(max_digits=18,decimal_places=4);override_value:Decimal=Field(max_digits=18,decimal_places=4);reason:str=Field(min_length=1)
- @field_validator("computed_value","override_value",mode="before")
+ """computedValue is derived from the selected snapshot by ProgressService; a client-sent value is accepted for backward compatibility but never trusted."""
+ progress_snapshot_id:UUID;computed_value:Decimal|None=Field(default=None,max_digits=18,decimal_places=4);override_value:Decimal=Field(max_digits=18,decimal_places=4);reason:str=Field(min_length=1)
+ @field_validator("computed_value",mode="before")
+ @classmethod
+ def strict_optional_computed(cls,v):return strict_optional_decimal(v)
+ @field_validator("override_value",mode="before")
  @classmethod
  def strict_progress_numbers(cls,v):return strict_decimal(v)
  @field_validator("reason")
@@ -20,8 +24,10 @@ class ProgressOverrideCreate(ApiModel):
   if not v.strip():raise ValueError("reason must not be blank")
   return v.strip()
 class ProgressOverrideResponse(ProgressOverrideCreate):
- id:UUID;estimate_line_id:UUID;created_by:UUID;created_at:datetime;source:Literal["manual_override"]="manual_override"
+ id:UUID;estimate_line_id:UUID;computed_value:Decimal=Field(max_digits=18,decimal_places=4);created_by:UUID;created_at:datetime;source:Literal["manual_override"]="manual_override"
  @field_serializer("computed_value","override_value")
  def decimal_string(self,v):return format(v,"f")
  @classmethod
  def from_domain(cls,v):return cls(id=v.id,estimateLineId=v.estimate_line_id,progressSnapshotId=v.progress_snapshot_id,computedValue=v.computed_value,overrideValue=v.override_value,reason=v.reason,createdBy=v.created_by,createdAt=v.created_at)
+ @classmethod
+ def from_row(cls,row):return cls(id=row["id"],estimateLineId=row["estimate_line_id"],progressSnapshotId=row["progress_snapshot_id"],computedValue=row["computed_value"],overrideValue=row["override_value"],reason=row["reason"],createdBy=row["created_by"],createdAt=row["created_at"])

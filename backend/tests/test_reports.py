@@ -104,7 +104,7 @@ class LiveReportDomainTests(unittest.TestCase):
         warning=next(item for item in report.warnings if item["code"]=="CURRENT_PRICE_MISSING")
         self.assertEqual((str(MATERIAL_LINE),str(MATERIAL),"mat",True),(warning["estimateLineId"],warning["resourceId"],warning["resourceCode"],warning["excludedFromCalculation"]))
 
-    def test_general_cost_remaining_uses_category_formula_without_line_double_subtraction(self):
+    def test_general_cost_remaining_is_allocated_per_line_without_cross_line_subsidy(self):
         line2=UUID("10000000-0000-4000-8000-000000000004");res2=UUID("20000000-0000-4000-8000-000000000004")
         estimates=[estimate(GENERAL_LINE,GENERAL,"general_cost",None,"1000","1000",None,None),estimate(line2,res2,"general_cost",None,"500","500",None,None)]
         invoices=[
@@ -112,8 +112,51 @@ class LiveReportDomainTests(unittest.TestCase):
             {"estimate_line_id":GENERAL_LINE,"resource_id":GENERAL,"quantity":None,"unit":None,"base_unit":None,"dimension":"lump_sum","final_line_amount_irr":"100","financial_effect_sign":-1,"resource_type":"general_cost"},
             {"estimate_line_id":line2,"resource_id":res2,"quantity":None,"unit":None,"base_unit":None,"dimension":"lump_sum","final_line_amount_irr":"700","financial_effect_sign":1,"resource_type":"general_cost"},
         ]
+        report=calculate_live_report(estimates,invoices,[],[],"10")
+        row={item["resourceType"]:item for item in report.breakdown}["general_cost"]
+        # line 1 owes max(1000-700,0)=300; line 2 already overran at max(500-700,0)=0.
+        # The category formula would net these to max(1500-1400,0)=100 and under-report the call on cash.
+        self.assertEqual((Decimal("1500"),Decimal("1400"),Decimal("300"),Decimal("1700")),(row["revisedEstimateIrr"],row["actualCostIrr"],row["remainingPhysicalCostIrr"],row["forecastFinalIrr"]))
+        self.assertEqual(Decimal("1700"),report.metrics["forecastFinalCostIrr"])
+        overrun=[item for item in report.warnings if item["code"]=="GENERAL_COST_OVERRUN"]
+        self.assertEqual([str(line2)],[item["estimateLineId"] for item in overrun])
+
+    def test_general_cost_actual_is_never_subtracted_from_more_than_one_line(self):
+        line2=UUID("10000000-0000-4000-8000-000000000004")
+        estimates=[estimate(GENERAL_LINE,GENERAL,"general_cost",None,"1000","1000",None,None),estimate(line2,GENERAL,"general_cost",None,"1000","1000",None,None)]
+        invoices=[{"estimate_line_id":None,"resource_id":GENERAL,"quantity":None,"unit":None,"base_unit":None,"dimension":"lump_sum","final_line_amount_irr":"600","financial_effect_sign":1,"resource_type":"general_cost"}]
         row={item["resourceType"]:item for item in calculate_live_report(estimates,invoices,[],[],"10").breakdown}["general_cost"]
-        self.assertEqual((Decimal("1500"),Decimal("1400"),Decimal("100"),Decimal("1500")),(row["revisedEstimateIrr"],row["actualCostIrr"],row["remainingPhysicalCostIrr"],row["forecastFinalIrr"]))
+        # 600 of unlinked actual is consumed once: 400 remains on the line it was allocated to, 1000 on the other.
+        self.assertEqual((Decimal("600"),Decimal("1400"),Decimal("2000")),(row["actualCostIrr"],row["remainingPhysicalCostIrr"],row["forecastFinalIrr"]))
+
+    def test_missing_price_does_not_report_a_zero_cost_breakdown_or_variance_row(self):
+        priced=estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-1")
+        unpriced=estimate(LABOR_LINE,LABOR,"labor","10","10","100",None,"a-2")
+        assignments=[{"assignmentExternalId":"a-1","actualQuantity":"0","task":{}},{"assignmentExternalId":"a-2","actualQuantity":"0","task":{}}]
+        report=calculate_live_report([priced,unpriced],[],assignments,[],"10")
+        by_type={item["resourceType"]:item for item in report.breakdown}
+        self.assertEqual(("complete",0),(by_type["material"]["calculationStatus"],by_type["material"]["excludedEstimateLineCount"]))
+        self.assertEqual(("incomplete",1),(by_type["labor"]["calculationStatus"],by_type["labor"]["excludedEstimateLineCount"]))
+        # The unpriced line must not present itself as a fully-costed line worth zero.
+        unpriced_row=next(item for item in report.all_price_variances if item["estimateLineId"]==str(LABOR_LINE))
+        self.assertEqual((False,None,None,None),(unpriced_row["priceAvailable"],unpriced_row["currentUnitPriceIrr"],unpriced_row["remainingPhysicalCostIrr"],unpriced_row["forecastFinalIrr"]))
+        self.assertEqual(Decimal("0"),unpriced_row["varianceIrr"])
+        self.assertIsNone(unpriced_row["impactSharePercent"])
+        unpriced_quantity=next(item for item in report.all_quantity_variances if item["estimateLineId"]==str(LABOR_LINE))
+        self.assertEqual((False,None,None),(unpriced_quantity["priceAvailable"],unpriced_quantity["remainingPhysicalCostIrr"],unpriced_quantity["forecastFinalIrr"]))
+        priced_row=next(item for item in report.all_price_variances if item["estimateLineId"]==str(MATERIAL_LINE))
+        self.assertEqual((True,Decimal("1000")),(priced_row["priceAvailable"],priced_row["remainingPhysicalCostIrr"]))
+        # The priced category keeps a real number; only the unpriced one is withheld.
+        self.assertEqual(Decimal("1000"),by_type["material"]["remainingPhysicalCostIrr"])
+        self.assertEqual(Decimal("0"),by_type["labor"]["remainingPhysicalCostIrr"])
+
+    def test_missing_conversion_marks_only_the_affected_breakdown_category_incomplete(self):
+        row=estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-m")
+        invoice={"estimate_line_id":None,"resource_id":MATERIAL,"quantity":"5","unit":"box","base_unit":"each","dimension":"count","final_line_amount_irr":"500","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"}
+        report=calculate_live_report([row],[invoice],[{"assignmentExternalId":"a-m","actualQuantity":"0","task":{}}],[],"10")
+        by_type={item["resourceType"]:item for item in report.breakdown}
+        self.assertEqual("incomplete",by_type["material"]["calculationStatus"])
+        self.assertEqual("complete",by_type["labor"]["calculationStatus"])
 
     def test_resource_level_purchase_is_allocated_once_across_multiple_estimate_lines(self):
         line2=UUID("10000000-0000-4000-8000-000000000004")

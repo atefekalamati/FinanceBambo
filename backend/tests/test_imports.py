@@ -15,8 +15,18 @@ def book(rows):
 class ImportTests(unittest.TestCase):
  def test_price_excel_requires_explicit_currency_and_normalizes_toman(self):
   data=book([["resourceCode","unitPrice","currency","effectiveFrom","scope"],["M1",100,"TOMAN","2026-08-08","project"]])
-  rows,errors=parse_excel(data,"prices","TOMAN");self.assertEqual([],errors);self.assertEqual("1000",rows[0]["unitPriceIrr"])
-  rows,errors=parse_excel(data,"prices","IRR");self.assertEqual([],errors);self.assertEqual("1000",rows[0]["unitPriceIrr"])
+  rows,errors=parse_excel(data,"prices");self.assertEqual([],errors);self.assertEqual("1000",rows[0]["unitPriceIrr"])
+ def test_row_currency_alone_drives_normalization(self):
+  # Normalization reads each row's mandatory currency column, so the batch-level
+  # currencyUnit cannot silently reinterpret a Toman file as Rial.
+  toman=book([["resourceCode","unitPrice","currency","effectiveFrom","scope"],["M1",100,"TOMAN","2026-08-08","project"]])
+  rial=book([["resourceCode","unitPrice","currency","effectiveFrom","scope"],["M1",100,"IRR","2026-08-08","project"]])
+  self.assertEqual("1000",parse_excel(toman,"prices")[0][0]["unitPriceIrr"])
+  self.assertEqual("100",parse_excel(rial,"prices")[0][0]["unitPriceIrr"])
+ def test_row_without_a_valid_currency_is_rejected(self):
+  data=book([["resourceCode","unitPrice","currency","effectiveFrom","scope"],["M1",100,None,"2026-08-08","project"]])
+  _,errors=parse_excel(data,"prices")
+  self.assertIn({"row":2,"field":"currency","reason":"invalid_choice"},errors)
  def test_preview_reports_columns_and_estimate_source(self):
   _,errors=parse_excel(book([["resourceCode"],["M1"]]),"estimate");self.assertTrue(errors)
   data=book([["resourceCode","activityExternalId","assignmentExternalId","originalQuantity","source"],["M1","A1","AS1","2.5","manual_entry"]])
@@ -25,10 +35,10 @@ class ImportTests(unittest.TestCase):
   data=book([["resourceCode","activityExternalId","assignmentExternalId","originalQuantity","source"],["M1","A1","AS1","-1","excel_import"],["M1","A2","AS2","bad","excel_import"]])
   rows,errors=parse_excel(data,"estimate")
   self.assertEqual([2,3],[row["rowNumber"] for row in rows]);self.assertEqual({"negative_value","invalid_decimal"},{issue["reason"] for issue in errors})
-  rows,errors=parse_excel(book([["resourceCode"],["M1"]]),"prices","IRR")
+  rows,errors=parse_excel(book([["resourceCode"],["M1"]]),"prices")
   self.assertEqual([],rows);self.assertIn("required_column",{issue["reason"] for issue in errors})
  def test_wrong_template_and_unknown_columns_are_rejected(self):
-  rows,errors=parse_excel(book([["resourceCode","unitPrice","currency","effectiveFrom","scope","title"],["M1","1","IRR","2026-08-10","project","x"]]),"prices","IRR")
+  rows,errors=parse_excel(book([["resourceCode","unitPrice","currency","effectiveFrom","scope","title"],["M1","1","IRR","2026-08-10","project","x"]]),"prices")
   self.assertEqual([],rows);self.assertIn({"row":1,"field":"title","reason":"unexpected_column"},errors)
   rows,errors=parse_excel(book([["resourceCode","unitPrice","currency","effectiveFrom","scope"],["M1","1","IRR","2026-08-10","project"]]),"estimate")
   self.assertEqual([],rows);self.assertIn("required_column",{issue["reason"] for issue in errors})

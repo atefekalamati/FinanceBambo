@@ -1,12 +1,16 @@
 from datetime import datetime,timezone,date
 from uuid import uuid4
-from ..domain.prices import PriceVersion,latest_price_trend
+from ..domain.prices import PriceVersion,PricePeriodOverlap,latest_price_trend
 
 class FinancePriceService:
  def __init__(self,repository,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)): self.repo=repository;self.ids=id_factory;self.clock=clock
  async def create(self,scope,resource_id,command):
   if scope.actor_user_id is None: raise PermissionError("authenticated actor is required")
   history=await self.repo.history(scope,resource_id)
+  # Prices are append-only with no effectiveTo, so the only overlap possible is two
+  # versions of the same scope claiming the same effective day.
+  if any(x.scope_kind==command.scope_kind and x.effective_from==command.effective_from for x in history):
+   raise PricePeriodOverlap("a price for this scope already takes effect on that date")
   version=max((x.version for x in history),default=0)+1
   value=PriceVersion(self.ids(),scope.organization_id,scope.project_id,resource_id,command.scope_kind,version,command.unit_price_irr,command.effective_from,command.reason,scope.actor_user_id,self.clock())
   return await self.repo.append(scope,value,self.ids())
