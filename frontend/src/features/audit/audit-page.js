@@ -6,6 +6,7 @@ import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatte
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { ACTION_LABELS, ENTITY_LABELS, filterAuditEvents } from "./audit-model.js";
+import { element } from "../../shared/dom/elements.js";
 
 /** GET /audit-events default; the endpoint accepts 1..200 and returns a bare list. */
 const AUDIT_PAGE_SIZE = 50;
@@ -23,13 +24,6 @@ const VALUE_LABELS = Object.freeze({
 });
 
 const STATUS_LABELS = Object.freeze({ awaitingConfirmation: "در انتظار تأیید", confirmed: "تأییدشده", draft: "پیش‌نویس", voided: "باطل‌شده", corrected: "اصلاح‌شده" });
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function formatValue(key, value) {
   if (value === null || value === undefined) return "—";

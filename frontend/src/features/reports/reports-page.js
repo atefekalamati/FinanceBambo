@@ -7,7 +7,9 @@ import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { compactMoneyFromIrr, formatCompactMoneyFromIrr, formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { buildPriceVariancePresentation, buildQuantityVariancePresentation } from "./report-analysis.js";
+import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 
 const METRICS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه"],
@@ -28,13 +30,6 @@ const REPORT_WARNING_LABELS = Object.freeze({
   GENERAL_COST_OVERRUN: "هزینه واقعی ثبت‌شده عمومی پروژه از آخرین برآورد هزینه‌های عمومی بیشتر است.",
   GROSS_AREA_MISSING: "زیربنای کل پروژه ثبت نشده و شاخص‌های هر مترمربع قابل محاسبه نیستند.",
 });
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function renderMetrics(metrics) {
   const grid = element("section", "summary-grid report-metrics");
@@ -60,7 +55,13 @@ function renderBreakdown(rows = []) {
   section.append(element("h2", "", "تفکیک مالی بر اساس نوع قلم"));
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table report-table");
-  table.innerHTML = `<colgroup><col class="report-table__type"><col><col><col><col><col></colgroup><thead><tr><th>نوع قلم</th><th>برآورد اولیه</th><th>برآورد اصلاح‌شده</th><th>هزینه واقعی ثبت‌شده</th><th>باقی‌مانده</th><th>پیش‌بینی هزینه نهایی</th></tr></thead>`;
+  const columns = document.createElement("colgroup");
+  ["report-table__type", "", "", "", "", ""].forEach((columnClass) => columns.append(element("col", columnClass)));
+  table.append(
+    tableCaption("تفکیک مالی پروژه بر اساس نوع قلم هزینه"),
+    columns,
+    tableHead(["نوع قلم", "برآورد اولیه", "برآورد اصلاح‌شده", "هزینه واقعی ثبت‌شده", "باقی‌مانده", "پیش‌بینی هزینه نهایی"]),
+  );
   const labels = { material: "مصالح", labor: "نیروی انسانی", equipment: "تجهیزات و ماشین‌آلات", general_cost: "هزینه‌های عمومی پروژه" };
   const body = document.createElement("tbody");
   rows.forEach((row) => {
@@ -123,7 +124,10 @@ function renderPriceVariances(rows = []) {
 
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table report-variance-table");
-  table.innerHTML = "<thead><tr><th>قلم هزینه</th><th>نوع هزینه</th><th>اثر تغییر قیمت</th><th>جهت اثر</th><th>جزئیات</th></tr></thead>";
+  table.append(
+    tableCaption("جدول جایگزین نمودار بیشترین انحراف قیمت"),
+    tableHead(["قلم هزینه", "نوع هزینه", "اثر تغییر قیمت", "جهت اثر", "جزئیات"]),
+  );
   const body = document.createElement("tbody");
   presentation.forEach((row) => {
     const record = document.createElement("tr");
@@ -155,7 +159,10 @@ function renderQuantityVariances(rows = []) {
   }
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table report-variance-table");
-  table.innerHTML = "<thead><tr><th>قلم هزینه</th><th>نوع هزینه</th><th>انحراف مقدار</th><th>جزئیات ردیف برآورد</th></tr></thead>";
+  table.append(
+    tableCaption("فهرست بیشترین انحراف مقدار ردیف‌های برآورد"),
+    tableHead(["قلم هزینه", "نوع هزینه", "انحراف مقدار", "جزئیات ردیف برآورد"]),
+  );
   const body = document.createElement("tbody");
   buildQuantityVariancePresentation(rows).forEach((row) => {
     const record = document.createElement("tr");
@@ -271,7 +278,7 @@ export function createReportsPage({ context, adapter }) {
     try {
       snapshot = await adapter.issueSnapshot({ reportingDate, progressSnapshotId: state.data?.progressSnapshotId ?? null });
     } catch (error) {
-      actionError = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      actionError = formatApiErrorMessage(error);
     }
     paint();
   }
@@ -287,7 +294,7 @@ export function createReportsPage({ context, adapter }) {
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      actionError = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      actionError = formatApiErrorMessage(error);
       paint();
     }
   }

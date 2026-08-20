@@ -7,21 +7,16 @@ import { formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../.
 import { formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { compareDecimalStrings } from "../../shared/validation/decimal-validation.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js";
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
+import { element } from "../../shared/dom/elements.js";
 
 const SOURCE_LABELS = Object.freeze({
   progress_feed: "پیشرفت اجرایی",
   excel_import: "اکسل",
   manual_entry: "ورود دستی",
 });
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
   const wrapper = element("div", "form-field");
@@ -150,7 +145,7 @@ function createResourceDialog(adapter, workspace, onSaved) {
       syncGeneralCost();
       onSaved(workspace);
     } catch (error) {
-      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      status.textContent = formatApiErrorMessage(error);
     } finally {
       submit.disabled = false;
     }
@@ -195,7 +190,7 @@ function createActivityDialog(adapter, onSaved) {
       dialog.close();
       onSaved(result);
     } catch (error) {
-      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      status.textContent = formatApiErrorMessage(error);
     } finally {
       submit.disabled = false;
     }
@@ -307,7 +302,7 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
       form.reset();
       onSaved(nextWorkspace);
     } catch (error) {
-      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      status.textContent = formatApiErrorMessage(error);
     } finally {
       submit.disabled = false;
     }
@@ -440,7 +435,7 @@ function createEstimateImportDialog(adapter, onSaved) {
           dialog.close();
           onSaved(result.workspace, result.importedCount);
         } catch (commitError) {
-          status.textContent = `${commitError.message}${commitError.requestId ? ` · شناسه درخواست: ${commitError.requestId}` : ""}`;
+          status.textContent = formatApiErrorMessage(commitError);
         } finally {
           confirm.disabled = false;
           cancel.disabled = false;
@@ -475,7 +470,7 @@ function createEstimateImportDialog(adapter, onSaved) {
       renderPreview(currentPreview);
     } catch (previewError) {
       currentPreview = null;
-      error.textContent = `${previewError.message}${previewError.requestId ? ` · شناسه درخواست: ${previewError.requestId}` : ""}`;
+      error.textContent = formatApiErrorMessage(previewError);
       formStatus.textContent = "بررسی فایل انجام نشد.";
     } finally {
       previewButton.disabled = false;
@@ -572,7 +567,7 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
       dialog.close();
       onSaved(workspace);
     } catch (error) {
-      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      status.textContent = formatApiErrorMessage(error);
     } finally {
       submit.disabled = false;
       cancel.disabled = false;

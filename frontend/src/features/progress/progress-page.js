@@ -2,8 +2,10 @@ import { createRequestState, REQUEST_STATUS } from "../../core/state/request-sta
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { hasPermission } from "../../core/auth/permissions.js";
 import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
+import { element } from "../../shared/dom/elements.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "آماده", superseded: "جایگزین‌شده" });
 const RESOURCE_TYPE_LABELS = Object.freeze({ material: "مصالح", labor: "نیروی انسانی", equipment: "دستگاه و تجهیزات", general_cost: "هزینه‌های عمومی پروژه" });
@@ -16,13 +18,6 @@ const SOURCE_METHOD_LABELS = Object.freeze({
   manual_entry: "ورود دستی",
 });
 const qualityFormatter = new Intl.NumberFormat("fa-IR", { style: "percent", maximumFractionDigits: 0 });
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function valueOrMissing(value) {
   return value === null || value === undefined ? "داده موجود نیست" : formatDisplayNumber(value);
@@ -197,7 +192,7 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
       dialog.close();
       onSaved(response.feed);
     } catch (error) {
-      result.textContent = `${error.message || "ثبت جایگزینی انجام نشد."}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      result.textContent = formatApiErrorMessage(error, "ثبت جایگزینی انجام نشد.");
       result.className = "form-message form-message--error";
     } finally {
       submit.disabled = false;
