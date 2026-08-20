@@ -12,16 +12,20 @@ test("lists immutable snapshot metadata in newest reporting-date order", async (
   const adapter = createMockProgressAdapter(context);
   const snapshots = await adapter.getSnapshots();
   assert.equal(snapshots.length, 3);
-  assert.equal(snapshots[0].snapshot.reportingDate, "2026-08-02");
-  assert.equal(snapshots[0].snapshot.organizationId, context.organizationId);
-  assert.equal(snapshots[0].snapshot.projectId, context.projectId);
-  assert.ok(snapshots.every((item) => item.snapshot.progressSnapshotId && item.snapshot.sourceFileVersionId));
+  assert.equal(snapshots[0].reportingDate, "2026-08-02");
+  assert.equal(snapshots[0].organizationId, context.organizationId);
+  assert.equal(snapshots[0].projectId, context.projectId);
+  assert.ok(snapshots.every((snapshot) => snapshot.progressSnapshotId && snapshot.sourceFileVersionId));
+  assert.ok(
+    snapshots.every((snapshot) => !("assignmentCount" in snapshot) && !("assignments" in snapshot)),
+    "ProgressSnapshotResponse carries no assignment data; counting it here would mean one feed request per snapshot",
+  );
 });
 
 test("returns assignment-level, task-fallback and manual-override source methods", async () => {
   const adapter = createMockProgressAdapter(context);
   const snapshots = await adapter.getSnapshots();
-  const feeds = await Promise.all(snapshots.map((item) => adapter.getFeed(item.snapshot.progressSnapshotId)));
+  const feeds = await Promise.all(snapshots.map((snapshot) => adapter.getFeed(snapshot.progressSnapshotId)));
   const methods = feeds.flatMap((feed) => feed.assignments.map((assignment) => assignment.sourceMethod));
   assert.ok(methods.includes("assignment_actual"));
   assert.ok(methods.includes("task_progress_fallback"));
@@ -32,7 +36,7 @@ test("preserves null as missing and keeps general cost quantity fields nullable"
   const adapter = createMockProgressAdapter(context);
   const snapshots = await adapter.getSnapshots();
   const oldest = snapshots.at(-1);
-  const feed = await adapter.getFeed(oldest.snapshot.progressSnapshotId);
+  const feed = await adapter.getFeed(oldest.progressSnapshotId);
   const generalCost = feed.assignments.find((assignment) => assignment.resourceType === "general_cost");
   assert.equal(generalCost.unit, null);
   assert.equal(generalCost.plannedQuantity, null);
@@ -43,7 +47,7 @@ test("preserves null as missing and keeps general cost quantity fields nullable"
 test("keeps manual override linked to its snapshot and original calculated value", async () => {
   const adapter = createMockProgressAdapter(context);
   const snapshots = await adapter.getSnapshots();
-  const latest = snapshots[0].snapshot;
+  const latest = snapshots[0];
   const feed = await adapter.getFeed(latest.progressSnapshotId);
   const assignment = feed.assignments[0];
   assert.equal(assignment.manualOverride.progressSnapshotId, latest.progressSnapshotId);
@@ -63,7 +67,7 @@ test("returns empty/error states and rejects an unknown snapshot", async () => {
 test("appends an audited manual override and preserves the computed value", async () => {
   const adapter = createMockProgressAdapter({ ...context, permissionCodes: ["finance.view", "finance.edit"] });
   const snapshots = await adapter.getSnapshots();
-  const oldest = snapshots.at(-1).snapshot;
+  const oldest = snapshots.at(-1);
   const feed = await adapter.getFeed(oldest.progressSnapshotId);
   const assignment = feed.assignments[0];
   const response = await adapter.createOverride({
@@ -84,14 +88,14 @@ test("appends an audited manual override and preserves the computed value", asyn
 
 test("rejects a manual override without edit permission or reason", async () => {
   const deniedAdapter = createMockProgressAdapter({ ...context, permissionCodes: ["finance.view"] });
-  const deniedSnapshot = (await deniedAdapter.getSnapshots()).at(-1).snapshot;
+  const deniedSnapshot = (await deniedAdapter.getSnapshots()).at(-1);
   await assert.rejects(
     deniedAdapter.createOverride({ progressSnapshotId: deniedSnapshot.progressSnapshotId, assignmentExternalId: "asg-foundation-rebar", overrideValue: "2600", reason: "اصلاح معتبر" }),
     (error) => error.status === 403,
   );
 
   const adapter = createMockProgressAdapter({ ...context, permissionCodes: ["finance.edit"] });
-  const snapshot = (await adapter.getSnapshots()).at(-1).snapshot;
+  const snapshot = (await adapter.getSnapshots()).at(-1);
   await assert.rejects(
     adapter.createOverride({ progressSnapshotId: snapshot.progressSnapshotId, assignmentExternalId: "asg-foundation-rebar", overrideValue: "2600", reason: "" }),
     (error) => error.status === 422,

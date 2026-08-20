@@ -25,6 +25,32 @@
   font-size: var(--font-size-sm);
 }
 
+.audit-result-count__note {
+  display: block;
+  margin-block-start: .15rem;
+  font-size: .72rem;
+  line-height: 1.6;
+  opacity: .82;
+}
+
+.audit-pagination {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-md);
+}
+
+.audit-pagination:empty {
+  display: none;
+}
+
+.audit-pagination__end {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: .75rem;
+}
+
 .audit-table {
   min-inline-size: 72rem;
 }
@@ -157,6 +183,7 @@
 
 @media print {
   .audit-filters,
+  .audit-pagination,
   .audit-table .table-action,
   .audit-detail-dialog {
     display: none !important;

@@ -4,7 +4,11 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { ACTION_LABELS, ENTITY_LABELS, filterAuditEvents } from "./audit-model.js";
+
+/** GET /audit-events default; the endpoint accepts 1..200 and returns a bare list. */
+const AUDIT_PAGE_SIZE = 50;
 
 const VALUE_LABELS = Object.freeze({
   computedValue: "مقدار محاسبه‌شده",
@@ -91,16 +95,43 @@ export function createAuditPage({ adapter }) {
   const root = element("div", "audit-page");
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let filters = { query: "", action: "", entityType: "", from: "", to: "" };
+  let loadedPages = 0;
+  let hasOlderEvents = false;
+  let loadingOlder = false;
+  let olderError = "";
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
+    loadedPages = 0;
+    hasOlderEvents = false;
+    loadingOlder = false;
+    olderError = "";
     paint();
     try {
-      const events = await adapter.getEvents();
+      const events = await adapter.getEvents({ page: 1, pageSize: AUDIT_PAGE_SIZE });
+      loadedPages = 1;
+      hasOlderEvents = events.length === AUDIT_PAGE_SIZE;
       state = events.length ? createRequestState(REQUEST_STATUS.SUCCESS, events) : createRequestState(REQUEST_STATUS.EMPTY);
     } catch (error) {
       state = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
     }
+    paint();
+  }
+
+  async function loadOlder() {
+    if (loadingOlder || !hasOlderEvents) return;
+    loadingOlder = true;
+    olderError = "";
+    paint();
+    try {
+      const older = await adapter.getEvents({ page: loadedPages + 1, pageSize: AUDIT_PAGE_SIZE });
+      loadedPages += 1;
+      hasOlderEvents = older.length === AUDIT_PAGE_SIZE;
+      state = createRequestState(REQUEST_STATUS.SUCCESS, [...state.data, ...older]);
+    } catch (error) {
+      olderError = formatApiErrorMessage(error, "دریافت رویدادهای قدیمی‌تر انجام نشد.");
+    }
+    loadingOlder = false;
     paint();
   }
 
@@ -144,7 +175,8 @@ export function createAuditPage({ adapter }) {
     form.append(query, action, entity, from.field, to.field, submit, reset);
 
     const filtered = filterAuditEvents(events, filters);
-    const summary = element("p", "audit-result-count", `${formatDisplayNumber(String(filtered.length))} رویداد از ${formatDisplayNumber(String(events.length))} رویداد نمایش داده می‌شود.`);
+    const summary = element("p", "audit-result-count", `${formatDisplayNumber(String(filtered.length))} رویداد از ${formatDisplayNumber(String(events.length))} رویداد بارگذاری‌شده نمایش داده می‌شود.`);
+    if (hasOlderEvents) summary.append(element("span", "audit-result-count__note", "رویدادهای قدیمی‌تر هنوز بارگذاری نشده‌اند و فیلترها فقط روی همین رویدادها اعمال می‌شوند."));
     const wrapper = element("div", "table-scroll");
     const table = element("table", "data-table audit-table");
     table.append(element("caption", "sr-only", "فهرست رویدادهای تغییر مالی"));
@@ -184,7 +216,24 @@ export function createAuditPage({ adapter }) {
     }
     table.append(head, body);
     wrapper.append(table);
-    fragment.append(header, form, summary, wrapper);
+
+    const pagination = element("div", "audit-pagination");
+    if (hasOlderEvents) {
+      const more = element("button", "button button--ghost", loadingOlder ? "در حال دریافت رویدادها…" : "بارگذاری رویدادهای قدیمی‌تر");
+      more.type = "button";
+      more.disabled = loadingOlder;
+      more.addEventListener("click", loadOlder);
+      pagination.append(more);
+    } else if (loadedPages > 1) {
+      pagination.append(element("p", "audit-pagination__end", "تمام رویدادهای ثبت‌شده بارگذاری شده‌اند."));
+    }
+    if (olderError) {
+      const notice = element("p", "inline-notice", olderError);
+      notice.setAttribute("role", "alert");
+      pagination.append(notice);
+    }
+
+    fragment.append(header, form, summary, wrapper, pagination);
     return fragment;
   }
 
