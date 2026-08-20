@@ -714,9 +714,12 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.classList.add("finance-back-link");
     back.href = "#/finance";
+    const navigation = element("div", "feature-header__navigation");
+    const otherActions = element("div", "feature-header__other-actions");
+    navigation.append(otherActions, back);
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "اقلام پروژه و ریز برآورد"), element("h1", "", "اقلام و برآورد"), element("p", "", "هر اتصال فعالیت و قلم هزینه یک ردیف مستقل برآورد است؛ مقدار اولیه حفظ و آخرین مقدار برآورد جداگانه نمایش داده می‌شود."));
-    header.append(copy, back);
+    header.append(copy, navigation);
     return header;
   }
 

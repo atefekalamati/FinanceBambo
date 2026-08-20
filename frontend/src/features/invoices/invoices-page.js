@@ -521,7 +521,11 @@ function renderTable(items, onDetail) {
   table.append(element("caption", "sr-only", "فهرست فاکتورهای پروژه"));
   const thead = document.createElement("thead");
   const header = document.createElement("tr");
-  ["شماره", "تاریخ", "فروشنده یا ارائه‌دهنده", "منبع", "وضعیت", "تعداد خطوط", "مبلغ نهایی", "اثر مالی", "عملیات"].forEach((label) => header.append(element("th", "", label)));
+  ["شماره", "تاریخ", "فروشنده یا ارائه‌دهنده", "منبع", "وضعیت", "تعداد ردیف", "مبلغ نهایی", ""].forEach((label, index) => {
+    const cell = element("th", "", label);
+    if (index === 7) cell.setAttribute("aria-label", "عملیات");
+    header.append(cell);
+  });
   thead.append(header);
   const tbody = document.createElement("tbody");
   items.forEach((invoice) => {
@@ -529,8 +533,7 @@ function renderTable(items, onDetail) {
     const identity = element("div", "invoice-table-identity");
     identity.append(element("strong", "", invoice.invoiceNumber));
     if (invoice.duplicateWarning) identity.append(element("span", "invoice-table-warning", "نیازمند بررسی تکرار"));
-    const effect = getInvoiceEffect(invoice);
-    const action = element("button", "button button--small button--ghost", "مشاهده جزئیات");
+    const action = element("button", "button button--small button--ghost", "جزئیات");
     action.type = "button";
     action.addEventListener("click", (event) => onDetail(invoice.invoiceId, event.currentTarget));
     row.append(
@@ -538,12 +541,11 @@ function renderTable(items, onDetail) {
       element("td", "", invoice.vendorName), element("td", "", SOURCE_LABELS[invoice.source] ?? "نامشخص"),
       element("td", "", ""), element("td", "numeric", formatDisplayNumber(String(invoice.lineCount))),
       element("td", "numeric", formatTomanFromIrr(invoice.finalAmountIRR)),
-      element("td", "", ""), element("td", "", ""),
+      element("td", "", ""),
     );
     row.children[0].append(identity);
     row.children[4].append(element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "نامشخص"));
-    row.children[7].append(element("span", `invoice-effect invoice-effect--${effect.tone}`, effect.label));
-    row.children[8].append(action);
+    row.children[7].append(action);
     tbody.append(row);
   });
   table.append(thead, tbody);
@@ -631,7 +633,8 @@ export function createInvoicesPage({ context, adapter }) {
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "اسناد هزینه پروژه"), element("h1", "", "فاکتورها"), element("p", "", "فاکتورهای پروژه را براساس وضعیت، منبع و مشخصات سند جست‌وجو و جزئیات ثبت‌شده را مشاهده کنید."));
-    const actions = element("div", "feature-header__actions");
+    const navigation = element("div", "feature-header__navigation");
+    const actions = element("div", "feature-header__actions feature-header__other-actions");
     const create = element("button", "button button--primary", canCreate ? "ثبت فاکتور دستی" : "بدون مجوز ثبت");
     create.type = "button";
     create.disabled = !canCreate;
@@ -646,8 +649,9 @@ export function createInvoicesPage({ context, adapter }) {
     back.href = "#/finance";
     const upload = element("a", "button button--ghost", "ورود از تصویر یا صدا");
     upload.href = "#/invoice-files";
-    actions.append(create, upload, back);
-    header.append(copy, actions);
+    actions.append(create, upload);
+    navigation.append(actions, back);
+    header.append(copy, navigation);
     return header;
   }
 

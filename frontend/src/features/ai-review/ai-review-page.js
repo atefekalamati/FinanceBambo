@@ -192,13 +192,18 @@ export function createAiReviewPage({ context, adapter }) {
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "کنترل انسانی الزامی"), element("h1", "", "بررسی هوشمند فاکتور"), element("p", "", "اطلاعات خوانده‌شده را با فایل اصلی تطبیق دهید؛ موارد کم‌اطمینان را اصلاح و سپس تصمیم نهایی را ثبت کنید."));
-    const actions = element("div", "feature-header__actions");
+    const actions = element("div", "feature-header__actions feature-header__other-actions");
     const files = element("a", "button button--ghost", "بازگشت به فایل‌ها");
     files.href = "#/invoice-files";
     const manual = element("a", "button button--ghost", "ورود دستی فاکتور");
     manual.href = "#/invoices";
     actions.append(files, manual);
-    header.append(copy, actions);
+    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
+    back.href = "#/finance";
+    const navigation = element("div", "feature-header__navigation");
+    navigation.append(actions, back);
+    header.append(copy, navigation);
 
     if (state.status === REQUEST_STATUS.LOADING) {
       root.replaceChildren(header, element("section", "state-card", "در حال دریافت پیش‌نویس‌های هوشمند فاکتور…"));

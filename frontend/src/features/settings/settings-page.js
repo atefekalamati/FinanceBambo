@@ -102,9 +102,14 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.classList.add("finance-back-link");
     back.href = "#/finance";
+    const navigation = element("div", "feature-header__navigation");
+    const otherActions = element("div", "feature-header__other-actions");
+    navigation.append(otherActions, back);
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "پیکربندی پروژه جاری"), element("h1", "", "تنظیمات مالی پروژه"), element("p", "", "قواعد پایه محاسبات مالی، نحوه نمایش پول، زیربنا و تبدیل واحدهای پروژه را از یک محل مدیریت کنید."));
-    header.append(copy, back);
+    const eyebrow = element("span", "feature-header__eyebrow", "پیکربندی پروژه جاری");
+    const title = element("h1", "", "تنظیمات مالی پروژه");
+    copy.append(eyebrow, title, element("p", "", "قواعد پایه محاسبات مالی، نحوه نمایش پول، زیربنا و تبدیل واحدهای پروژه را از یک محل مدیریت کنید."));
+    header.append(copy, navigation);
     return header;
   }
 
@@ -173,7 +178,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const copy = element("div", "settings-card__head-copy");
     copy.append(
       element("h2", "", "قواعد تبدیل واحد پروژه"),
-      element("p", "", "قاعده اختصاصی پروژه بر قاعده پایه سازمان مقدم است و تبدیل فقط میان واحدهای هم‌بُعد انجام می‌شود."),
+      element("p", "", "اینجا فقط قواعد کاری متغیر، مانند ساعت هر روز دستگاه یا نفرروز، تعریف می‌شوند. تبدیل‌های ثابت وزن و طول قابل تغییر نیستند و هر قاعده فقط میان واحدهای هم‌بُعد اعمال می‌شود."),
     );
     head.append(element("div", "settings-card__icon", "↔"), copy);
     const editorHost = element("div", "settings-conversions__editor-host");
@@ -199,7 +204,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const configurableConversions = (conversionWorkspace?.currentConversions ?? []).filter((item) => isConfigurableConversionDirection(item.sourceUnit, item.targetUnit));
     const configurableHistory = (conversionWorkspace?.conversionHistory ?? []).filter((item) => isConfigurableConversionDirection(item.sourceUnit, item.targetUnit));
     const current = element("div", "settings-conversions__current");
-    current.append(element("h3", "", "قواعد کاری قابل تنظیم"), element("p", "settings-conversions__description", "این قواعد می‌توانند با توجه به برنامه کاری سازمان یا پروژه تغییر کنند؛ مانند تعداد ساعت یک روز دستگاه."));
+    current.append(element("h3", "", "قواعد کاری فعال پروژه"));
     if (conversionError) {
       const error = element("div", "settings-conversions__error inline-notice");
       error.append(element("strong", "", "دریافت قواعد تبدیل انجام نشد."), element("span", "", conversionError.message ?? "ارتباط با سرویس تبدیل واحد برقرار نشد."));

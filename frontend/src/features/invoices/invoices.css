@@ -224,6 +224,7 @@
 
 .invoices-table {
   min-inline-size: 78rem;
+  table-layout: auto;
 }
 
 .invoices-table :is(th, td):nth-child(1) {
@@ -235,7 +236,7 @@
 }
 
 .invoices-table :is(th, td):nth-child(3) {
-  inline-size: 20%;
+  inline-size: 26%;
 }
 
 .invoices-table :is(th, td):nth-child(4),
@@ -244,19 +245,30 @@
 }
 
 .invoices-table :is(th, td):nth-child(6) {
-  inline-size: 7%;
+  inline-size: 8%;
 }
 
 .invoices-table :is(th, td):nth-child(7) {
-  inline-size: 13%;
+  inline-size: 19%;
+}
+
+.invoices-table :is(th, td):nth-child(5),
+.invoices-table :is(th, td):nth-child(6) {
+  text-align: center;
+  vertical-align: middle;
 }
 
 .invoices-table :is(th, td):nth-child(8) {
-  inline-size: 10%;
+  padding-inline: .45rem;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
-.invoices-table :is(th, td):nth-child(9) {
-  inline-size: 13%;
+.invoices-table :is(th, td):nth-child(8) .button {
+  min-block-size: 2rem;
+  padding: .3rem .55rem;
+  font-size: .72rem;
 }
 
 .invoice-status {
@@ -298,27 +310,6 @@
   color: var(--dash-sev-med);
   font-size: .65rem;
   line-height: 1.4;
-}
-
-.invoice-effect {
-  display: inline-flex;
-  inline-size: fit-content;
-  padding: .2rem .5rem;
-  border-radius: var(--radius-pill);
-  background: rgb(120 145 205 / 7%);
-  color: var(--color-text-muted);
-  font-size: .68rem;
-  white-space: nowrap;
-}
-
-.invoice-effect--positive {
-  background: rgb(38 208 124 / 9%);
-  color: var(--dash-actual);
-}
-
-.invoice-effect--negative {
-  background: rgb(255 93 115 / 9%);
-  color: var(--color-danger);
 }
 
 .button--danger {
