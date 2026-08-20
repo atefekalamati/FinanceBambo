@@ -10,8 +10,11 @@ class PsycopgFinanceAuditRepository:
         clauses=["organization_id=%s","project_id=%s"];values=[scope.organization_id,scope.project_id]
         if action:clauses.append("action=%s");values.append(action)
         if entity_type:clauses.append("entity_type=%s");values.append(entity_type)
-        if occurred_from:clauses.append("occurred_at>=%s");values.append(occurred_from)
-        if occurred_to:clauses.append("occurred_at<%s");values.append(occurred_to)
+        # occurred_at is timestamptz; the client filters on the UTC calendar day and expects
+        # both ends included. Bind whole-day UTC bounds and leave the column bare so
+        # ix_finance_audit_events_scope still applies.
+        if occurred_from:clauses.append("occurred_at>=(%s::date)::timestamp AT TIME ZONE 'UTC'");values.append(occurred_from)
+        if occurred_to:clauses.append("occurred_at<(%s::date + 1)::timestamp AT TIME ZONE 'UTC'");values.append(occurred_to)
         if query:
             clauses.append("(actor_user_id::text ILIKE %s OR entity_id::text ILIKE %s OR COALESCE(reason,'') ILIKE %s)")
             values.extend([f"%{query}%"]*3)
