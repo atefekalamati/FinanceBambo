@@ -46,3 +46,35 @@ test("the DOM element helper is defined once and imported everywhere else", () =
   const definitions = SOURCES.filter(([, source]) => source.includes("function element(tag, className, text)")).map(([name]) => name);
   assert.deepEqual(definitions, ["shared/dom/elements.js"], "element() must not be copied back into feature modules");
 });
+
+/**
+ * The documented scale lives in shared/styles/tokens.css. Media queries cannot
+ * read custom properties, so this test is what keeps the values from drifting.
+ */
+const RESPONSIVE_SCALE = new Set(["70rem", "64rem", "64.01rem", "48rem", "48.01rem", "36rem", "30rem"]);
+const SCALE_EXCEPTIONS = new Map([
+  ["26.5625rem", "features/finance-home/finance-home.css"],
+  ["23rem", "features/reports/reports.css"],
+]);
+
+function stylesheets(directory = SRC_DIR) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(directory, entry.name);
+    if (entry.isDirectory()) return stylesheets(full);
+    return entry.name.endsWith(".css") ? [[full.slice(SRC_DIR.length + 1).replaceAll("\\", "/"), readFileSync(full, "utf8")]] : [];
+  });
+}
+
+test("stylesheets break only at the documented responsive scale", () => {
+  const sheets = stylesheets();
+  const widths = sheets.flatMap(([, source]) => [...source.matchAll(/@media[^{]*?\((?:max|min)-width:\s*([\d.]+rem)\)/g)].map((match) => match[1]));
+  assert.ok(sheets.length >= 10, "expected the feature and shared stylesheets to be discovered");
+  assert.ok(widths.length >= 25, "the media-query scan found nothing, so this guard would pass vacuously");
+
+  const offenders = sheets.flatMap(([name, source]) =>
+    [...source.matchAll(/@media[^{]*?\((?:max|min)-width:\s*([\d.]+rem)\)/g)]
+      .map((match) => match[1])
+      .filter((width) => !RESPONSIVE_SCALE.has(width) && SCALE_EXCEPTIONS.get(width) !== name)
+      .map((width) => `${name}: ${width}`));
+  assert.deepEqual(offenders, [], "add the width to the scale in tokens.css, or reuse an existing tier");
+});
