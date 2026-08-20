@@ -3,6 +3,7 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
 import { compactMoneyFromIrr, formatCompactMoneyFromIrr, formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
+import { element } from "../../shared/dom/elements.js";
 import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
 
 const SUMMARY_ITEMS = Object.freeze([
@@ -436,7 +437,9 @@ function renderFinanceHome(data) {
 
   const areasHeader = document.createElement("div");
   areasHeader.className = "section-heading";
-  areasHeader.innerHTML = "<div><span>فضای کاری</span><h2>عملیات مالی پروژه</h2></div>";
+  const areasHeading = document.createElement("div");
+  areasHeading.append(element("span", "", "فضای کاری"), element("h2", "", "عملیات مالی پروژه"));
+  areasHeader.append(areasHeading);
   const areas = document.createElement("section");
   areas.className = "work-area-grid";
   areas.setAttribute("aria-label", "بخش‌های امور مالی");

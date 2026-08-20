@@ -8,17 +8,12 @@ import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { validatePriceVersion } from "./prices-validation.js";
 import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition, validateUnitConversion } from "./unit-conversions-validation.js";
+import { element } from "../../shared/dom/elements.js";
 
 const SCOPE_LABELS = Object.freeze({ organization: "پایه سازمان", project: "اختصاصی پروژه" });
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function createSelect({ id, label, options }) {
   const field = element("div", "form-field");
@@ -171,7 +166,7 @@ export function createUnitConversionForm(adapter, workspace, onSaved, onCancel =
       const workspace = await adapter.createUnitConversion(validation.values);
       onSaved(workspace);
     } catch (error) {
-      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      status.textContent = formatApiErrorMessage(error);
     } finally {
       submit.disabled = false;
       cancel.disabled = false;
@@ -305,7 +300,7 @@ function createPriceImportDialog(adapter, onSaved) {
           dialog.close();
           onSaved(committed.workspace);
         } catch (commitError) {
-          confirmStatus.textContent = `${commitError.message}${commitError.requestId ? ` · شناسه درخواست: ${commitError.requestId}` : ""}`;
+          confirmStatus.textContent = formatApiErrorMessage(commitError);
         } finally {
           cancel.disabled = false;
           confirm.disabled = false;
@@ -336,7 +331,7 @@ function createPriceImportDialog(adapter, onSaved) {
       status.textContent = preview.canCommit ? "پیش‌نمایش معتبر آماده است." : "پیش‌نمایش دارای خطاست.";
       renderPreview(preview);
     } catch (previewError) {
-      error.textContent = `${previewError.message}${previewError.requestId ? ` · شناسه درخواست: ${previewError.requestId}` : ""}`;
+      error.textContent = formatApiErrorMessage(previewError);
       status.textContent = "بررسی فایل انجام نشد.";
     } finally {
       input.disabled = false;
@@ -418,7 +413,7 @@ function createPriceDialog(adapter, currentPrices, onSaved) {
       dialog.close();
       onSaved(workspace);
     } catch (error) {
-      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      status.textContent = formatApiErrorMessage(error);
     } finally {
       submit.disabled = false;
       cancel.disabled = false;

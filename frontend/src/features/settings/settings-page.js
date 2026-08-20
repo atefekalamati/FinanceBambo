@@ -7,16 +7,11 @@ import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatArea, formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { getDisplayCurrencyCode, getDisplayCurrencyLabel, setDisplayCurrencyCode } from "../../shared/preferences/currency-preference.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { createUnitConversionForm, renderConversionHistory, renderCurrentConversions } from "../prices/prices-page.js";
 import { isConfigurableConversionDirection } from "../prices/unit-conversions-validation.js";
 import { validateSettingsRevision } from "./settings-validation.js";
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
+import { element } from "../../shared/dom/elements.js";
 
 function createField({ id, label, type = "text", value = "", hint, inputMode, required = false }) {
   const field = element("div", "form-field");
@@ -323,7 +318,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
         paint();
       } catch (error) {
         dialog.close();
-        status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+        status.textContent = formatApiErrorMessage(error);
       } finally {
         confirm.disabled = false;
         cancel.disabled = false;
