@@ -38,6 +38,17 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
   async function rejectExtraction({ draftId, expectedVersion, reason = null }) {
     return client.request(`${base}/extractions/${encodeURIComponent(draftId)}/reject`, jsonOptions("POST", { expectedVersion, reason }));
   }
+  /**
+   * The review form yields a single total, which maps to InvoiceLineCreate's
+   * lineAmountIrr. The Backend restricts that field: _calculate_lines raises
+   * "direct line amount requires a general_cost resource", and the extraction
+   * confirm route reaches it through prepare_extracted. Sending the total
+   * against a quantified line would be rejected; sending a quantified line
+   * without quantity and unitPriceIrr is worse — the same function scores it
+   * as (1 x 0) and would silently book a zero-amount line. So the guard below
+   * mirrors a Backend rule and must not be relaxed until the extraction
+   * contract carries quantity, unit and unit price.
+   */
   async function confirmExtraction(payload) {
     const targets = await invoiceAdapter.getInvoiceTargets();
     const target = targets.find((item) => item.targetId === payload.invoice.resourceId);
