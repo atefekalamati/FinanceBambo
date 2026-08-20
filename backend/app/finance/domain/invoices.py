@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import date,datetime
 from decimal import Decimal,ROUND_HALF_UP
 from uuid import UUID
+from .errors import FinanceDomainError
 Q=Decimal("1")
 @dataclass(frozen=True)
 class CalculatedLine:
@@ -25,7 +26,7 @@ def calculate_invoice(items,discount=Decimal(0),tax=Decimal(0),shipping=Decimal(
  ds,ts,ss,os=(_direct_or_proportional(x,raws,targets.get(k)) for k,x in (("discount",discount),("tax",tax),("shipping",shipping),("other",other)))
  lines=[CalculatedLine(r,d,t,s,o,r-d+t+s+o) for r,d,t,s,o in zip(raws,ds,ts,ss,os)]
  return InvoiceCalculation(lines,sum(raws),sum(x.final for x in lines))
-class DuplicateInvoiceError(Exception):pass
+class DuplicateInvoiceError(FinanceDomainError):status=409;code="DUPLICATE_INVOICE"
 @dataclass(frozen=True)
 class Invoice:
  id:UUID;organization_id:UUID;project_id:str;invoice_number:str|None;invoice_date:date;vendor_name:str;description:str|None;source:str;status:str;discount_irr:Decimal;tax_irr:Decimal;shipping_irr:Decimal;other_costs_irr:Decimal;final_amount_irr:Decimal;idempotency_key:str;version:int;submitted_by:UUID;confirmed_by:UUID|None;confirmed_at:datetime|None;created_at:datetime;lines:list;financial_effect_sign:int=1;original_invoice_id:UUID|None=None

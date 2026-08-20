@@ -3,6 +3,16 @@ from datetime import date, datetime
 from decimal import Decimal,ROUND_HALF_UP
 from uuid import UUID
 
+from .errors import FinanceDomainError
+
+
+class PricePeriodOverlap(FinanceDomainError):
+    """A resource may not hold two prices of the same scope effective on the same day."""
+
+    status = 409
+    code = "PRICE_PERIOD_OVERLAP"
+
+
 @dataclass(frozen=True)
 class PriceVersion:
     id: UUID; organization_id: UUID; project_id: str; resource_id: UUID

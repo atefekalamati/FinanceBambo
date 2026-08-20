@@ -8,7 +8,7 @@ from .numeric import strict_decimal,strict_optional_decimal
 Money=Decimal
 class InvoiceLineCreate(ApiModel):
  model_config=ConfigDict(json_schema_extra={"examples":[{"resourceId":"77777777-7777-4777-8777-777777777777","lineAmountIrr":"12000000","description":"هزینه مجوز"}]})
- estimate_line_id:UUID|None=None;resource_id:UUID;quantity:Decimal|None=None;unit:str|None=None;unit_price_irr:Decimal|None=Field(default=None,ge=0,max_digits=18,decimal_places=0);line_amount_irr:Decimal|None=Field(default=None,gt=0,max_digits=18,decimal_places=0);description:str|None=None
+ estimate_line_id:UUID|None=None;resource_id:UUID;quantity:Decimal|None=Field(default=None,max_digits=18,decimal_places=4);unit:str|None=None;unit_price_irr:Decimal|None=Field(default=None,ge=0,max_digits=18,decimal_places=0);line_amount_irr:Decimal|None=Field(default=None,gt=0,max_digits=18,decimal_places=0);description:str|None=None
  @field_validator("quantity","unit_price_irr","line_amount_irr",mode="before")
  @classmethod
  def strict_line_numbers(cls,v):return strict_optional_decimal(v)

@@ -18,6 +18,10 @@ class FinanceSettingsRepository(Protocol):
         self, scope: FinanceScope
     ) -> FinanceProjectSettings | None: ...
 
+    async def list_revisions(
+        self, scope: FinanceScope
+    ) -> list[FinanceProjectSettings]: ...
+
     async def append_revision_with_audit(
         self,
         scope: FinanceScope,
@@ -68,6 +72,22 @@ class PsycopgFinanceSettingsRepository:
             )
             row = await cursor.fetchone()
         return None if row is None else self._map(row)
+
+    async def list_revisions(self, scope: FinanceScope) -> list[FinanceProjectSettings]:
+        """Read the append-only revision trail newest first, scoped to both tenant keys."""
+        async with self._connection.cursor(row_factory=dict_row) as cursor:
+            await cursor.execute(
+                """
+                SELECT id, organization_id, project_id, gross_built_area, currency,
+                       revision, effective_from, reason, created_by, created_at
+                FROM finance_project_settings
+                WHERE organization_id = %s AND project_id = %s
+                ORDER BY revision DESC
+                """,
+                (scope.organization_id, scope.project_id),
+            )
+            rows = await cursor.fetchall()
+        return [self._map(row) for row in rows]
 
     async def append_revision_with_audit(
         self,
