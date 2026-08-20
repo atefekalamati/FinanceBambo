@@ -11,6 +11,10 @@ class PsycopgProgressRepository:
  async def latest_overrides(self,s,ref_id):
   async with self.db.cursor(row_factory=dict_row) as c:
    await c.execute("""SELECT DISTINCT ON (o.estimate_line_id) o.estimate_line_id,o.computed_value,o.override_value,o.reason,o.created_by,o.created_at,l.activity_external_id,l.assignment_external_id FROM progress_overrides o JOIN estimate_lines l ON l.organization_id=o.organization_id AND l.project_id=o.project_id AND l.id=o.estimate_line_id WHERE o.organization_id=%s AND o.project_id=%s AND o.progress_snapshot_ref_id=%s ORDER BY o.estimate_line_id,o.created_at DESC,o.id DESC""",(s.organization_id,s.project_id,ref_id));return await c.fetchall()
+ async def list_overrides(self,s,line_id):
+  """Read the append-only override trail for one estimate line, newest first."""
+  async with self.db.cursor(row_factory=dict_row) as c:
+   await c.execute("SELECT o.id,o.estimate_line_id,o.progress_snapshot_ref_id,r.progress_snapshot_id,o.computed_value,o.override_value,o.reason,o.created_by,o.created_at FROM progress_overrides o JOIN progress_snapshot_refs r ON r.organization_id=o.organization_id AND r.project_id=o.project_id AND r.id=o.progress_snapshot_ref_id WHERE o.organization_id=%s AND o.project_id=%s AND o.estimate_line_id=%s ORDER BY o.created_at DESC,o.id DESC",(s.organization_id,s.project_id,line_id));return await c.fetchall()
  async def append_override(self,s,v,audit_id):
   async with self.db.transaction():
    async with self.db.cursor() as c:

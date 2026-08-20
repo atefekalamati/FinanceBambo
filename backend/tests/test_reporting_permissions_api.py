@@ -10,7 +10,12 @@ BACKEND_ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(BACKEND_ROOT))
 
 from app.main import create_app
+from app.finance.schemas.base import to_camel
 from app.finance.security.context import AuthContext
+from app.finance.schemas.reports import OperationalOverviewResponse
+from app.finance.services.reports import FinanceLiveReportService
+
+OVERVIEW_KEYS={to_camel(name) for name in FinanceLiveReportService.OVERVIEW_FIELDS}
 
 ORG=UUID("11111111-1111-4111-8111-111111111111")
 ACTOR=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1")
@@ -41,11 +46,12 @@ class PermissionAuthorizer:
 
 class Reports:
     async def overview(self,scope,reporting_date,progress_snapshot_id=None):
-        return await self.live(scope,reporting_date,progress_snapshot_id)
+        report=await self.live(scope,reporting_date,progress_snapshot_id)
+        return {key:report[key] for key in OVERVIEW_KEYS}
     async def live(self,_scope,reporting_date,progress_snapshot_id=None):
         return {"reportingDate":reporting_date,"progressSnapshotId":progress_snapshot_id or SNAPSHOT,
             "metrics":{"initialEstimateIrr":"100","actualCostIrr":"50","currentExecutedValueIrr":"40","remainingPhysicalCostIrr":"60","moneyRequiredToContinueIrr":"50","forecastFinalCostIrr":"100","actualCostPerSquareMeterIrr":"5","forecastPerSquareMeterIrr":"10"},
-            "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":0}
+            "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":2,"excludedEstimateLineCount":3}
     async def get_snapshot(self,scope,report_id):
         return {"reportSnapshotId":report_id,"organizationId":scope.organization_id,"projectId":scope.project_id,
             "issuedAt":"2026-08-09T00:00:00Z","issuedBy":ACTOR,"progressSnapshotId":SNAPSHOT,
@@ -92,6 +98,26 @@ class ReportingPermissionApiTests(unittest.TestCase):
             issued=api.get(f"/api/projects/{PROJECT}/finance/report-snapshots/{REPORT}")
         self.assertEqual((403,200,403,403),(denied.status_code,overview.status_code,issue.status_code,issued.status_code))
         self.assertEqual("complete",overview.json()["calculationStatus"])
+        # The projection is the whole reason finance.view may call this route: it must not
+        # widen into reporting-only fields that finance_report.view is supposed to gate.
+        self.assertEqual(OVERVIEW_KEYS,set(overview.json()))
+
+    def test_operational_projection_exposes_the_agreed_fields_and_nothing_reporting_only(self):
+        self.assertEqual(("reporting_date","progress_snapshot_id","metrics","breakdown","top_price_variances",
+            "top_quantity_variances","warnings","calculation_status","incomplete_metric_keys",
+            "missing_price_count","excluded_estimate_line_count"),
+            FinanceLiveReportService.OVERVIEW_FIELDS)
+        self.assertEqual(set(OperationalOverviewResponse.model_fields),set(FinanceLiveReportService.OVERVIEW_FIELDS))
+        # Reporting-only detail names individual records and stays behind finance_report.view.
+        self.assertTrue({"excluded_estimate_line_ids","progress_quality"}
+            .isdisjoint(FinanceLiveReportService.OVERVIEW_FIELDS))
+
+    def test_projection_carries_the_counters_the_dashboard_banner_reads(self):
+        # finance-home-page.js renders "N قیمت و M ردیف ... لحاظ نشده" from these two.
+        # Dropping them would leave the banner truthfully flagged but reporting 0 and 0.
+        with client(("finance.view",)) as api:
+            overview=api.get(f"/api/projects/{PROJECT}/finance/overview",params={"reportingDate":"2026-08-09"}).json()
+        self.assertEqual((2,3),(overview["missingPriceCount"],overview["excludedEstimateLineCount"]))
 
 
 if __name__=="__main__":unittest.main()

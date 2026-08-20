@@ -68,8 +68,12 @@ class FinanceLiveReportService:
         report,_data,snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
         return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality}
 
+    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","excluded_estimate_line_count")
+
     async def overview(self,scope,reporting_date:date,progress_snapshot_id=None):
-        return await self.live(scope,reporting_date,progress_snapshot_id)
+        """Project the live report down to the operational fields finance.view may read."""
+        report=await self.live(scope,reporting_date,progress_snapshot_id)
+        return {key:report[key] for key in self.OVERVIEW_FIELDS}
 
     async def variances(self,scope,reporting_date:date,progress_snapshot_id=None,variance_type="all",resource_type=None,query=None,page=1,page_size=50,sort_by=None,sort_direction="desc"):
         report,_data,_snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
@@ -80,7 +84,8 @@ class FinanceLiveReportService:
         if query:
             term=query.casefold()
             items=[item for item in items if term in str(item.get("resourceCode","")).casefold() or term in str(item.get("resourceTitle","")).casefold() or term in str(item.get("activityExternalId","")).casefold()]
-        key=sort_by or ("varianceIrr" if variance_type=="price" else "varianceQuantity")
+        # A mixed list has no shared variance column, so rank it by the money at stake instead.
+        key=sort_by or {"price":"varianceIrr","quantity":"varianceQuantity"}.get(variance_type,"remainingPhysicalCostIrr")
         reverse=sort_direction!="asc"
         items.sort(key=lambda item:abs(item.get(key) or Decimal(0)),reverse=reverse)
         total=len(items);start=(page-1)*page_size;end=start+page_size

@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -9,7 +10,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.finance.schemas.conversions import ConversionCreate
-from app.finance.schemas.invoices import InvoiceCreate
+from app.finance.schemas.invoices import InvoiceCreate, InvoiceLineCreate
 from app.finance.schemas.prices import PriceCreate
 from app.finance.schemas.progress import ProgressOverrideCreate
 from app.finance.schemas.resources import EstimateLineCreate, EstimateRevisionCreate
@@ -86,6 +87,14 @@ class NumericValidationTests(unittest.TestCase):
             ConversionCreate(scopeKind="project", sourceUnit="ton", targetUnit="kg", dimension="mass", factor="1.123456789", effectiveFrom="2026-08-08", reason="r")
         with self.assertRaises(ValidationError):
             FinanceSettingsPatch(grossBuiltArea="1.12345", effectiveFrom="2026-08-08", reason="r", expectedRevision=0)
+        # invoice_lines.quantity is numeric(18,4): a finer quantity would be silently rounded by
+        # the column while the line amount stayed derived from the unrounded value.
+        with self.assertRaises(ValidationError):
+            InvoiceLineCreate(resourceId=str(RESOURCE_ID), quantity="12.00001", unit="each", unitPriceIrr="1200000")
+        with self.assertRaises(ValidationError):
+            InvoiceLineCreate(resourceId=str(RESOURCE_ID), quantity="12345678901234567890.1", unit="each", unitPriceIrr="1")
+        self.assertEqual(Decimal("12.0001"),
+            InvoiceLineCreate(resourceId=str(RESOURCE_ID), quantity="12.0001", unit="each", unitPriceIrr="1200000").quantity)
 
 
 if __name__ == "__main__":

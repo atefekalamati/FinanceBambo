@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
-from pydantic import ConfigDict
+from pydantic import ConfigDict, model_validator
 
 from .base import ApiModel
 
@@ -35,3 +35,12 @@ class AttachmentListResponse(ApiModel):
     page_size: int
     total_count: int
     total_pages: int
+    # totalItems is the canonical name across Finance list envelopes; totalCount is kept
+    # so existing clients keep working and is mirrored from it.
+    total_items: int | None = None
+
+    @model_validator(mode="after")
+    def mirror_total(self):
+        if self.total_items is None:
+            object.__setattr__(self, "total_items", self.total_count)
+        return self

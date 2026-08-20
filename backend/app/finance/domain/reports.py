@@ -38,6 +38,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     actual_by_type = {kind: ZERO for kind in ("material", "labor", "equipment", "general_cost")}
     actual_total = ZERO
     missing_conversion_count = 0
+    missing_conversion_types = set()
     for row in invoice_rows:
         effect = Decimal(row["final_line_amount_irr"]) * Decimal(row["financial_effect_sign"])
         actual_total += effect
@@ -49,6 +50,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             factor = conversion_by_key.get((source_unit, target_unit, row.get("dimension")))
             if factor is None:
                 missing_conversion_count += 1
+                missing_conversion_types.add(row["resource_type"])
                 warnings.append({"code":"UNIT_CONVERSION_MISSING","message":"Purchased quantity was excluded because its unit cannot be converted.","estimateLineId":str(row["estimate_line_id"]) if row.get("estimate_line_id") else None,"resourceId":str(row["resource_id"]),"resourceCode":row.get("resource_code"),"activityExternalId":None,"severity":"warning","excludedFromCalculation":True,"affectedMetricKeys":["moneyRequiredToContinueIrr","forecastFinalCostIrr"]})
                 continue
             quantity *= factor
@@ -73,6 +75,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     price_variances, quantity_variances = [], []
     general_revised = ZERO;general_required = ZERO;missing_price_count=0
     excluded_estimate_line_ids=[];resource_purchase_remaining=dict(purchased_by_resource);resource_actual_remaining=dict(actual_by_resource)
+    excluded_lines_by_type={kind:0 for kind in actual_by_type}
     progress_quality={"complete":True,"manualOverrideCount":0,"taskFallbackCount":0,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0}
     for row in estimate_rows:
         kind = row["resource_type"]
@@ -83,6 +86,14 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             initial_total += original_amount; general_revised += revised_amount
             breakdown[kind]["initialEstimateIrr"] += original_amount
             breakdown[kind]["revisedEstimateIrr"] += revised_amount
+            linked_actual = actual_by_line.get(row["id"], ZERO)
+            pooled_actual = resource_actual_remaining.get(row["resource_id"], ZERO)
+            pooled_allocated = min(max(revised_amount - linked_actual, ZERO), pooled_actual) if pooled_actual > ZERO else ZERO
+            resource_actual_remaining[row["resource_id"]] = pooled_actual - pooled_allocated
+            line_actual = linked_actual + pooled_allocated
+            general_required += max(revised_amount - line_actual, ZERO)
+            if line_actual > revised_amount:
+                warnings.append({"code":"GENERAL_COST_OVERRUN","message":"General cost actual exceeds its revised estimate.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["moneyRequiredToContinueIrr","forecastFinalCostIrr"]})
             continue
         original_quantity = Decimal(row["original_quantity"] or 0)
         revised_quantity = Decimal(row["revised_quantity"] if row.get("revised_quantity") is not None else original_quantity)
@@ -105,9 +116,11 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             percent=None if revised_quantity==0 else (deviation*Decimal(100)/revised_quantity).quantize(Decimal("0.0001"),rounding=ROUND_HALF_UP)
             warnings.append({"code":"QUANTITY_OVERRUN","message":"Executed quantity exceeds revised quantity.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr"],"deviationQuantity":format(deviation,"f"),"deviationPercent":None if percent is None else format(percent,"f")})
         current_price = row.get("current_unit_price_irr")
+        has_price = current_price is not None
         if current_price is None:
             missing_price_count += 1
             excluded_estimate_line_ids.append(str(row["id"]))
+            excluded_lines_by_type[kind] += 1
             warnings.append({"code":"CURRENT_PRICE_MISSING","message":"Current price is missing; live-value metrics exclude this line.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":True,"affectedMetricKeys":["currentExecutedValueIrr","remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr","forecastPerSquareMeterIrr"]})
             current = ZERO
         else: current = Decimal(current_price)
@@ -120,8 +133,9 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         bought = line_bought + resource_allocated_purchase
         required_quantity = max(revised_quantity - bought, ZERO) if kind == "material" else remaining
         required = money(required_quantity * current);money_required += required
-        breakdown[kind]["remainingPhysicalCostIrr"] += remaining_cost;breakdown[kind]["forecastFinalIrr"] += required
-        price_variance = remaining_cost - money(remaining * original_price)
+        if has_price:
+            breakdown[kind]["remainingPhysicalCostIrr"] += remaining_cost;breakdown[kind]["forecastFinalIrr"] += required
+        price_variance = remaining_cost - money(remaining * original_price) if has_price else ZERO
         quantity_variance = revised_quantity - original_quantity
         linked_actual_line = actual_by_line.get(row["id"], ZERO)
         resource_remaining_actual = resource_actual_remaining.get(row["resource_id"], ZERO)
@@ -131,25 +145,27 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         forecast_line = actual_line + remaining_cost
         price_percent = None if original_price == 0 else ((current - original_price) * Decimal(100) / original_price).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
         quantity_percent = None if original_quantity == 0 else (quantity_variance * Decimal(100) / original_quantity).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-        price_variances.append({"estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"resourceTitle":row["resource_title"],"resourceType":kind,
+        price_variances.append({"varianceKind":"price","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"resourceTitle":row["resource_title"],"resourceType":kind,
             "activityExternalId":row.get("activity_external_id"),"activityTitle":row.get("activity_title"),"wbsCode":row.get("wbs_code"),"baseUnit":row.get("base_unit"),
             "revisedQuantity":revised_quantity,"remainingQuantity":remaining,"estimateBaseUnitPriceIrr":original_price,"currentUnitPriceIrr":None if current_price is None else current,
-            "varianceIrr":price_variance,"priceVariancePercent":price_percent,"actualCostIrr":actual_line,"remainingPhysicalCostIrr":remaining_cost,
-            "forecastFinalIrr":forecast_line,"impactSharePercent":None,"currentPriceScope":row.get("current_price_scope"),"currentPriceEffectiveFrom":row.get("current_price_effective_from"),
+            "varianceIrr":price_variance,"priceVariancePercent":price_percent,"actualCostIrr":actual_line,"remainingPhysicalCostIrr":remaining_cost if has_price else None,
+            "forecastFinalIrr":forecast_line if has_price else None,"priceAvailable":has_price,"impactSharePercent":None,"currentPriceScope":row.get("current_price_scope"),"currentPriceEffectiveFrom":row.get("current_price_effective_from"),
             "currentPriceVersionId":row.get("price_version_id"),"estimatePriceVersionId":row.get("estimate_version_id")})
-        quantity_variances.append({"estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"resourceTitle":row["resource_title"],"resourceType":kind,
+        quantity_variances.append({"varianceKind":"quantity","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"resourceTitle":row["resource_title"],"resourceType":kind,
             "activityExternalId":row.get("activity_external_id"),"activityTitle":row.get("activity_title"),"wbsCode":row.get("wbs_code"),"baseUnit":row.get("base_unit"),
             "initialQuantity":original_quantity,"revisedQuantity":revised_quantity,"executedQuantity":executed,"remainingQuantity":remaining,
             "varianceQuantity":quantity_variance,"quantityVariancePercent":quantity_percent,"sourceMethod":_source,"progressSnapshotId":row.get("progress_snapshot_id"),
-            "actualCostIrr":actual_line,"remainingPhysicalCostIrr":remaining_cost,"forecastFinalIrr":forecast_line,"impactSharePercent":None})
+            "actualCostIrr":actual_line,"remainingPhysicalCostIrr":remaining_cost if has_price else None,"forecastFinalIrr":forecast_line if has_price else None,
+            "priceAvailable":has_price,"impactSharePercent":None})
 
-    general_required = max(general_revised - actual_by_type["general_cost"], ZERO)
     breakdown["general_cost"]["remainingPhysicalCostIrr"] = general_required
-    if actual_by_type["general_cost"] > general_revised: warnings.append({"code":"GENERAL_COST_OVERRUN","message":"General cost actual exceeds its revised estimate.","estimateLineId":None,"resourceId":None,"resourceCode":None,"activityExternalId":None,"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["moneyRequiredToContinueIrr","forecastFinalCostIrr"]})
     money_required += general_required
     for kind in breakdown:
         breakdown[kind]["forecastFinalIrr"] += actual_by_type[kind]
     breakdown["general_cost"]["forecastFinalIrr"] += general_required
+    for kind in breakdown:
+        breakdown[kind]["excludedEstimateLineCount"] = excluded_lines_by_type[kind]
+        breakdown[kind]["calculationStatus"] = "incomplete" if excluded_lines_by_type[kind] or kind in missing_conversion_types else "complete"
     forecast = actual_total + money_required
     area = None if gross_area is None else Decimal(gross_area)
     incomplete_metric_keys=[]
@@ -169,9 +185,9 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         "forecastPerSquareMeterIrr":None if missing_price_count or missing_conversion_count else forecast_per_area}
     price_variances.sort(key=lambda item:abs(item["varianceIrr"]),reverse=True)
     quantity_variances.sort(key=lambda item:abs(item["varianceQuantity"]),reverse=True)
-    total_impact = sum(abs(item["varianceIrr"]) for item in price_variances) + sum(abs(item["remainingPhysicalCostIrr"]) for item in quantity_variances)
+    total_impact = sum(abs(item["varianceIrr"]) for item in price_variances) + sum(abs(item["remainingPhysicalCostIrr"] or ZERO) for item in quantity_variances)
     for item in price_variances:
-        item["impactSharePercent"] = None if total_impact == 0 else (abs(item["varianceIrr"]) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+        item["impactSharePercent"] = None if total_impact == 0 or not item["priceAvailable"] else (abs(item["varianceIrr"]) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     for item in quantity_variances:
-        item["impactSharePercent"] = None if total_impact == 0 else (abs(item["remainingPhysicalCostIrr"]) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+        item["impactSharePercent"] = None if total_impact == 0 or not item["priceAvailable"] else (abs(item["remainingPhysicalCostIrr"] or ZERO) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     return LiveReport(metrics,list(breakdown.values()),price_variances[:10],quantity_variances[:10],price_variances,quantity_variances,warnings,"incomplete" if missing_price_count or missing_conversion_count else "complete",incomplete_metric_keys,missing_price_count,len(excluded_estimate_line_ids),excluded_estimate_line_ids,progress_quality)

@@ -6,7 +6,8 @@ from types import SimpleNamespace
 from uuid import UUID
 BACKEND_ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(BACKEND_ROOT))
 from app.finance.domain.progress import consumed_quantity, resolve_progress_quantity
-from app.finance.schemas.progress import ProgressOverrideCreate
+from app.finance.domain.resources import FinanceRecordNotFound
+from app.finance.schemas.progress import ProgressOverrideCreate,ProgressOverrideResponse
 from app.finance.services.progress import ProgressService
 
 class ProgressTests(unittest.TestCase):
@@ -45,6 +46,7 @@ class Repo:
  async def get_snapshot(self,scope,snapshot_id):return {"id":REF,"progress_snapshot_id":SNAPSHOT}
  async def get_line_mapping(self,scope,line_id):return {"id":LINE,"activity_external_id":"A1","assignment_external_id":"AS1"}
  async def latest_overrides(self,scope,ref_id):return self.overrides
+ async def list_overrides(self,scope,line_id):return [row for row in self.overrides if row["estimate_line_id"]==line_id]
  async def append_override(self,scope,value,audit_id):self.appended=value;return value
 
 class ProgressServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -53,8 +55,35 @@ class ProgressServiceTests(unittest.IsolatedAsyncioTestCase):
   repo=Repo();command=ProgressOverrideCreate(progressSnapshotId=SNAPSHOT,overrideValue="9",reason="اصلاح معتبر")
   result=await self.service(repo).override(SCOPE,LINE,command)
   self.assertEqual((Decimal("7"),Decimal("9")),(result.computed_value,result.override_value))
+ async def test_override_accepts_the_client_payload_that_omits_computed_value(self):
+  # The override dialog only knows the snapshot, the new value and the reason; the
+  # computed baseline lives in the progress feed, so the DTO must not demand it.
+  # Validated through the JSON boundary (aliases + extra="forbid"), exactly as the browser sends it.
+  repo=Repo();command=ProgressOverrideCreate.model_validate({"progressSnapshotId":str(SNAPSHOT),"overrideValue":"9","reason":"اصلاح معتبر"})
+  # The baseline is the backend's to determine, so the request DTO does not carry it at all.
+  self.assertNotIn("computed_value",ProgressOverrideCreate.model_fields)
+  result=await self.service(repo).override(SCOPE,LINE,command)
+  self.assertEqual((Decimal("7"),Decimal("9")),(result.computed_value,result.override_value))
+ def test_override_response_always_carries_the_backend_computed_value(self):
+  payload=ProgressOverrideResponse.from_domain(SimpleNamespace(id=UUID(int=4),estimate_line_id=LINE,progress_snapshot_id=SNAPSHOT,computed_value=Decimal("7"),override_value=Decimal("9"),reason="اصلاح معتبر",created_by=ACTOR,created_at=AT)).model_dump(by_alias=True)
+  self.assertEqual(("7","9","manual_override"),(payload["computedValue"],payload["overrideValue"],payload["source"]))
+  with self.assertRaises(ValueError):ProgressOverrideResponse(id=UUID(int=4),estimateLineId=LINE,progressSnapshotId=SNAPSHOT,computedValue=None,overrideValue="9",reason="اصلاح معتبر",createdBy=ACTOR,createdAt=AT)
  async def test_feed_applies_latest_persisted_override_without_mutating_provider_truth(self):
   repo=Repo([{"estimate_line_id":LINE,"computed_value":Decimal("7"),"override_value":Decimal("9"),"reason":"اصلاح معتبر","created_by":ACTOR,"created_at":AT,"activity_external_id":"A1","assignment_external_id":"AS1"}])
   feed=await self.service(repo).feed(SCOPE,SNAPSHOT);override=feed["assignments"][0]["manualOverride"]
   self.assertEqual(("7","9","manual_override"),(override["previousCalculatedValue"],override["newValue"],override["source"]))
   self.assertEqual(("7","9","manual_override","1"),(feed["assignments"][0]["computedExecutedQuantity"],feed["assignments"][0]["effectiveExecutedQuantity"],feed["assignments"][0]["sourceMethod"],feed["assignments"][0]["quality"]))
+ async def test_override_history_returns_the_full_trail_for_the_line(self):
+  trail=[{"id":UUID(int=6),"estimate_line_id":LINE,"progress_snapshot_id":SNAPSHOT,"computed_value":Decimal("7"),"override_value":Decimal("9"),"reason":"دوم","created_by":ACTOR,"created_at":AT},
+         {"id":UUID(int=5),"estimate_line_id":LINE,"progress_snapshot_id":SNAPSHOT,"computed_value":Decimal("7"),"override_value":Decimal("8"),"reason":"اول","created_by":ACTOR,"created_at":AT}]
+  rows=await self.service(Repo(trail)).override_history(SCOPE,LINE)
+  self.assertEqual([Decimal("9"),Decimal("8")],[row["override_value"] for row in rows])
+  payload=ProgressOverrideResponse.from_row(rows[0]).model_dump(by_alias=True)
+  self.assertEqual(("9","7","manual_override"),(payload["overrideValue"],payload["computedValue"],payload["source"]))
+
+ async def test_override_history_conceals_a_line_outside_this_scope(self):
+  class Foreign(Repo):
+   async def get_line_mapping(self,scope,line_id):return None
+  with self.assertRaises(FinanceRecordNotFound):
+   await self.service(Foreign()).override_history(SCOPE,LINE)
+

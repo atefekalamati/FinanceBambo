@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 from ..domain.settings import FinanceProjectSettings, FinanceSettingsNotFound
 from ..repositories.settings import FinanceSettingsRepository
-from ..schemas.settings import FinanceSettingsPatch
+from ..schemas.settings import FinanceSettingsPatch, FinanceSettingsRevisionResponse
 from ..security.context import AuthContext
 from ..security.guards import FinanceScope
 
@@ -15,6 +15,12 @@ def settings_edit_permission(context: AuthContext) -> str:
     """Apply PRD role policy using only existing coarse host permissions."""
 
     return "finance.view" if context.organization_role == "org_chief" else "finance.edit"
+
+
+def may_edit_settings(scope) -> bool:
+    """Answer the same question the PATCH gate asks, so the UI cannot drift from enforcement."""
+
+    return settings_edit_permission(scope) in scope.permission_codes
 
 
 class FinanceSettingsService:
@@ -36,6 +42,17 @@ class FinanceSettingsService:
 
     async def summary(self, scope: FinanceScope) -> FinanceProjectSettings:
         return await self.get(scope)
+
+    async def revisions(self, scope: FinanceScope) -> list[FinanceSettingsRevisionResponse]:
+        """Pair each revision with the area it replaced; the oldest one replaced nothing."""
+        trail = await self._repository.list_revisions(scope)
+        return [
+            FinanceSettingsRevisionResponse.from_domain(
+                value,
+                trail[index + 1].gross_built_area if index + 1 < len(trail) else None,
+            )
+            for index, value in enumerate(trail)
+        ]
 
     async def update(
         self, scope: FinanceScope, command: FinanceSettingsPatch
