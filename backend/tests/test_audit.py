@@ -53,8 +53,10 @@ class AuditTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("LIMIT %s OFFSET %s",source)
         # Filter values are bound, never interpolated: only the clause skeleton is formatted in.
         self.assertNotIn('f"%s"',source)
-        for fragment in ("action=%s","entity_type=%s","occurred_at>=%s","occurred_at<%s"):
+        for fragment in ("action=%s","entity_type=%s"):
             self.assertIn(fragment,source)
+        # Date bounds are asserted behaviourally in test_new_repository_sql.py, which pins
+        # the whole-UTC-day semantics rather than a bare comparison.
 
 
 if __name__=="__main__":unittest.main()
