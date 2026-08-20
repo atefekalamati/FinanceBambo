@@ -80,7 +80,8 @@ test("rejects draft creation without the coarse approved edit permission", async
 
 test("detects a similar invoice and requires an audited continuation reason", async () => {
   const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.view", "finance.edit"] });
-  const header = { invoiceNumber: "ف-001", invoiceDate: "2026-07-01", vendorName: "فروشگاه ساختمانی بامبو نمونه", description: "" };
+  // Matches invoice-demo-001 in the seed, whose date now sits in the spread month range.
+  const header = { invoiceNumber: "ف-001", invoiceDate: "2026-04-08", vendorName: "فروشگاه ساختمانی بامبو نمونه", description: "" };
   const lines = [{ targetId: "general-permit", targetType: "general_cost", targetLabel: "هزینه مجوز نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "121750000", description: "" }];
   const adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
   const preview = await adapter.previewDraft({ header, lines, adjustments });

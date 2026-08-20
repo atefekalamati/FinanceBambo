@@ -1,9 +1,12 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
-import { compactMoneyFromIrr, formatCompactMoneyFromIrr, formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
+import { compactMoneyFromIrr, compactMoneyScale, formatCompactMoneyFromIrr, formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
-import { element } from "../../shared/dom/elements.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
+import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
+import { createCombinationChart } from "../../shared/components/combination-chart.js";
+import { buildMonthlyTrend, TREND_MODES } from "./monthly-trend.js";
 import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
 
 const SUMMARY_ITEMS = Object.freeze([
@@ -359,7 +362,7 @@ function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
   return section;
 }
 
-function renderFinanceHome(data) {
+function renderFinanceHome(data, trendSection = document.createDocumentFragment()) {
   const fragment = document.createDocumentFragment();
   const pageHeader = document.createElement("header");
   pageHeader.className = "finance-page-header";
@@ -445,14 +448,160 @@ function renderFinanceHome(data) {
   areas.setAttribute("aria-label", "بخش‌های امور مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  fragment.append(pageHeader, overviewPanel, insights, areasHeader, areas);
+  fragment.append(pageHeader, overviewPanel, trendSection, insights, areasHeader, areas);
   return fragment;
+}
+
+const TREND_MODE_LABELS = Object.freeze({
+  [TREND_MODES.PERIODIC]: "دوره‌ای",
+  [TREND_MODES.CUMULATIVE]: "تجمیعی",
+});
+
+const TREND_MODE_HINTS = Object.freeze({
+  [TREND_MODES.PERIODIC]: "هزینه واقعی و برآورد هر ماه به‌صورت مستقل.",
+  [TREND_MODES.CUMULATIVE]: "جمع هزینه واقعی و برآورد از ابتدای دوره تا پایان هر ماه.",
+});
+
+const DIRECTION_LABELS = Object.freeze({
+  over: "بیشتر از برآورد",
+  under: "کمتر از برآورد",
+  onTarget: "برابر برآورد",
+});
+
+function trendTooltip(point) {
+  const panel = element("div", "combo-chart__tooltip-body");
+  panel.append(element("strong", "combo-chart__tooltip-title", point.fullLabel));
+  const rows = element("dl", "combo-chart__tooltip-rows");
+  const addRow = (label, value, valueClass = "numeric") => {
+    const row = element("div");
+    row.append(element("dt", "", label), element("dd", valueClass, value));
+    rows.append(row);
+  };
+  addRow("برآورد", point.estimateIrr === null ? "ثبت نشده" : formatCompactMoneyFromIrr(point.estimateIrr));
+  addRow("هزینه واقعی", formatCompactMoneyFromIrr(point.actualIrr));
+  if (point.deviationIrr !== null) {
+    const percent = point.deviationPercent === null ? "" : ` · ${formatDisplayNumber(point.deviationPercent)}٪`;
+    addRow("انحراف", `${formatCompactMoneyFromIrr(point.deviationIrr)}${percent}`, `numeric combo-chart__deviation combo-chart__deviation--${point.direction}`);
+    addRow("وضعیت", DIRECTION_LABELS[point.direction] ?? "—", "");
+  }
+  panel.append(rows);
+  return panel;
+}
+
+function trendTable(view) {
+  const wrapper = element("div", "table-scroll");
+  const table = element("table", "data-table monthly-trend-table");
+  table.append(
+    tableCaption(`جدول جایگزین نمودار روند ماهانه هزینه در حالت ${TREND_MODE_LABELS[view.mode]}`),
+    tableHead(["ماه", "برآورد", "هزینه واقعی", "انحراف"]),
+  );
+  const body = document.createElement("tbody");
+  view.points.forEach((point) => {
+    const row = document.createElement("tr");
+    const deviation = point.deviationIrr === null
+      ? "—"
+      : `${formatCompactMoneyFromIrr(point.deviationIrr)}${point.deviationPercent === null ? "" : ` · ${formatDisplayNumber(point.deviationPercent)}٪`}`;
+    row.append(
+      element("td", "", point.fullLabel),
+      element("td", "numeric", point.estimateIrr === null ? "ثبت نشده" : formatCompactMoneyFromIrr(point.estimateIrr)),
+      element("td", "numeric", formatCompactMoneyFromIrr(point.actualIrr)),
+      element("td", "numeric", deviation),
+    );
+    body.append(row);
+  });
+  table.append(body);
+  wrapper.append(table);
+  return wrapper;
+}
+
+function trendLegend() {
+  const legend = element("ul", "breakdown-legend monthly-trend-legend");
+  [["actual", "هزینه واقعی ثبت‌شده"], ["initial", "برآورد ماهانه"]].forEach(([series, label]) => {
+    const item = element("li", "", label);
+    item.dataset.series = series;
+    legend.append(item);
+  });
+  return legend;
+}
+
+/**
+ * Builds the trend card and hands the chart instance back with it, so the page
+ * disposes exactly one instance per render instead of leaving a ResizeObserver
+ * behind on re-paint or route change.
+ */
+function createMonthlyTrendSection({ trend, trendError, mode, onModeChange }) {
+  const section = element("section", "finance-monthly-trend");
+  section.setAttribute("aria-label", "روند ماهانه هزینه پروژه");
+
+  const heading = element("div", "section-heading");
+  const copy = element("div");
+  copy.append(
+    element("span", "", "روند هزینه"),
+    element("h2", "", "روند ماهانه هزینه پروژه"),
+    element("small", "", TREND_MODE_HINTS[mode]),
+  );
+  const toggle = element("div", "trend-mode-toggle");
+  toggle.setAttribute("role", "group");
+  toggle.setAttribute("aria-label", "حالت نمایش روند ماهانه");
+  [TREND_MODES.PERIODIC, TREND_MODES.CUMULATIVE].forEach((value) => {
+    const button = element("button", `button button--small ${value === mode ? "button--primary" : "button--ghost"}`, TREND_MODE_LABELS[value]);
+    button.type = "button";
+    button.setAttribute("aria-pressed", String(value === mode));
+    button.addEventListener("click", () => onModeChange(value));
+    toggle.append(button);
+  });
+  heading.append(copy, toggle);
+  section.append(heading);
+
+  if (trendError) {
+    section.append(element("p", "inline-notice", formatApiErrorMessage(trendError, "دریافت روند ماهانه هزینه انجام نشد.")));
+    return { section, chart: null };
+  }
+
+  const view = buildMonthlyTrend({ months: trend?.months ?? [], mode });
+  if (view.isEmpty) {
+    const reason = trend?.unavailableReason ?? "هنوز فاکتور تأییدشده‌ای برای ساخت روند ماهانه ثبت نشده است.";
+    section.append(element("p", "inline-notice", reason));
+    return { section, chart: null };
+  }
+
+  const axisScale = compactMoneyScale(view.maximumIrr);
+  if (axisScale) {
+    section.querySelector(".section-heading small").textContent = `${TREND_MODE_HINTS[mode]} ارقام محور بر حسب ${axisScale.unit} است.`;
+  }
+  section.append(trendLegend());
+  const chart = createCombinationChart({
+    barSeries: { magnitudeKey: "actualMagnitude" },
+    lineSeries: { magnitudeKey: "estimateMagnitude" },
+    formatValue: (value) => axisScale?.format(value) ?? "",
+    renderTooltip: trendTooltip,
+    ariaLabel: `نمودار ستونی هزینه واقعی و خط برآورد ماهانه در حالت ${TREND_MODE_LABELS[mode]}`,
+  });
+  chart.setData({ points: view.points, ticks: view.axisTicks });
+  section.append(chart.element);
+
+  if (!view.hasEstimate) {
+    section.append(element("p", "inline-notice", "برآورد ماهانه در دسترس نیست و فقط هزینه واقعی ثبت‌شده رسم شده است."));
+  } else if (view.estimatePartial) {
+    section.append(element("p", "inline-notice", "برای بخشی از ماه‌ها برآورد ثبت نشده و خط برآورد در آن بازه‌ها پیوسته نیست."));
+  }
+  section.append(trendTable(view));
+  return { section, chart };
 }
 
 export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
   let state = createRequestState(REQUEST_STATUS.LOADING);
+  let trend = null;
+  let trendError = null;
+  let trendMode = TREND_MODES.PERIODIC;
+  let chart = null;
   const root = document.createElement("div");
   root.className = "finance-home-page";
+
+  function disposeChart() {
+    chart?.destroy();
+    chart = null;
+  }
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
@@ -463,12 +612,27 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
         state = createRequestState(REQUEST_STATUS.EMPTY);
       } else {
         const latest = snapshots[0];
-        const report = await reportsAdapter.getOverview({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId });
+        // The trend is independent of the overview: a failure there must not
+        // take the eight headline metrics down with it.
+        const [report, monthly] = await Promise.all([
+          reportsAdapter.getOverview({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId }),
+          reportsAdapter.getMonthlyTrend({ reportingDate: latest.reportingDate }).then(
+            (value) => { trendError = null; return value; },
+            (error) => { trendError = error; return null; },
+          ),
+        ]);
+        trend = monthly;
         state = report ? createRequestState(REQUEST_STATUS.SUCCESS, report) : createRequestState(REQUEST_STATUS.EMPTY);
       }
     } catch (error) {
       state = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
     }
+    paint();
+  }
+
+  function setTrendMode(nextMode) {
+    if (nextMode === trendMode) return;
+    trendMode = nextMode;
     paint();
   }
 
@@ -488,7 +652,13 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
   }
 
   function paint() {
-    root.replaceChildren(renderPageState(state, { renderContent: renderFinanceHome, renderEmpty, onRetry: load }));
+    disposeChart();
+    const renderContent = (data) => {
+      const built = createMonthlyTrendSection({ trend, trendError, mode: trendMode, onModeChange: setTrendMode });
+      chart = built.chart;
+      return renderFinanceHome(data, built.section);
+    };
+    root.replaceChildren(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }
 
   load();
