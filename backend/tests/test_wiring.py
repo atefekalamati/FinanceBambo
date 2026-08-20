@@ -39,6 +39,7 @@ class WiringTests(unittest.TestCase):
             {
                 ("/api/projects/{projectId}/finance/settings", "get"),
                 ("/api/projects/{projectId}/finance/settings", "patch"),
+                ("/api/projects/{projectId}/finance/settings/revisions", "get"),
                 ("/api/projects/{projectId}/finance/summary", "get"),
                 ("/api/projects/{projectId}/finance/resources", "get"),
                 ("/api/projects/{projectId}/finance/resources", "post"),
@@ -50,6 +51,7 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/estimate-lines", "get"),
                 ("/api/projects/{projectId}/finance/estimate-lines", "post"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/revisions", "post"),
+                ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/progress-overrides", "get"),
                 ("/api/projects/{projectId}/finance/resources/{resourceId}/prices", "get"),
                 ("/api/projects/{projectId}/finance/resources/{resourceId}/prices", "post"),
                 ("/api/projects/{projectId}/finance/price-history", "get"),
@@ -115,9 +117,32 @@ class WiringTests(unittest.TestCase):
         self.assertTrue({"items","page","pageSize","totalItems","totalPages"}<=set(schemas["ActivityListResponse"]["properties"]))
         self.assertTrue({"code","labelFa","dimension","dimensionLabelFa","decimalPrecision","active"}<=set(schemas["UnitDefinitionResponse"]["properties"]))
         self.assertTrue({"organizationPriceIrr","organizationEffectiveFrom","projectPriceIrr","projectEffectiveFrom","currentEffectiveFrom"}<=set(schemas["CurrentPriceTrendResponse"]["properties"]))
+        # The price import form carries the file alone: normalization reads each row's own
+        # mandatory currency column, so no batch-level currency unit is asked for.
+        price_import=schemas[paths["/api/projects/{projectId}/finance/imports/prices/preview"]["post"]["requestBody"]["content"]["multipart/form-data"]["schema"]["$ref"].rsplit("/",1)[-1]]
+        self.assertEqual(["file"],price_import["required"])
+        self.assertEqual({"file"},set(price_import["properties"]))
+        # Variance rows are discriminated, so a mixed page cannot validate into the wrong shape.
+        self.assertEqual("varianceKind",
+            schemas["ReportVarianceListResponse"]["properties"]["items"]["items"]["discriminator"]["propertyName"])
+        self.assertEqual("price",schemas["PriceVariance"]["properties"]["varianceKind"]["const"])
+        self.assertEqual("quantity",schemas["QuantityVariance"]["properties"]["varianceKind"]["const"])
+        # Audit history is paged like every other list, and filters run server-side.
+        audit=paths["/api/projects/{projectId}/finance/audit-events"]["get"]
+        audit_params={item["name"] for item in audit["parameters"]}
+        self.assertTrue({"page","pageSize","action","entityType","occurredFrom","occurredTo","query"}<=audit_params)
+        self.assertTrue({"items","page","pageSize","totalItems","totalPages"}<=set(schemas["AuditEventListResponse"]["properties"]))
+        # totalItems is the canonical count name; totalCount stays for existing clients.
+        for name in ("AttachmentListResponse","ExtractionListResponse"):
+            self.assertTrue({"totalItems","totalCount"}<=set(schemas[name]["properties"]),name)
+        # sortBy is bound to numeric columns; an arbitrary column would crash the sort.
+        variance_params={item["name"]:item["schema"] for item in paths["/api/projects/{projectId}/finance/reports/live/variances"]["get"]["parameters"]}
+        self.assertIn("varianceIrr",str(variance_params["sortBy"]))
+        self.assertNotIn("resourceCode",str(variance_params["sortBy"]))
 
-    def test_domain_error_envelope_uses_public_camel_case_request_id(self):
-        source=inspect.getsource(create_app)
+    def test_error_envelope_uses_public_camel_case_request_id(self):
+        # The envelope is built in one helper shared by every handler, so inspect the module.
+        source=inspect.getsource(sys.modules[create_app.__module__])
         self.assertIn('"requestId"',source)
         self.assertNotIn('"request_id"',source)
 

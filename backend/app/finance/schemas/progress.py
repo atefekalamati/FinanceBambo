@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 from pydantic import Field,field_serializer,field_validator
 from .base import ApiModel
-from .numeric import strict_decimal
+from .numeric import strict_decimal,strict_optional_decimal
 class ProgressSnapshotResponse(ApiModel):
  organization_id:UUID;project_id:str;progress_snapshot_id:UUID;source_file_version_id:UUID;source_file_name_safe:str;imported_at:datetime;imported_by:UUID;status:Literal["ready","superseded"];reporting_date:date
 class ProgressFeedResponse(ApiModel):
@@ -25,3 +25,5 @@ class ProgressOverrideResponse(ProgressOverrideCreate):
  def decimal_string(self,v):return format(v,"f")
  @classmethod
  def from_domain(cls,v):return cls(id=v.id,estimateLineId=v.estimate_line_id,progressSnapshotId=v.progress_snapshot_id,computedValue=v.computed_value,overrideValue=v.override_value,reason=v.reason,createdBy=v.created_by,createdAt=v.created_at)
+ @classmethod
+ def from_row(cls,row):return cls(id=row["id"],estimateLineId=row["estimate_line_id"],progressSnapshotId=row["progress_snapshot_id"],computedValue=row["computed_value"],overrideValue=row["override_value"],reason=row["reason"],createdBy=row["created_by"],createdAt=row["created_at"])

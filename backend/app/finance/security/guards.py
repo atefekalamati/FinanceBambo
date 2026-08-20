@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import Request
 
 from ..adapters.ports import AuthContextProvider
+from ..domain.errors import FinanceDomainError
 from .context import AuthContext
 from .ports import PermissionAuthorizer, ScopeAuthorizer
 
@@ -20,9 +21,13 @@ class FinanceScope:
     project_id: str
     actor_user_id: UUID | None = None
     locale: str = "fa"
+    # Carried so a handler can report what this actor may do without re-asking the host.
+    # Reporting a capability never grants one: every request is still gated independently.
+    organization_role: str | None = None
+    permission_codes: tuple[str, ...] = ()
 
 
-class FinanceNotFound(Exception):
+class FinanceNotFound(FinanceDomainError):
     status = 404
     code = "FINANCE_NOT_FOUND"
 
@@ -53,6 +58,8 @@ async def authorize_finance_request(
         project_id=project_id,
         actor_user_id=context.user_id,
         locale=context.locale,
+        organization_role=context.organization_role,
+        permission_codes=tuple(context.permission_codes),
     )
 
 

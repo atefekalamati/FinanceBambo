@@ -9,10 +9,11 @@ from uuid import UUID
 from .schemas.settings import (
     FinanceSettingsPatch,
     FinanceSettingsResponse,
+    FinanceSettingsRevisionResponse,
     FinanceSummaryResponse,
 )
 from .security.guards import authorize_finance_request
-from .services.settings import settings_edit_permission
+from .services.settings import may_edit_settings, settings_edit_permission
 from .schemas.resources import (EstimateLineCreate, EstimateLineResponse,
     EstimateRevisionCreate, ResourceCreate, ResourcePatch, ResourceResponse)
 from .schemas.activities import ActivityCreate, ActivityListResponse, ActivityResponse
@@ -25,8 +26,8 @@ from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResp
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoiceListResponse,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from .schemas.attachments import AttachmentListResponse,AttachmentResponse
 from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionListResponse,ExtractionReject,ExtractionRetry,ExtractionStart
-from .schemas.reports import LiveReportResponse,ReportSnapshotCreate,ReportSnapshotReference,ReportVarianceListResponse
-from .schemas.audit import AuditEventResponse
+from .schemas.reports import LiveReportResponse,OperationalOverviewResponse,ReportSnapshotCreate,ReportSnapshotReference,ReportVarianceListResponse
+from .schemas.audit import AuditEventListResponse,AuditEventResponse
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -55,7 +56,7 @@ async def get_finance_settings(projectId: str, request: Request):
         permission_authorizer,
     )
     value = await request.app.state.finance_settings_service.get(scope)
-    return FinanceSettingsResponse.from_domain(value)
+    return FinanceSettingsResponse.from_domain(value, may_edit_settings(scope))
 
 
 @router.patch("/settings", response_model=FinanceSettingsResponse)
@@ -72,7 +73,22 @@ async def patch_finance_settings(
         permission_authorizer,
     )
     value = await request.app.state.finance_settings_service.update(scope, payload)
-    return FinanceSettingsResponse.from_domain(value)
+    return FinanceSettingsResponse.from_domain(value, may_edit_settings(scope))
+
+
+@router.get("/settings/revisions", response_model=list[FinanceSettingsRevisionResponse])
+async def get_finance_settings_revisions(projectId: str, request: Request):
+    """Expose the append-only settings trail; the table is immutable, so the list stays short."""
+    auth, scope_authorizer, permission_authorizer = _host_ports(request)
+    scope = await authorize_finance_request(
+        request,
+        projectId,
+        "finance.view",
+        auth,
+        scope_authorizer,
+        permission_authorizer,
+    )
+    return await request.app.state.finance_settings_service.revisions(scope)
 
 
 @router.get("/summary", response_model=FinanceSummaryResponse)
@@ -199,6 +215,12 @@ async def progress_feed(projectId:str,snapshotId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
     return await request.app.state.progress_service.feed(scope,snapshotId)
 
+@router.get("/estimate-lines/{lineId}/progress-overrides",response_model=list[ProgressOverrideResponse])
+async def progress_override_history(projectId:str,lineId:UUID,request:Request):
+    """Expose the append-only override trail so the UI can show what was replaced and why."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    return [ProgressOverrideResponse.from_row(row) for row in await request.app.state.progress_service.override_history(scope,lineId)]
+
 @router.post("/estimate-lines/{lineId}/progress-override",response_model=ProgressOverrideResponse,status_code=201)
 async def progress_override(projectId:str,lineId:UUID,payload:ProgressOverrideCreate,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit")
@@ -315,7 +337,7 @@ async def live_report(projectId:str,request:Request,reportingDate:date,progressS
     scope=await _resource_scope(projectId,request,"finance_report.view")
     return await request.app.state.finance_live_report_service.live(scope,reportingDate,progressSnapshotId)
 
-@router.get("/overview",response_model=LiveReportResponse,summary="Operational Finance Overview")
+@router.get("/overview",response_model=OperationalOverviewResponse,summary="Operational Finance Overview")
 async def finance_overview(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None):
     scope=await _resource_scope(projectId,request,"finance.view")
     return await request.app.state.finance_live_report_service.overview(scope,reportingDate,progressSnapshotId)
@@ -324,7 +346,8 @@ async def finance_overview(projectId:str,request:Request,reportingDate:date,prog
 async def live_report_variances(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None,
     varianceType:str=Query("all",pattern="^(price|quantity|all)$"),resourceType:str|None=Query(None,pattern="^(material|labor|equipment|general_cost)$"),
     query:str|None=Query(None,min_length=1,max_length=200),page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),
-    sortBy:str|None=None,sortDirection:str=Query("desc",pattern="^(asc|desc)$")):
+    sortBy:str|None=Query(None,pattern="^(varianceIrr|varianceQuantity|remainingPhysicalCostIrr|forecastFinalIrr|impactSharePercent|actualCostIrr)$"),
+    sortDirection:str=Query("desc",pattern="^(asc|desc)$")):
     scope=await _resource_scope(projectId,request,"finance_report.view")
     return await request.app.state.finance_live_report_service.variances(scope,reportingDate,progressSnapshotId,varianceType,resourceType,query,page,pageSize,sortBy,sortDirection)
 
@@ -350,7 +373,9 @@ async def report_snapshot_xlsx(projectId:str,reportId:UUID,request:Request):
     content=await request.app.state.finance_live_report_service.export(scope,reportId,"xlsx")
     return Response(content,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",headers={"Content-Disposition":f'attachment; filename="finance-report-{reportId}.xlsx"'})
 
-@router.get("/audit-events",response_model=list[AuditEventResponse])
-async def audit_events(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200)):
+@router.get("/audit-events",response_model=AuditEventListResponse)
+async def audit_events(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),
+    action:str|None=Query(None,min_length=1,max_length=100),entityType:str|None=Query(None,min_length=1,max_length=100),
+    occurredFrom:date|None=None,occurredTo:date|None=None,query:str|None=Query(None,min_length=1,max_length=200)):
     scope=await _resource_scope(projectId,request,"finance.view")
-    return await request.app.state.finance_audit_service.list(scope,page,pageSize)
+    return await request.app.state.finance_audit_service.list(scope,page,pageSize,action,entityType,occurredFrom,occurredTo,query)

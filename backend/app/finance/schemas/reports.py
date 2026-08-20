@@ -1,6 +1,6 @@
 from datetime import date,datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated,Literal
 from uuid import UUID
 
 from pydantic import Field,field_serializer
@@ -29,17 +29,21 @@ class TypeBreakdown(ApiModel):
     actual_cost_irr: Decimal
     remaining_physical_cost_irr: Decimal = Decimal(0)
     forecast_final_irr: Decimal
+    calculation_status: Literal["complete","incomplete"] = "complete"
+    excluded_estimate_line_count: int = 0
     @field_serializer("initial_estimate_irr","revised_estimate_irr","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr")
     def serialize_money(self,value): return format(value,"f")
 
 
 class PriceVariance(ApiModel):
+    variance_kind: Literal["price"] = "price"
     estimate_line_id: UUID;resource_id:UUID;resource_code:str;resource_title:str;resource_type:str;variance_irr:Decimal
     activity_external_id:str|None=None;activity_title:str|None=None;wbs_code:str|None=None;base_unit:str|None=None
     revised_quantity:Decimal|None=None;remaining_quantity:Decimal|None=None
     estimate_base_unit_price_irr:Decimal|None=None;current_unit_price_irr:Decimal|None=None
     price_variance_percent:Decimal|None=None;actual_cost_irr:Decimal|None=None
     remaining_physical_cost_irr:Decimal|None=None;forecast_final_irr:Decimal|None=None;impact_share_percent:Decimal|None=None
+    price_available:bool=True
     current_price_scope:str|None=None;current_price_effective_from:date|None=None
     current_price_version_id:UUID|None=None;estimate_price_version_id:UUID|None=None
     @field_serializer("variance_irr","revised_quantity","remaining_quantity","estimate_base_unit_price_irr","current_unit_price_irr","price_variance_percent","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr","impact_share_percent")
@@ -47,11 +51,13 @@ class PriceVariance(ApiModel):
 
 
 class QuantityVariance(ApiModel):
+    variance_kind: Literal["quantity"] = "quantity"
     estimate_line_id:UUID;resource_id:UUID;resource_code:str;resource_title:str;resource_type:str;variance_quantity:Decimal
     activity_external_id:str|None=None;activity_title:str|None=None;wbs_code:str|None=None;base_unit:str|None=None
     initial_quantity:Decimal|None=None;revised_quantity:Decimal|None=None;executed_quantity:Decimal|None=None;remaining_quantity:Decimal|None=None
     quantity_variance_percent:Decimal|None=None;source_method:str|None=None;progress_snapshot_id:UUID|None=None
     actual_cost_irr:Decimal|None=None;remaining_physical_cost_irr:Decimal|None=None;forecast_final_irr:Decimal|None=None;impact_share_percent:Decimal|None=None
+    price_available:bool=True
     @field_serializer("variance_quantity","initial_quantity","revised_quantity","executed_quantity","remaining_quantity","quantity_variance_percent","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr","impact_share_percent")
     def serialize_quantity(self,value):return None if value is None else format(value,"f")
 
@@ -83,12 +89,37 @@ class LiveReportResponse(ApiModel):
     incomplete_metric_keys:list[str]=Field(default_factory=list)
     missing_price_count:int=0
     excluded_estimate_line_count:int=0
-    excluded_estimate_line_ids:list[UUID]=Field(default_factory=list)
-    progress_quality:ProgressQuality|None=None
+    excluded_estimate_line_ids:list[UUID]=Field(default_factory=list,
+        description="Reporting-only: names individual estimate lines and is absent from the finance.view projection.")
+    progress_quality:ProgressQuality|None=Field(default=None,
+        description="Reporting-only: progress-feed diagnostics, absent from the finance.view projection.")
+
+
+class OperationalOverviewResponse(ApiModel):
+    """Read-only operational projection for finance.view.
+
+    Deliberately narrower than LiveReportResponse: reporting-only fields stay
+    behind finance_report.view. The two completeness counters are in, because they
+    qualify the operational metrics themselves; excludedEstimateLineIds and
+    progressQuality name individual records and stay out.
+    """
+
+    reporting_date:date
+    progress_snapshot_id:UUID
+    metrics:LiveMetrics
+    breakdown:list[TypeBreakdown]
+    top_price_variances:list[PriceVariance]
+    top_quantity_variances:list[QuantityVariance]
+    warnings:list[ReportWarning]
+    calculation_status:Literal["complete","incomplete"]="complete"
+    incomplete_metric_keys:list[str]=Field(default_factory=list)
+    missing_price_count:int=0
+    excluded_estimate_line_count:int=0
 
 
 class ReportVarianceListResponse(ApiModel):
-    items:list[PriceVariance|QuantityVariance]
+    # Discriminated so a mixed page cannot be validated into the wrong shape.
+    items:list[Annotated[PriceVariance|QuantityVariance,Field(discriminator="variance_kind")]]
     page:int
     page_size:int
     total_items:int

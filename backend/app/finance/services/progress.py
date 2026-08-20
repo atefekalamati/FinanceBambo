@@ -31,6 +31,10 @@ class ProgressService:
     row["warnings"]=[{"code":"PROGRESS_MISSING","message":"No valid progress quantity is available for this assignment."}]
    assignments.append(row)
   return {**feed,"assignments":assignments}
+ async def override_history(self,s,line_id):
+  """List one line's overrides; the line is resolved in-scope first so another tenant's id reveals nothing."""
+  if await self.repo.get_line_mapping(s,line_id) is None:raise FinanceRecordNotFound("estimate line not found")
+  return await self.repo.list_overrides(s,line_id)
  async def override(self,s,line_id,c):
   if s.actor_user_id is None:raise PermissionError("authenticated actor is required")
   ref=await self.repo.get_snapshot(s,c.progress_snapshot_id)

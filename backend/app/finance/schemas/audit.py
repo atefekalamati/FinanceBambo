@@ -17,3 +17,13 @@ class AuditEventResponse(ApiModel):
     before_values:dict[str,Any]|None=None
     after_values:dict[str,Any]|None=None
     occurred_at:datetime
+
+
+class AuditEventListResponse(ApiModel):
+    """Paged envelope so a client filtering by date cannot mistake an unfetched page for an empty history."""
+
+    items:list[AuditEventResponse]
+    page:int
+    page_size:int
+    total_items:int
+    total_pages:int
