@@ -112,7 +112,10 @@ export function createAuditPage({ adapter }) {
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.classList.add("finance-back-link");
     back.href = "#/finance";
-    header.append(copy, back);
+    const navigation = element("div", "feature-header__navigation");
+    const otherActions = element("div", "feature-header__other-actions");
+    navigation.append(otherActions, back);
+    header.append(copy, navigation);
 
     const form = element("form", "audit-filters");
     const query = element("input", "app-input");

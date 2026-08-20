@@ -55,15 +55,15 @@
 }
 
 .settings-overview__item {
-  min-block-size: 6.5rem;
+  min-block-size: 0;
   display: flex;
   flex-direction: column;
-  gap: .25rem;
-  padding: .85rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--app-card-navy);
-  box-shadow: var(--dash-shadow), var(--dash-inner);
+  gap: .15rem;
+  padding: .55rem .7rem;
+  border: 1px dashed color-mix(in srgb, var(--brand-teal) 28%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--app-card-navy) 92%, var(--brand-teal));
+  box-shadow: none;
 }
 
 .settings-overview__item span,
@@ -73,8 +73,9 @@
 }
 
 .settings-overview__item strong {
-  margin-block-start: auto;
-  font-size: clamp(1rem, 2vw, 1.25rem);
+  margin-block-start: .15rem;
+  font-size: clamp(.9rem, 1.5vw, 1.1rem);
+  overflow-wrap: anywhere;
 }
 
 .settings-primary-grid {
@@ -266,13 +267,6 @@
 .settings-conversions__current h3 {
   margin: 0 0 .65rem;
   font-size: var(--font-size-md);
-}
-
-.settings-conversions__description {
-  margin: -.35rem 0 .75rem;
-  color: var(--color-text-muted);
-  font-size: .75rem;
-  line-height: 1.65;
 }
 
 .settings-conversions__editor-host:empty {
@@ -576,23 +570,13 @@ html[data-theme="light"] .form-field textarea {
    -------------------------------------------------------------------------- */
 
 @media (max-width: 48rem) {
-  .settings-page > .feature-header {
-    flex-direction: column-reverse;
-    align-items: stretch;
-  }
-
   .settings-overview {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .settings-primary-grid,
-  .currency-grid,
   .settings-form {
     grid-template-columns: 1fr;
-  }
-
-  .settings-page .conversion-inline-form {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .settings-page .conversion-inline-form :is(.conversion-preview, .conversion-scope-hint, .inline-notice, .form-actions) {
@@ -607,36 +591,304 @@ html[data-theme="light"] .form-field textarea {
   .form-actions {
     grid-column: auto;
   }
-}
 
-@media (max-width: 36rem) {
   .settings-card {
     padding: .8rem;
   }
 
-  .settings-overview {
-    grid-template-columns: 1fr;
-  }
-
   .settings-page .conversion-inline-form {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-overview__item {
-    min-block-size: 5.5rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .settings-card__head--actions .button {
-    inline-size: 100%;
+    inline-size: fit-content;
   }
 
-  .form-actions {
-    align-items: stretch;
-    flex-direction: column;
+  .settings-editor {
+    padding: .65rem;
+  }
+
+  .settings-editor .settings-card__head {
+    gap: .45rem;
+    margin-block-end: .55rem;
+  }
+
+  .settings-editor .settings-card__icon {
+    inline-size: 1.8rem;
+    block-size: 1.8rem;
+    border-radius: var(--radius-sm);
+    font-size: .7rem;
+  }
+
+  .settings-editor .settings-card__head h2 {
+    font-size: .8rem;
+  }
+
+  .settings-editor .settings-card__head p {
+    margin-block-start: .1rem;
+    font-size: .62rem;
+  }
+
+  .settings-editor .settings-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .55rem;
+  }
+
+  .settings-editor .form-field {
+    gap: .2rem;
+  }
+
+  .settings-editor .form-field--wide,
+  .settings-editor .form-actions {
+    grid-column: 1 / -1;
+  }
+
+  .settings-editor .form-label {
+    font-size: .68rem;
+  }
+
+  .settings-editor .form-field :is(input, textarea),
+  .settings-editor .persian-date-trigger {
+    min-block-size: 2.25rem;
+    padding: .4rem .55rem;
+    font-size: .7rem;
+  }
+
+  .settings-editor .persian-date-control {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .35rem;
+  }
+
+  .settings-editor .persian-date-trigger {
+    inline-size: auto;
+  }
+
+  .settings-editor textarea {
+    block-size: 3.6rem;
+    min-block-size: 3.6rem;
+    resize: vertical;
+  }
+
+  .settings-editor :is(.form-hint, .form-error) {
+    min-block-size: 0;
+    font-size: .58rem;
+    line-height: 1.35;
+  }
+
+  .settings-editor .form-actions {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: .4rem;
+    padding-block-start: 0;
+  }
+
+  .settings-editor .form-actions .button {
+    min-block-size: 2.15rem;
+    padding: .35rem .7rem;
+    font-size: .68rem;
+  }
+
+  .settings-conversions {
+    gap: .55rem;
+    padding: .65rem;
+  }
+
+  .settings-conversions > .settings-card__head {
+    gap: .45rem;
+    margin-block-end: 0;
+  }
+
+  .settings-conversions .settings-card__icon {
+    inline-size: 1.8rem;
+    block-size: 1.8rem;
+    border-radius: var(--radius-sm);
+    font-size: .72rem;
+  }
+
+  .settings-conversions .settings-card__head h2 {
+    font-size: .8rem;
+  }
+
+  .settings-conversions .settings-card__head p {
+    max-inline-size: 42rem;
+    margin-block-start: .1rem;
+    font-size: .6rem;
+    line-height: 1.5;
+  }
+
+  .settings-conversions .settings-card__head .button {
+    min-block-size: 2.15rem;
+    padding: .35rem .65rem;
+    font-size: .66rem;
+  }
+
+  .settings-conversions__current h3 {
+    margin-block-end: .4rem;
+    font-size: .72rem;
+  }
+
+  .settings-conversions__history {
+    padding-block-start: .5rem;
+  }
+
+  .settings-conversions__history summary {
+    font-size: .68rem;
   }
 
   .dialog-actions {
     flex-direction: column-reverse;
+  }
+
+  .settings-page {
+    gap: .65rem;
+  }
+
+  .settings-page > .feature-header {
+    flex-direction: row;
+    align-items: center;
+    gap: .5rem;
+    padding: .15rem 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .settings-page .feature-header__copy {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .08rem;
+  }
+
+  .settings-page .feature-header__copy p {
+    display: none;
+  }
+
+  .settings-page .feature-header__eyebrow,
+  .settings-page .feature-header h1 {
+    margin: 0;
+  }
+
+  .settings-page .feature-header__eyebrow {
+    font-size: .58rem;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+
+  .settings-page .feature-header h1 {
+    font-size: .86rem;
+    font-weight: 800;
+    line-height: 1.4;
+  }
+
+  .settings-page .feature-header__navigation {
+    flex: 0 0 auto;
+    inline-size: auto;
+  }
+
+  .settings-page .feature-header__other-actions {
+    display: none;
+  }
+
+  .settings-page .finance-back-link {
+    min-block-size: 2rem;
+    padding: .3rem .55rem;
+    font-size: .62rem;
+  }
+
+  .settings-overview {
+    gap: .45rem;
+    inline-size: 100%;
+  }
+
+  .settings-overview__item {
+    inline-size: 100%;
+    padding: .45rem .55rem;
+  }
+
+  .settings-overview__item span,
+  .settings-overview__item small {
+    font-size: .56rem;
+    line-height: 1.45;
+  }
+
+  .settings-overview__item strong {
+    margin-block-start: .12rem;
+    font-size: .74rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  .currency-policy {
+    padding: .5rem;
+  }
+
+  .currency-policy > .settings-card__head {
+    gap: .4rem;
+    margin-block-end: .4rem;
+  }
+
+  .currency-policy .settings-card__icon {
+    inline-size: 1.65rem;
+    block-size: 1.65rem;
+    border-radius: var(--radius-sm);
+    font-size: .66rem;
+  }
+
+  .currency-policy .settings-card__head h2 {
+    font-size: .72rem;
+  }
+
+  .currency-policy .settings-card__head p {
+    display: none;
+  }
+
+  .currency-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .35rem;
+  }
+
+  .currency-item {
+    min-block-size: 0;
+    align-items: center;
+    flex-direction: row;
+    justify-content: space-between;
+    gap: .25rem;
+    padding: .4rem .45rem;
+    border-radius: var(--radius-sm);
+  }
+
+  .currency-item__label {
+    font-size: .52rem;
+  }
+
+  .currency-item strong {
+    margin-block-start: 0;
+    font-size: .72rem;
+  }
+
+  .currency-item small {
+    display: none;
+  }
+}
+
+@media (max-width: 30rem) {
+  .settings-editor .settings-form,
+  .settings-page .conversion-inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-editor .form-field--wide,
+  .settings-editor .form-actions,
+  .settings-page .conversion-inline-form :is(.conversion-preview, .conversion-scope-hint, .inline-notice, .form-actions) {
+    grid-column: 1;
+  }
+
+  .settings-conversions > .settings-card__head {
+    align-items: flex-start;
   }
 }
 

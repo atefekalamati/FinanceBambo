@@ -381,6 +381,7 @@ function renderFinanceHome(data) {
   summaryTitle.textContent = "شاخص‌های اصلی در یک نگاه";
   summaryHeading.append(summaryEyebrow, summaryTitle);
   const reportMeta = document.createElement("small");
+  reportMeta.className = "finance-report-meta";
   reportMeta.textContent = `تاریخ گزارش ${formatBusinessDate(data.reportingDate)} · نسخه پیشرفت پروژه`;
   summaryHeader.append(summaryHeading, reportMeta);
   const comparisons = buildOverviewComparisons(data.metrics);

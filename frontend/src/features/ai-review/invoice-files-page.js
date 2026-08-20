@@ -177,11 +177,16 @@ export function createInvoiceFilesPage({ context, adapter }) {
       element("h1", "", "بارگذاری تصویر و صدا"),
       element("p", "", "فایل فاکتور را برای پردازش بعدی ثبت کنید. بارگذاری یا استخراج به‌تنهایی هیچ اثر مالی ایجاد نمی‌کند."),
     );
-    const actions = element("div", "feature-header__actions");
+    const actions = element("div", "feature-header__actions feature-header__other-actions");
     const manual = element("a", "button button--ghost", "ورود دستی فاکتور");
     manual.href = "#/invoices";
     actions.append(manual);
-    header.append(copy, actions);
+    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
+    back.href = "#/finance";
+    const navigation = element("div", "feature-header__navigation");
+    navigation.append(actions, back);
+    header.append(copy, navigation);
 
     if (state.status === REQUEST_STATUS.LOADING) {
       root.replaceChildren(header, element("section", "state-card", "در حال دریافت وضعیت فایل‌ها…"));

@@ -639,7 +639,10 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.classList.add("finance-back-link");
     back.href = "#/finance";
-    header.append(copy, back);
+    const navigation = element("div", "feature-header__navigation");
+    const otherActions = element("div", "feature-header__other-actions");
+    navigation.append(otherActions, back);
+    header.append(copy, navigation);
     return header;
   }
 
