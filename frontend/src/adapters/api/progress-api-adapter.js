@@ -4,13 +4,15 @@ import { financeBase, jsonOptions } from "./api-utils.js";
 export function createApiProgressAdapter(context, client) {
   const base = financeBase(context);
 
+  /**
+   * GET /progress-snapshots answers with list[ProgressSnapshotResponse], which
+   * carries no assignment count. Counting used to mean fetching every feed —
+   * one request per snapshot — so the count is now read from the feed of the
+   * snapshot actually being viewed instead.
+   */
   async function getSnapshots() {
     const snapshots = await client.request(`${base}/progress-snapshots`);
-    const ordered = snapshots.sort((left, right) => right.reportingDate.localeCompare(left.reportingDate));
-    return Promise.all(ordered.map(async (snapshot) => {
-      const feed = await getFeed(snapshot.progressSnapshotId);
-      return { snapshot, assignmentCount: feed.assignments.length };
-    }));
+    return [...snapshots].sort((left, right) => right.reportingDate.localeCompare(left.reportingDate));
   }
 
   async function getFeed(progressSnapshotId) {

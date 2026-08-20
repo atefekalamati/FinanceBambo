@@ -38,7 +38,7 @@ export function createMockProgressAdapter(context, { initialState = "success" } 
   async function getSnapshots() {
     await wait();
     if (initialState === "error") throw new ApiError({ status: 503, code: "PROGRESS_FEED_UNAVAILABLE", message: "دریافت نسخه‌های پیشرفت انجام نشد.", requestId: "mock-progress-001" });
-    return clone(feeds.map((feed) => ({ snapshot: feed.snapshot, assignmentCount: feed.assignments.length })).sort((left, right) => right.snapshot.reportingDate.localeCompare(left.snapshot.reportingDate)));
+    return clone(feeds.map((feed) => feed.snapshot).sort((left, right) => right.reportingDate.localeCompare(left.reportingDate)));
   }
 
   async function getFeed(progressSnapshotId) {

@@ -46,16 +46,15 @@ function assignmentWarnings(assignment) {
   return warnings;
 }
 
-function renderSnapshotList(items, selectedId, onSelect) {
+function renderSnapshotList(snapshots, selectedId, onSelect) {
   const list = element("div", "progress-snapshot-list");
-  items.forEach(({ snapshot, assignmentCount }) => {
+  snapshots.forEach((snapshot) => {
     const card = element("article", `progress-snapshot-card ${snapshot.progressSnapshotId === selectedId ? "progress-snapshot-card--selected" : ""}`);
     const head = element("div", "progress-snapshot-card__head");
     head.append(element("strong", "", `تاریخ گزارش ${formatBusinessDate(snapshot.reportingDate)}`), element("span", `snapshot-status snapshot-status--${snapshot.status}`, STATUS_LABELS[snapshot.status] ?? "وضعیت نامشخص"));
     const file = element("p", "progress-snapshot-card__file", snapshot.sourceFileNameSafe);
     const meta = element("dl", "progress-snapshot-card__meta");
     const fields = [
-      ["تعداد تخصیص", formatDisplayNumber(String(assignmentCount))],
       ["زمان ورود", formatSystemDateTime(snapshot.importedAt)],
       ["شناسه نسخه پیشرفت پروژه", snapshot.progressSnapshotId],
       ["شناسه نسخه فایل", snapshot.sourceFileVersionId],
@@ -290,7 +289,7 @@ export function createProgressPage({ context, adapter }) {
     try {
       const snapshots = await adapter.getSnapshots();
       snapshotsState = createRequestState(snapshots.length ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, snapshots);
-      if (snapshots.length) await selectSnapshot(snapshots[0].snapshot.progressSnapshotId);
+      if (snapshots.length) await selectSnapshot(snapshots[0].progressSnapshotId);
     } catch (error) {
       snapshotsState = createRequestState(REQUEST_STATUS.ERROR, null, error);
       paint();

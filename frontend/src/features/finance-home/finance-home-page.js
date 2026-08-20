@@ -459,7 +459,7 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
       if (!snapshots.length) {
         state = createRequestState(REQUEST_STATUS.EMPTY);
       } else {
-        const latest = snapshots[0].snapshot;
+        const latest = snapshots[0];
         const report = await reportsAdapter.getOverview({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId });
         state = report ? createRequestState(REQUEST_STATUS.SUCCESS, report) : createRequestState(REQUEST_STATUS.EMPTY);
       }

@@ -39,29 +39,32 @@ function createField({ id, label, type = "text", value = "", hint, inputMode, re
   return { field, input, error: errorNode };
 }
 
-function createRevisionTable(revisions) {
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table settings-history");
-  const caption = element("caption", "sr-only", "تاریخچه تغییر زیربنای کل");
-  const head = document.createElement("thead");
-  const headerRow = document.createElement("tr");
-  ["تاریخ اعمال تغییر", "مقدار قبلی", "مقدار جدید", "دلیل", "ثبت‌کننده", "زمان ثبت"].forEach((title) => headerRow.append(element("th", "", title)));
-  head.append(headerRow);
-  const body = document.createElement("tbody");
-  revisions.forEach((revision) => {
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "", formatBusinessDate(revision.effectiveDate)),
-      element("td", "numeric", revision.previousValue ? formatArea(revision.previousValue) : "ثبت اولیه"),
-      element("td", "numeric", formatArea(revision.newValue)),
-      element("td", "", revision.reason),
-      element("td", "", revision.actorName || revision.actorId),
-      element("td", "", formatSystemDateTime(revision.occurredAt)),
-    );
-    body.append(row);
+/**
+ * GET /settings answers with the current revision only — there is no settings
+ * history endpoint — so this panel reports exactly the fields the contract
+ * carries and points at the audit trail for everything older.
+ */
+function createCurrentRevisionPanel(data) {
+  const wrapper = element("div", "settings-revision-current");
+  const facts = element("dl", "settings-revision-facts");
+  [
+    ["شماره بازنگری", formatDisplayNumber(String(data.revision)), ""],
+    ["زیربنای ثبت‌شده", formatArea(data.grossBuiltArea), "numeric"],
+    ["تاریخ اعمال", data.effectiveFrom ? formatBusinessDate(data.effectiveFrom) : "ثبت نشده", ""],
+    ["دلیل ثبت‌شده", data.reason || "بدون دلیل ثبت‌شده", ""],
+    ["ثبت‌کننده", data.createdBy || "نامشخص", "numeric"],
+    ["زمان ثبت", data.createdAt ? formatSystemDateTime(data.createdAt) : "نامشخص", ""],
+  ].forEach(([label, value, valueClass]) => {
+    const row = element("div");
+    row.append(element("dt", "", label), element("dd", valueClass, value));
+    facts.append(row);
   });
-  table.append(caption, head, body);
-  wrapper.append(table);
+  const notice = element("p", "inline-notice");
+  notice.append(document.createTextNode("سرویس تنظیمات مالی فقط بازنگری جاری را برمی‌گرداند و بازنگری‌های قبلی از این مسیر قابل بازیابی نیستند. سابقه کامل تغییر زیربنا در "));
+  const auditLink = element("a", "", "تاریخچه تغییرات مالی");
+  auditLink.href = "#/audit";
+  notice.append(auditLink, document.createTextNode(" ثبت می‌شود."));
+  wrapper.append(facts, notice);
   return wrapper;
 }
 
@@ -342,7 +345,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const configurableCount = (conversionWorkspace?.currentConversions ?? []).filter((item) => isConfigurableConversionDirection(item.sourceUnit, item.targetUnit)).length;
     conversionCard.append(element("span", "", "قواعد کاری فعال"), element("strong", "numeric", formatDisplayNumber(String(configurableCount))), element("small", "", "قواعد قابل تنظیم سازمان و پروژه"));
     const latestSettingsDate = [
-      ...(data.revisions ?? []).map((item) => item.effectiveDate),
+      data.effectiveFrom,
       ...(conversionWorkspace?.conversionHistory ?? []).map((item) => item.effectiveDate),
     ].filter(Boolean).sort((left, right) => right.localeCompare(left))[0] ?? null;
     const revisionCard = element("article", "settings-overview__item");
@@ -352,8 +355,8 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const history = element("section", "settings-card settings-history-card");
     const historyHead = element("div", "settings-card__head");
     historyHead.append(element("div", "settings-card__icon", "↺"), element("div", "", ""));
-    historyHead.lastElementChild.append(element("h2", "", "تاریخچه تغییر زیربنا"), element("p", "", "مقدار اولیه و همه اصلاحات ثبت‌شده به‌صورت تغییرناپذیر نمایش داده می‌شوند."));
-    history.append(historyHead, createRevisionTable(data.revisions));
+    historyHead.lastElementChild.append(element("h2", "", "بازنگری جاری زیربنا"), element("p", "", "مشخصات آخرین بازنگری تأییدشده زیربنای کل، همان‌گونه که سرویس مالی آن را برمی‌گرداند."));
+    history.append(historyHead, createCurrentRevisionPanel(data));
     const primaryGrid = element("div", "settings-primary-grid");
     primaryGrid.append(renderCurrencyPolicy(), renderAccessSummary());
     fragment.append(overview, primaryGrid, renderEditor(data), renderUnitConversions(), history);
