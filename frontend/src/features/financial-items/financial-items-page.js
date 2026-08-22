@@ -705,6 +705,9 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
   const root = element("div", "financial-items-page");
   const canEdit = hasPermission(context, "finance.edit");
   let state = createRequestState(REQUEST_STATUS.LOADING);
+  // The resource list starts collapsed, as the <details> it replaced did, and keeps
+  // whatever the reader chose across repaints.
+  let resourcesOpen = false;
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
@@ -788,15 +791,42 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
       lineActions.append(addLine, importEstimate);
     }
 
-    const resourcesSection = element("details", "items-section resources-disclosure");
-    const resourceHead = element("summary", "items-section__head resources-disclosure__summary");
+    // A disclosure driven by its own button rather than <details>/<summary>. The "قلم
+    // جدید" action has to sit in this header row and stay visible while the list is
+    // collapsed, and a <summary> cannot hold another interactive element: the browser
+    // routes the click to the disclosure instead, and screen readers announce one
+    // control where there are two.
+    const resourcesSection = element("section", "items-section resources-disclosure");
+    const resourceHead = element("div", "items-section__head resources-disclosure__summary");
+    const resourcesContent = element("div", "resources-disclosure__content");
+    resourcesContent.id = "resources-disclosure-content";
+    // The heading wraps the button rather than the other way round: a <button> may only
+    // contain phrasing content, so an <h2> inside one would trade one invalid nesting
+    // for another.
+    const resourceHeading = element("div", "resources-disclosure__heading");
+    const resourceToggle = element("button", "resources-disclosure__toggle", "فهرست اقلام پروژه");
+    resourceToggle.type = "button";
+    resourceToggle.setAttribute("aria-controls", resourcesContent.id);
+    const resourceTitle = element("h2", "");
+    resourceTitle.append(resourceToggle);
+    resourceHeading.append(resourceTitle, element("p", "", "فهرست چهار نوع قلم هزینه و واحد پایه هر قلم"));
+
+    function setResourcesOpen(open) {
+      resourceToggle.setAttribute("aria-expanded", String(open));
+      resourcesSection.dataset.open = String(open);
+      resourcesContent.hidden = !open;
+    }
+    setResourcesOpen(resourcesOpen);
+    resourceToggle.addEventListener("click", () => {
+      resourcesOpen = !resourcesOpen;
+      setResourcesOpen(resourcesOpen);
+    });
+
     const resourceMeta = element("div", "resources-disclosure__meta");
     if (canEdit) {
       const addResource = element("button", "button button--ghost resources-disclosure__add", "قلم جدید");
       addResource.type = "button";
-      addResource.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
+      addResource.addEventListener("click", () => {
         const dialog = createResourceDialog(adapter, workspace, (next) => {
           state = createRequestState(REQUEST_STATUS.SUCCESS, next);
           paint();
@@ -806,9 +836,7 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
       });
       resourceMeta.append(addResource);
     }
-    resourceHead.append(element("div", "", ""), resourceMeta);
-    resourceHead.firstElementChild.append(element("h2", "", "فهرست اقلام پروژه"), element("p", "", "فهرست چهار نوع قلم هزینه و واحد پایه هر قلم"));
-    const resourcesContent = element("div", "resources-disclosure__content");
+    resourceHead.append(resourceHeading, resourceMeta);
     resourcesContent.append(renderResourceTable(workspace.resources), stats);
     resourcesSection.append(resourceHead, resourcesContent);
 
