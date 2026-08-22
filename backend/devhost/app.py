@@ -48,6 +48,7 @@ from app.finance.services.settings import FinanceSettingsService
 
 from . import database, seed
 from .connection import ReconnectingConnection
+from .environment import migration_url
 from .ports import (ContextPermissionAuthorizer, LocalFileStorage, SeededActivityProvider,
                     SeededProgressSnapshotProvider, SingleTenantScopeAuthorizer,
                     StaticAuthContextProvider, UnavailableExtractor)
@@ -115,14 +116,23 @@ def wire(application: FastAPI, connection, storage_root: Path) -> None:
 def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
+        # Schema work runs as the owner role and finishes before the service starts, the
+        # same split a release uses. The runtime role that follows cannot issue DDL.
+        admin_dsn = migration_url()
+        if admin_dsn:
+            admin = ReconnectingConnection(admin_dsn)
+            try:
+                await database.apply_migrations(admin)
+                if reseed or not await database.is_seeded(admin):
+                    await database.reset(admin)
+                    await database.load_seed(admin)
+            finally:
+                await admin.close()
+
         # Repositories keep whatever they are handed, so they get a handle that can
         # reopen itself when the development database restarts underneath the process.
         connection = ReconnectingConnection(dsn)
         await connection.live()
-        await database.apply_migrations(connection)
-        if reseed or not await database.is_seeded(connection):
-            await database.reset(connection)
-            await database.load_seed(connection)
         wire(application, connection, storage_root)
         try:
             yield
