@@ -217,7 +217,7 @@ function createBreakdownChart(rows) {
 }
 
 const ANALYSIS_CHARTS = Object.freeze({
-  managerial: { label: "تصویر مدیریتی", title: "تصویر مدیریتی هزینه پروژه", description: "مقایسه هزینه‌های پروژه با خط مرجع برآورد اولیه" },
+  managerial: { label: "تجمیعی", title: "تصویر مدیریتی هزینه پروژه", description: "مقایسه هزینه‌های پروژه با خط مرجع برآورد اولیه" },
   monthly: { label: "روند ماهانه", title: "روند ماهانه هزینه پروژه", description: "هزینه واقعی هر ماه در برابر برآورد همان ماه" },
 });
 
@@ -509,16 +509,6 @@ function renderFinanceHome(data, monthly = null, chartState = {}) {
   return fragment;
 }
 
-const TREND_MODE_LABELS = Object.freeze({
-  [TREND_MODES.PERIODIC]: "دوره‌ای",
-  [TREND_MODES.CUMULATIVE]: "تجمیعی",
-});
-
-const TREND_MODE_HINTS = Object.freeze({
-  [TREND_MODES.PERIODIC]: "هزینه واقعی و برآورد هر ماه به‌صورت مستقل.",
-  [TREND_MODES.CUMULATIVE]: "جمع هزینه واقعی و برآورد از ابتدای دوره تا پایان هر ماه.",
-});
-
 const DIRECTION_LABELS = Object.freeze({
   over: "بیشتر از برآورد",
   under: "کمتر از برآورد",
@@ -549,7 +539,7 @@ function trendTable(view) {
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table monthly-trend-table");
   table.append(
-    tableCaption(`جدول جایگزین نمودار روند ماهانه هزینه در حالت ${TREND_MODE_LABELS[view.mode]}`),
+    tableCaption("جدول جایگزین نمودار روند ماهانه هزینه"),
     tableHead(["ماه", "برآورد", "هزینه واقعی", "انحراف"]),
   );
   const body = document.createElement("tbody");
@@ -582,37 +572,24 @@ function trendLegend() {
 }
 
 /**
- * Builds the monthly trend as a panel that lives inside the managerial card,
- * and hands the chart instance back with it so the page disposes exactly one
- * instance per render instead of leaving a ResizeObserver behind.
+ * Builds the monthly trend as a panel inside the managerial card, and hands the
+ * chart instance back with it so the page disposes exactly one instance per
+ * render instead of leaving a ResizeObserver behind.
  *
- * The panel owns its own periodic/cumulative toggle; the switch that chooses
- * between this chart and the managerial one belongs to the shared card.
+ * Each month stands alone here; the card's switch is what contrasts this with
+ * the cumulative managerial picture, so the panel carries no mode control.
  */
-function createMonthlyTrendPanel({ trend, trendError, mode, onModeChange }) {
+function createMonthlyTrendPanel({ trend, trendError }) {
   const panel = element("div", "analysis-chart-panel finance-monthly-trend");
   panel.dataset.chart = "monthly";
-
-  const toggle = element("div", "trend-mode-toggle");
-  toggle.setAttribute("role", "group");
-  toggle.setAttribute("aria-label", "حالت نمایش روند ماهانه");
-  [TREND_MODES.PERIODIC, TREND_MODES.CUMULATIVE].forEach((value) => {
-    const button = element("button", `button button--small ${value === mode ? "button--primary" : "button--ghost"}`, TREND_MODE_LABELS[value]);
-    button.type = "button";
-    button.setAttribute("aria-pressed", String(value === mode));
-    button.addEventListener("click", () => onModeChange(value));
-    toggle.append(button);
-  });
-  panel.append(toggle);
-
-  const description = TREND_MODE_HINTS[mode];
+  const description = ANALYSIS_CHARTS.monthly.description;
 
   if (trendError) {
     panel.append(element("p", "inline-notice", formatApiErrorMessage(trendError, "دریافت روند ماهانه هزینه انجام نشد.")));
     return { panel, chart: null, description };
   }
 
-  const view = buildMonthlyTrend({ months: trend?.months ?? [], mode });
+  const view = buildMonthlyTrend({ months: trend?.months ?? [], mode: TREND_MODES.PERIODIC });
   if (view.isEmpty) {
     const reason = trend?.unavailableReason ?? "هنوز فاکتور تأییدشده‌ای برای ساخت روند ماهانه ثبت نشده است.";
     panel.append(element("p", "inline-notice", reason));
@@ -626,7 +603,7 @@ function createMonthlyTrendPanel({ trend, trendError, mode, onModeChange }) {
     lineSeries: { magnitudeKey: "estimateMagnitude" },
     formatValue: (value) => axisScale?.format(value) ?? "",
     renderTooltip: trendTooltip,
-    ariaLabel: `نمودار ستونی هزینه واقعی و خط برآورد ماهانه در حالت ${TREND_MODE_LABELS[mode]}`,
+    ariaLabel: "نمودار ستونی هزینه واقعی و خط برآورد ماهانه",
   });
   chart.setData({ points: view.points, ticks: view.axisTicks });
   panel.append(chart.element);
@@ -648,7 +625,6 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let trend = null;
   let trendError = null;
-  let trendMode = TREND_MODES.PERIODIC;
   let activeChart = "managerial";
   let chart = null;
   const root = document.createElement("div");
@@ -686,12 +662,6 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
     paint();
   }
 
-  function setTrendMode(nextMode) {
-    if (nextMode === trendMode) return;
-    trendMode = nextMode;
-    paint();
-  }
-
   function setActiveChart(nextChart) {
     activeChart = nextChart;
   }
@@ -714,7 +684,7 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
   function paint() {
     disposeChart();
     const renderContent = (data) => {
-      const built = createMonthlyTrendPanel({ trend, trendError, mode: trendMode, onModeChange: setTrendMode });
+      const built = createMonthlyTrendPanel({ trend, trendError });
       chart = built.chart;
       return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart });
     };
