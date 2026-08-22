@@ -7,16 +7,11 @@ import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatArea, formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { getDisplayCurrencyCode, getDisplayCurrencyLabel, setDisplayCurrencyCode } from "../../shared/preferences/currency-preference.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { createUnitConversionForm, renderConversionHistory, renderCurrentConversions } from "../prices/prices-page.js";
 import { isConfigurableConversionDirection } from "../prices/unit-conversions-validation.js";
 import { validateSettingsRevision } from "./settings-validation.js";
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
+import { element } from "../../shared/dom/elements.js";
 
 function createField({ id, label, type = "text", value = "", hint, inputMode, required = false }) {
   const field = element("div", "form-field");
@@ -39,29 +34,32 @@ function createField({ id, label, type = "text", value = "", hint, inputMode, re
   return { field, input, error: errorNode };
 }
 
-function createRevisionTable(revisions) {
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table settings-history");
-  const caption = element("caption", "sr-only", "تاریخچه تغییر زیربنای کل");
-  const head = document.createElement("thead");
-  const headerRow = document.createElement("tr");
-  ["تاریخ اعمال تغییر", "مقدار قبلی", "مقدار جدید", "دلیل", "ثبت‌کننده", "زمان ثبت"].forEach((title) => headerRow.append(element("th", "", title)));
-  head.append(headerRow);
-  const body = document.createElement("tbody");
-  revisions.forEach((revision) => {
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "", formatBusinessDate(revision.effectiveDate)),
-      element("td", "numeric", revision.previousValue ? formatArea(revision.previousValue) : "ثبت اولیه"),
-      element("td", "numeric", formatArea(revision.newValue)),
-      element("td", "", revision.reason),
-      element("td", "", revision.actorName || revision.actorId),
-      element("td", "", formatSystemDateTime(revision.occurredAt)),
-    );
-    body.append(row);
+/**
+ * GET /settings answers with the current revision only — there is no settings
+ * history endpoint — so this panel reports exactly the fields the contract
+ * carries and points at the audit trail for everything older.
+ */
+function createCurrentRevisionPanel(data) {
+  const wrapper = element("div", "settings-revision-current");
+  const facts = element("dl", "settings-revision-facts");
+  [
+    ["شماره بازنگری", formatDisplayNumber(String(data.revision)), ""],
+    ["زیربنای ثبت‌شده", formatArea(data.grossBuiltArea), "numeric"],
+    ["تاریخ اعمال", data.effectiveFrom ? formatBusinessDate(data.effectiveFrom) : "ثبت نشده", ""],
+    ["دلیل ثبت‌شده", data.reason || "بدون دلیل ثبت‌شده", ""],
+    ["ثبت‌کننده", data.createdBy || "نامشخص", "numeric"],
+    ["زمان ثبت", data.createdAt ? formatSystemDateTime(data.createdAt) : "نامشخص", ""],
+  ].forEach(([label, value, valueClass]) => {
+    const row = element("div");
+    row.append(element("dt", "", label), element("dd", valueClass, value));
+    facts.append(row);
   });
-  table.append(caption, head, body);
-  wrapper.append(table);
+  const notice = element("p", "inline-notice");
+  notice.append(document.createTextNode("سرویس تنظیمات مالی فقط بازنگری جاری را برمی‌گرداند و بازنگری‌های قبلی از این مسیر قابل بازیابی نیستند. سابقه کامل تغییر زیربنا در "));
+  const auditLink = element("a", "", "تاریخچه تغییرات مالی");
+  auditLink.href = "#/audit";
+  notice.append(auditLink, document.createTextNode(" ثبت می‌شود."));
+  wrapper.append(facts, notice);
   return wrapper;
 }
 
@@ -102,9 +100,14 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.classList.add("finance-back-link");
     back.href = "#/finance";
+    const navigation = element("div", "feature-header__navigation");
+    const otherActions = element("div", "feature-header__other-actions");
+    navigation.append(otherActions, back);
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "پیکربندی پروژه جاری"), element("h1", "", "تنظیمات مالی پروژه"), element("p", "", "قواعد پایه محاسبات مالی، نحوه نمایش پول، زیربنا و تبدیل واحدهای پروژه را از یک محل مدیریت کنید."));
-    header.append(copy, back);
+    const eyebrow = element("span", "feature-header__eyebrow", "پیکربندی پروژه جاری");
+    const title = element("h1", "", "تنظیمات مالی پروژه");
+    copy.append(eyebrow, title, element("p", "", "قواعد پایه محاسبات مالی، نحوه نمایش پول، زیربنا و تبدیل واحدهای پروژه را از یک محل مدیریت کنید."));
+    header.append(copy, navigation);
     return header;
   }
 
@@ -173,7 +176,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const copy = element("div", "settings-card__head-copy");
     copy.append(
       element("h2", "", "قواعد تبدیل واحد پروژه"),
-      element("p", "", "قاعده اختصاصی پروژه بر قاعده پایه سازمان مقدم است و تبدیل فقط میان واحدهای هم‌بُعد انجام می‌شود."),
+      element("p", "", "اینجا فقط قواعد کاری متغیر، مانند ساعت هر روز دستگاه یا نفرروز، تعریف می‌شوند. تبدیل‌های ثابت وزن و طول قابل تغییر نیستند و هر قاعده فقط میان واحدهای هم‌بُعد اعمال می‌شود."),
     );
     head.append(element("div", "settings-card__icon", "↔"), copy);
     const editorHost = element("div", "settings-conversions__editor-host");
@@ -199,7 +202,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const configurableConversions = (conversionWorkspace?.currentConversions ?? []).filter((item) => isConfigurableConversionDirection(item.sourceUnit, item.targetUnit));
     const configurableHistory = (conversionWorkspace?.conversionHistory ?? []).filter((item) => isConfigurableConversionDirection(item.sourceUnit, item.targetUnit));
     const current = element("div", "settings-conversions__current");
-    current.append(element("h3", "", "قواعد کاری قابل تنظیم"), element("p", "settings-conversions__description", "این قواعد می‌توانند با توجه به برنامه کاری سازمان یا پروژه تغییر کنند؛ مانند تعداد ساعت یک روز دستگاه."));
+    current.append(element("h3", "", "قواعد کاری فعال پروژه"));
     if (conversionError) {
       const error = element("div", "settings-conversions__error inline-notice");
       error.append(element("strong", "", "دریافت قواعد تبدیل انجام نشد."), element("span", "", conversionError.message ?? "ارتباط با سرویس تبدیل واحد برقرار نشد."));
@@ -315,7 +318,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
         paint();
       } catch (error) {
         dialog.close();
-        status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+        status.textContent = formatApiErrorMessage(error);
       } finally {
         confirm.disabled = false;
         cancel.disabled = false;
@@ -337,7 +340,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const configurableCount = (conversionWorkspace?.currentConversions ?? []).filter((item) => isConfigurableConversionDirection(item.sourceUnit, item.targetUnit)).length;
     conversionCard.append(element("span", "", "قواعد کاری فعال"), element("strong", "numeric", formatDisplayNumber(String(configurableCount))), element("small", "", "قواعد قابل تنظیم سازمان و پروژه"));
     const latestSettingsDate = [
-      ...(data.revisions ?? []).map((item) => item.effectiveDate),
+      data.effectiveFrom,
       ...(conversionWorkspace?.conversionHistory ?? []).map((item) => item.effectiveDate),
     ].filter(Boolean).sort((left, right) => right.localeCompare(left))[0] ?? null;
     const revisionCard = element("article", "settings-overview__item");
@@ -347,8 +350,8 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const history = element("section", "settings-card settings-history-card");
     const historyHead = element("div", "settings-card__head");
     historyHead.append(element("div", "settings-card__icon", "↺"), element("div", "", ""));
-    historyHead.lastElementChild.append(element("h2", "", "تاریخچه تغییر زیربنا"), element("p", "", "مقدار اولیه و همه اصلاحات ثبت‌شده به‌صورت تغییرناپذیر نمایش داده می‌شوند."));
-    history.append(historyHead, createRevisionTable(data.revisions));
+    historyHead.lastElementChild.append(element("h2", "", "بازنگری جاری زیربنا"), element("p", "", "مشخصات آخرین بازنگری تأییدشده زیربنای کل، همان‌گونه که سرویس مالی آن را برمی‌گرداند."));
+    history.append(historyHead, createCurrentRevisionPanel(data));
     const primaryGrid = element("div", "settings-primary-grid");
     primaryGrid.append(renderCurrencyPolicy(), renderAccessSummary());
     fragment.append(overview, primaryGrid, renderEditor(data), renderUnitConversions(), history);

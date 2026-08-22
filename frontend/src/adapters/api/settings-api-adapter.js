@@ -1,14 +1,25 @@
 import { financeBase, jsonOptions } from "./api-utils.js";
 
+/**
+ * FinanceSettingsResponse carries only the current revision — id, projectId,
+ * grossBuiltArea, currency, revision, effectiveFrom, reason, createdBy,
+ * createdAt — and the router exposes no settings-history endpoint. Earlier
+ * revisions are therefore not retrievable; the UI states that instead of
+ * rendering an empty history table.
+ */
 function mapSettings(value) {
   if (!value) return null;
   return {
+    settingsId: value.id,
     currency: value.currency,
     displayCurrency: "TOMAN",
     grossBuiltArea: value.grossBuiltArea,
     grossBuiltAreaUnit: "m2",
     revision: value.revision,
-    revisions: [],
+    effectiveFrom: value.effectiveFrom,
+    reason: value.reason,
+    createdBy: value.createdBy,
+    createdAt: value.createdAt,
   };
 }
 

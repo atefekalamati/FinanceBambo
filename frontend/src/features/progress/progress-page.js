@@ -2,8 +2,10 @@ import { createRequestState, REQUEST_STATUS } from "../../core/state/request-sta
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { hasPermission } from "../../core/auth/permissions.js";
 import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
+import { element } from "../../shared/dom/elements.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "آماده", superseded: "جایگزین‌شده" });
 const RESOURCE_TYPE_LABELS = Object.freeze({ material: "مصالح", labor: "نیروی انسانی", equipment: "دستگاه و تجهیزات", general_cost: "هزینه‌های عمومی پروژه" });
@@ -16,13 +18,6 @@ const SOURCE_METHOD_LABELS = Object.freeze({
   manual_entry: "ورود دستی",
 });
 const qualityFormatter = new Intl.NumberFormat("fa-IR", { style: "percent", maximumFractionDigits: 0 });
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function valueOrMissing(value) {
   return value === null || value === undefined ? "داده موجود نیست" : formatDisplayNumber(value);
@@ -46,16 +41,15 @@ function assignmentWarnings(assignment) {
   return warnings;
 }
 
-function renderSnapshotList(items, selectedId, onSelect) {
+function renderSnapshotList(snapshots, selectedId, onSelect) {
   const list = element("div", "progress-snapshot-list");
-  items.forEach(({ snapshot, assignmentCount }) => {
+  snapshots.forEach((snapshot) => {
     const card = element("article", `progress-snapshot-card ${snapshot.progressSnapshotId === selectedId ? "progress-snapshot-card--selected" : ""}`);
     const head = element("div", "progress-snapshot-card__head");
     head.append(element("strong", "", `تاریخ گزارش ${formatBusinessDate(snapshot.reportingDate)}`), element("span", `snapshot-status snapshot-status--${snapshot.status}`, STATUS_LABELS[snapshot.status] ?? "وضعیت نامشخص"));
     const file = element("p", "progress-snapshot-card__file", snapshot.sourceFileNameSafe);
     const meta = element("dl", "progress-snapshot-card__meta");
     const fields = [
-      ["تعداد تخصیص", formatDisplayNumber(String(assignmentCount))],
       ["زمان ورود", formatSystemDateTime(snapshot.importedAt)],
       ["شناسه نسخه پیشرفت پروژه", snapshot.progressSnapshotId],
       ["شناسه نسخه فایل", snapshot.sourceFileVersionId],
@@ -192,13 +186,14 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
       const response = await adapter.createOverride({
         progressSnapshotId: snapshotId,
         assignmentExternalId: assignment.assignmentExternalId,
+        activityExternalId: assignment.task?.activityCode ?? null,
         overrideValue: validation.value,
         reason: validation.reason,
       });
       dialog.close();
       onSaved(response.feed);
     } catch (error) {
-      result.textContent = `${error.message || "ثبت جایگزینی انجام نشد."}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      result.textContent = formatApiErrorMessage(error, "ثبت جایگزینی انجام نشد.");
       result.className = "form-message form-message--error";
     } finally {
       submit.disabled = false;
@@ -290,7 +285,7 @@ export function createProgressPage({ context, adapter }) {
     try {
       const snapshots = await adapter.getSnapshots();
       snapshotsState = createRequestState(snapshots.length ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, snapshots);
-      if (snapshots.length) await selectSnapshot(snapshots[0].snapshot.progressSnapshotId);
+      if (snapshots.length) await selectSnapshot(snapshots[0].progressSnapshotId);
     } catch (error) {
       snapshotsState = createRequestState(REQUEST_STATUS.ERROR, null, error);
       paint();
@@ -304,7 +299,10 @@ export function createProgressPage({ context, adapter }) {
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.classList.add("finance-back-link");
     back.href = "#/finance";
-    header.append(copy, back);
+    const navigation = element("div", "feature-header__navigation");
+    const otherActions = element("div", "feature-header__other-actions");
+    navigation.append(otherActions, back);
+    header.append(copy, navigation);
     return header;
   }
 

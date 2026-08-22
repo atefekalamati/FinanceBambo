@@ -19,7 +19,7 @@ export function createMockPricesAdapter(context, { initialState = "success", res
   const importPreviews = new Map();
   const resources = [
     { resourceId: "20000000-0000-4000-8000-000000000001", code: "MAT-REBAR", title: "میلگرد", baseUnit: "kg" },
-    { resourceId: "20000000-0000-4000-8000-000000000002", code: "LAB-FORM", title: "اکیپ قالب‌بندی", baseUnit: "person_hour" },
+    { resourceId: "20000000-0000-4000-8000-000000000002", code: "LAB-FORM", title: "اکیپ قالب‌بندی", baseUnit: "hour" },
     { resourceId: "20000000-0000-4000-8000-000000000003", code: "EQ-CRANE", title: "جرثقیل", baseUnit: "hour" },
     { resourceId: "20000000-0000-4000-8000-000000000004", code: "GEN-PERMIT", title: "هزینه مجوز", baseUnit: null },
   ];
@@ -38,8 +38,8 @@ export function createMockPricesAdapter(context, { initialState = "success", res
   ];
   let conversions = initialState === "empty" ? [] : [
     { conversionId: "55555555-5555-4555-8555-555555555551", organizationId: context.organizationId, projectId: null, sourceUnit: "ton", targetUnit: "kg", factor: "1000.000000", effectiveDate: "2026-01-01", createdBy: context.userId, createdByName: "امیر طاهری", createdAt: "2026-01-01T07:00:00Z" },
-    { conversionId: "55555555-5555-4555-8555-555555555552", organizationId: context.organizationId, projectId: null, sourceUnit: "equipment_day", targetUnit: "hour", factor: "8.000000", effectiveDate: "2026-01-01", createdBy: context.userId, createdByName: "امیر طاهری", createdAt: "2026-01-01T07:05:00Z" },
-    { conversionId: "55555555-5555-4555-8555-555555555553", organizationId: context.organizationId, projectId: context.projectId, sourceUnit: "equipment_day", targetUnit: "hour", factor: "10.000000", effectiveDate: "2026-07-01", createdBy: context.userId, createdByName: "امیر طاهری", createdAt: "2026-07-01T07:00:00Z" },
+    { conversionId: "55555555-5555-4555-8555-555555555552", organizationId: context.organizationId, projectId: null, sourceUnit: "day", targetUnit: "hour", factor: "8.000000", effectiveDate: "2026-01-01", createdBy: context.userId, createdByName: "امیر طاهری", createdAt: "2026-01-01T07:05:00Z" },
+    { conversionId: "55555555-5555-4555-8555-555555555553", organizationId: context.organizationId, projectId: context.projectId, sourceUnit: "day", targetUnit: "hour", factor: "10.000000", effectiveDate: "2026-07-01", createdBy: context.userId, createdByName: "امیر طاهری", createdAt: "2026-07-01T07:00:00Z" },
   ];
 
   function snapshot() {

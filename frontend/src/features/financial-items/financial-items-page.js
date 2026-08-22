@@ -7,21 +7,16 @@ import { formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../.
 import { formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { compareDecimalStrings } from "../../shared/validation/decimal-validation.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js";
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
+import { element } from "../../shared/dom/elements.js";
 
 const SOURCE_LABELS = Object.freeze({
   progress_feed: "پیشرفت اجرایی",
   excel_import: "اکسل",
   manual_entry: "ورود دستی",
 });
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
   const wrapper = element("div", "form-field");
@@ -150,7 +145,7 @@ function createResourceDialog(adapter, workspace, onSaved) {
       syncGeneralCost();
       onSaved(workspace);
     } catch (error) {
-      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      status.textContent = formatApiErrorMessage(error);
     } finally {
       submit.disabled = false;
     }
@@ -195,7 +190,7 @@ function createActivityDialog(adapter, onSaved) {
       dialog.close();
       onSaved(result);
     } catch (error) {
-      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      status.textContent = formatApiErrorMessage(error);
     } finally {
       submit.disabled = false;
     }
@@ -229,6 +224,7 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
   resourceHelp.id = "lineResourceHelp";
   resource.wrapper.append(addResource, resourceHelp);
   const quantity = createTextField({ id: "lineOriginalQuantity", label: "مقدار برآورد اولیه", hint: "مقدار با واحد پایه قلم ثبت می‌شود.", inputMode: "decimal" });
+  const unitPrice = createTextField({ id: "lineOriginalUnitPrice", label: `قیمت واحد اولیه (${getDisplayCurrencyLabel()})`, hint: "قیمتی که برآورد اولیه با آن تثبیت شده است.", inputMode: "decimal" });
   const relationNotice = element("div", "inline-notice", "هر فعالیت و قلم هزینه یک ردیف مستقل برآورد است؛ استفاده همان قلم در فعالیت دیگر ردیف جدا می‌سازد.");
   const activityNotice = element("div", "inline-notice", "فعالیت‌ها از ساختار پروژه BAMBO دریافت می‌شوند؛ فعالیت جدید نیز در همان ساختار ثبت می‌شود.");
   const status = element("div", "form-status");
@@ -241,7 +237,7 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
   submit.type = "submit";
   const actions = element("div", "form-actions");
   actions.append(cancel, submit, status);
-  form.append(activity.wrapper, resource.wrapper, quantity.wrapper, relationNotice, activityNotice, actions);
+  form.append(activity.wrapper, resource.wrapper, quantity.wrapper, unitPrice.wrapper, relationNotice, activityNotice, actions);
 
   addResource.addEventListener("click", () => {
     const previousIds = new Set(workspace.resources.map((item) => item.resourceId));
@@ -283,6 +279,9 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
     const isGeneralCost = selected?.type === "general_cost";
     quantity.label.textContent = isGeneralCost ? `مبلغ برآورد اولیه (${getDisplayCurrencyLabel()})` : "مقدار برآورد اولیه";
     quantity.hint.textContent = isGeneralCost ? `مبلغ با واحد نمایشی انتخاب‌شده وارد می‌شود و مقدار رسمی Backend همچنان ${CURRENCY_LABELS.IRR} است.` : `مقدار با واحد پایه ${formatUnitLabel(selected?.baseUnit)} ثبت می‌شود.`;
+    // A general-cost line is a single amount, so it has no unit price.
+    unitPrice.wrapper.hidden = isGeneralCost;
+    unitPrice.label.textContent = `قیمت واحد اولیه هر ${formatUnitLabel(selected?.baseUnit)} (${getDisplayCurrencyLabel()})`;
   }
   resource.select.addEventListener("change", syncQuantityLabel);
 
@@ -290,10 +289,20 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
     event.preventDefault();
     const selectedResource = workspace.resources.find((item) => item.resourceId === resource.select.value);
     const inputValue = selectedResource?.type === "general_cost" ? tomanInputToIrr(quantity.input.value) : quantity.input.value;
-    const validation = validateEstimateLine({ activityExternalId: activity.select.value, resourceId: resource.select.value, originalQuantity: inputValue });
+    const isGeneralCost = selectedResource?.type === "general_cost";
+    const validation = validateEstimateLine(
+      {
+        activityExternalId: activity.select.value,
+        resourceId: resource.select.value,
+        originalQuantity: inputValue,
+        originalUnitPriceIRR: isGeneralCost ? null : tomanInputToIrr(unitPrice.input.value),
+      },
+      { isGeneralCost },
+    );
     setFieldError(activity.select, activity.error, validation.errors.activityExternalId);
     setFieldError(resource.select, resource.error, validation.errors.resourceId);
     setFieldError(quantity.input, quantity.error, validation.errors.originalQuantity);
+    setFieldError(unitPrice.input, unitPrice.error, validation.errors.originalUnitPriceIRR);
     if (!validation.valid) {
       status.textContent = "لطفاً خطاهای فرم را اصلاح کنید.";
       form.querySelector('[aria-invalid="true"]')?.focus();
@@ -307,7 +316,7 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
       form.reset();
       onSaved(nextWorkspace);
     } catch (error) {
-      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      status.textContent = formatApiErrorMessage(error);
     } finally {
       submit.disabled = false;
     }
@@ -440,7 +449,7 @@ function createEstimateImportDialog(adapter, onSaved) {
           dialog.close();
           onSaved(result.workspace, result.importedCount);
         } catch (commitError) {
-          status.textContent = `${commitError.message}${commitError.requestId ? ` · شناسه درخواست: ${commitError.requestId}` : ""}`;
+          status.textContent = formatApiErrorMessage(commitError);
         } finally {
           confirm.disabled = false;
           cancel.disabled = false;
@@ -475,7 +484,7 @@ function createEstimateImportDialog(adapter, onSaved) {
       renderPreview(currentPreview);
     } catch (previewError) {
       currentPreview = null;
-      error.textContent = `${previewError.message}${previewError.requestId ? ` · شناسه درخواست: ${previewError.requestId}` : ""}`;
+      error.textContent = formatApiErrorMessage(previewError);
       formStatus.textContent = "بررسی فایل انجام نشد.";
     } finally {
       previewButton.disabled = false;
@@ -572,7 +581,7 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
       dialog.close();
       onSaved(workspace);
     } catch (error) {
-      status.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      status.textContent = formatApiErrorMessage(error);
     } finally {
       submit.disabled = false;
       cancel.disabled = false;
@@ -714,9 +723,12 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
     back.classList.add("finance-back-link");
     back.href = "#/finance";
+    const navigation = element("div", "feature-header__navigation");
+    const otherActions = element("div", "feature-header__other-actions");
+    navigation.append(otherActions, back);
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "اقلام پروژه و ریز برآورد"), element("h1", "", "اقلام و برآورد"), element("p", "", "هر اتصال فعالیت و قلم هزینه یک ردیف مستقل برآورد است؛ مقدار اولیه حفظ و آخرین مقدار برآورد جداگانه نمایش داده می‌شود."));
-    header.append(copy, back);
+    header.append(copy, navigation);
     return header;
   }
 

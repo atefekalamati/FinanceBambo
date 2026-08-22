@@ -5,6 +5,9 @@ import { showAccessibleDialog } from "../../shared/components/accessible-dialog.
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
+import { renderPageState } from "../../shared/components/page-state.js";
+import { element } from "../../shared/dom/elements.js";
 
 const FIELD_LABELS = Object.freeze({
   invoiceNumber: "شماره فاکتور",
@@ -19,13 +22,6 @@ const REVIEW_LABELS = Object.freeze({
   accepted: "پذیرفته‌شده",
   rejected: "ردشده",
 });
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function confidenceLabel(value) {
   return `${formatDisplayNumber(String(Math.round(Number(value) * 100)))} درصد اطمینان`;
@@ -51,7 +47,7 @@ function confirmationDialog({ title, message, confirmLabel, onConfirm }) {
       await onConfirm();
       dialog.close();
     } catch (error) {
-      feedback.textContent = `${error.message || "عملیات انجام نشد."}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      feedback.textContent = formatApiErrorMessage(error, "عملیات انجام نشد.");
       feedback.className = "form-message form-message--error";
     } finally {
       confirm.disabled = false;
@@ -192,33 +188,35 @@ export function createAiReviewPage({ context, adapter }) {
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "کنترل انسانی الزامی"), element("h1", "", "بررسی هوشمند فاکتور"), element("p", "", "اطلاعات خوانده‌شده را با فایل اصلی تطبیق دهید؛ موارد کم‌اطمینان را اصلاح و سپس تصمیم نهایی را ثبت کنید."));
-    const actions = element("div", "feature-header__actions");
+    const actions = element("div", "feature-header__actions feature-header__other-actions");
     const files = element("a", "button button--ghost", "بازگشت به فایل‌ها");
     files.href = "#/invoice-files";
     const manual = element("a", "button button--ghost", "ورود دستی فاکتور");
     manual.href = "#/invoices";
     actions.append(files, manual);
-    header.append(copy, actions);
+    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
+    back.href = "#/finance";
+    const navigation = element("div", "feature-header__navigation");
+    navigation.append(actions, back);
+    header.append(copy, navigation);
 
-    if (state.status === REQUEST_STATUS.LOADING) {
-      root.replaceChildren(header, element("section", "state-card", "در حال دریافت پیش‌نویس‌های هوشمند فاکتور…"));
-      return;
-    }
-    if (state.status === REQUEST_STATUS.EMPTY) {
-      const empty = element("section", "state-card");
-      empty.append(element("h2", "", "پیش‌نویسی برای بررسی وجود ندارد"), element("p", "", "ابتدا یک تصویر یا فایل صوتی بارگذاری و پردازش را شروع کنید."));
-      root.replaceChildren(header, empty);
-      return;
-    }
-    if (state.status === REQUEST_STATUS.ERROR || state.status === REQUEST_STATUS.DENIED) {
-      const error = element("section", "state-card state-card--danger");
-      error.append(element("h2", "", state.status === REQUEST_STATUS.DENIED ? "دسترسی ندارید" : "دریافت بازبینی‌ها انجام نشد"), element("p", "", state.error?.message ?? "دوباره تلاش کنید."));
-      root.replaceChildren(header, error);
-      return;
-    }
+    root.replaceChildren(header, renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+  }
+
+  function renderContent(data) {
     const list = element("div", "ai-review-list");
-    state.data.drafts.forEach((draft) => list.append(reviewCard({ draft, targets: state.data.targets, adapter, canEdit, onChanged: load, root })));
-    root.replaceChildren(header, list);
+    data.drafts.forEach((draft) => list.append(reviewCard({ draft, targets: data.targets, adapter, canEdit, onChanged: load, root })));
+    return list;
+  }
+
+  function renderEmpty() {
+    const card = element("section", "state-card ai-review-empty");
+    card.append(element("h2", "", "پیش‌نویسی برای بررسی وجود ندارد"), element("p", "", "ابتدا یک تصویر یا فایل صوتی بارگذاری و پردازش را شروع کنید."));
+    const upload = element("a", "button button--primary", "رفتن به بارگذاری تصویر و صدا");
+    upload.href = "#/invoice-files";
+    card.append(upload);
+    return card;
   }
 
   load();

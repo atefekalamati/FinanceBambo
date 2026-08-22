@@ -1,7 +1,10 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { hasPermission } from "../../core/auth/permissions.js";
 import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
+import { renderPageState } from "../../shared/components/page-state.js";
 import { validateInvoiceFile } from "./file-upload-validation.js";
+import { element } from "../../shared/dom/elements.js";
 
 const STATUS_LABELS = Object.freeze({
   uploaded: "بارگذاری‌شده",
@@ -19,13 +22,6 @@ const MIME_LABELS = Object.freeze({
   "audio/wav": "صدای ویو",
   "audio/ogg": "صدای اوجی‌جی",
 });
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function formatFileSize(value) {
   const bytes = Number(value);
@@ -79,7 +75,7 @@ function createUploadCard({ logicalType, title, description, accept, limit, adap
       message.textContent = "فایل با موفقیت بارگذاری شد و هنوز هیچ اثر مالی ندارد.";
       await onUploaded();
     } catch (error) {
-      message.textContent = `${error.message || "بارگذاری انجام نشد."}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      message.textContent = formatApiErrorMessage(error, "بارگذاری انجام نشد.");
       message.className = "form-message form-message--error";
     } finally {
       submit.textContent = "بارگذاری فایل";
@@ -177,29 +173,22 @@ export function createInvoiceFilesPage({ context, adapter }) {
       element("h1", "", "بارگذاری تصویر و صدا"),
       element("p", "", "فایل فاکتور را برای پردازش بعدی ثبت کنید. بارگذاری یا استخراج به‌تنهایی هیچ اثر مالی ایجاد نمی‌کند."),
     );
-    const actions = element("div", "feature-header__actions");
+    const actions = element("div", "feature-header__actions feature-header__other-actions");
     const manual = element("a", "button button--ghost", "ورود دستی فاکتور");
     manual.href = "#/invoices";
     actions.append(manual);
-    header.append(copy, actions);
+    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
+    back.href = "#/finance";
+    const navigation = element("div", "feature-header__navigation");
+    navigation.append(actions, back);
+    header.append(copy, navigation);
 
-    if (state.status === REQUEST_STATUS.LOADING) {
-      root.replaceChildren(header, element("section", "state-card", "در حال دریافت وضعیت فایل‌ها…"));
-      return;
-    }
-    if (state.status === REQUEST_STATUS.DENIED || state.status === REQUEST_STATUS.ERROR) {
-      const card = element("section", `state-card${state.status === REQUEST_STATUS.ERROR ? " state-card--danger" : ""}`);
-      card.append(element("h2", "", state.status === REQUEST_STATUS.DENIED ? "دسترسی ندارید" : "دریافت اطلاعات انجام نشد"), element("p", "", state.error?.message ?? "دوباره تلاش کنید."));
-      if (state.status === REQUEST_STATUS.ERROR) {
-        const retry = element("button", "button button--primary", "تلاش دوباره");
-        retry.type = "button";
-        retry.addEventListener("click", load);
-        card.append(retry);
-      }
-      root.replaceChildren(header, card);
-      return;
-    }
+    root.replaceChildren(header, renderPageState(state, { renderContent, onRetry: load }));
+  }
 
+  function renderContent(files) {
+    const fragment = document.createDocumentFragment();
     const permissionNote = canUpload ? document.createDocumentFragment() : element("div", "state-card state-card--danger", "این صفحه فقط برای مشاهده است؛ مجوز ویرایش مالی برای بارگذاری لازم است.");
     const uploadGrid = element("div", "file-upload-grid");
     uploadGrid.append(
@@ -208,7 +197,8 @@ export function createInvoiceFilesPage({ context, adapter }) {
     );
     const securityNote = element("aside", "file-security-note");
     securityNote.append(element("strong", "", "کنترل نهایی با سرور است"), element("p", "", "بررسی سمت مرورگر فقط برای راهنمایی سریع کاربر است. سرور باید پسوند، نوع محتوا، امضای واقعی فایل، اندازه و محدوده پروژه را دوباره اعتبارسنجی کند."));
-    root.replaceChildren(header, permissionNote, uploadGrid, securityNote, renderFiles(state.data, { adapter, canUpload, onChanged: load }));
+    fragment.append(permissionNote, uploadGrid, securityNote, renderFiles(files, { adapter, canUpload, onChanged: load }));
+    return fragment;
   }
 
   load();
