@@ -131,6 +131,19 @@
   flex: 0 0 auto;
 }
 
+/* The card's height is fixed, so every line these notices spend is a line the
+   plot does not get. On a narrow screen that trade is worth making: the notice
+   stays readable at a tighter measure, and the chart stops being a sliver.
+   Scoped to the card because notices.css loads later and its `:is()` list
+   weighs the same as a bare `.analysis-chart-panel > .inline-notice`. */
+@media (max-width: 30rem) {
+  .finance-managerial-comparison .analysis-chart-panel > .inline-notice {
+    padding: var(--space-xs) var(--space-sm);
+    font-size: .7rem;
+    line-height: 1.65;
+  }
+}
+
 .analysis-chart-panel > .combo-chart {
   flex: 1 1 auto;
   min-block-size: 0;
