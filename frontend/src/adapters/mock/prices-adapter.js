@@ -12,7 +12,7 @@ function wait(duration = 300) {
   return new Promise((resolve) => setTimeout(resolve, duration));
 }
 
-export function createMockPricesAdapter(context, { initialState = "success" } = {}) {
+export function createMockPricesAdapter(context, { initialState = "success", resourceProvider = null } = {}) {
   let priceSequence = 7;
   let importSequence = 1;
   let conversionSequence = 4;
@@ -23,6 +23,11 @@ export function createMockPricesAdapter(context, { initialState = "success" } = 
     { resourceId: "20000000-0000-4000-8000-000000000003", code: "EQ-CRANE", title: "جرثقیل", baseUnit: "hour" },
     { resourceId: "20000000-0000-4000-8000-000000000004", code: "GEN-PERMIT", title: "هزینه مجوز", baseUnit: null },
   ];
+
+  function getActiveResources() {
+    const provided = typeof resourceProvider === "function" ? resourceProvider() : null;
+    return Array.isArray(provided) ? provided : resources;
+  }
   let prices = initialState === "empty" ? [] : [
     { priceId: "50000000-0000-4000-8000-000000000001", sequence: 1, resourceId: resources[0].resourceId, scope: "organization", unitPriceIRR: "285000", currency: "IRR", effectiveFrom: "2026-07-01", createdAt: "2026-07-01T08:00:00Z", actorId: context.userId, actorName: "امیر طاهری" },
     { priceId: "50000000-0000-4000-8000-000000000002", sequence: 2, resourceId: resources[0].resourceId, scope: "project", unitPriceIRR: "302000", currency: "IRR", effectiveFrom: "2026-08-01", createdAt: "2026-08-01T08:00:00Z", actorId: context.userId, actorName: "امیر طاهری" },
@@ -39,7 +44,7 @@ export function createMockPricesAdapter(context, { initialState = "success" } = 
 
   function snapshot() {
     const asOfDate = getTehranTodayIso();
-    const currentPrices = resources.map((resource) => {
+    const currentPrices = getActiveResources().map((resource) => {
       const versions = prices
         .filter((price) => price.resourceId === resource.resourceId && price.effectiveFrom <= asOfDate)
         .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom) || right.sequence - left.sequence);
@@ -124,7 +129,7 @@ export function createMockPricesAdapter(context, { initialState = "success" } = 
     if (!validation.valid) {
       throw new ApiError({ status: 422, code: "VALIDATION_ERROR", message: "اطلاعات قیمت معتبر نیست.", details: validation.errors });
     }
-    if (!resources.some((resource) => resource.resourceId === validation.values.resourceId)) {
+    if (!getActiveResources().some((resource) => resource.resourceId === validation.values.resourceId)) {
       throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "قلم مالی موردنظر پیدا نشد." });
     }
     const sequence = priceSequence++;

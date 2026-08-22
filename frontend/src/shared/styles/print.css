@@ -5,15 +5,19 @@
 @media print {
   @page {
     size: A4;
-    margin: 10mm;
+    margin: 6mm;
+  }
+
+  html,
+  body {
+    font-size: 8pt;
+    line-height: 1.25;
   }
 
   .app-shell {
     display: block;
   }
 
-  .host-preview-header,
-  .project-context,
   .skip-link,
   .button {
     display: none !important;
@@ -26,18 +30,70 @@
   }
 
   #finance-module-root {
+    inline-size: 100%;
     max-inline-size: none;
     padding: 0;
   }
 
+  :is(h1, h2, h3, p, dl, ol, ul) {
+    margin-block: 0 1.5mm;
+  }
+
+  h1 {
+    font-size: 14pt;
+  }
+
+  h2 {
+    font-size: 10pt;
+  }
+
+  h3 {
+    font-size: 8pt;
+  }
+
+  .section-heading {
+    margin-block: 0 2mm;
+  }
+
   .summary-grid,
   .work-area-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2mm;
   }
 
   .summary-card,
   .work-area-card,
   .state-card {
+    min-block-size: 0;
+    padding: 2mm;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .table-scroll {
+    max-block-size: none;
+    overflow: visible;
+  }
+
+  .data-table {
+    min-inline-size: 0 !important;
+    inline-size: 100%;
+    font-size: 7pt;
+  }
+
+  .data-table :is(th, td) {
+    padding: 1mm 1.2mm;
+    font-size: 7pt;
+    line-height: 1.2;
+  }
+
+  .inline-notice,
+  .form-message,
+  .finance-warnings {
+    margin-block: 1.5mm;
+    padding: 1.5mm 2mm;
+    font-size: 7pt;
+    line-height: 1.25;
     box-shadow: none;
     break-inside: avoid;
   }

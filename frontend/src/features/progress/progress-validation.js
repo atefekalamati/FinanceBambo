@@ -49,7 +49,7 @@ export function validateProgressOverride({ value, reason, plannedQuantity }) {
   const errors = {};
 
   if (!quantity.valid) errors.value = quantity.message;
-  if (normalizedReason.length < 3) errors.reason = "دلیل ممیزی باید حداقل سه نویسه داشته باشد.";
+  if (normalizedReason.length < 3) errors.reason = "دلیل اصلاح دستی باید حداقل سه نویسه داشته باشد.";
 
   const exceedsPlan = quantity.valid
     && plannedQuantity !== null

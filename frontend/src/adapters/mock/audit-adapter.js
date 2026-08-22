@@ -15,7 +15,7 @@ const EVENTS = Object.freeze([
 export function createMockAuditAdapter(context, { initialState = "success" } = {}) {
   async function getEvents() {
     await new Promise((resolve) => setTimeout(resolve, 320));
-    if (initialState === "error") throw new ApiError({ status: 503, code: "AUDIT_UNAVAILABLE", message: "دریافت تاریخچه ممیزی انجام نشد.", requestId: "mock-audit-001" });
+    if (initialState === "error") throw new ApiError({ status: 503, code: "AUDIT_UNAVAILABLE", message: "دریافت تاریخچه تغییرات مالی انجام نشد.", requestId: "mock-audit-001" });
     if (initialState === "empty") return [];
     return clone(EVENTS.map((event) => ({ ...event, organizationId: context.organizationId, projectId: context.projectId })));
   }

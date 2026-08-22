@@ -1,14 +1,21 @@
 export function createHashRouter({ routes, defaultPath, onNavigate }) {
-  function currentPath() {
+  function currentLocation() {
     const value = window.location.hash.replace(/^#/, "");
-    return routes.some((route) => route.path === value && route.enabled) ? value : defaultPath;
+    const [path, queryString = ""] = value.split("?", 2);
+    const validPath = routes.some((route) => route.path === path && route.enabled) ? path : defaultPath;
+    return {
+      path: validPath,
+      query: new URLSearchParams(validPath === path ? queryString : ""),
+    };
   }
 
   function navigate() {
-    const path = currentPath();
-    if (window.location.hash !== `#${path}`) window.history.replaceState(null, "", `#${path}`);
+    const { path, query } = currentLocation();
+    if (!routes.some((route) => route.path === window.location.hash.replace(/^#/, "").split("?", 1)[0] && route.enabled)) {
+      window.history.replaceState(null, "", `#${path}`);
+    }
     const route = routes.find((item) => item.path === path);
-    onNavigate(route);
+    onNavigate(route, query);
   }
 
   return Object.freeze({

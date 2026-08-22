@@ -1,6 +1,7 @@
 import { hasPermission } from "../../core/auth/permissions.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
@@ -10,7 +11,7 @@ import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
 
 const SOURCE_LABELS = Object.freeze({
-  progress_feed: "خوراک پیشرفت",
+  progress_feed: "پیشرفت اجرایی",
   excel_import: "اکسل",
   manual_entry: "ورود دستی",
 });
@@ -95,12 +96,12 @@ function replaceSelectOptions(select, options, selectedValue = "") {
 }
 
 function createResourceDialog(adapter, workspace, onSaved) {
-  const dialog = createDialog("ثبت قلم مالی جدید");
+  const dialog = createDialog("ثبت قلم هزینه جدید");
   const form = element("form", "workspace-form");
   form.noValidate = true;
-  const type = createSelectField({ id: "resourceType", label: "نوع قلم مالی", options: RESOURCE_TYPES });
+  const type = createSelectField({ id: "resourceType", label: "نوع قلم هزینه", options: RESOURCE_TYPES });
   const title = createTextField({ id: "resourceTitle", label: "عنوان قلم", hint: "عنوان قابل فهم برای کاربران مالی" });
-  const code = createTextField({ id: "resourceCode", label: "کد قلم", hint: "کد پایدار برای جست‌وجو و Import" });
+  const code = createTextField({ id: "resourceCode", label: "کد قلم", hint: "کد پایدار برای جست‌وجو و ورود فایل" });
   const baseUnit = createSelectField({
     id: "resourceBaseUnit",
     label: "واحد پایه",
@@ -108,14 +109,14 @@ function createResourceDialog(adapter, workspace, onSaved) {
   });
   const unitHint = element("small", "form-hint", "بُعد اندازه‌گیری از واحد انتخاب‌شده و توسط سامانه تعیین می‌شود.");
   baseUnit.wrapper.append(unitHint);
-  const notice = element("div", "inline-notice", "هزینه عمومی مبلغ‌محور است و بدون واحد پایه ثبت می‌شود.");
+  const notice = element("div", "inline-notice", "هزینه‌های عمومی پروژه مبلغ‌محور هستند و بدون واحد پایه ثبت می‌شوند.");
   const status = element("div", "form-status");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
   const cancel = element("button", "button button--ghost", "لغو");
   cancel.type = "button";
   cancel.addEventListener("click", () => dialog.close());
-  const submit = element("button", "button button--primary", "ثبت قلم مالی");
+  const submit = element("button", "button button--primary", "ثبت قلم هزینه");
   submit.type = "submit";
   const actions = element("div", "form-actions");
   actions.append(cancel, submit, status);
@@ -214,21 +215,21 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
   });
   const resource = createSelectField({
     id: "lineResource",
-    label: "قلم مالی",
+    label: "قلم هزینه",
     options: workspace.resources.map((item) => ({ value: item.resourceId, label: `${item.code} · ${item.title}` })),
   });
   const addActivity = element("button", "button button--ghost line-reference-add", "تعریف فعالیت جدید");
   addActivity.type = "button";
   const activityHelp = element("small", "form-hint", "اگر فعالیت موردنظر در ساختار پروژه نیست، همین‌جا آن را تعریف کنید.");
   activity.wrapper.append(addActivity, activityHelp);
-  const addResource = element("button", "button button--ghost line-reference-add", "تعریف قلم مالی جدید");
+  const addResource = element("button", "button button--ghost line-reference-add", "تعریف قلم هزینه جدید");
   addResource.type = "button";
   addResource.setAttribute("aria-describedby", "lineResourceHelp");
   const resourceHelp = element("small", "form-hint", "اگر قلم موردنظر در فهرست نیست، آن را ثبت کنید و سپس برای همین خط انتخاب کنید.");
   resourceHelp.id = "lineResourceHelp";
   resource.wrapper.append(addResource, resourceHelp);
-  const quantity = createTextField({ id: "lineOriginalQuantity", label: "مقدار اولیه", hint: "مقدار با واحد پایه قلم ثبت می‌شود.", inputMode: "decimal" });
-  const relationNotice = element("div", "inline-notice", "هر فعالیت و قلم مالی یک خط مستقل است؛ استفاده همان قلم در فعالیت دیگر خط جدا می‌سازد.");
+  const quantity = createTextField({ id: "lineOriginalQuantity", label: "مقدار برآورد اولیه", hint: "مقدار با واحد پایه قلم ثبت می‌شود.", inputMode: "decimal" });
+  const relationNotice = element("div", "inline-notice", "هر فعالیت و قلم هزینه یک ردیف مستقل برآورد است؛ استفاده همان قلم در فعالیت دیگر ردیف جدا می‌سازد.");
   const activityNotice = element("div", "inline-notice", "فعالیت‌ها از ساختار پروژه BAMBO دریافت می‌شوند؛ فعالیت جدید نیز در همان ساختار ثبت می‌شود.");
   const status = element("div", "form-status");
   status.setAttribute("role", "status");
@@ -261,7 +262,7 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
     });
     dialog.after(resourceDialog);
     resourceDialog.addEventListener("close", () => resourceDialog.remove(), { once: true });
-    resourceDialog.showModal();
+    showAccessibleDialog(resourceDialog);
   });
 
   addActivity.addEventListener("click", () => {
@@ -274,13 +275,13 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
     });
     dialog.after(activityDialog);
     activityDialog.addEventListener("close", () => activityDialog.remove(), { once: true });
-    activityDialog.showModal();
+    showAccessibleDialog(activityDialog);
   });
 
   function syncQuantityLabel() {
     const selected = workspace.resources.find((item) => item.resourceId === resource.select.value);
     const isGeneralCost = selected?.type === "general_cost";
-    quantity.label.textContent = isGeneralCost ? `مبلغ اولیه (${getDisplayCurrencyLabel()})` : "مقدار اولیه";
+    quantity.label.textContent = isGeneralCost ? `مبلغ برآورد اولیه (${getDisplayCurrencyLabel()})` : "مقدار برآورد اولیه";
     quantity.hint.textContent = isGeneralCost ? `مبلغ با واحد نمایشی انتخاب‌شده وارد می‌شود و مقدار رسمی Backend همچنان ${CURRENCY_LABELS.IRR} است.` : `مقدار با واحد پایه ${formatUnitLabel(selected?.baseUnit)} ثبت می‌شود.`;
   }
   resource.select.addEventListener("change", syncQuantityLabel);
@@ -316,10 +317,10 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
 }
 
 function createEstimateImportDialog(adapter, onSaved) {
-  const dialog = createDialog("ورود گروهی برآورد");
+  const dialog = createDialog("ورود متره و برآورد");
   dialog.classList.add("import-dialog");
 
-  const description = element("p", "import-dialog__description", "فایل اکسل ابتدا فقط بررسی می‌شود. تا زمانی که تمام ردیف‌ها معتبر نباشند، هیچ خط برآوردی ثبت نخواهد شد.");
+  const description = element("p", "import-dialog__description", "فایل اکسل ابتدا فقط بررسی می‌شود. تا زمانی که تمام ردیف‌ها معتبر نباشند، هیچ ردیف برآوردی ثبت نخواهد شد.");
   const form = element("form", "import-form");
   form.noValidate = true;
   const field = element("div", "form-field form-field--wide");
@@ -374,7 +375,7 @@ function createEstimateImportDialog(adapter, onSaved) {
     table.append(element("caption", "sr-only", "پیش‌نمایش ردیف‌های فایل برآورد"));
     const head = document.createElement("thead");
     const header = document.createElement("tr");
-    ["ردیف", "فعالیت", "قلم مالی", "مقدار", "واحد", "نتیجه بررسی"].forEach((title) => header.append(element("th", "", title)));
+    ["ردیف", "فعالیت", "قلم هزینه", "مقدار برآورد اولیه", "واحد", "نتیجه بررسی"].forEach((title) => header.append(element("th", "", title)));
     head.append(header);
     const body = document.createElement("tbody");
     preview.rows.forEach((row) => {
@@ -417,7 +418,7 @@ function createEstimateImportDialog(adapter, onSaved) {
       const confirmation = document.createElement("dialog");
       confirmation.className = "confirm-dialog";
       const title = element("h2", "", "تأیید ثبت نهایی برآورد");
-      const message = element("p", "", `${formatDisplayNumber(String(preview.validRows))} خط برآورد با مقدار اولیه تغییرناپذیر ثبت می‌شود. آیا ادامه می‌دهید؟`);
+      const message = element("p", "", `${formatDisplayNumber(String(preview.validRows))} ردیف برآورد با مقدار اولیه تغییرناپذیر ثبت می‌شود. آیا ادامه می‌دهید؟`);
       const cancel = element("button", "button button--ghost", "لغو");
       cancel.type = "button";
       const confirm = element("button", "button button--primary", "تأیید و ثبت نهایی");
@@ -447,7 +448,7 @@ function createEstimateImportDialog(adapter, onSaved) {
       });
       dialog.after(confirmation);
       confirmation.addEventListener("close", () => confirmation.remove(), { once: true });
-      confirmation.showModal();
+      showAccessibleDialog(confirmation);
     });
 
     const actions = element("div", "import-result__actions");
@@ -491,25 +492,25 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
   const originalValue = line.originalQuantity ?? line.originalAmount;
   const currentValue = line.revisedQuantity ?? line.revisedAmount;
   const unit = isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource.baseUnit);
-  const dialog = createDialog("ثبت بازنگری مقدار");
+  const dialog = createDialog("ثبت اصلاح مقدار برآورد");
   const summary = element("div", "revision-summary");
   const original = element("article", "revision-summary__item");
-  original.append(element("span", "", "مقدار اولیه قفل‌شده"), element("strong", "numeric", isGeneralCost ? formatTomanFromIrr(originalValue, { withCurrency: false }) : formatDisplayNumber(originalValue)), element("small", "numeric", unit));
+  original.append(element("span", "", "مقدار برآورد اولیه قفل‌شده"), element("strong", "numeric", isGeneralCost ? formatTomanFromIrr(originalValue, { withCurrency: false }) : formatDisplayNumber(originalValue)), element("small", "numeric", unit));
   const current = element("article", "revision-summary__item");
-  current.append(element("span", "", "مقدار اصلاح‌شده فعلی"), element("strong", "numeric", isGeneralCost ? formatTomanFromIrr(currentValue, { withCurrency: false }) : formatDisplayNumber(currentValue)), element("small", "numeric", `بازنگری ${line.revision}`));
+  current.append(element("span", "", "آخرین مقدار برآورد"), element("strong", "numeric", isGeneralCost ? formatTomanFromIrr(currentValue, { withCurrency: false }) : formatDisplayNumber(currentValue)), element("small", "numeric", `اصلاح ${line.revision}`));
   summary.append(original, current);
 
   const form = element("form", "workspace-form revision-form");
   form.noValidate = true;
   const revised = createTextField({
     id: `revisedValue-${line.lineId}`,
-    label: isGeneralCost ? `مبلغ اصلاح‌شده (${getDisplayCurrencyLabel()})` : `مقدار اصلاح‌شده (${unit})`,
-    hint: "مقدار اولیه تغییر نمی‌کند؛ فقط یک بازنگری جدید ثبت می‌شود.",
+    label: isGeneralCost ? `آخرین مبلغ برآورد (${getDisplayCurrencyLabel()})` : `آخرین مقدار برآورد (${unit})`,
+    hint: "مقدار برآورد اولیه تغییر نمی‌کند؛ فقط یک اصلاح جدید ثبت می‌شود.",
     inputMode: "decimal",
   });
   revised.input.value = isGeneralCost ? (formatTomanFromIrr(currentValue, { withCurrency: false }).replaceAll("٬", "").replace("٫", ".")) : currentValue;
   const reasonField = element("div", "form-field form-field--wide");
-  const reasonLabel = element("label", "form-label", "دلیل بازنگری");
+  const reasonLabel = element("label", "form-label", "دلیل اصلاح");
   reasonLabel.htmlFor = `revisionReason-${line.lineId}`;
   const reason = document.createElement("textarea");
   reason.id = `revisionReason-${line.lineId}`;
@@ -529,7 +530,7 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
   const cancel = element("button", "button button--ghost", "لغو");
   cancel.type = "button";
   cancel.addEventListener("click", () => dialog.close());
-  const submit = element("button", "button button--primary", "تأیید و ثبت بازنگری");
+  const submit = element("button", "button button--primary", "تأیید و ثبت اصلاح");
   submit.type = "submit";
   const actions = element("div", "form-actions");
   actions.append(cancel, submit, status);
@@ -539,7 +540,7 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
     const validation = validateEstimateRevision({ revisedValue: isGeneralCost ? tomanInputToIrr(revised.input.value) : revised.input.value, reason: "valid reason" }, { isGeneralCost });
     const isOverrun = validation.values.revisedValue && validation.errors.revisedValue === "" && compareDecimalStrings(validation.values.revisedValue, originalValue) > 0;
     warning.hidden = !isOverrun;
-    warning.textContent = isOverrun ? "مقدار اصلاح‌شده از مقدار اولیه بیشتر است. ثبت مسدود نمی‌شود، اما دلیل آن در Audit و تاریخچه حفظ خواهد شد." : "";
+    warning.textContent = isOverrun ? "آخرین مقدار برآورد از مقدار اولیه بیشتر است. ثبت مسدود نمی‌شود، اما دلیل آن در تاریخچه تغییرات حفظ خواهد شد." : "";
   }
   revised.input.addEventListener("input", syncWarning);
   syncWarning();
@@ -560,7 +561,7 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
     }
     submit.disabled = true;
     cancel.disabled = true;
-    status.textContent = "در حال ثبت بازنگری…";
+    status.textContent = "در حال ثبت اصلاح…";
     try {
       const workspace = await adapter.reviseEstimateLine({
         lineId: line.lineId,
@@ -583,12 +584,12 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
 }
 
 function createRevisionHistoryDialog(line, resource) {
-  const dialog = createDialog("تاریخچه بازنگری خط متره");
+  const dialog = createDialog("تاریخچه اصلاحات ردیف برآورد");
   const identity = element("div", "revision-identity");
   identity.append(element("strong", "", `${line.activityTitle} · ${resource.title}`), element("small", "numeric", `${line.wbsCode} · ${resource.code}`));
   dialog.append(identity);
   if (!line.revisions.length) {
-    dialog.append(element("div", "inline-notice", "برای این خط هنوز بازنگری ثبت نشده و مقدار اصلاح‌شده با مقدار اولیه برابر است."));
+    dialog.append(element("div", "inline-notice", "برای این ردیف هنوز اصلاحی ثبت نشده و آخرین مقدار برآورد با مقدار اولیه برابر است."));
     return dialog;
   }
 
@@ -596,11 +597,11 @@ function createRevisionHistoryDialog(line, resource) {
   line.revisions.forEach((revision) => {
     const item = element("article", `revision-record ${revision.isOverrun ? "revision-record--overrun" : ""}`);
     const head = element("div", "revision-record__head");
-    head.append(element("strong", "", `بازنگری ${revision.revisionNumber}`), element("time", "", formatSystemDateTime(revision.occurredAt)));
+    head.append(element("strong", "", `اصلاح ${revision.revisionNumber}`), element("time", "", formatSystemDateTime(revision.occurredAt)));
     const values = element("div", "revision-record__values");
     values.append(element("span", "", resource.type === "general_cost" ? `از ${formatTomanFromIrr(revision.previousValue)} به ${formatTomanFromIrr(revision.newValue)}` : `از ${formatDisplayNumber(revision.previousValue)} به ${formatDisplayNumber(revision.newValue)}`), element("small", "", resource.type === "general_cost" ? getDisplayCurrencyLabel() : formatUnitLabel(resource.baseUnit)));
     item.append(head, values, element("p", "", revision.reason), element("small", "revision-record__actor", revision.actorName || revision.actorId));
-    if (revision.isOverrun) item.append(element("span", "overrun-badge", "بیشتر از مقدار اولیه"));
+    if (revision.isOverrun) item.append(element("span", "overrun-badge", "بیشتر از برآورد اولیه"));
     wrapper.append(item);
   });
   dialog.append(wrapper);
@@ -634,14 +635,14 @@ function renderResourceTable(resources) {
   return wrapper;
 }
 
-function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory }) {
+function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, focusResourceId = "", focusEstimateLineId = "" }) {
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table estimate-lines-table");
-  table.append(element("caption", "sr-only", "خطوط مستقل فعالیت و قلم مالی"));
+  table.append(element("caption", "sr-only", "ریز برآورد پروژه"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  ["ساختار شکست کار / فعالیت", "قلم مالی", "واحد", "برآورد اولیه", "برآورد اصلاح‌شده", "منبع", "عملیات"].forEach((label) => header.append(element("th", "", label)));
+  ["ساختار شکست کار / فعالیت", "قلم هزینه", "واحد", "مقدار برآورد اولیه", "آخرین مقدار برآورد", "منبع", "عملیات"].forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
   lines.forEach((line) => {
@@ -651,6 +652,13 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
     const revised = isGeneralCost ? line.revisedAmount : line.revisedQuantity;
     const changed = original !== revised;
     const row = document.createElement("tr");
+    const isTarget = focusEstimateLineId
+      ? line.lineId === focusEstimateLineId
+      : Boolean(focusResourceId && line.resourceId === focusResourceId);
+    if (isTarget) {
+      row.classList.add("deep-link-target");
+      row.tabIndex = -1;
+    }
     const activityCell = document.createElement("td");
     activityCell.append(element("strong", "", line.activityTitle), element("small", "table-subtext numeric", `${line.wbsCode} · ${line.activityExternalId}`));
     const resourceCell = document.createElement("td");
@@ -663,7 +671,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
     history.addEventListener("click", () => onHistory(line, resource));
     actionsCell.append(history);
     if (canEdit) {
-      const revise = element("button", "table-action table-action--primary", "بازنگری");
+      const revise = element("button", "table-action table-action--primary", "اصلاح مقدار");
       revise.type = "button";
       revise.addEventListener("click", () => onRevise(line, resource));
       actionsCell.append(revise);
@@ -684,7 +692,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
   return wrapper;
 }
 
-export function createFinancialItemsPage({ context, adapter }) {
+export function createFinancialItemsPage({ context, adapter, focusResourceId = "", focusEstimateLineId = "" }) {
   const root = element("div", "financial-items-page");
   const canEdit = hasPermission(context, "finance.edit");
   let state = createRequestState(REQUEST_STATUS.LOADING);
@@ -704,16 +712,17 @@ export function createFinancialItemsPage({ context, adapter }) {
   function renderHeader() {
     const header = element("header", "feature-header");
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
     back.href = "#/finance";
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "اقلام مالی و خطوط برآورد"), element("h1", "", "اقلام و متره"), element("p", "", "هر اتصال فعالیت و قلم مالی یک خط مستقل است؛ مقادیر اولیه حفظ و مقدار اصلاح‌شده جداگانه نمایش داده می‌شود."));
+    copy.append(element("span", "feature-header__eyebrow", "اقلام پروژه و ریز برآورد"), element("h1", "", "اقلام و برآورد"), element("p", "", "هر اتصال فعالیت و قلم هزینه یک ردیف مستقل برآورد است؛ مقدار اولیه حفظ و آخرین مقدار برآورد جداگانه نمایش داده می‌شود."));
     header.append(copy, back);
     return header;
   }
 
   function renderEmpty() {
     const card = element("section", "state-card items-empty");
-    card.append(element("h2", "", "هنوز قلم مالی ثبت نشده است"), element("p", "", canEdit ? "اولین قلم مالی را ثبت کنید و سپس آن را به یک فعالیت متصل کنید." : "برای این پروژه هنوز اقلام و متره‌ای قابل نمایش نیست."));
+    card.append(element("h2", "", "هنوز قلم هزینه‌ای ثبت نشده است"), element("p", "", canEdit ? "اولین قلم هزینه را ثبت کنید و سپس آن را به یک فعالیت متصل کنید." : "برای این پروژه هنوز اقلام و برآوردی قابل نمایش نیست."));
     if (canEdit) {
       const button = element("button", "button button--primary", "ثبت اولین قلم");
       button.type = "button";
@@ -724,7 +733,7 @@ export function createFinancialItemsPage({ context, adapter }) {
           paint();
         });
         root.append(dialog);
-        dialog.showModal();
+        showAccessibleDialog(dialog);
       });
       card.append(button);
     }
@@ -742,31 +751,19 @@ export function createFinancialItemsPage({ context, adapter }) {
       stats.append(card);
     });
 
-    const toolbar = element("div", "items-toolbar");
-    const summary = element("p", "", `${formatDisplayNumber(String(workspace.resources.length))} قلم مالی · ${formatDisplayNumber(String(workspace.estimateLines.length))} خط مستقل متره`);
-    toolbar.append(summary);
+    const lineActions = element("div", "items-section__actions");
     if (canEdit) {
-      const addResource = element("button", "button button--ghost", "قلم جدید");
-      addResource.type = "button";
       const addLine = element("button", "button button--primary", "خط متره جدید");
       addLine.type = "button";
       const importEstimate = element("button", "button button--ghost", "ورود گروهی برآورد");
       importEstimate.type = "button";
-      addResource.addEventListener("click", () => {
-        const dialog = createResourceDialog(adapter, workspace, (next) => {
-          state = createRequestState(REQUEST_STATUS.SUCCESS, next);
-          paint();
-        });
-        root.append(dialog);
-        dialog.showModal();
-      });
       addLine.addEventListener("click", () => {
         const dialog = createEstimateLineDialog(adapter, workspace, (next) => {
           state = createRequestState(REQUEST_STATUS.SUCCESS, next);
           paint();
         });
         root.append(dialog);
-        dialog.showModal();
+        showAccessibleDialog(dialog);
       });
       importEstimate.addEventListener("click", () => {
         const dialog = createEstimateImportDialog(adapter, (next) => {
@@ -774,46 +771,71 @@ export function createFinancialItemsPage({ context, adapter }) {
           paint();
         });
         root.append(dialog);
-        dialog.showModal();
+        showAccessibleDialog(dialog);
       });
-      const actions = element("div", "items-toolbar__actions");
-      actions.append(addResource, addLine, importEstimate);
-      toolbar.append(actions);
+      lineActions.append(addLine, importEstimate);
     }
 
-    const resourcesSection = element("section", "items-section");
-    const resourceHead = element("div", "items-section__head");
-    resourceHead.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(workspace.resources.length))));
-    resourceHead.firstElementChild.append(element("h2", "", "کاتالوگ اقلام مالی"), element("p", "", "فهرست چهار نوع قلم مالی و واحد پایه هر قلم"));
-    resourcesSection.append(resourceHead, renderResourceTable(workspace.resources));
+    const resourcesSection = element("details", "items-section resources-disclosure");
+    const resourceHead = element("summary", "items-section__head resources-disclosure__summary");
+    const resourceMeta = element("div", "resources-disclosure__meta");
+    if (canEdit) {
+      const addResource = element("button", "button button--ghost resources-disclosure__add", "قلم جدید");
+      addResource.type = "button";
+      addResource.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const dialog = createResourceDialog(adapter, workspace, (next) => {
+          state = createRequestState(REQUEST_STATUS.SUCCESS, next);
+          paint();
+        });
+        root.append(dialog);
+        showAccessibleDialog(dialog);
+      });
+      resourceMeta.append(addResource);
+    }
+    resourceHead.append(element("div", "", ""), resourceMeta);
+    resourceHead.firstElementChild.append(element("h2", "", "فهرست اقلام پروژه"), element("p", "", "فهرست چهار نوع قلم هزینه و واحد پایه هر قلم"));
+    const resourcesContent = element("div", "resources-disclosure__content");
+    resourcesContent.append(renderResourceTable(workspace.resources), stats);
+    resourcesSection.append(resourceHead, resourcesContent);
 
     const linesSection = element("section", "items-section");
-    const linesHead = element("div", "items-section__head");
-    linesHead.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(workspace.estimateLines.length))));
-    linesHead.firstElementChild.append(element("h2", "", "خطوط مستقل فعالیت و قلم مالی"), element("p", "", "هر ردیف، مقدار برنامه‌ریزی‌شده یک قلم را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا متره، بازنگری و پیشرفت هر فعالیت مستقل و قابل ممیزی بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت‌ها و فاکتورهای تأییدشده محاسبه می‌شوند."));
+    const linesHead = element("div", "items-section__head lines-section__head");
+    const linesMeta = element("div", "items-section__meta");
+    linesMeta.append(lineActions);
+    linesHead.append(element("div", "", ""), linesMeta);
+    linesHead.firstElementChild.append(element("h2", "", "ریز برآورد پروژه"), element("p", "", "هر ردیف، مقدار برآوردشده یک قلم هزینه را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا برآورد، اصلاحات و پیشرفت هر فعالیت مستقل و قابل پیگیری بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت روز و فاکتورهای تأییدشده محاسبه می‌شوند."));
     linesSection.append(linesHead, renderEstimateLineTable(workspace.estimateLines, workspace.resources, {
       canEdit,
+      focusResourceId,
+      focusEstimateLineId,
       onRevise: (line, resource) => {
         const dialog = createRevisionDialog(adapter, line, resource, (next) => {
           state = createRequestState(REQUEST_STATUS.SUCCESS, next);
           paint();
         });
         root.append(dialog);
-        dialog.showModal();
+        showAccessibleDialog(dialog);
       },
       onHistory: (line, resource) => {
         const dialog = createRevisionHistoryDialog(line, resource);
         root.append(dialog);
-        dialog.showModal();
+        showAccessibleDialog(dialog);
       },
     }));
 
-    fragment.append(stats, toolbar, resourcesSection, linesSection);
+    fragment.append(linesSection, resourcesSection);
     return fragment;
   }
 
   function paint() {
     root.replaceChildren(renderHeader(), renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    const target = root.querySelector(".deep-link-target");
+    if (target) queueMicrotask(() => {
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+      target.focus({ preventScroll: true });
+    });
   }
 
   load();

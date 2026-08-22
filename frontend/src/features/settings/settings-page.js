@@ -1,11 +1,14 @@
 import { hasPermission } from "../../core/auth/permissions.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
-import { formatArea, formatBusinessDate, formatSystemDateTime } from "../../shared/formatters/display.js";
+import { formatArea, formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { getDisplayCurrencyCode, getDisplayCurrencyLabel, setDisplayCurrencyCode } from "../../shared/preferences/currency-preference.js";
+import { createUnitConversionForm, renderConversionHistory, renderCurrentConversions } from "../prices/prices-page.js";
+import { isConfigurableConversionDirection } from "../prices/unit-conversions-validation.js";
 import { validateSettingsRevision } from "./settings-validation.js";
 
 function element(tag, className, text) {
@@ -42,7 +45,7 @@ function createRevisionTable(revisions) {
   const caption = element("caption", "sr-only", "تاریخچه تغییر زیربنای کل");
   const head = document.createElement("thead");
   const headerRow = document.createElement("tr");
-  ["تاریخ اثر", "مقدار قبلی", "مقدار جدید", "دلیل", "ثبت‌کننده", "زمان ثبت"].forEach((title) => headerRow.append(element("th", "", title)));
+  ["تاریخ اعمال تغییر", "مقدار قبلی", "مقدار جدید", "دلیل", "ثبت‌کننده", "زمان ثبت"].forEach((title) => headerRow.append(element("th", "", title)));
   head.append(headerRow);
   const body = document.createElement("tbody");
   revisions.forEach((revision) => {
@@ -62,16 +65,31 @@ function createRevisionTable(revisions) {
   return wrapper;
 }
 
-export function createSettingsPage({ context, adapter, onSettingsUpdated = () => {} }) {
+export function createSettingsPage({ context, adapter, pricesAdapter, onSettingsUpdated = () => {} }) {
   const root = element("div", "settings-page");
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let settings = null;
+  let conversionWorkspace = null;
+  let conversionError = null;
+  let conversionEditorOpen = false;
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
     paint();
     try {
-      settings = await adapter.getSettings();
+      const [settingsResult, conversionsResult] = await Promise.allSettled([
+        adapter.getSettings(),
+        pricesAdapter.getPrices(),
+      ]);
+      if (settingsResult.status === "rejected") throw settingsResult.reason;
+      settings = settingsResult.value;
+      if (conversionsResult.status === "fulfilled") {
+        conversionWorkspace = conversionsResult.value;
+        conversionError = null;
+      } else {
+        conversionWorkspace = null;
+        conversionError = conversionsResult.reason;
+      }
       state = createRequestState(settings ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, settings);
     } catch (error) {
       state = createRequestState(REQUEST_STATUS.ERROR, null, error);
@@ -82,9 +100,10 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
   function renderHeader() {
     const header = element("header", "feature-header");
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
     back.href = "#/finance";
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "تنظیمات سطح پروژه"), element("h1", "", "تنظیمات مالی"), element("p", "", "زیربنای کل و سیاست نمایش پول پروژه را مدیریت کنید. تمام تغییرات زیربنا با دلیل و تاریخ اثر ثبت می‌شوند."));
+    copy.append(element("span", "feature-header__eyebrow", "پیکربندی پروژه جاری"), element("h1", "", "تنظیمات مالی پروژه"), element("p", "", "قواعد پایه محاسبات مالی، نحوه نمایش پول، زیربنا و تبدیل واحدهای پروژه را از یک محل مدیریت کنید."));
     header.append(copy, back);
     return header;
   }
@@ -123,6 +142,94 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
     return section;
   }
 
+  function renderAccessSummary() {
+    const section = element("section", "settings-card settings-access");
+    const head = element("div", "settings-card__head");
+    head.append(element("div", "settings-card__icon", "✓"), element("div", "", ""));
+    head.lastElementChild.append(
+      element("h2", "", "دسترسی‌های مالی شما"),
+      element("p", "", "این بخش فقط وضعیت دسترسی‌های دریافتی از سیستم اصلی BAMBO را نمایش می‌دهد."),
+    );
+    const list = element("ul", "settings-access__list");
+    [
+      ["finance.view", "مشاهده اطلاعات مالی"],
+      ["finance.edit", "ویرایش اطلاعات و تنظیمات مالی"],
+      ["finance_report.view", "مشاهده گزارش‌های مالی"],
+      ["finance_report.export", "دریافت خروجی گزارش‌ها"],
+    ].forEach(([code, label]) => {
+      const allowed = hasPermission(context, code);
+      const item = element("li", `settings-access__item settings-access__item--${allowed ? "allowed" : "denied"}`);
+      item.append(element("span", "", label), element("strong", "", allowed ? "فعال" : "غیرفعال"));
+      list.append(item);
+    });
+    section.append(head, list);
+    return section;
+  }
+
+  function renderUnitConversions() {
+    const section = element("section", "settings-card settings-conversions");
+    section.id = "unit-conversions";
+    const head = element("div", "settings-card__head settings-card__head--actions");
+    const copy = element("div", "settings-card__head-copy");
+    copy.append(
+      element("h2", "", "قواعد تبدیل واحد پروژه"),
+      element("p", "", "قاعده اختصاصی پروژه بر قاعده پایه سازمان مقدم است و تبدیل فقط میان واحدهای هم‌بُعد انجام می‌شود."),
+    );
+    head.append(element("div", "settings-card__icon", "↔"), copy);
+    const editorHost = element("div", "settings-conversions__editor-host");
+    if (hasPermission(context, "finance.edit")) {
+      const add = element("button", "button button--primary", "تعریف تبدیل کاری");
+      add.type = "button";
+      add.addEventListener("click", () => {
+        conversionEditorOpen = !conversionEditorOpen;
+        paint();
+      });
+      head.append(add);
+    }
+    if (conversionEditorOpen) {
+      editorHost.append(createUnitConversionForm(pricesAdapter, conversionWorkspace, (next) => {
+        conversionWorkspace = next;
+        conversionEditorOpen = false;
+        paint();
+      }, () => {
+        conversionEditorOpen = false;
+        paint();
+      }));
+    }
+    const configurableConversions = (conversionWorkspace?.currentConversions ?? []).filter((item) => isConfigurableConversionDirection(item.sourceUnit, item.targetUnit));
+    const configurableHistory = (conversionWorkspace?.conversionHistory ?? []).filter((item) => isConfigurableConversionDirection(item.sourceUnit, item.targetUnit));
+    const current = element("div", "settings-conversions__current");
+    current.append(element("h3", "", "قواعد کاری قابل تنظیم"), element("p", "settings-conversions__description", "این قواعد می‌توانند با توجه به برنامه کاری سازمان یا پروژه تغییر کنند؛ مانند تعداد ساعت یک روز دستگاه."));
+    if (conversionError) {
+      const error = element("div", "settings-conversions__error inline-notice");
+      error.append(element("strong", "", "دریافت قواعد تبدیل انجام نشد."), element("span", "", conversionError.message ?? "ارتباط با سرویس تبدیل واحد برقرار نشد."));
+      const retry = element("button", "button button--ghost", "تلاش مجدد");
+      retry.type = "button";
+      retry.addEventListener("click", async () => {
+        retry.disabled = true;
+        try {
+          conversionWorkspace = await pricesAdapter.getPrices();
+          conversionError = null;
+          paint();
+        } catch (errorValue) {
+          conversionError = errorValue;
+          paint();
+        }
+      });
+      error.append(retry);
+      current.append(error);
+    } else if (configurableConversions.length) current.append(renderCurrentConversions(configurableConversions));
+    else current.append(element("p", "settings-empty-copy", "قاعده کاری قابل تنظیمی برای این پروژه ثبت نشده است."));
+    const history = document.createElement("details");
+    history.className = "settings-conversions__history";
+    history.append(element("summary", "", "مشاهده تاریخچه نسخه‌های تبدیل واحد"));
+    if (conversionError) history.hidden = true;
+    else if (configurableHistory.length) history.append(renderConversionHistory(configurableHistory));
+    else history.append(element("p", "settings-empty-copy", "تاریخچه‌ای برای تبدیل واحد وجود ندارد."));
+    section.append(head, editorHost, current, history);
+    return section;
+  }
+
   function renderEditor(current) {
     const section = element("section", "settings-card settings-editor");
     const head = element("div", "settings-card__head");
@@ -132,7 +239,7 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
     const form = element("form", "settings-form");
     form.noValidate = true;
     const area = createField({ id: "grossBuiltArea", label: "زیربنای کل (مترمربع)", value: current?.grossBuiltArea ?? "", hint: "عدد مثبت با حداکثر چهار رقم اعشار؛ ارقام فارسی نیز پذیرفته می‌شوند.", inputMode: "decimal", required: true });
-    const date = createPersianDatePicker({ id: "effectiveDate", label: "تاریخ اثر", value: getTehranTodayIso(), hint: "تاریخ را براساس تقویم جلالی و زمان ایران انتخاب کنید." });
+    const date = createPersianDatePicker({ id: "effectiveDate", label: "تاریخ اعمال تغییر", value: getTehranTodayIso(), hint: "تاریخ را براساس تقویم جلالی و زمان ایران انتخاب کنید." });
     const reasonField = element("div", "form-field form-field--wide");
     const reasonLabel = element("label", "form-label", "دلیل تغییر");
     reasonLabel.htmlFor = "reason";
@@ -192,7 +299,7 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
         return;
       }
       pendingValues = validation.values;
-      dialog.showModal();
+      showAccessibleDialog(dialog);
     });
     cancel.addEventListener("click", () => dialog.close());
     confirm.addEventListener("click", async () => {
@@ -226,14 +333,25 @@ export function createSettingsPage({ context, adapter, onSettingsUpdated = () =>
     areaCard.append(element("span", "", "زیربنای کل فعلی"), element("strong", "numeric", formatArea(data.grossBuiltArea)), element("small", "", `بازنگری ${data.revision}`));
     const currencyCard = element("article", "settings-overview__item");
     currencyCard.append(element("span", "", "واحد نمایش مبالغ"), element("strong", "", getDisplayCurrencyLabel()), element("small", "", "قابل تغییر برای تمام بخش‌های مالی"));
-    overview.append(areaCard, currencyCard);
+    const conversionCard = element("article", "settings-overview__item");
+    const configurableCount = (conversionWorkspace?.currentConversions ?? []).filter((item) => isConfigurableConversionDirection(item.sourceUnit, item.targetUnit)).length;
+    conversionCard.append(element("span", "", "قواعد کاری فعال"), element("strong", "numeric", formatDisplayNumber(String(configurableCount))), element("small", "", "قواعد قابل تنظیم سازمان و پروژه"));
+    const latestSettingsDate = [
+      ...(data.revisions ?? []).map((item) => item.effectiveDate),
+      ...(conversionWorkspace?.conversionHistory ?? []).map((item) => item.effectiveDate),
+    ].filter(Boolean).sort((left, right) => right.localeCompare(left))[0] ?? null;
+    const revisionCard = element("article", "settings-overview__item");
+    revisionCard.append(element("span", "", "آخرین تغییر تنظیمات"), element("strong", "", latestSettingsDate ? formatBusinessDate(latestSettingsDate) : "بدون تغییر"), element("small", "", "زیربنا یا قواعد تبدیل واحد"));
+    overview.append(areaCard, currencyCard, conversionCard, revisionCard);
 
     const history = element("section", "settings-card settings-history-card");
     const historyHead = element("div", "settings-card__head");
     historyHead.append(element("div", "settings-card__icon", "↺"), element("div", "", ""));
-    historyHead.lastElementChild.append(element("h2", "", "تاریخچه تغییر زیربنا"), element("p", "", "مقدار اولیه و همه بازنگری‌ها به‌صورت تغییرناپذیر نمایش داده می‌شوند."));
+    historyHead.lastElementChild.append(element("h2", "", "تاریخچه تغییر زیربنا"), element("p", "", "مقدار اولیه و همه اصلاحات ثبت‌شده به‌صورت تغییرناپذیر نمایش داده می‌شوند."));
     history.append(historyHead, createRevisionTable(data.revisions));
-    fragment.append(overview, renderCurrencyPolicy(), renderEditor(data), history);
+    const primaryGrid = element("div", "settings-primary-grid");
+    primaryGrid.append(renderCurrencyPolicy(), renderAccessSummary());
+    fragment.append(overview, primaryGrid, renderEditor(data), renderUnitConversions(), history);
     return fragment;
   }
 

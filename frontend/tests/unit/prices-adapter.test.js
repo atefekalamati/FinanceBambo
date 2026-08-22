@@ -104,11 +104,11 @@ test("appends a unit conversion version and preserves previous records", async (
   const adapter = createMockPricesAdapter(context);
   const before = await adapter.getPrices();
   const oldIds = before.conversionHistory.map((conversion) => conversion.conversionId);
-  const after = await adapter.createUnitConversion({ sourceUnit: "ton", targetUnit: "kg", factor: "1020.000000", scope: "project", effectiveDate: "2026-08-08" });
+  const after = await adapter.createUnitConversion({ sourceUnit: "equipment_day", targetUnit: "hour", factor: "9.000000", scope: "project", effectiveDate: "2026-08-08" });
   assert.equal(after.conversionHistory.length, before.conversionHistory.length + 1);
   assert.ok(oldIds.every((id) => after.conversionHistory.some((conversion) => conversion.conversionId === id)));
-  const current = after.currentConversions.find((item) => item.sourceUnit === "ton" && item.targetUnit === "kg");
-  assert.equal(current.currentConversion.factor, "1020.000000");
+  const current = after.currentConversions.find((item) => item.sourceUnit === "equipment_day" && item.targetUnit === "hour");
+  assert.equal(current.currentConversion.factor, "9.000000");
   assert.equal(current.currentConversion.projectId, context.projectId);
 });
 
@@ -118,4 +118,17 @@ test("returns UNIT_MISMATCH for incompatible unit dimensions", async () => {
     adapter.createUnitConversion({ sourceUnit: "ton", targetUnit: "hour", factor: "1", scope: "organization", effectiveDate: "2026-08-08" }),
     (error) => error.code === "UNIT_MISMATCH",
   );
+});
+test("reads newly defined project resources from the shared resource catalog", async () => {
+  const resources = [
+    { resourceId: "resource-new", type: "material", code: "MAT-CEMENT", title: "سیمان", baseUnit: "kg" },
+  ];
+  const adapter = createMockPricesAdapter(context, { resourceProvider: () => structuredClone(resources) });
+  const before = await adapter.getPrices();
+  assert.equal(before.currentPrices.length, 1);
+  assert.equal(before.currentPrices[0].resource.code, "MAT-CEMENT");
+  assert.equal(before.currentPrices[0].currentPrice, null);
+
+  const after = await adapter.createPriceVersion({ resourceId: "resource-new", scope: "project", unitPriceIRR: "125000", effectiveFrom: "2026-08-08" });
+  assert.equal(after.currentPrices[0].currentPrice.unitPriceIRR, "125000");
 });

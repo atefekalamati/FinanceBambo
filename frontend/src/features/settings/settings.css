@@ -5,17 +5,25 @@
 .settings-page {
   min-inline-size: 0;
   display: grid;
-  gap: var(--space-xl);
+  gap: 1rem;
 }
 
-.feature-header {
+.settings-page > .feature-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-xl);
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(circle at 100% 0, rgb(0 172 88 / 10%), transparent 34%),
+    var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
 }
 
 .feature-header__copy {
+  min-inline-size: 0;
   max-inline-size: 52rem;
 }
 
@@ -25,14 +33,15 @@
   font-weight: 800;
 }
 
-.feature-header h1 {
+.settings-page .feature-header h1 {
   margin-block: .3rem;
-  font-size: clamp(1.7rem, 4vw, 2.35rem);
+  font-size: clamp(1.35rem, 3vw, 1.8rem);
 }
 
 .feature-header p {
   margin: 0;
   color: var(--color-text-secondary);
+  overflow-wrap: break-word;
 }
 
 /* --------------------------------------------------------------------------
@@ -41,16 +50,16 @@
 
 .settings-overview {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-lg);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
 }
 
 .settings-overview__item {
-  min-block-size: 8rem;
+  min-block-size: 6.5rem;
   display: flex;
   flex-direction: column;
   gap: .25rem;
-  padding: var(--space-xl);
+  padding: .85rem 1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--app-card-navy);
@@ -65,7 +74,18 @@
 
 .settings-overview__item strong {
   margin-block-start: auto;
-  font-size: 1.45rem;
+  font-size: clamp(1rem, 2vw, 1.25rem);
+}
+
+.settings-primary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(18rem, .8fr);
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.settings-primary-grid > .settings-card {
+  block-size: 100%;
 }
 
 /* --------------------------------------------------------------------------
@@ -74,9 +94,9 @@
 
 .settings-card {
   min-inline-size: 0;
-  padding: var(--space-xl);
+  padding: 1rem;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--app-card-navy);
   box-shadow: var(--dash-shadow), var(--dash-inner);
 }
@@ -84,8 +104,18 @@
 .settings-card__head {
   display: flex;
   align-items: center;
-  gap: var(--space-lg);
-  margin-block-end: var(--space-xl);
+  gap: .75rem;
+  margin-block-end: 1rem;
+}
+
+.settings-card__head--actions {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.settings-card__head-copy {
+  min-inline-size: 0;
+  margin-inline-end: auto;
 }
 
 .settings-card__head h2 {
@@ -100,8 +130,8 @@
 }
 
 .settings-card__icon {
-  inline-size: 3rem;
-  block-size: 3rem;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
   flex: 0 0 auto;
   display: grid;
   place-items: center;
@@ -119,14 +149,15 @@
 .currency-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-lg);
+  gap: .75rem;
 }
 
 .currency-item {
   display: flex;
   flex-direction: column;
   gap: .25rem;
-  padding: var(--space-lg);
+  min-block-size: 6.5rem;
+  padding: .8rem;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
   background: rgb(120 145 205 / 6%);
@@ -159,7 +190,50 @@
 }
 
 .currency-item strong {
-  font-size: 1.35rem;
+  margin-block-start: auto;
+  font-size: 1.1rem;
+}
+
+/* --------------------------------------------------------------------------
+   Permission summary
+   -------------------------------------------------------------------------- */
+
+.settings-access__list {
+  display: grid;
+  gap: .5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-access__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  min-block-size: 2.4rem;
+  padding: .55rem .7rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgb(120 145 205 / 5%);
+  color: var(--color-text-secondary);
+  font-size: .75rem;
+}
+
+.settings-access__item strong {
+  padding: .2rem .55rem;
+  border-radius: var(--radius-pill);
+  font-size: .68rem;
+}
+
+.settings-access__item--allowed strong {
+  color: var(--dash-sev-good);
+  background: rgb(34 197 94 / 10%);
+}
+
+.settings-access__item--denied strong {
+  color: var(--color-text-muted);
+  background: rgb(120 145 205 / 8%);
 }
 
 /* --------------------------------------------------------------------------
@@ -169,7 +243,185 @@
 .settings-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-xl);
+  gap: 1rem;
+}
+
+/* --------------------------------------------------------------------------
+   Unit conversion workspace
+   -------------------------------------------------------------------------- */
+
+.settings-conversions {
+  display: grid;
+  gap: .85rem;
+}
+
+.settings-conversions > .settings-card__head {
+  margin-block-end: 0;
+}
+
+.settings-conversions__current {
+  min-inline-size: 0;
+}
+
+.settings-conversions__current h3 {
+  margin: 0 0 .65rem;
+  font-size: var(--font-size-md);
+}
+
+.settings-conversions__description {
+  margin: -.35rem 0 .75rem;
+  color: var(--color-text-muted);
+  font-size: .75rem;
+  line-height: 1.65;
+}
+
+.settings-conversions__editor-host:empty {
+  display: none;
+}
+
+.conversion-inline-editor {
+  display: grid;
+  gap: .5rem;
+  padding: .65rem;
+  border: 1px solid rgb(0 172 88 / 25%);
+  border-radius: var(--radius-md);
+  background: var(--grad-accent-soft);
+}
+
+.conversion-inline-editor .price-dialog__head {
+  margin: 0;
+}
+
+.conversion-inline-editor .price-dialog__head h3 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.settings-page .conversion-inline-form {
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, 1fr)
+    minmax(0, .75fr)
+    minmax(0, 1.15fr)
+    minmax(0, 1fr);
+  align-items: start;
+  gap: .5rem;
+}
+
+.conversion-inline-form .form-field {
+  gap: .2rem;
+  min-inline-size: 0;
+}
+
+.conversion-inline-form .form-label {
+  font-size: .68rem;
+}
+
+.conversion-inline-form :is(input, select) {
+  min-block-size: 2.35rem;
+  padding: .45rem .55rem;
+  font-size: .75rem;
+}
+
+.conversion-inline-form :is(.form-hint, .form-error) {
+  min-block-size: 0;
+  font-size: .62rem;
+  line-height: 1.35;
+}
+
+.conversion-inline-form .conversion-preview,
+.conversion-inline-form .conversion-scope-hint,
+.conversion-inline-form .inline-notice,
+.conversion-inline-form .form-actions {
+  grid-column: auto;
+  min-block-size: 2.25rem;
+  margin: 0;
+}
+
+.conversion-inline-form .conversion-preview {
+  grid-column: span 2;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .25rem .5rem;
+  padding: .4rem .55rem;
+}
+
+.conversion-inline-form .conversion-preview :is(strong, p, small) {
+  margin: 0;
+  font-size: .65rem;
+  line-height: 1.4;
+}
+
+.conversion-inline-form .conversion-scope-hint {
+  grid-column: span 2;
+  display: flex;
+  align-items: center;
+  padding: .4rem .55rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: .65rem;
+  line-height: 1.4;
+}
+
+.conversion-inline-form .inline-notice {
+  display: flex;
+  align-items: center;
+  padding: .4rem .55rem;
+  font-size: .65rem;
+  line-height: 1.4;
+}
+
+.conversion-inline-form .form-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: .4rem;
+  padding: 0;
+}
+
+.conversion-inline-form .form-actions .button {
+  min-block-size: 2.1rem;
+  padding: .35rem .7rem;
+  font-size: .7rem;
+}
+
+.settings-conversions__history {
+  min-inline-size: 0;
+  border-block-start: 1px solid var(--color-border-subtle);
+  padding-block-start: .75rem;
+}
+
+.settings-conversions__history summary {
+  inline-size: fit-content;
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.settings-conversions__history[open] summary {
+  margin-block-end: .75rem;
+}
+
+.settings-empty-copy {
+  margin: 0;
+  padding: .8rem;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.settings-conversions__error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem .75rem;
+}
+
+.settings-conversions__error span {
+  flex: 1 1 18rem;
+  color: var(--color-text-muted);
 }
 
 .form-field {
@@ -249,7 +501,10 @@ html[data-theme="light"] .form-field textarea {
    -------------------------------------------------------------------------- */
 
 .confirm-dialog {
+  inline-size: min(31rem, calc(100% - 1rem));
   max-inline-size: 31rem;
+  max-block-size: calc(100dvh - 1rem);
+  overflow-y: auto;
   padding: var(--space-xl);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -321,14 +576,31 @@ html[data-theme="light"] .form-field textarea {
    -------------------------------------------------------------------------- */
 
 @media (max-width: 48rem) {
-  .feature-header {
+  .settings-page > .feature-header {
     flex-direction: column-reverse;
+    align-items: stretch;
   }
 
-  .settings-overview,
+  .settings-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-primary-grid,
   .currency-grid,
   .settings-form {
     grid-template-columns: 1fr;
+  }
+
+  .settings-page .conversion-inline-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-page .conversion-inline-form :is(.conversion-preview, .conversion-scope-hint, .inline-notice, .form-actions) {
+    grid-column: 1 / -1;
+  }
+
+  .settings-card__head--actions {
+    flex-wrap: wrap;
   }
 
   .form-field--wide,
@@ -339,7 +611,23 @@ html[data-theme="light"] .form-field textarea {
 
 @media (max-width: 36rem) {
   .settings-card {
-    padding: var(--space-lg);
+    padding: .8rem;
+  }
+
+  .settings-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-page .conversion-inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-overview__item {
+    min-block-size: 5.5rem;
+  }
+
+  .settings-card__head--actions .button {
+    inline-size: 100%;
   }
 
   .form-actions {
