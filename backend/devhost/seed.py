@@ -10,9 +10,12 @@ Two deliberate additions, because the mock keeps them implicit:
 * Estimate lines carry `assignment_external_id`. The mock links lines to progress rows
   through the activity code alone, which is ambiguous here: ACT-201 covers both the rebar
   line and the crane line, so matching by activity would hand them the same assignment.
-* Invoices are written out explicitly. The mock generates demo invoices procedurally with
-  non-UUID ids that no database column could hold, so these reference the real resources
-  and estimate lines instead of reproducing that filler.
+* The mock's 53 invoices are generated from an index rather than listed, and their ids are
+  not UUIDs. `generate_seed_sql.py` reproduces that rule and writes them into `seed.sql`
+  with deterministic UUIDs, pointing at the real estimate lines above.
+
+Database rows are emitted to `seed.sql`. What stays here is what the host ports serve
+rather than store: the progress feed and the activity list.
 """
 
 from datetime import date, datetime, timezone
@@ -207,37 +210,3 @@ PROGRESS_OVERRIDE = {
     "created_by": UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2"),
     "created_at": datetime(2026, 8, 3, 9, 0, tzinfo=timezone.utc),
 }
-
-# id, number, date, vendor, status, discount, tax, shipping, other
-INVOICES = [
-    (UUID("40000000-0000-4000-8000-000000000001"), "ف-۱۰۲۴", date(2026, 7, 8),
-     "فروشگاه ساختمانی بامبو نمونه", "confirmed",
-     Decimal("0"), Decimal("1200000"), Decimal("750000"), Decimal("0")),
-    (UUID("40000000-0000-4000-8000-000000000002"), "ف-۱۰۳۱", date(2026, 7, 19),
-     "شرکت مصالح پایدار نمونه", "confirmed",
-     Decimal("500000"), Decimal("0"), Decimal("0"), Decimal("0")),
-    (UUID("40000000-0000-4000-8000-000000000003"), "ف-۱۰۳۶", date(2026, 7, 24),
-     "تأمین تجهیزات سازه نمونه", "confirmed",
-     Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0")),
-    (UUID("40000000-0000-4000-8000-000000000004"), "ف-۱۰۴۰", date(2026, 7, 28),
-     "شرکت مصالح پایدار نمونه", "awaitingConfirmation",
-     Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0")),
-    (UUID("40000000-0000-4000-8000-000000000005"), "ف-۱۰۴۲", date(2026, 7, 30),
-     "فروشگاه ساختمانی بامبو نمونه", "draft",
-     Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0")),
-]
-
-# invoice, estimate_line, resource, quantity, unit, unit_price_irr, raw_amount_irr
-INVOICE_LINES = [
-    # Rebar bought in tonnes: exercises the ton -> kg conversion above.
-    (INVOICES[0][0], ESTIMATE_LINES[0][0], REBAR, Decimal("1.2500"), "ton",
-     Decimal("285000000"), Decimal("356250000")),
-    (INVOICES[0][0], ESTIMATE_LINES[4][0], PERMIT, None, None, None, Decimal("60000000")),
-    (INVOICES[1][0], ESTIMATE_LINES[0][0], REBAR, Decimal("2100.0000"), "kg",
-     Decimal("295000"), Decimal("619500000")),
-    (INVOICES[2][0], ESTIMATE_LINES[3][0], CRANE, Decimal("48.0000"), "hour",
-     Decimal("12500000"), Decimal("600000000")),
-    (INVOICES[3][0], ESTIMATE_LINES[2][0], FORMWORK, Decimal("120.0000"), "person_hour",
-     Decimal("1850000"), Decimal("222000000")),
-    (INVOICES[4][0], ESTIMATE_LINES[4][0], PERMIT, None, None, None, Decimal("90000000")),
-]
