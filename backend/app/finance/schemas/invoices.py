@@ -67,7 +67,7 @@ class InvoiceResponse(ApiModel):
  @field_serializer("discount_irr","tax_irr","shipping_irr","other_costs_irr","final_amount_irr")
  def money(self,v):return format(v,"f")
  @classmethod
- def from_domain(cls,v):return cls(**v.__dict__)
+ def from_domain(cls,v):return cls(**{k:x for k,x in v.__dict__.items() if k in cls.model_fields})
 class InvoiceListResponse(ApiModel):
  model_config=ConfigDict(json_schema_extra={"examples":[{"items":[],"page":1,"pageSize":50,"totalItems":0,"totalPages":0}]})
  items:list[InvoiceResponse];page:int;page_size:int;total_items:int;total_pages:int

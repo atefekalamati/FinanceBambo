@@ -30,4 +30,4 @@ class ConversionResponse(ConversionCreate):
  @field_serializer("factor")
  def decimal_string(self,v):return format(v,"f")
  @classmethod
- def from_domain(cls,v):return cls(**v.__dict__)
+ def from_domain(cls,v):return cls(**{k:x for k,x in v.__dict__.items() if k in cls.model_fields})

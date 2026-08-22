@@ -66,6 +66,10 @@ class ReportWarning(ApiModel):
     code:str;message:str;estimate_line_id:UUID|None=None
     resource_id:UUID|None=None;resource_code:str|None=None;activity_external_id:str|None=None
     severity:str|None=None;excluded_from_calculation:bool|None=None;affected_metric_keys:list[str]|None=None
+    # QUANTITY_OVERRUN carries how far past the revised quantity the line went. The model
+    # forbids extras, so leaving these undeclared turned every report containing an
+    # overrun into a 500 at response validation.
+    deviation_quantity:str|None=None;deviation_percent:str|None=None
 
 
 class ProgressQuality(ApiModel):

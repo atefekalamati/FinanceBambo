@@ -1,0 +1,20 @@
+# Development database for the finance module. Not a deployment artifact.
+services:
+  finance-db:
+    image: postgres:16-alpine
+    container_name: bambo-finance-dev-db
+    environment:
+      POSTGRES_USER: bambo
+      POSTGRES_PASSWORD: bambo
+      POSTGRES_DB: bambo_finance
+    ports:
+      - "55432:5432"
+    volumes:
+      - finance-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bambo -d bambo_finance"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  finance-dev-data:

@@ -50,7 +50,9 @@ class ResourceResponse(ResourceCreate):
 
     @classmethod
     def from_domain(cls, value: FinanceResource):
-        return cls(**value.__dict__)
+        # Select declared fields only: the domain object carries the tenant keys,
+        # which responses omit and extra="forbid" would reject.
+        return cls(**{key: item for key, item in value.__dict__.items() if key in cls.model_fields})
 
 
 class EstimateLineCreate(ApiModel):
@@ -111,4 +113,6 @@ class EstimateLineResponse(EstimateLineCreate):
 
     @classmethod
     def from_domain(cls, value: EstimateLine):
-        return cls(**value.__dict__)
+        # Select declared fields only: the domain object carries the tenant keys,
+        # which responses omit and extra="forbid" would reject.
+        return cls(**{key: item for key, item in value.__dict__.items() if key in cls.model_fields})
