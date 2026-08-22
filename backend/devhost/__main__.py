@@ -10,10 +10,7 @@ from pathlib import Path
 import uvicorn
 
 from .app import build
-
-# A locally installed PostgreSQL. Docker is only a fallback and publishes on 55433,
-# so the two can run side by side without either shadowing the other.
-DEFAULT_DSN = "postgresql://bambo:bambo@127.0.0.1:55432/bambo_finance"
+from .environment import MissingConfiguration, database_url, redacted
 
 
 def loop_factory():
@@ -25,15 +22,21 @@ def loop_factory():
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="devhost")
-    parser.add_argument("--dsn", default=os.environ.get("FINANCE_DEV_DSN", DEFAULT_DSN))
+    parser.add_argument("--dsn", default=None,
+                        help="overrides FINANCE_DEV_DSN for this run")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--reseed", action="store_true",
                         help="drop and reload the development project on startup")
     parser.add_argument("--storage", default=str(Path(__file__).resolve().parent / ".files"))
     args = parser.parse_args()
+    try:
+        dsn = args.dsn or database_url()
+    except MissingConfiguration as error:
+        parser.exit(2, f"{error}\n")
+    print(f"database: {redacted(dsn)}")
 
-    application = build(args.dsn, Path(args.storage), reseed=args.reseed)
+    application = build(dsn, Path(args.storage), reseed=args.reseed)
     server = uvicorn.Server(uvicorn.Config(application, host=args.host, port=args.port,
                                            log_level="info", lifespan="on"))
     asyncio.run(server.serve(), loop_factory=loop_factory)

@@ -17,16 +17,10 @@ pip install -r devhost/requirements.txt
 python -m devhost
 ```
 
-DSN پیش‌فرض به یک **PostgreSQL محلی** روی پورت ۵۵۴۳۲ اشاره می‌کند با کاربر `bambo`،
-رمز `bambo` و دیتابیس `bambo_finance`. سرور محلی باید قبل از اجرا بالا باشد.
+اتصال از متغیر محیطی `FINANCE_DEV_DSN` خوانده می‌شود — پیش‌فرضی در کد وجود ندارد، چون
+رشته اتصال رمز دارد و رمز نباید در مخزن باشد. `.env` را از `.env.example` بسازید.
 
-داکر فقط یک جایگزین است و روی پورت **۵۵۴۳۳** منتشر می‌شود تا هرگز سرور محلی را
-پنهان نکند:
-
-```bash
-docker compose -f ../docker-compose.dev.yml up -d
-python -m devhost --dsn postgresql://bambo:bambo@127.0.0.1:55433/bambo_finance
-```
+PostgreSQL باید **Native** نصب و اجرا شده باشد. Docker در این پروژه استفاده نمی‌شود.
 
 ## ماندگاری داده
 
