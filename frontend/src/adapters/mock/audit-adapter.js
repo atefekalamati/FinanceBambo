@@ -55,17 +55,24 @@ const EVENTS = Object.freeze([...RECENT_EVENTS, ...buildHistoryEvents()]);
 export function createMockAuditAdapter(context, { initialState = "success" } = {}) {
   /**
    * Mirrors GET /audit-events: page/pageSize are clamped the way the router
-   * declares them (page ge 1, pageSize 1..200 default 50) and the response is a
-   * bare array with no total count.
+   * declares them (page ge 1, pageSize 1..200 default 50) and the response is
+   * the same paged envelope, so a filter cannot mistake an unfetched page for
+   * an empty history.
    */
   async function getEvents({ page = 1, pageSize = 50 } = {}) {
     await new Promise((resolve) => setTimeout(resolve, 320));
     if (initialState === "error") throw new ApiError({ status: 503, code: "AUDIT_UNAVAILABLE", message: "دریافت تاریخچه تغییرات مالی انجام نشد.", requestId: "mock-audit-001" });
-    if (initialState === "empty") return [];
     const safePageSize = Math.min(Math.max(Number(pageSize) || 50, 1), 200);
     const safePage = Math.max(Number(page) || 1, 1);
+    const source = initialState === "empty" ? [] : EVENTS;
     const offset = (safePage - 1) * safePageSize;
-    return clone(EVENTS.slice(offset, offset + safePageSize).map((event) => ({ ...event, organizationId: context.organizationId, projectId: context.projectId })));
+    return clone({
+      items: source.slice(offset, offset + safePageSize).map((event) => ({ ...event, organizationId: context.organizationId, projectId: context.projectId })),
+      page: safePage,
+      pageSize: safePageSize,
+      totalItems: source.length,
+      totalPages: Math.ceil(source.length / safePageSize),
+    });
   }
 
   return Object.freeze({ getEvents });
