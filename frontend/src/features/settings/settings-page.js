@@ -127,10 +127,17 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
   function renderEmpty() {
     const card = element("section", "state-card settings-empty");
     card.append(element("h2", "", "تنظیمات مالی هنوز ثبت نشده است"), element("p", "", `برای شروع، زیربنای کل پروژه را ثبت کنید. واحد پول رسمی به‌صورت ثابت ${CURRENCY_LABELS.IRR} خواهد بود.`));
-    const button = element("button", "button button--primary", "ثبت اولین تنظیمات");
-    button.type = "button";
-    button.addEventListener("click", () => root.replaceChildren(renderHeader(), renderEditor(null)));
-    card.append(button);
+    // There is no settings row yet, so the Backend has had no chance to send a
+    // canEdit verdict — GET /settings answers 404. The host permission is all
+    // there is to go on, and it is the conservative half of the policy.
+    if (mayReviseArea(null)) {
+      const button = element("button", "button button--primary", "ثبت اولین تنظیمات");
+      button.type = "button";
+      button.addEventListener("click", () => root.replaceChildren(renderHeader(), renderEditor(null)));
+      card.append(button);
+    } else {
+      card.append(element("p", "inline-notice", "ثبت زیربنای کل نیازمند مجوز ویرایش اطلاعات مالی است."));
+    }
     return card;
   }
 
@@ -399,7 +406,11 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
   }
 
   function paint() {
-    const contentState = hasPermission(context, "finance.edit") ? state : createRequestState(REQUEST_STATUS.DENIED);
+    // The Backend serves GET /settings and GET /settings/revisions to
+    // finance.view and asks for the edit permission only on PATCH, so reading
+    // is gated on reading. Whether the form is offered is a separate question,
+    // and `canEdit` answers it.
+    const contentState = hasPermission(context, "finance.view") ? state : createRequestState(REQUEST_STATUS.DENIED);
     root.replaceChildren(renderHeader(), renderPageState(contentState, { renderContent, renderEmpty, onRetry: load }));
   }
 
