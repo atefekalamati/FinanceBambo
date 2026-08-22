@@ -290,19 +290,29 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
       observer.observe(plot);
     }
   });
-  const initial = /^-?\d+$/.test(String(metrics.initialEstimateIrr ?? "")) ? BigInt(metrics.initialEstimateIrr) : 0n;
-  const forecast = /^-?\d+$/.test(String(metrics.forecastFinalCostIrr ?? "")) ? BigInt(metrics.forecastFinalCostIrr) : 0n;
-  const deviation = forecast - initial;
-  const tone = deviation > 0n ? "increase" : deviation < 0n ? "decrease" : "stable";
-  const label = deviation > 0n ? "بیشتر از برآورد اولیه" : deviation < 0n ? "کمتر از برآورد اولیه" : "برابر با برآورد اولیه";
+  // forecastFinalCostIrr is nullable in LiveMetrics: null means the Backend
+  // could not compute it. Reading that as zero would subtract the whole initial
+  // estimate and announce a saving the project has not made, so an
+  // uncomputable side is reported as uncomputable instead of being counted.
+  const exact = (value) => (/^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : null);
+  const initial = exact(metrics.initialEstimateIrr);
+  const forecast = exact(metrics.forecastFinalCostIrr);
+  const deviation = initial === null || forecast === null ? null : forecast - initial;
+  const tone = deviation === null ? "unknown" : deviation > 0n ? "increase" : deviation < 0n ? "decrease" : "stable";
+  const label = deviation === null
+    ? "قابل محاسبه نیست"
+    : deviation > 0n ? "بیشتر از برآورد اولیه" : deviation < 0n ? "کمتر از برآورد اولیه" : "برابر با برآورد اولیه";
   const summary = document.createElement("div");
   summary.className = `managerial-deviation managerial-deviation--${tone}`;
   const title = document.createElement("span");
   title.textContent = "انحراف پیش‌بینی نهایی";
   const value = document.createElement("strong");
   value.className = "numeric";
-  value.textContent = deviation === 0n ? label : `${formatCompactMoneyFromIrr((deviation < 0n ? -deviation : deviation).toString())} ${label}`;
-  if (deviation !== 0n) value.title = formatTomanFromIrr((deviation < 0n ? -deviation : deviation).toString());
+  value.textContent = deviation === null || deviation === 0n
+    ? label
+    : `${formatCompactMoneyFromIrr((deviation < 0n ? -deviation : deviation).toString())} ${label}`;
+  if (deviation !== null && deviation !== 0n) value.title = formatTomanFromIrr((deviation < 0n ? -deviation : deviation).toString());
+  if (deviation === null) value.title = "پیش‌بینی هزینه نهایی یا برآورد اولیه در این گزارش محاسبه نشده است.";
   summary.append(title, value);
 
   const managerialPanel = element("div", "analysis-chart-panel");

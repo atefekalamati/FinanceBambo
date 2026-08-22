@@ -342,6 +342,32 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     return section;
   }
 
+  /**
+   * The Backend ships `canEdit` on FinanceSettingsResponse so the UI does not
+   * have to reimplement its role policy and then disagree with it — offering a
+   * form the PATCH would refuse. Its verdict wins whenever it gives one; null
+   * means the adapter in front of us did not answer, so the host permission
+   * still decides.
+   */
+  function mayReviseArea(data) {
+    return data?.canEdit ?? hasPermission(context, "finance.edit");
+  }
+
+  function renderRevisionDenied(current) {
+    const section = element("section", "settings-card settings-editor settings-editor--denied");
+    const head = element("div", "settings-card__head");
+    head.append(element("div", "settings-card__icon", "م²"), element("div", "", ""));
+    head.lastElementChild.append(
+      element("h2", "", "اصلاح زیربنای کل"),
+      element("p", "", current
+        ? `مقدار فعلی: ${formatArea(current.grossBuiltArea)} · بازنگری ${current.revision}`
+        : "زیربنای کل هنوز ثبت نشده است."),
+    );
+    const notice = element("p", "inline-notice", "حساب شما اجازه اصلاح زیربنای کل این پروژه را ندارد؛ این مقدار و تاریخچه آن فقط برای مشاهده است.");
+    section.append(head, notice);
+    return section;
+  }
+
   function renderContent(data) {
     const fragment = document.createDocumentFragment();
     const overview = element("section", "settings-overview");
@@ -367,7 +393,8 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     history.append(historyHead, createRevisionHistory(data));
     const primaryGrid = element("div", "settings-primary-grid");
     primaryGrid.append(renderCurrencyPolicy(), renderAccessSummary());
-    fragment.append(overview, primaryGrid, renderEditor(data), renderUnitConversions(), history);
+    const editor = mayReviseArea(data) ? renderEditor(data) : renderRevisionDenied(data);
+    fragment.append(overview, primaryGrid, editor, renderUnitConversions(), history);
     return fragment;
   }
 

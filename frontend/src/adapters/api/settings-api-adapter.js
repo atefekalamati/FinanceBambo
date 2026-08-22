@@ -3,11 +3,18 @@ import { financeBase, jsonOptions } from "./api-utils.js";
 /**
  * FinanceSettingsResponse carries the current revision; the append-only trail
  * comes from GET /settings/revisions, which the Backend added alongside it.
+ *
+ * `canEdit` is the Backend's own verdict on whether this actor may revise the
+ * area — it ships it so the UI does not have to reimplement the role policy and
+ * then disagree with the API. It is carried through as null when absent, which
+ * is not the same as false: null means nobody asked, so the local permission
+ * still decides.
  */
 function mapSettings(value) {
   if (!value) return null;
   return {
     settingsId: value.id,
+    canEdit: value.canEdit ?? null,
     currency: value.currency,
     displayCurrency: "TOMAN",
     grossBuiltArea: value.grossBuiltArea,

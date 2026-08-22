@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createApiAttachmentsAdapter } from "../../src/adapters/api/attachments-api-adapter.js";
 import { createApiInvoicesAdapter } from "../../src/adapters/api/invoices-api-adapter.js";
 import { createApiProgressAdapter } from "../../src/adapters/api/progress-api-adapter.js";
+import { createApiSettingsAdapter } from "../../src/adapters/api/settings-api-adapter.js";
 
 const context = { organizationId: "org-1", projectId: "project-1", locale: "fa-IR" };
 
@@ -104,4 +105,20 @@ test("lets backend own the computed progress baseline", async () => {
   await createApiProgressAdapter(context, client).createOverride({ progressSnapshotId: "snapshot-1", assignmentExternalId: "asg-1", overrideValue: "14", reason: "صورت‌جلسه" });
   const request = calls.find((call) => call.path.includes("/progress-override"));
   assert.deepEqual(JSON.parse(request.options.body), { progressSnapshotId: "snapshot-1", overrideValue: "14", reason: "صورت‌جلسه" });
+});
+
+test("carries the Backend's canEdit verdict instead of dropping it", async () => {
+  // FinanceSettingsResponse ships canEdit so the UI does not reimplement the
+  // role policy and then offer a form the PATCH refuses.
+  const settings = { id: "settings-1", projectId: "project-1", grossBuiltArea: "4250.0000", currency: "IRR", revision: 1, effectiveFrom: "2026-06-01", reason: "ثبت اولیه", createdBy: "user-1", createdAt: "2026-06-01T09:00:00Z", canEdit: false };
+  const client = { async request(path) { return path.endsWith("/settings/revisions") ? [] : settings; } };
+  const result = await createApiSettingsAdapter(context, client).getSettings();
+  assert.equal(result.canEdit, false, "a closed verdict must survive the mapping");
+});
+
+test("a Backend that says nothing about canEdit leaves the decision open", async () => {
+  const settings = { id: "settings-1", projectId: "project-1", grossBuiltArea: "4250.0000", currency: "IRR", revision: 1, effectiveFrom: "2026-06-01", reason: "ثبت اولیه", createdBy: "user-1", createdAt: "2026-06-01T09:00:00Z" };
+  const client = { async request(path) { return path.endsWith("/settings/revisions") ? [] : settings; } };
+  const result = await createApiSettingsAdapter(context, client).getSettings();
+  assert.equal(result.canEdit, null, "null is not false: it means nobody answered, so the host permission decides");
 });
