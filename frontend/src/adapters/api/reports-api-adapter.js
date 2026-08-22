@@ -1,4 +1,5 @@
 import { financeBase } from "./api-utils.js";
+import { buildMonthlyTrendPreview, isMonthlyTrendPreviewEnabled } from "./monthly-trend-preview.js";
 
 export function createApiReportsAdapter(context, client) {
   const base = financeBase(context);
@@ -66,7 +67,11 @@ export function createApiReportsAdapter(context, client) {
    * labelled as a comparison would read as "no overspend" when it is really
    * "no baseline". Replace this once the Backend exposes the monthly report.
    */
-  async function getMonthlyTrend() {
+  async function getMonthlyTrend({ reportingDate } = {}) {
+    // TEMPORARY: opt-in preview data so the chart can be reviewed before the
+    // Backend has a monthly report. See monthly-trend-preview.js for how to
+    // remove it. Off unless a developer asks for it.
+    if (isMonthlyTrendPreviewEnabled()) return buildMonthlyTrendPreview({ reportingDate });
     return {
       months: [],
       estimateSource: "unavailable",
