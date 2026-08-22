@@ -11,7 +11,7 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { createUnitConversionForm, renderConversionHistory, renderCurrentConversions } from "../prices/prices-page.js";
 import { isConfigurableConversionDirection } from "../prices/unit-conversions-validation.js";
 import { validateSettingsRevision } from "./settings-validation.js";
-import { element } from "../../shared/dom/elements.js";
+import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 
 function createField({ id, label, type = "text", value = "", hint, inputMode, required = false }) {
   const field = element("div", "form-field");
@@ -35,31 +35,44 @@ function createField({ id, label, type = "text", value = "", hint, inputMode, re
 }
 
 /**
- * GET /settings answers with the current revision only — there is no settings
- * history endpoint — so this panel reports exactly the fields the contract
- * carries and points at the audit trail for everything older.
+ * The append-only trail comes from GET /settings/revisions. Each row pairs a
+ * revision with the area it replaced, so the original value stays visible
+ * alongside every correction (FR-001).
  */
-function createCurrentRevisionPanel(data) {
-  const wrapper = element("div", "settings-revision-current");
-  const facts = element("dl", "settings-revision-facts");
-  [
-    ["شماره بازنگری", formatDisplayNumber(String(data.revision)), ""],
-    ["زیربنای ثبت‌شده", formatArea(data.grossBuiltArea), "numeric"],
-    ["تاریخ اعمال", data.effectiveFrom ? formatBusinessDate(data.effectiveFrom) : "ثبت نشده", ""],
-    ["دلیل ثبت‌شده", data.reason || "بدون دلیل ثبت‌شده", ""],
-    ["ثبت‌کننده", data.createdBy || "نامشخص", "numeric"],
-    ["زمان ثبت", data.createdAt ? formatSystemDateTime(data.createdAt) : "نامشخص", ""],
-  ].forEach(([label, value, valueClass]) => {
-    const row = element("div");
-    row.append(element("dt", "", label), element("dd", valueClass, value));
-    facts.append(row);
+function createRevisionTable(revisions = []) {
+  const wrapper = element("div", "table-scroll");
+  const table = element("table", "data-table settings-history");
+  table.append(
+    tableCaption("تاریخچه بازنگری زیربنای کل پروژه"),
+    tableHead(["بازنگری", "تاریخ اعمال", "مقدار قبلی", "مقدار جدید", "دلیل", "ثبت‌کننده", "زمان ثبت"]),
+  );
+  const body = document.createElement("tbody");
+  revisions.forEach((revision) => {
+    const row = document.createElement("tr");
+    row.append(
+      element("td", "numeric", formatDisplayNumber(String(revision.revisionNumber))),
+      element("td", "", revision.effectiveDate ? formatBusinessDate(revision.effectiveDate) : "—"),
+      element("td", "numeric", revision.previousValue ? formatArea(revision.previousValue) : "ثبت اولیه"),
+      element("td", "numeric", formatArea(revision.newValue)),
+      element("td", "", revision.reason || "بدون دلیل ثبت‌شده"),
+      element("td", "numeric", revision.actorName || revision.actorId || "نامشخص"),
+      element("td", "", revision.occurredAt ? formatSystemDateTime(revision.occurredAt) : "—"),
+    );
+    body.append(row);
   });
-  const notice = element("p", "inline-notice");
-  notice.append(document.createTextNode("سرویس تنظیمات مالی فقط بازنگری جاری را برمی‌گرداند و بازنگری‌های قبلی از این مسیر قابل بازیابی نیستند. سابقه کامل تغییر زیربنا در "));
-  const auditLink = element("a", "", "تاریخچه تغییرات مالی");
-  auditLink.href = "#/audit";
-  notice.append(auditLink, document.createTextNode(" ثبت می‌شود."));
-  wrapper.append(facts, notice);
+  table.append(body);
+  wrapper.append(table);
+  return wrapper;
+}
+
+function createRevisionHistory(data) {
+  const wrapper = element("div", "settings-revision-current");
+  const revisions = data.revisions ?? [];
+  if (!revisions.length) {
+    wrapper.append(element("p", "inline-notice", "هنوز بازنگری‌ای برای زیربنای کل ثبت نشده است."));
+    return wrapper;
+  }
+  wrapper.append(createRevisionTable(revisions));
   return wrapper;
 }
 
@@ -340,7 +353,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const configurableCount = (conversionWorkspace?.currentConversions ?? []).filter((item) => isConfigurableConversionDirection(item.sourceUnit, item.targetUnit)).length;
     conversionCard.append(element("span", "", "قواعد کاری فعال"), element("strong", "numeric", formatDisplayNumber(String(configurableCount))), element("small", "", "قواعد قابل تنظیم سازمان و پروژه"));
     const latestSettingsDate = [
-      data.effectiveFrom,
+      data.revisions?.[0]?.effectiveDate ?? data.effectiveFrom,
       ...(conversionWorkspace?.conversionHistory ?? []).map((item) => item.effectiveDate),
     ].filter(Boolean).sort((left, right) => right.localeCompare(left))[0] ?? null;
     const revisionCard = element("article", "settings-overview__item");
@@ -350,8 +363,8 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const history = element("section", "settings-card settings-history-card");
     const historyHead = element("div", "settings-card__head");
     historyHead.append(element("div", "settings-card__icon", "↺"), element("div", "", ""));
-    historyHead.lastElementChild.append(element("h2", "", "بازنگری جاری زیربنا"), element("p", "", "مشخصات آخرین بازنگری تأییدشده زیربنای کل، همان‌گونه که سرویس مالی آن را برمی‌گرداند."));
-    history.append(historyHead, createCurrentRevisionPanel(data));
+    historyHead.lastElementChild.append(element("h2", "", "تاریخچه تغییر زیربنا"), element("p", "", "مقدار اولیه و همه اصلاحات ثبت‌شده به‌صورت تغییرناپذیر نمایش داده می‌شوند."));
+    history.append(historyHead, createRevisionHistory(data));
     const primaryGrid = element("div", "settings-primary-grid");
     primaryGrid.append(renderCurrencyPolicy(), renderAccessSummary());
     fragment.append(overview, primaryGrid, renderEditor(data), renderUnitConversions(), history);
