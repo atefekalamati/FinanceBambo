@@ -250,7 +250,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const section = element("section", "settings-card settings-editor");
     const head = element("div", "settings-card__head");
     head.append(element("div", "settings-card__icon", "م²"), element("div", "", ""));
-    head.lastElementChild.append(element("h2", "", current ? "اصلاح زیربنای کل" : "ثبت زیربنای کل"), element("p", "", current ? `مقدار فعلی: ${formatArea(current.grossBuiltArea)} · بازنگری ${current.revision}` : "مقدار مثبت و دقیق زیربنای کل پروژه را وارد کنید."));
+    head.lastElementChild.append(element("h2", "", current ? "اصلاح زیربنای کل" : "ثبت زیربنای کل"), element("p", "", current ? `مقدار فعلی: ${formatArea(current.grossBuiltArea)} · بازنگری ${formatDisplayNumber(String(current.revision))}` : "مقدار مثبت و دقیق زیربنای کل پروژه را وارد کنید."));
 
     const form = element("form", "settings-form");
     form.noValidate = true;
@@ -360,7 +360,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     head.lastElementChild.append(
       element("h2", "", "اصلاح زیربنای کل"),
       element("p", "", current
-        ? `مقدار فعلی: ${formatArea(current.grossBuiltArea)} · بازنگری ${current.revision}`
+        ? `مقدار فعلی: ${formatArea(current.grossBuiltArea)} · بازنگری ${formatDisplayNumber(String(current.revision))}`
         : "زیربنای کل هنوز ثبت نشده است."),
     );
     const notice = element("p", "inline-notice", "حساب شما اجازه اصلاح زیربنای کل این پروژه را ندارد؛ این مقدار و تاریخچه آن فقط برای مشاهده است.");
