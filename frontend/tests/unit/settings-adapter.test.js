@@ -18,14 +18,27 @@ test("advances the settings revision and reports the audited reason of the new o
   assert.ok(after.createdAt, "createdAt stamps the accepted revision");
 });
 
-test("exposes exactly the FinanceSettingsResponse fields and no invented history", async () => {
+test("exposes the FinanceSettingsResponse fields plus the trail GET /settings/revisions serves", async () => {
   const settings = await createMockSettingsAdapter(context).getSettings();
   assert.deepEqual(
     Object.keys(settings).sort(),
-    ["createdAt", "createdBy", "currency", "displayCurrency", "effectiveFrom", "grossBuiltArea", "grossBuiltAreaUnit", "revision", "reason", "settingsId"].sort(),
+    ["createdAt", "createdBy", "currency", "displayCurrency", "effectiveFrom", "grossBuiltArea", "grossBuiltAreaUnit", "revision", "reason", "revisions", "settingsId"].sort(),
   );
   assert.equal(settings.currency, "IRR", "storage currency is always IRR per FR-002");
-  assert.equal("revisions" in settings, false, "the Backend exposes no settings history; the mock must not either");
+  assert.equal(settings.revisions.length, 1);
+  assert.equal(settings.revisions[0].previousValue, null, "the first revision replaced nothing");
+});
+
+test("each revision is appended newest first and keeps the value it replaced", async () => {
+  const adapter = createMockSettingsAdapter(context);
+  const before = await adapter.getSettings();
+  const after = await adapter.updateGrossBuiltArea({ grossBuiltArea: "4400.0000", reason: "اصلاح براساس نقشه مصوب", effectiveDate: "2026-08-09", expectedRevision: before.revision });
+
+  assert.equal(after.revisions.length, before.revisions.length + 1);
+  assert.equal(after.revisions[0].revisionNumber, 2, "newest first");
+  assert.equal(after.revisions[0].previousValue, "4250.0000");
+  assert.equal(after.revisions[0].newValue, "4400.0000");
+  assert.equal(after.revisions.at(-1).revisionNumber, 1, "the original entry is never rewritten");
 });
 
 test("rejects a stale settings version", async () => {

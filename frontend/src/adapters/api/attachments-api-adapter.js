@@ -69,8 +69,16 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
     };
     return client.request(`${base}/extractions/${encodeURIComponent(payload.draftId)}/confirm`, jsonOptions("POST", { expectedVersion: payload.expectedVersion, idempotencyKey: payload.idempotencyKey, fieldConfirmations: payload.fieldConfirmations, invoice }));
   }
+  /**
+   * The stored file is never served from a public path; this authorised,
+   * same-origin endpoint is. A URL is returned rather than bytes so an <img> or
+   * <audio> can stream it directly, with no object URL to leak.
+   */
+  function getFileContentUrl(fileId) {
+    return fileId ? `${base}/files/${encodeURIComponent(fileId)}/content` : null;
+  }
   async function getInvoiceTargets() {
     return invoiceAdapter.getInvoiceTargets();
   }
-  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, getExtraction, retryExtraction, rejectExtraction, confirmExtraction, getInvoiceTargets });
+  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, getExtraction, retryExtraction, rejectExtraction, confirmExtraction, getInvoiceTargets, getFileContentUrl });
 }
