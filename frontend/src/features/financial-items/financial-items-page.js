@@ -224,6 +224,7 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
   resourceHelp.id = "lineResourceHelp";
   resource.wrapper.append(addResource, resourceHelp);
   const quantity = createTextField({ id: "lineOriginalQuantity", label: "مقدار برآورد اولیه", hint: "مقدار با واحد پایه قلم ثبت می‌شود.", inputMode: "decimal" });
+  const unitPrice = createTextField({ id: "lineOriginalUnitPrice", label: `قیمت واحد اولیه (${getDisplayCurrencyLabel()})`, hint: "قیمتی که برآورد اولیه با آن تثبیت شده است.", inputMode: "decimal" });
   const relationNotice = element("div", "inline-notice", "هر فعالیت و قلم هزینه یک ردیف مستقل برآورد است؛ استفاده همان قلم در فعالیت دیگر ردیف جدا می‌سازد.");
   const activityNotice = element("div", "inline-notice", "فعالیت‌ها از ساختار پروژه BAMBO دریافت می‌شوند؛ فعالیت جدید نیز در همان ساختار ثبت می‌شود.");
   const status = element("div", "form-status");
@@ -236,7 +237,7 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
   submit.type = "submit";
   const actions = element("div", "form-actions");
   actions.append(cancel, submit, status);
-  form.append(activity.wrapper, resource.wrapper, quantity.wrapper, relationNotice, activityNotice, actions);
+  form.append(activity.wrapper, resource.wrapper, quantity.wrapper, unitPrice.wrapper, relationNotice, activityNotice, actions);
 
   addResource.addEventListener("click", () => {
     const previousIds = new Set(workspace.resources.map((item) => item.resourceId));
@@ -278,6 +279,9 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
     const isGeneralCost = selected?.type === "general_cost";
     quantity.label.textContent = isGeneralCost ? `مبلغ برآورد اولیه (${getDisplayCurrencyLabel()})` : "مقدار برآورد اولیه";
     quantity.hint.textContent = isGeneralCost ? `مبلغ با واحد نمایشی انتخاب‌شده وارد می‌شود و مقدار رسمی Backend همچنان ${CURRENCY_LABELS.IRR} است.` : `مقدار با واحد پایه ${formatUnitLabel(selected?.baseUnit)} ثبت می‌شود.`;
+    // A general-cost line is a single amount, so it has no unit price.
+    unitPrice.wrapper.hidden = isGeneralCost;
+    unitPrice.label.textContent = `قیمت واحد اولیه هر ${formatUnitLabel(selected?.baseUnit)} (${getDisplayCurrencyLabel()})`;
   }
   resource.select.addEventListener("change", syncQuantityLabel);
 
@@ -285,10 +289,20 @@ function createEstimateLineDialog(adapter, workspace, onSaved) {
     event.preventDefault();
     const selectedResource = workspace.resources.find((item) => item.resourceId === resource.select.value);
     const inputValue = selectedResource?.type === "general_cost" ? tomanInputToIrr(quantity.input.value) : quantity.input.value;
-    const validation = validateEstimateLine({ activityExternalId: activity.select.value, resourceId: resource.select.value, originalQuantity: inputValue });
+    const isGeneralCost = selectedResource?.type === "general_cost";
+    const validation = validateEstimateLine(
+      {
+        activityExternalId: activity.select.value,
+        resourceId: resource.select.value,
+        originalQuantity: inputValue,
+        originalUnitPriceIRR: isGeneralCost ? null : tomanInputToIrr(unitPrice.input.value),
+      },
+      { isGeneralCost },
+    );
     setFieldError(activity.select, activity.error, validation.errors.activityExternalId);
     setFieldError(resource.select, resource.error, validation.errors.resourceId);
     setFieldError(quantity.input, quantity.error, validation.errors.originalQuantity);
+    setFieldError(unitPrice.input, unitPrice.error, validation.errors.originalUnitPriceIRR);
     if (!validation.valid) {
       status.textContent = "لطفاً خطاهای فرم را اصلاح کنید.";
       form.querySelector('[aria-invalid="true"]')?.focus();

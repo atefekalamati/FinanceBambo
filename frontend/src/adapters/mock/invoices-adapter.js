@@ -79,7 +79,7 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
   const reversedOriginals = new Set(invoices.filter((invoice) => invoice.source === "reversal").map((invoice) => invoice.originalInvoiceId));
   const targets = [
     { targetId: "estimate-foundation-rebar", targetType: "estimate_line", label: "میلگرد فونداسیون نمونه", unit: "kg" },
-    { targetId: "estimate-formwork-labor", targetType: "estimate_line", label: "اکیپ قالب‌بندی نمونه", unit: "person_hour" },
+    { targetId: "estimate-formwork-labor", targetType: "estimate_line", label: "اکیپ قالب‌بندی نمونه", unit: "hour" },
     { targetId: "general-permit", targetType: "general_cost", label: "هزینه مجوز نمونه", unit: null },
   ];
 

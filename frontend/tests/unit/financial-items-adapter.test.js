@@ -22,10 +22,11 @@ test("creates an estimate line with immutable original and initial revised quant
   const adapter = createMockFinancialItemsAdapter(context);
   const workspace = await adapter.getWorkspace();
   const material = workspace.resources.find((resource) => resource.type === "material");
-  const next = await adapter.createEstimateLine({ activityExternalId: "ACT-202", resourceId: material.resourceId, originalQuantity: "120.5000" });
+  const next = await adapter.createEstimateLine({ activityExternalId: "ACT-202", resourceId: material.resourceId, originalQuantity: "120.5000", originalUnitPriceIRR: "285000" });
   const created = next.estimateLines.at(-1);
   assert.equal(created.originalQuantity, "120.5000");
   assert.equal(created.revisedQuantity, "120.5000");
+  assert.equal(created.originalUnitPriceIRR, "285000", "the initial estimate is quantity x this price, so it must be recorded");
   assert.notEqual(created.lineId, next.estimateLines[0].lineId);
 });
 
@@ -112,5 +113,16 @@ test("rejects unsupported estimate import files and repeated commits", async () 
   await assert.rejects(
     adapter.commitEstimateImport({ previewId: preview.previewId }),
     (error) => error.code === "IMPORT_ALREADY_COMMITTED",
+  );
+});
+
+test("a quantified estimate line cannot be created without the price it was fixed at", async () => {
+  const adapter = createMockFinancialItemsAdapter(context);
+  const workspace = await adapter.getWorkspace();
+  const material = workspace.resources.find((resource) => resource.type === "material");
+  await assert.rejects(
+    adapter.createEstimateLine({ activityExternalId: "ACT-202", resourceId: material.resourceId, originalQuantity: "10.0000" }),
+    (error) => error.status === 422,
+    "without originalUnitPriceIrr the Backend computes an initial estimate of zero",
   );
 });

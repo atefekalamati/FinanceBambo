@@ -94,7 +94,7 @@ test("rejects unsupported price files and repeated import commits", async () => 
 test("prefers a project unit conversion over the organization conversion", async () => {
   const adapter = createMockPricesAdapter(context);
   const workspace = await adapter.getPrices();
-  const equipmentTime = workspace.currentConversions.find((item) => item.sourceUnit === "equipment_day" && item.targetUnit === "hour");
+  const equipmentTime = workspace.currentConversions.find((item) => item.sourceUnit === "day" && item.targetUnit === "hour");
   assert.equal(equipmentTime.organizationConversion.factor, "8.000000");
   assert.equal(equipmentTime.projectConversion.factor, "10.000000");
   assert.equal(equipmentTime.currentConversion.factor, "10.000000");
@@ -104,10 +104,10 @@ test("appends a unit conversion version and preserves previous records", async (
   const adapter = createMockPricesAdapter(context);
   const before = await adapter.getPrices();
   const oldIds = before.conversionHistory.map((conversion) => conversion.conversionId);
-  const after = await adapter.createUnitConversion({ sourceUnit: "equipment_day", targetUnit: "hour", factor: "9.000000", scope: "project", effectiveDate: "2026-08-08" });
+  const after = await adapter.createUnitConversion({ sourceUnit: "day", targetUnit: "hour", factor: "9.000000", scope: "project", effectiveDate: "2026-08-08" });
   assert.equal(after.conversionHistory.length, before.conversionHistory.length + 1);
   assert.ok(oldIds.every((id) => after.conversionHistory.some((conversion) => conversion.conversionId === id)));
-  const current = after.currentConversions.find((item) => item.sourceUnit === "equipment_day" && item.targetUnit === "hour");
+  const current = after.currentConversions.find((item) => item.sourceUnit === "day" && item.targetUnit === "hour");
   assert.equal(current.currentConversion.factor, "9.000000");
   assert.equal(current.currentConversion.projectId, context.projectId);
 });

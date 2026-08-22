@@ -186,6 +186,7 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
       const response = await adapter.createOverride({
         progressSnapshotId: snapshotId,
         assignmentExternalId: assignment.assignmentExternalId,
+        activityExternalId: assignment.task?.activityCode ?? null,
         overrideValue: validation.value,
         reason: validation.reason,
       });

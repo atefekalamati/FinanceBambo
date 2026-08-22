@@ -172,7 +172,7 @@ export function createUnitConversionForm(adapter, workspace, onSaved, onCancel =
       cancel.disabled = false;
     }
   });
-  source.select.value = "equipment_day";
+  source.select.value = "day";
   replaceTargetOptions();
   target.select.value = "hour";
   factor.input.value = "8";

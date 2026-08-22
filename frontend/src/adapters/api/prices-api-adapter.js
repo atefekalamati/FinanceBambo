@@ -1,4 +1,4 @@
-import { getUnitDefinition } from "../../features/prices/unit-conversions-validation.js";
+import { getConversionDimension, getUnitDefinition, setUnitRegistry } from "../../features/prices/unit-conversions-validation.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { financeBase, formDataWithFile, jsonOptions, mapImportPreview, mapResource } from "./api-utils.js";
 
@@ -101,7 +101,7 @@ export function createApiPricesAdapter(context, client) {
     return { workspace: await getPrices() };
   }
   async function createUnitConversion(values) {
-    await client.request(`${base}/unit-conversions`, jsonOptions("POST", { scopeKind: values.scope, sourceUnit: values.sourceUnit, targetUnit: values.targetUnit, dimension: getUnitDefinition(values.sourceUnit)?.dimension ?? "unknown", factor: values.factor, effectiveFrom: values.effectiveDate, reason: values.reason || "ثبت تبدیل واحد از رابط مالی" }));
+    await client.request(`${base}/unit-conversions`, jsonOptions("POST", { scopeKind: values.scope, sourceUnit: values.sourceUnit, targetUnit: values.targetUnit, dimension: getConversionDimension(values.sourceUnit, values.targetUnit) ?? "unknown", factor: values.factor, effectiveFrom: values.effectiveDate, reason: values.reason || "ثبت تبدیل واحد از رابط مالی" }));
     return getPrices();
   }
   return Object.freeze({ getPrices, createPriceVersion, previewPriceImport, commitPriceImport, createUnitConversion });

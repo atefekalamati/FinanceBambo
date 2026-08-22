@@ -46,7 +46,7 @@ test("builds a dynamic trend from real backend price history in effective order"
 
 test("uses organization history when no project override exists", async () => {
   const client = clientWith({
-    resources: [{ id: "resource-1", type: "labor", code: "LAB-1", title: "نیروی کار", baseUnit: "person_hour", dimension: "work", externalResourceId: null }],
+    resources: [{ id: "resource-1", type: "labor", code: "LAB-1", title: "نیروی کار", baseUnit: "hour", dimension: "time", externalResourceId: null }],
     prices: [
       { id: "price-1", resourceId: "resource-1", scopeKind: "organization", version: 1, unitPriceIrr: "100", effectiveFrom: "2026-07-01", reason: "اول", createdBy: "user-1", createdAt: "2026-07-01T08:00:00Z" },
       { id: "price-2", resourceId: "resource-1", scopeKind: "organization", version: 2, unitPriceIrr: "90", effectiveFrom: "2026-08-01", reason: "دوم", createdBy: "user-1", createdAt: "2026-08-01T08:00:00Z" },
