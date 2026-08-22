@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildMonthlyTrendPreview, isMonthlyTrendPreviewEnabled, PREVIEW_FLAG } from "../../src/adapters/api/monthly-trend-preview.js";
 import { createApiReportsAdapter } from "../../src/adapters/api/reports-api-adapter.js";
@@ -76,6 +77,31 @@ test("the preview exercises every state the chart can draw", () => {
   assert.ok(directions.has(null), "and one with no estimate, so the line gap is visible");
   assert.equal(view.estimatePartial, true);
   assert.equal(view.hasEstimate, true);
+});
+
+test("the removal steps name every file that mentions the preview", () => {
+  // The header used to promise a grep that came back empty the moment the module
+  // was deleted, whether or not the other files were cleaned up. This is the
+  // check that grep was meant to be: the step list cannot fall behind the code.
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const header = readFileSync(join(root, "src/adapters/api/monthly-trend-preview.js"), "utf8");
+
+  const mentions = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(path);
+      else if (/\.(js|css)$/.test(entry.name)
+        && /monthlytrendpreview|monthly-trend-preview/i.test(readFileSync(join(root, path), "utf8"))) {
+        mentions.push(path);
+      }
+    }
+  };
+  walk("src");
+  walk("tests");
+
+  const unlisted = mentions.filter((path) => !header.includes(path));
+  assert.deepEqual(unlisted, [], "these files reference the preview but the removal steps never mention them");
 });
 
 test("every place the preview touches names itself as temporary", () => {
