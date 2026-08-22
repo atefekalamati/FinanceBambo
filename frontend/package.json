@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/app/bootstrap.js"
+    "check": "node --check src/app/bootstrap.js",
+    "audit:layout": "node scripts/layout-audit.mjs",
+    "audit:print": "node scripts/print-audit.mjs"
   },
   "engines": {
     "node": ">=20"

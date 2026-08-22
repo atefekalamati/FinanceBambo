@@ -1,11 +1,12 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { hasPermission } from "../../core/auth/permissions.js";
 import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "آماده", superseded: "جایگزین‌شده" });
-const RESOURCE_TYPE_LABELS = Object.freeze({ material: "متریال", labor: "نیروی انسانی", equipment: "دستگاه و تجهیزات", general_cost: "هزینه عمومی" });
+const RESOURCE_TYPE_LABELS = Object.freeze({ material: "مصالح", labor: "نیروی انسانی", equipment: "دستگاه و تجهیزات", general_cost: "هزینه‌های عمومی پروژه" });
 const SOURCE_METHOD_LABELS = Object.freeze({
   assignment_actual: "مقدار واقعی تخصیص",
   assignment_work_percent: "درصد پیشرفت تخصیص",
@@ -56,11 +57,11 @@ function renderSnapshotList(items, selectedId, onSelect) {
     const fields = [
       ["تعداد تخصیص", formatDisplayNumber(String(assignmentCount))],
       ["زمان ورود", formatSystemDateTime(snapshot.importedAt)],
-      ["شناسه نسخه پیشرفت", snapshot.progressSnapshotId],
+      ["شناسه نسخه پیشرفت پروژه", snapshot.progressSnapshotId],
       ["شناسه نسخه فایل", snapshot.sourceFileVersionId],
     ];
     fields.forEach(([label, value]) => meta.append(element("dt", "", label), element("dd", "numeric", value)));
-    const button = element("button", snapshot.progressSnapshotId === selectedId ? "button button--primary" : "button button--ghost", snapshot.progressSnapshotId === selectedId ? "در حال نمایش" : "مشاهده خوراک مالی");
+    const button = element("button", snapshot.progressSnapshotId === selectedId ? "button button--primary" : "button button--ghost", snapshot.progressSnapshotId === selectedId ? "در حال نمایش" : "مشاهده پیشرفت اجرایی");
     button.type = "button";
     button.disabled = snapshot.progressSnapshotId === selectedId;
     button.addEventListener("click", () => onSelect(snapshot.progressSnapshotId));
@@ -83,7 +84,7 @@ function renderSnapshotMetadata(snapshot, assignmentCount) {
     ["تعداد تخصیص", formatDisplayNumber(String(assignmentCount))],
     ["زمان ورود", formatSystemDateTime(snapshot.importedAt)],
     ["ثبت‌کننده ورود", snapshot.importedBy],
-    ["شناسه نسخه پیشرفت", snapshot.progressSnapshotId],
+    ["شناسه نسخه پیشرفت پروژه", snapshot.progressSnapshotId],
     ["شناسه نسخه فایل", snapshot.sourceFileVersionId],
   ];
   rows.forEach(([label, value]) => {
@@ -107,7 +108,7 @@ function renderOverrideDetails(override) {
     ["دلیل", override.reason],
     ["کاربر", override.userId],
     ["زمان", formatSystemDateTime(override.occurredAt)],
-    ["شناسه نسخه پیشرفت", override.progressSnapshotId],
+    ["شناسه نسخه پیشرفت پروژه", override.progressSnapshotId],
   ].forEach(([label, value]) => list.append(element("dt", "", label), element("dd", "", value)));
   details.append(list);
   return details;
@@ -125,11 +126,11 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
   dialog.setAttribute("aria-labelledby", "progress-override-title");
   const title = element("h2", "", "ثبت جایگزینی دستی پیشرفت");
   title.id = "progress-override-title";
-  const description = element("p", "", "مقدار محاسبه‌شده حذف یا بازنویسی نمی‌شود و این تغییر با دلیل، کاربر، زمان و نسخه پیشرفت ثبت خواهد شد.");
+  const description = element("p", "", "مقدار محاسبه‌شده حذف یا بازنویسی نمی‌شود و اصلاح دستی با دلیل، انجام‌دهنده، زمان و نسخه پیشرفت پروژه ثبت خواهد شد.");
   const summary = element("dl", "progress-override-summary");
   [
     ["فعالیت", assignment.task.taskName],
-    ["قلم مالی", assignment.resourceName],
+    ["قلم هزینه", assignment.resourceName],
     ["مقدار محاسبه‌شده", valueOrMissing(assignment.manualOverride?.previousCalculatedValue ?? assignment.actualQuantity)],
     ["مقدار برنامه", valueOrMissing(assignment.plannedQuantity)],
     ["واحد", formatUnitLabel(assignment.unit)],
@@ -147,7 +148,7 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
   valueHelp.id = "progress-override-value-help";
   valueField.append(valueInput, valueHelp);
   const reasonField = element("label", "form-field");
-  reasonField.append(element("span", "", "دلیل ممیزی"));
+  reasonField.append(element("span", "", "دلیل اصلاح دستی"));
   const reasonInput = element("textarea", "app-textarea");
   reasonInput.name = "reason";
   reasonInput.rows = 4;
@@ -178,7 +179,7 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
     warning.hidden = !validation.exceedsPlan;
     if (validation.exceedsPlan) {
       const percent = validation.deviation.percent === null ? "قابل محاسبه نیست" : `${formatDisplayNumber(validation.deviation.percent)} درصد`;
-      warning.textContent = `مقدار واردشده ${formatDisplayNumber(validation.deviation.amount)} ${formatUnitLabel(assignment.unit)} بیشتر از برآورد است و انحراف ${percent} خواهد بود. ثبت مسدود نمی‌شود و دلیل در ممیزی حفظ خواهد شد.`;
+      warning.textContent = `مقدار واردشده ${formatDisplayNumber(validation.deviation.amount)} ${formatUnitLabel(assignment.unit)} بیشتر از برآورد است و انحراف ${percent} خواهد بود. ثبت مسدود نمی‌شود و دلیل در تاریخچه تغییرات حفظ خواهد شد.`;
     } else {
       warning.textContent = "";
     }
@@ -213,10 +214,10 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
 function renderAssignments(assignments, { canOverride, onOverride }) {
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table progress-feed-table");
-  table.append(element("caption", "sr-only", "خوراک فقط‌خواندنی تخصیص‌های مالی نسخه پیشرفت"));
+  table.append(element("caption", "sr-only", "اطلاعات فقط‌خواندنی پیشرفت اجرایی و تخصیص‌های مالی"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  ["فعالیت", "قلم مالی", "واحد", "مقادیر برنامه، واقعی و باقی‌مانده", "کار برنامه، واقعی و باقی‌مانده", "درصدهای پیشرفت", "روش انتخاب و کیفیت", "بازه فعالیت", "جایگزینی دستی"].forEach((label) => header.append(element("th", "", label)));
+  ["فعالیت", "قلم هزینه", "واحد", "مقادیر برنامه، انجام‌شده و باقی‌مانده", "کار برنامه، انجام‌شده و باقی‌مانده", "درصدهای پیشرفت", "مبنای محاسبه و کیفیت", "بازه فعالیت", "اصلاح دستی مقدار"].forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
   assignments.forEach((assignment) => {
@@ -244,7 +245,7 @@ function renderAssignments(assignments, { canOverride, onOverride }) {
     const override = document.createElement("td");
     override.append(renderOverrideDetails(assignment.manualOverride));
     if (assignment.actualQuantity !== null && assignment.resourceType !== "general_cost") {
-      const button = element("button", "button button--small button--ghost progress-override-button", canOverride ? "ثبت جایگزینی" : "بدون مجوز ویرایش");
+      const button = element("button", "button button--small button--ghost progress-override-button", canOverride ? "اصلاح دستی مقدار" : "بدون مجوز ویرایش");
       button.type = "button";
       button.disabled = !canOverride;
       if (!canOverride) button.title = "مجوز عمومی ویرایش مالی برای این عملیات لازم است.";
@@ -299,8 +300,9 @@ export function createProgressPage({ context, adapter }) {
   function renderHeader() {
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "خوراک گزارش پیشرفت"), element("h1", "", "نسخه‌های پیشرفت مالی"), element("p", "", "نسخه‌های تغییرناپذیر گزارش پیشرفت و تخصیص‌های فعالیت و قلم مالی را به‌صورت فقط‌خواندنی مشاهده کنید."));
+    copy.append(element("span", "feature-header__eyebrow", "پیشرفت اجرایی پروژه"), element("h1", "", "نسخه‌های پیشرفت پروژه"), element("p", "", "نسخه‌های ثبت‌شده گزارش پیشرفت و تخصیص‌های فعالیت و قلم هزینه را به‌صورت فقط‌خواندنی مشاهده کنید."));
     const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    back.classList.add("finance-back-link");
     back.href = "#/finance";
     header.append(copy, back);
     return header;
@@ -308,7 +310,7 @@ export function createProgressPage({ context, adapter }) {
 
   function renderEmpty() {
     const card = element("section", "state-card progress-empty");
-    card.append(element("h2", "", "نسخه پیشرفتی موجود نیست"), element("p", "", "ماژول مالی فایل برنامه را مستقیماً باز نمی‌کند. پس از انتشار نسخه توسط گزارش پیشرفت، خوراک فقط‌خواندنی اینجا نمایش داده می‌شود."));
+    card.append(element("h2", "", "نسخه پیشرفت پروژه موجود نیست"), element("p", "", "ماژول مالی فایل برنامه را مستقیماً باز نمی‌کند. پس از انتشار نسخه توسط گزارش پیشرفت، اطلاعات فقط‌خواندنی پیشرفت اجرایی اینجا نمایش داده می‌شود."));
     return card;
   }
 
@@ -318,7 +320,7 @@ export function createProgressPage({ context, adapter }) {
     const section = element("section", "progress-feed-section");
     const head = element("div", "progress-section-heading");
     head.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(feed.assignments.length))));
-    head.firstElementChild.append(element("h2", "", "تخصیص‌های مالی"), element("p", "", "هر اتصال فعالیت و قلم مالی یک خط مستقل است؛ داده Missing هرگز به صفر تبدیل نمی‌شود."));
+    head.firstElementChild.append(element("h2", "", "تخصیص‌های مالی"), element("p", "", "هر اتصال فعالیت و قلم هزینه یک ردیف مستقل است؛ مقدار ثبت‌نشده هرگز به صفر تبدیل نمی‌شود."));
     section.append(head, renderAssignments(feed.assignments, {
       canOverride,
       onOverride: (assignment) => {
@@ -332,7 +334,7 @@ export function createProgressPage({ context, adapter }) {
           },
         });
         root.append(dialog);
-        dialog.showModal();
+        showAccessibleDialog(dialog);
       },
     }));
     fragment.append(section);
@@ -345,7 +347,7 @@ export function createProgressPage({ context, adapter }) {
     const snapshots = element("section", "progress-snapshots-section");
     const heading = element("div", "progress-section-heading");
     heading.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(items.length))));
-    heading.firstElementChild.append(element("h2", "", "فهرست نسخه‌های پیشرفت"), element("p", "", "نسخه موردنظر را برای مشاهده Metadata و خوراک تخصیص‌ها انتخاب کنید."));
+    heading.firstElementChild.append(element("h2", "", "فهرست نسخه‌های پیشرفت"), element("p", "", "نسخه موردنظر را برای مشاهده مشخصات و اطلاعات تخصیص‌ها انتخاب کنید."));
     snapshots.append(heading, renderSnapshotList(items, selectedId, selectSnapshot));
     const feed = element("div", "progress-feed-state");
     if (feedState.status !== REQUEST_STATUS.IDLE) feed.append(renderPageState(feedState, { renderContent: renderFeed, renderEmpty: () => element("section", "state-card", "این نسخه تخصیص مالی ندارد."), onRetry: () => selectSnapshot(selectedId) }));

@@ -23,6 +23,10 @@
   gap: var(--space-lg);
 }
 
+.ai-review-card__header > * {
+  min-inline-size: 0;
+}
+
 .ai-review-card__header h2 {
   margin-block: var(--space-xs) 0;
   overflow-wrap: anywhere;

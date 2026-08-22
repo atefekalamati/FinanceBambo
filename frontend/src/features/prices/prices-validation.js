@@ -11,7 +11,7 @@ function validateDate(value) {
     && date.getUTCFullYear() === Number(match[1])
     && date.getUTCMonth() === Number(match[2]) - 1
     && date.getUTCDate() === Number(match[3]);
-  return { valid, value: normalized, message: valid ? "" : "تاریخ اثر معتبر نیست." };
+  return { valid, value: normalized, message: valid ? "" : "تاریخ اعتبار معتبر نیست." };
 }
 
 export function validatePriceVersion(values) {
@@ -20,7 +20,7 @@ export function validatePriceVersion(values) {
   const unitPriceIRR = normalizeDecimalInput(values.unitPriceIRR);
   const effectiveFrom = validateDate(values.effectiveFrom);
   const errors = {
-    resourceId: resourceId ? "" : "انتخاب قلم مالی الزامی است.",
+    resourceId: resourceId ? "" : "انتخاب قلم هزینه الزامی است.",
     scope: PRICE_SCOPES.has(scope) ? "" : "سطح قیمت معتبر نیست.",
     unitPriceIRR: /^\d+$/.test(unitPriceIRR) && /[1-9]/.test(unitPriceIRR) ? "" : `قیمت باید مبلغ مثبت و معتبر به ${getDisplayCurrencyLabel()} باشد.`,
     effectiveFrom: effectiveFrom.message,

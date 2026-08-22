@@ -25,15 +25,56 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
         forecastPerSquareMeterIrr: "4200000",
       },
       breakdown: [
-        { resourceType: "material", initialEstimateIrr: "9800000000", actualCostIrr: "3920000000", forecastFinalIrr: "9360000000" },
-        { resourceType: "labor", initialEstimateIrr: "4100000000", actualCostIrr: "1380000000", forecastFinalIrr: "3980000000" },
-        { resourceType: "equipment", initialEstimateIrr: "2750000000", actualCostIrr: "610000000", forecastFinalIrr: "2540000000" },
-        { resourceType: "general_cost", initialEstimateIrr: "2000000000", actualCostIrr: "330000000", forecastFinalIrr: "1970000000" },
+        { resourceType: "material", initialEstimateIrr: "9800000000", revisedEstimateIrr: "10200000000", actualCostIrr: "3920000000", remainingPhysicalCostIrr: "5440000000", forecastFinalIrr: "9360000000" },
+        { resourceType: "labor", initialEstimateIrr: "4100000000", revisedEstimateIrr: "4250000000", actualCostIrr: "1380000000", remainingPhysicalCostIrr: "2600000000", forecastFinalIrr: "3980000000" },
+        { resourceType: "equipment", initialEstimateIrr: "2750000000", revisedEstimateIrr: "2680000000", actualCostIrr: "610000000", remainingPhysicalCostIrr: "1930000000", forecastFinalIrr: "2540000000" },
+        { resourceType: "general_cost", initialEstimateIrr: "2000000000", revisedEstimateIrr: "2050000000", actualCostIrr: "330000000", remainingPhysicalCostIrr: "1640000000", forecastFinalIrr: "1970000000" },
       ],
-      topPriceVariances: [],
-      topQuantityVariances: [],
+      topPriceVariances: [
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", varianceIrr: "460000000" },
+        { resourceId: "20000000-0000-4000-8000-000000000003", estimateLineId: "30000000-0000-4000-8000-000000000004", resourceCode: "EQ-CRANE", resourceTitle: "جرثقیل", resourceType: "equipment", varianceIrr: "185000000" },
+      ],
+      topQuantityVariances: [
+        { resourceId: "20000000-0000-4000-8000-000000000002", estimateLineId: "30000000-0000-4000-8000-000000000003", resourceCode: "LAB-FORM", resourceTitle: "اکیپ قالب‌بندی", resourceType: "labor", varianceQuantity: "125.75" },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000002", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", varianceQuantity: "42.5" },
+      ],
       warnings: [{ code: "CURRENT_PRICE_MISSING", message: "Current price is missing.", estimateLineId: null }],
+      calculationStatus: "complete",
+      incompleteMetricKeys: [],
+      missingPriceCount: 0,
+      excludedEstimateLineCount: 0,
+      excludedEstimateLineIds: [],
+      progressQuality: {
+        complete: true,
+        manualOverrideCount: 0,
+        taskFallbackCount: 0,
+        missingCount: 0,
+        assignmentActualCount: 2,
+        assignmentPercentFallbackCount: 0,
+      },
       scope: { organizationId: context.organizationId, projectId: context.projectId },
+    };
+  }
+
+  async function getOverview(options) {
+    return getLiveReport(options);
+  }
+
+  async function getVariances({ reportingDate, progressSnapshotId, varianceType = "all", page = 1, pageSize = 200 }) {
+    const report = await getLiveReport({ reportingDate, progressSnapshotId });
+    if (!report) return { items: [], page, pageSize, totalItems: 0, totalPages: 0 };
+    const items = varianceType === "price"
+      ? report.topPriceVariances
+      : varianceType === "quantity"
+        ? report.topQuantityVariances
+        : [...report.topPriceVariances, ...report.topQuantityVariances];
+    const start = (page - 1) * pageSize;
+    return {
+      items: items.slice(start, start + pageSize),
+      page,
+      pageSize,
+      totalItems: items.length,
+      totalPages: Math.ceil(items.length / pageSize),
     };
   }
 
@@ -73,5 +114,5 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     return Object.freeze({ blob: new Blob([`\uFEFF${rows.join("\r\n")}`], { type: "text/csv;charset=utf-8" }), fileName: `finance-report-${reportId}.csv` });
   }
 
-  return Object.freeze({ getLiveReport, issueSnapshot, getSnapshot, downloadSnapshotCsv });
+  return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv });
 }

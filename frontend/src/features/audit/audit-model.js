@@ -15,7 +15,7 @@ export const ACTION_LABELS = Object.freeze({
 });
 
 export const ENTITY_LABELS = Object.freeze({
-  estimate_lines: "خط برآورد",
+  estimate_lines: "ردیف برآورد",
   finance_attachments: "پیوست مالی",
   finance_settings: "تنظیمات مالی",
   invoices: "فاکتور",
