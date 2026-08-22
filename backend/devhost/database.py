@@ -9,14 +9,12 @@ that assume a populated project already exists.
 
 from pathlib import Path
 
-from psycopg import AsyncConnection
-
 from . import seed
 
 MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
 
 
-async def apply_migrations(connection: AsyncConnection) -> list[str]:
+async def apply_migrations(connection) -> list[str]:
     """Run every *.up.sql in name order. They are written to be re-runnable."""
     applied = []
     for path in sorted(MIGRATIONS.glob("*.up.sql")):
@@ -26,7 +24,7 @@ async def apply_migrations(connection: AsyncConnection) -> list[str]:
     return applied
 
 
-async def is_seeded(connection: AsyncConnection) -> bool:
+async def is_seeded(connection) -> bool:
     async with connection.cursor() as cursor:
         await cursor.execute(
             "SELECT 1 FROM finance_project_settings WHERE organization_id=%s AND project_id=%s LIMIT 1",
@@ -34,7 +32,7 @@ async def is_seeded(connection: AsyncConnection) -> bool:
         return await cursor.fetchone() is not None
 
 
-async def reset(connection: AsyncConnection) -> None:
+async def reset(connection) -> None:
     """Drop the seeded project. History tables reject UPDATE and DELETE by trigger, so the
     immutability guards are disabled for the length of this statement batch only."""
     tables = ("invoice_lines", "invoices", "progress_overrides", "progress_snapshot_refs",
@@ -54,7 +52,7 @@ async def reset(connection: AsyncConnection) -> None:
 SEED_SQL = Path(__file__).resolve().parent / "seed.sql"
 
 
-async def load_seed(connection: AsyncConnection) -> None:
+async def load_seed(connection) -> None:
     """Execute the committed seed. It wraps itself in BEGIN/COMMIT."""
     async with connection.cursor() as cursor:
         await cursor.execute(SEED_SQL.read_text(encoding="utf-8"))
