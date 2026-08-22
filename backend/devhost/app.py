@@ -21,7 +21,6 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from psycopg import AsyncConnection
 
 from app.main import create_app
 from app.finance.repositories.attachments import PsycopgAttachmentRepository
@@ -48,6 +47,7 @@ from app.finance.services.resources import FinanceResourcesService
 from app.finance.services.settings import FinanceSettingsService
 
 from . import database, seed
+from .connection import ReconnectingConnection
 from .ports import (ContextPermissionAuthorizer, LocalFileStorage, SeededActivityProvider,
                     SeededProgressSnapshotProvider, SingleTenantScopeAuthorizer,
                     StaticAuthContextProvider, UnavailableExtractor)
@@ -73,7 +73,7 @@ def host_context() -> dict:
     }
 
 
-def wire(application: FastAPI, connection: AsyncConnection, storage_root: Path) -> None:
+def wire(application: FastAPI, connection, storage_root: Path) -> None:
     """Populate application.state exactly as INTEGRATION_GUIDE_FA.md requires."""
     auth = StaticAuthContextProvider(seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.ACTOR_ID)
     application.state.auth_context_provider = auth
@@ -113,14 +113,12 @@ def wire(application: FastAPI, connection: AsyncConnection, storage_root: Path) 
 
 
 def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
-    connection_holder: dict[str, AsyncConnection] = {}
-
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        # autocommit lets the repositories own their own transaction boundaries;
-        # without it psycopg would hold one implicit transaction open forever.
-        connection = await AsyncConnection.connect(dsn, autocommit=True)
-        connection_holder["connection"] = connection
+        # Repositories keep whatever they are handed, so they get a handle that can
+        # reopen itself when the development database restarts underneath the process.
+        connection = ReconnectingConnection(dsn)
+        await connection.live()
         await database.apply_migrations(connection)
         if reseed or not await database.is_seeded(connection):
             await database.reset(connection)
