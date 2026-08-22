@@ -70,6 +70,28 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
   zeroEffect.append(element("strong", "", draft.reviewStatus === "accepted" ? "اثر مالی پس از تأیید انسانی" : `اثر مالی فعلی: صفر ${getDisplayCurrencyLabel()}`), element("span", "", draft.reviewStatus === "accepted" ? formatTomanFromIrr(draft.financialEffectIRR) : "این داده هنوز فاکتور تأییدشده نیست."));
   card.append(zeroEffect);
 
+  // PRD section 12 requires the original file beside the extracted fields, and
+  // the card's own copy tells the reader to compare against it.
+  const source = element("figure", "ai-review-source");
+  const contentUrl = adapter.getFileContentUrl?.(draft.file.fileId) ?? null;
+  if (!contentUrl) {
+    source.append(element("figcaption", "", "پیش‌نمایش فایل اصلی در این محیط در دسترس نیست."));
+  } else if (draft.file.logicalType === "invoice_image") {
+    const image = element("img", "ai-review-source__image");
+    image.src = contentUrl;
+    image.alt = `تصویر اصلی فاکتور: ${draft.file.originalNameSafe}`;
+    image.loading = "lazy";
+    source.append(image, element("figcaption", "", "تصویر اصلی؛ اطلاعات خوانده‌شده را با آن تطبیق دهید."));
+  } else {
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.preload = "none";
+    audio.src = contentUrl;
+    audio.className = "ai-review-source__audio";
+    source.append(audio, element("figcaption", "", "فایل صوتی اصلی؛ اطلاعات خوانده‌شده را با آن تطبیق دهید."));
+  }
+  card.append(source);
+
   const form = element("div", "ai-fields-grid");
   const controls = new Map();
   draft.fields.forEach((field) => {

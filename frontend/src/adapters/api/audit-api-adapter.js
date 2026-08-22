@@ -1,10 +1,11 @@
 import { financeBase } from "./api-utils.js";
 
 /**
- * GET /audit-events accepts page (>=1) and pageSize (1..200, default 50) and
- * responds with a bare list[AuditEventResponse] — no items/totalCount envelope,
- * unlike /invoices, /files and /extractions. A caller therefore cannot know the
- * total; a full page is the only signal that older events may still exist.
+ * GET /audit-events takes page (>=1) and pageSize (1..200, default 50) and
+ * answers with a paged envelope: { items, page, pageSize, totalItems,
+ * totalPages }. The envelope exists so a client filtering by date cannot
+ * mistake an unfetched page for an empty history, so the total is reported
+ * rather than inferred from a full page.
  */
 export const AUDIT_DEFAULT_PAGE_SIZE = 50;
 export const AUDIT_MAX_PAGE_SIZE = 200;
@@ -22,7 +23,14 @@ export function createApiAuditAdapter(context, client) {
   async function getEvents(paging = {}) {
     const { page, pageSize } = normalizeAuditPaging(paging);
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-    return client.request(`${base}/audit-events?${params.toString()}`);
+    const payload = await client.request(`${base}/audit-events?${params.toString()}`);
+    return {
+      items: payload.items ?? [],
+      page: payload.page,
+      pageSize: payload.pageSize,
+      totalItems: payload.totalItems,
+      totalPages: payload.totalPages,
+    };
   }
 
   return Object.freeze({ getEvents });

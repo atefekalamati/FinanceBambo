@@ -109,6 +109,36 @@
   max-inline-size: 34rem;
 }
 
+.ai-review-source {
+  display: grid;
+  gap: .4rem;
+  margin: 0 0 var(--space-md);
+  padding: .6rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(120 145 205 / 5%);
+}
+
+.ai-review-source__image {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 22rem;
+  margin-inline: auto;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.ai-review-source__audio {
+  inline-size: 100%;
+}
+
+.ai-review-source figcaption {
+  color: var(--color-text-muted);
+  font-size: .72rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
 @media (max-width: 48rem) {
   .ai-fields-grid {
     grid-template-columns: minmax(0, 1fr);
