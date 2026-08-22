@@ -11,20 +11,28 @@
  * finance screen is indistinguishable from real money once it is on screen.
  *
  * ── How to turn it on ────────────────────────────────────────────────────────
- *   http://127.0.0.1:43129/?monthlyTrendPreview=1#/finance
- * or, from the console:
+ * Add the flag to whichever host serves the app, on the query string or inside
+ * the hash — `…/?monthlyTrendPreview=1#/finance` — or, from the console:
  *   window.__BAMBO_MONTHLY_TREND_PREVIEW__ = true
  *
  * ── How to remove it, once GET /reports/monthly (or equivalent) exists ───────
- *   1. Delete this file.
+ * In this order, so the suite is green at every step:
+ *   1. In `tests/unit/monthly-trend-preview.test.js`, keep the one test that is
+ *      not about the preview — "with the flag off the adapter still reports the
+ *      series as unavailable" is the only cover on `getMonthlyTrend` itself.
+ *      Rewrite it against the real endpoint, in a test file that outlives this
+ *      one, then delete the rest of the file.
  *   2. In `src/adapters/api/reports-api-adapter.js`, drop the import and the
- *      `monthlyTrendPreview()` branch inside `getMonthlyTrend`, and call the
- *      real endpoint there instead.
+ *      `isMonthlyTrendPreviewEnabled()` branch inside `getMonthlyTrend`, and
+ *      call the real endpoint there instead.
  *   3. In `src/features/finance-home/finance-home-page.js`, drop the
  *      `estimateSource === "preview"` notice.
- *   4. Delete `tests/unit/monthly-trend-preview.test.js`.
- * Nothing else references it; `grep -r monthlyTrendPreview src tests` should
- * come back empty afterwards.
+ *   4. In `src/features/finance-home/finance-home.css`, drop the two
+ *      `.monthly-trend-preview-notice` rules.
+ *   5. Delete this file, `src/adapters/api/monthly-trend-preview.js`.
+ * Then confirm nothing is left behind — case-insensitively, because the
+ * identifiers are capitalised differently in each file:
+ *   grep -rin "monthlytrendpreview\|monthly-trend-preview" src tests
  */
 
 import { gregorianIsoToPersian, persianToGregorianIso } from "../../shared/dates/persian-date.js";
