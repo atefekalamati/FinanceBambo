@@ -8,7 +8,10 @@ services:
       POSTGRES_PASSWORD: bambo
       POSTGRES_DB: bambo_finance
     ports:
-      - "55432:5432"
+      # Bound to loopback on purpose. Publishing as "55432:5432" listens on every
+      # interface, which on a machine with a VPN up means the database answers on the
+      # tunnel address too - with these development credentials.
+      - "127.0.0.1:55432:5432"
     volumes:
       - finance-dev-data:/var/lib/postgresql/data
     healthcheck:
