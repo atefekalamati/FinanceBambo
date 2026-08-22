@@ -372,6 +372,42 @@
    Progress print behavior
    -------------------------------------------------------------------------- */
 
+.progress-override-trail {
+  margin-block-start: var(--space-sm);
+  padding: .55rem .7rem;
+  border: 1px dashed var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.progress-override-trail summary {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.progress-override-trail__body {
+  margin-block-start: .5rem;
+  color: var(--color-text-muted);
+  font-size: .78rem;
+}
+
+.progress-override-trail__list {
+  display: grid;
+  gap: .5rem;
+  margin: 0;
+  padding-inline-start: 1.2rem;
+}
+
+.progress-override-trail__list li {
+  display: grid;
+  gap: .1rem;
+}
+
+.progress-override-trail__list small {
+  color: var(--color-text-muted);
+  font-size: .68rem;
+}
+
 @media print {
   .progress-snapshot-list,
   .progress-readonly-notice {

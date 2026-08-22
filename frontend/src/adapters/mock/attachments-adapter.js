@@ -177,5 +177,10 @@ export function createMockAttachmentsAdapter(context, { initialState = "success"
     return structuredClone(confirmedInvoice);
   }
 
-  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, getExtraction, getInvoiceTargets, retryExtraction, rejectExtraction, confirmExtraction });
+  /** The mock stores no bytes, so there is nothing to stream back. */
+  function getFileContentUrl() {
+    return null;
+  }
+
+  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, getExtraction, getInvoiceTargets, retryExtraction, rejectExtraction, confirmExtraction, getFileContentUrl });
 }

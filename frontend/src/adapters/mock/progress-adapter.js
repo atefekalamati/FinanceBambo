@@ -86,9 +86,12 @@ export function createMockProgressAdapter(context, { initialState = "success" } 
     return clone({ feed, override: manualOverride });
   }
 
-  async function getOverrideHistory() {
+  async function getOverrideHistory({ assignmentExternalId } = {}) {
     await wait(120);
-    return clone(overrideHistory);
+    const trail = assignmentExternalId
+      ? overrideHistory.filter((entry) => entry.assignmentExternalId === assignmentExternalId)
+      : overrideHistory;
+    return clone(trail);
   }
 
   return Object.freeze({ getSnapshots, getFeed, createOverride, getOverrideHistory });

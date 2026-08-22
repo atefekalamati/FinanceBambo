@@ -8,7 +8,7 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { ACTION_LABELS, ENTITY_LABELS, filterAuditEvents } from "./audit-model.js";
 import { element } from "../../shared/dom/elements.js";
 
-/** GET /audit-events default; the endpoint accepts 1..200 and returns a bare list. */
+/** GET /audit-events default; the endpoint accepts 1..200 and returns a paged envelope. */
 const AUDIT_PAGE_SIZE = 50;
 
 const VALUE_LABELS = Object.freeze({
@@ -90,6 +90,7 @@ export function createAuditPage({ adapter }) {
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let filters = { query: "", action: "", entityType: "", from: "", to: "" };
   let loadedPages = 0;
+  let totalItems = 0;
   let hasOlderEvents = false;
   let loadingOlder = false;
   let olderError = "";
@@ -97,15 +98,17 @@ export function createAuditPage({ adapter }) {
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
     loadedPages = 0;
+    totalItems = 0;
     hasOlderEvents = false;
     loadingOlder = false;
     olderError = "";
     paint();
     try {
-      const events = await adapter.getEvents({ page: 1, pageSize: AUDIT_PAGE_SIZE });
+      const page = await adapter.getEvents({ page: 1, pageSize: AUDIT_PAGE_SIZE });
       loadedPages = 1;
-      hasOlderEvents = events.length === AUDIT_PAGE_SIZE;
-      state = events.length ? createRequestState(REQUEST_STATUS.SUCCESS, events) : createRequestState(REQUEST_STATUS.EMPTY);
+      totalItems = page.totalItems ?? page.items.length;
+      hasOlderEvents = page.items.length < totalItems;
+      state = page.items.length ? createRequestState(REQUEST_STATUS.SUCCESS, page.items) : createRequestState(REQUEST_STATUS.EMPTY);
     } catch (error) {
       state = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
     }
@@ -120,8 +123,10 @@ export function createAuditPage({ adapter }) {
     try {
       const older = await adapter.getEvents({ page: loadedPages + 1, pageSize: AUDIT_PAGE_SIZE });
       loadedPages += 1;
-      hasOlderEvents = older.length === AUDIT_PAGE_SIZE;
-      state = createRequestState(REQUEST_STATUS.SUCCESS, [...state.data, ...older]);
+      totalItems = older.totalItems ?? totalItems;
+      const merged = [...state.data, ...older.items];
+      hasOlderEvents = merged.length < totalItems;
+      state = createRequestState(REQUEST_STATUS.SUCCESS, merged);
     } catch (error) {
       olderError = formatApiErrorMessage(error, "دریافت رویدادهای قدیمی‌تر انجام نشد.");
     }
@@ -169,8 +174,10 @@ export function createAuditPage({ adapter }) {
     form.append(query, action, entity, from.field, to.field, submit, reset);
 
     const filtered = filterAuditEvents(events, filters);
-    const summary = element("p", "audit-result-count", `${formatDisplayNumber(String(filtered.length))} رویداد از ${formatDisplayNumber(String(events.length))} رویداد بارگذاری‌شده نمایش داده می‌شود.`);
-    if (hasOlderEvents) summary.append(element("span", "audit-result-count__note", "رویدادهای قدیمی‌تر هنوز بارگذاری نشده‌اند و فیلترها فقط روی همین رویدادها اعمال می‌شوند."));
+    const summary = element("p", "audit-result-count", `${formatDisplayNumber(String(filtered.length))} رویداد از ${formatDisplayNumber(String(totalItems))} رویداد ثبت‌شده نمایش داده می‌شود.`);
+    if (hasOlderEvents) {
+      summary.append(element("span", "audit-result-count__note", `${formatDisplayNumber(String(events.length))} رویداد بارگذاری شده است؛ فیلترها تا بارگذاری بقیه فقط روی همین‌ها اعمال می‌شوند.`));
+    }
     const wrapper = element("div", "table-scroll");
     const table = element("table", "data-table audit-table");
     table.append(element("caption", "sr-only", "فهرست رویدادهای تغییر مالی"));
