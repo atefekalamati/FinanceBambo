@@ -15,11 +15,11 @@ const FIXTURE = Object.freeze([
 
 test("requests the audit endpoint with the paging parameters the Backend declares", async () => {
   const calls = [];
-  const payload = [{ id: "event-1" }];
+  const payload = { items: [{ id: "event-1" }], page: 1, pageSize: 50, totalItems: 1, totalPages: 1 };
   const client = { async request(path) { calls.push(path); return payload; } };
   const adapter = createApiAuditAdapter(context, client);
 
-  assert.equal(await adapter.getEvents(), payload);
+  assert.deepEqual(await adapter.getEvents(), payload);
   await adapter.getEvents({ page: 3, pageSize: 120 });
 
   assert.deepEqual(calls, [
@@ -30,7 +30,7 @@ test("requests the audit endpoint with the paging parameters the Backend declare
 
 test("clamps audit paging to the router bounds instead of forwarding invalid values", async () => {
   const calls = [];
-  const client = { async request(path) { calls.push(path); return []; } };
+  const client = { async request(path) { calls.push(path); return { items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 0 }; } };
   const adapter = createApiAuditAdapter(context, client);
 
   await adapter.getEvents({ page: 0, pageSize: 5000 });
@@ -42,30 +42,35 @@ test("clamps audit paging to the router bounds instead of forwarding invalid val
   ]);
 });
 
-test("mock audit pages a bare list the same way the router does", async () => {
+test("mock audit pages the envelope the same way the router does", async () => {
   const adapter = createMockAuditAdapter(context);
   const first = await adapter.getEvents({ page: 1, pageSize: 50 });
   const second = await adapter.getEvents({ page: 2, pageSize: 50 });
 
-  assert.ok(Array.isArray(first), "audit-events responds with a bare list, not an items envelope");
-  assert.equal(first.length, 50);
-  assert.equal(second.length, 50);
-  assert.equal(new Set([...first, ...second].map((event) => event.id)).size, 100, "pages must not overlap");
-  assert.equal(first[0].organizationId, context.organizationId);
-  assert.equal(first[0].projectId, context.projectId);
+  assert.deepEqual(Object.keys(first).sort(), ["items", "page", "pageSize", "totalItems", "totalPages"]);
+  assert.equal(first.items.length, 50);
+  assert.equal(second.items.length, 50);
+  assert.equal(first.page, 1);
+  assert.equal(second.page, 2);
+  assert.equal(first.totalItems, second.totalItems, "the total does not change between pages");
+  assert.ok(first.totalItems > 100, "the seed spans more than two pages");
+  assert.equal(new Set([...first.items, ...second.items].map((event) => event.id)).size, 100, "pages must not overlap");
+  assert.equal(first.items[0].organizationId, context.organizationId);
+  assert.equal(first.items[0].projectId, context.projectId);
 
   const clamped = await adapter.getEvents({ page: 1, pageSize: 5000 });
-  assert.ok(clamped.length <= 200, "pageSize is capped at the router maximum");
+  assert.ok(clamped.items.length <= 200, "pageSize is capped at the router maximum");
 
   const tail = await adapter.getEvents({ page: 99, pageSize: 50 });
-  assert.deepEqual(tail, [], "a page past the end is empty, which is how the UI learns to stop");
+  assert.deepEqual(tail.items, [], "a page past the end is empty");
+  assert.equal(tail.totalItems, first.totalItems, "and still reports the real total, so a filter cannot read it as an empty history");
 });
 
 test("mock audit exposes more events than a single page so paging is exercised", async () => {
   const adapter = createMockAuditAdapter(context);
   const full = await adapter.getEvents({ page: 1, pageSize: 200 });
-  assert.ok(full.length > 50, "seed data must exceed one default page");
-  const timestamps = full.map((event) => event.occurredAt);
+  assert.ok(full.items.length > 50, "seed data must exceed one default page");
+  const timestamps = full.items.map((event) => event.occurredAt);
   assert.deepEqual(timestamps, [...timestamps].sort().reverse(), "events are returned newest first");
 });
 
@@ -78,6 +83,8 @@ test("filters immutable audit events by action, entity, text and canonical date"
 });
 
 test("mock audit supports empty and recoverable error states", async () => {
-  assert.deepEqual(await createMockAuditAdapter(context, { initialState: "empty" }).getEvents(), []);
+  const empty = await createMockAuditAdapter(context, { initialState: "empty" }).getEvents();
+  assert.deepEqual(empty.items, []);
+  assert.equal(empty.totalItems, 0);
   await assert.rejects(createMockAuditAdapter(context, { initialState: "error" }).getEvents(), (error) => error.status === 503 && Boolean(error.requestId));
 });

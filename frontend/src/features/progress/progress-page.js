@@ -129,6 +129,44 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
     ["مقدار برنامه", valueOrMissing(assignment.plannedQuantity)],
     ["واحد", formatUnitLabel(assignment.unit)],
   ].forEach(([label, value]) => summary.append(element("dt", "", label), element("dd", "", value)));
+
+  // The trail is loaded on demand: it is only meaningful once a line has been
+  // overridden before, and most have not.
+  const trail = element("details", "progress-override-trail");
+  const trailSummary = element("summary", "", "سابقه جایگزینی‌های این ردیف");
+  const trailBody = element("div", "progress-override-trail__body", "برای مشاهده باز کنید.");
+  trail.append(trailSummary, trailBody);
+  let trailLoaded = false;
+  trail.addEventListener("toggle", async () => {
+    if (!trail.open || trailLoaded) return;
+    trailLoaded = true;
+    trailBody.textContent = "در حال دریافت سابقه…";
+    try {
+      const history = await adapter.getOverrideHistory({
+        assignmentExternalId: assignment.assignmentExternalId,
+        activityExternalId: assignment.task?.activityCode ?? null,
+      });
+      if (!history.length) {
+        trailBody.textContent = "برای این ردیف جایگزینی دستی ثبت نشده است.";
+        return;
+      }
+      const list = element("ol", "progress-override-trail__list");
+      history.forEach((entry) => {
+        const item = document.createElement("li");
+        item.append(
+          element("strong", "numeric", `${formatDisplayNumber(entry.previousCalculatedValue ?? "—")} ← ${formatDisplayNumber(entry.newValue)}`),
+          element("span", "", entry.reason || "بدون دلیل ثبت‌شده"),
+          element("small", "", `${entry.userId ?? "کاربر نامشخص"} · ${entry.occurredAt ? formatSystemDateTime(entry.occurredAt) : "زمان نامشخص"}`),
+        );
+        list.append(item);
+      });
+      trailBody.replaceChildren(list);
+    } catch (error) {
+      trailLoaded = false;
+      trailBody.textContent = formatApiErrorMessage(error, "دریافت سابقه جایگزینی انجام نشد.");
+    }
+  });
+
   const form = element("form", "progress-override-form");
   form.noValidate = true;
   const valueField = element("label", "form-field");
@@ -202,7 +240,7 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
     }
   });
 
-  dialog.append(title, description, summary, form);
+  dialog.append(title, description, summary, trail, form);
   return dialog;
 }
 

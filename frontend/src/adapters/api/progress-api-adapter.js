@@ -43,8 +43,29 @@ export function createApiProgressAdapter(context, client) {
     return { feed: await getFeed(progressSnapshotId), override };
   }
 
-  async function getOverrideHistory() {
-    return [];
+  /**
+   * GET /estimate-lines/{lineId}/progress-overrides is addressed by estimate
+   * line, so the assignment is resolved to a line first — by assignment id, or
+   * by activity code, exactly as the Backend matches.
+   */
+  async function getOverrideHistory({ assignmentExternalId, activityExternalId } = {}) {
+    if (!assignmentExternalId && !activityExternalId) return [];
+    const lines = await client.request(`${base}/estimate-lines`);
+    const line = lines.find((item) => assignmentExternalId && item.assignmentExternalId === assignmentExternalId)
+      ?? lines.find((item) => activityExternalId && item.activityExternalId === activityExternalId);
+    if (!line) return [];
+    const payload = await client.request(`${base}/estimate-lines/${encodeURIComponent(line.id)}/progress-overrides`);
+    return (payload ?? []).map((row) => ({
+      overrideId: row.id,
+      estimateLineId: row.estimateLineId,
+      progressSnapshotId: row.progressSnapshotId,
+      previousCalculatedValue: row.computedValue,
+      newValue: row.overrideValue,
+      reason: row.reason,
+      userId: row.createdBy,
+      occurredAt: row.createdAt,
+      source: row.source,
+    }));
   }
 
   return Object.freeze({ getSnapshots, getFeed, createOverride, getOverrideHistory });
