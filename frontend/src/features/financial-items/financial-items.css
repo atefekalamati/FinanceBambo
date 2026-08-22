@@ -129,29 +129,50 @@
 
 .resources-disclosure__summary {
   margin-block-end: 0;
+}
+
+/* The disclosure control is a real button, so the row can also carry the "قلم جدید"
+   action without nesting one interactive element inside another. */
+.resources-disclosure__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  inline-size: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
   cursor: pointer;
-  list-style: none;
 }
 
-.resources-disclosure__summary::-webkit-details-marker {
-  display: none;
-}
-
-.resources-disclosure__summary::before {
+.resources-disclosure__toggle::before {
   content: "⌄";
   order: -1;
+  flex: 0 0 auto;
   color: var(--color-text-muted);
   transition: transform var(--duration-fast) var(--ease-standard);
 }
 
-.resources-disclosure[open] > .resources-disclosure__summary::before {
+.resources-disclosure[data-open="true"] .resources-disclosure__toggle::before {
   transform: rotate(180deg);
 }
 
-.resources-disclosure__summary:focus-visible {
+.resources-disclosure__toggle:focus-visible {
   outline: 2px solid var(--brand-green);
   outline-offset: .35rem;
   border-radius: var(--radius-sm);
+}
+
+.resources-disclosure__heading {
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+.resources-disclosure__heading p {
+  max-inline-size: 100%;
+  overflow-wrap: break-word;
 }
 
 .resources-disclosure__meta {
