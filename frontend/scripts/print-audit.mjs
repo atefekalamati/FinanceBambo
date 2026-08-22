@@ -127,7 +127,9 @@ try {
 } finally {
   chrome.kill();
   await delay(300);
-  await rm(profile, { recursive: true, force: true });
+  // Chrome can still hold the profile on Windows; a failed cleanup must not
+  // discard the audit result, which is printed after this block.
+  try { await rm(profile, { recursive: true, force: true }); } catch { /* profile still locked */ }
 }
 
 const failures = results.filter((result) => result.pageCount !== 1 || result.exceptions.length);
