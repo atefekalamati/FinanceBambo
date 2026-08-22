@@ -1457,21 +1457,6 @@
   min-inline-size: 0;
 }
 
-.trend-mode-toggle {
-  display: inline-flex;
-  align-self: flex-start;
-  gap: .25rem;
-  padding: .2rem;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-pill);
-  background: rgb(120 145 205 / 6%);
-}
-
-.trend-mode-toggle .button {
-  border-radius: var(--radius-pill);
-  white-space: nowrap;
-}
-
 .monthly-trend-legend {
   margin: 0;
 }
@@ -1598,8 +1583,7 @@
 }
 
 @media (max-width: 48rem) {
-  .analysis-chart-switch .button,
-  .trend-mode-toggle .button {
+  .analysis-chart-switch .button {
     min-block-size: 2rem;
     padding: .3rem .6rem;
     font-size: .68rem;
@@ -1620,20 +1604,17 @@
     flex-direction: column;
   }
 
-  .analysis-chart-switch,
-  .trend-mode-toggle {
+  .analysis-chart-switch {
     inline-size: 100%;
   }
 
-  .analysis-chart-switch .button,
-  .trend-mode-toggle .button {
+  .analysis-chart-switch .button {
     flex: 1 1 0;
   }
 }
 
 @media print {
   .analysis-chart-switch,
-  .trend-mode-toggle,
   .combo-chart__tooltip {
     display: none !important;
   }
