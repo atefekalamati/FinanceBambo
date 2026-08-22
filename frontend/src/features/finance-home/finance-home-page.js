@@ -216,16 +216,28 @@ function createBreakdownChart(rows) {
   return section;
 }
 
-function createManagerialComparisonPanel(metrics, entries) {
+const ANALYSIS_CHARTS = Object.freeze({
+  managerial: { label: "تصویر مدیریتی", title: "تصویر مدیریتی هزینه پروژه", description: "مقایسه هزینه‌های پروژه با خط مرجع برآورد اولیه" },
+  monthly: { label: "روند ماهانه", title: "روند ماهانه هزینه پروژه", description: "هزینه واقعی هر ماه در برابر برآورد همان ماه" },
+});
+
+/**
+ * Holds both cost charts and shows exactly one at a time. The managerial
+ * comparison is the default; the monthly trend is revealed by the switch in
+ * this card's heading.
+ */
+function createManagerialComparisonPanel(metrics, entries, monthly = null, { activeChart = "managerial", onChartChange = () => {} } = {}) {
   const section = document.createElement("section");
   section.className = "finance-analysis-card finance-managerial-comparison";
   const heading = document.createElement("div");
   heading.className = "finance-analysis-card__heading";
+  const headingCopy = document.createElement("div");
   const headingTitle = document.createElement("h2");
-  headingTitle.textContent = "تصویر مدیریتی هزینه پروژه";
+  headingTitle.textContent = ANALYSIS_CHARTS.managerial.title;
   const headingDescription = document.createElement("p");
-  headingDescription.textContent = "مقایسه هزینه‌های پروژه با خط مرجع برآورد اولیه";
-  heading.append(headingTitle, headingDescription);
+  headingDescription.textContent = ANALYSIS_CHARTS.managerial.description;
+  headingCopy.append(headingTitle, headingDescription);
+  heading.append(headingCopy);
 
   const chart = document.createElement("div");
   chart.className = "managerial-combo-chart";
@@ -292,7 +304,52 @@ function createManagerialComparisonPanel(metrics, entries) {
   value.textContent = deviation === 0n ? label : `${formatCompactMoneyFromIrr((deviation < 0n ? -deviation : deviation).toString())} ${label}`;
   if (deviation !== 0n) value.title = formatTomanFromIrr((deviation < 0n ? -deviation : deviation).toString());
   summary.append(title, value);
-  section.append(heading, chart, summary);
+
+  const managerialPanel = element("div", "analysis-chart-panel");
+  managerialPanel.dataset.chart = "managerial";
+  managerialPanel.append(chart, summary);
+  section.append(heading, managerialPanel);
+
+  if (!monthly) return section;
+
+  section.append(monthly.panel);
+  const panels = { managerial: managerialPanel, monthly: monthly.panel };
+  const buttons = {};
+
+  function activate(key) {
+    Object.entries(panels).forEach(([name, node]) => {
+      node.hidden = name !== key;
+    });
+    Object.entries(buttons).forEach(([name, button]) => {
+      button.setAttribute("aria-pressed", String(name === key));
+      button.className = `button button--small ${name === key ? "button--primary" : "button--ghost"}`;
+    });
+    headingTitle.textContent = ANALYSIS_CHARTS[key].title;
+    headingDescription.textContent = key === "monthly" ? monthly.description : ANALYSIS_CHARTS[key].description;
+    // The monthly chart measures zero while its panel is hidden, so it is
+    // redrawn once the panel actually has a width.
+    if (key === "monthly") monthly.chart?.resize();
+  }
+
+  const switcher = element("div", "analysis-chart-switch");
+  switcher.setAttribute("role", "group");
+  switcher.setAttribute("aria-label", "انتخاب نمودار هزینه");
+  Object.entries(ANALYSIS_CHARTS).forEach(([key, meta]) => {
+    const button = element("button", "button button--small button--ghost", meta.label);
+    button.type = "button";
+    button.dataset.chart = key;
+    button.addEventListener("click", () => {
+      activate(key);
+      onChartChange(key);
+    });
+    buttons[key] = button;
+    switcher.append(button);
+  });
+  heading.append(switcher);
+  // Honour the page's remembered choice: switching the monthly mode repaints
+  // the whole overview, and defaulting here would throw the reader back to the
+  // managerial chart every time they changed it.
+  activate(panels[activeChart] ? activeChart : "managerial");
   return section;
 }
 
@@ -362,7 +419,7 @@ function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
   return section;
 }
 
-function renderFinanceHome(data, trendSection = document.createDocumentFragment()) {
+function renderFinanceHome(data, monthly = null, chartState = {}) {
   const fragment = document.createDocumentFragment();
   const pageHeader = document.createElement("header");
   pageHeader.className = "finance-page-header";
@@ -394,7 +451,7 @@ function renderFinanceHome(data, trendSection = document.createDocumentFragment(
   const overviewLayout = document.createElement("div");
   overviewLayout.className = "finance-overview-layout";
   overviewLayout.append(
-    createManagerialComparisonPanel(data.metrics, comparisons.management),
+    createManagerialComparisonPanel(data.metrics, comparisons.management, monthly, chartState),
     createSupplementarySummary(data.metrics),
   );
   overviewPanel.append(summaryHeader, overviewLayout);
@@ -448,7 +505,7 @@ function renderFinanceHome(data, trendSection = document.createDocumentFragment(
   areas.setAttribute("aria-label", "بخش‌های امور مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  fragment.append(pageHeader, overviewPanel, trendSection, insights, areasHeader, areas);
+  fragment.append(pageHeader, overviewPanel, insights, areasHeader, areas);
   return fragment;
 }
 
@@ -525,21 +582,17 @@ function trendLegend() {
 }
 
 /**
- * Builds the trend card and hands the chart instance back with it, so the page
- * disposes exactly one instance per render instead of leaving a ResizeObserver
- * behind on re-paint or route change.
+ * Builds the monthly trend as a panel that lives inside the managerial card,
+ * and hands the chart instance back with it so the page disposes exactly one
+ * instance per render instead of leaving a ResizeObserver behind.
+ *
+ * The panel owns its own periodic/cumulative toggle; the switch that chooses
+ * between this chart and the managerial one belongs to the shared card.
  */
-function createMonthlyTrendSection({ trend, trendError, mode, onModeChange }) {
-  const section = element("section", "finance-monthly-trend");
-  section.setAttribute("aria-label", "روند ماهانه هزینه پروژه");
+function createMonthlyTrendPanel({ trend, trendError, mode, onModeChange }) {
+  const panel = element("div", "analysis-chart-panel finance-monthly-trend");
+  panel.dataset.chart = "monthly";
 
-  const heading = element("div", "section-heading");
-  const copy = element("div");
-  copy.append(
-    element("span", "", "روند هزینه"),
-    element("h2", "", "روند ماهانه هزینه پروژه"),
-    element("small", "", TREND_MODE_HINTS[mode]),
-  );
   const toggle = element("div", "trend-mode-toggle");
   toggle.setAttribute("role", "group");
   toggle.setAttribute("aria-label", "حالت نمایش روند ماهانه");
@@ -550,26 +603,24 @@ function createMonthlyTrendSection({ trend, trendError, mode, onModeChange }) {
     button.addEventListener("click", () => onModeChange(value));
     toggle.append(button);
   });
-  heading.append(copy, toggle);
-  section.append(heading);
+  panel.append(toggle);
+
+  const description = TREND_MODE_HINTS[mode];
 
   if (trendError) {
-    section.append(element("p", "inline-notice", formatApiErrorMessage(trendError, "دریافت روند ماهانه هزینه انجام نشد.")));
-    return { section, chart: null };
+    panel.append(element("p", "inline-notice", formatApiErrorMessage(trendError, "دریافت روند ماهانه هزینه انجام نشد.")));
+    return { panel, chart: null, description };
   }
 
   const view = buildMonthlyTrend({ months: trend?.months ?? [], mode });
   if (view.isEmpty) {
     const reason = trend?.unavailableReason ?? "هنوز فاکتور تأییدشده‌ای برای ساخت روند ماهانه ثبت نشده است.";
-    section.append(element("p", "inline-notice", reason));
-    return { section, chart: null };
+    panel.append(element("p", "inline-notice", reason));
+    return { panel, chart: null, description };
   }
 
   const axisScale = compactMoneyScale(view.maximumIrr);
-  if (axisScale) {
-    section.querySelector(".section-heading small").textContent = `${TREND_MODE_HINTS[mode]} ارقام محور بر حسب ${axisScale.unit} است.`;
-  }
-  section.append(trendLegend());
+  panel.append(trendLegend());
   const chart = createCombinationChart({
     barSeries: { magnitudeKey: "actualMagnitude" },
     lineSeries: { magnitudeKey: "estimateMagnitude" },
@@ -578,15 +629,19 @@ function createMonthlyTrendSection({ trend, trendError, mode, onModeChange }) {
     ariaLabel: `نمودار ستونی هزینه واقعی و خط برآورد ماهانه در حالت ${TREND_MODE_LABELS[mode]}`,
   });
   chart.setData({ points: view.points, ticks: view.axisTicks });
-  section.append(chart.element);
+  panel.append(chart.element);
 
   if (!view.hasEstimate) {
-    section.append(element("p", "inline-notice", "برآورد ماهانه در دسترس نیست و فقط هزینه واقعی ثبت‌شده رسم شده است."));
+    panel.append(element("p", "inline-notice", "برآورد ماهانه در دسترس نیست و فقط هزینه واقعی ثبت‌شده رسم شده است."));
   } else if (view.estimatePartial) {
-    section.append(element("p", "inline-notice", "برای بخشی از ماه‌ها برآورد ثبت نشده و خط برآورد در آن بازه‌ها پیوسته نیست."));
+    panel.append(element("p", "inline-notice", "برای بخشی از ماه‌ها برآورد ثبت نشده و خط برآورد در آن بازه‌ها پیوسته نیست."));
   }
-  section.append(trendTable(view));
-  return { section, chart };
+  panel.append(trendTable(view));
+  return {
+    panel,
+    chart,
+    description: axisScale ? `${description} ارقام محور بر حسب ${axisScale.unit} است.` : description,
+  };
 }
 
 export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
@@ -594,6 +649,7 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
   let trend = null;
   let trendError = null;
   let trendMode = TREND_MODES.PERIODIC;
+  let activeChart = "managerial";
   let chart = null;
   const root = document.createElement("div");
   root.className = "finance-home-page";
@@ -636,6 +692,10 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
     paint();
   }
 
+  function setActiveChart(nextChart) {
+    activeChart = nextChart;
+  }
+
   function renderEmpty() {
     const card = document.createElement("section");
     card.className = "state-card";
@@ -654,9 +714,9 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
   function paint() {
     disposeChart();
     const renderContent = (data) => {
-      const built = createMonthlyTrendSection({ trend, trendError, mode: trendMode, onModeChange: setTrendMode });
+      const built = createMonthlyTrendPanel({ trend, trendError, mode: trendMode, onModeChange: setTrendMode });
       chart = built.chart;
-      return renderFinanceHome(data, built.section);
+      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart });
     };
     root.replaceChildren(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }

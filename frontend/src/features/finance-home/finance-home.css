@@ -1423,33 +1423,43 @@
    already uses.
    -------------------------------------------------------------------------- */
 
+/* Both cost charts share one frame; exactly one panel is visible at a time. */
+.finance-managerial-comparison .finance-analysis-card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-md);
+}
+
+.analysis-chart-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: .25rem;
+  padding: .2rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-pill);
+  background: rgb(120 145 205 / 6%);
+}
+
+.analysis-chart-switch .button {
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.analysis-chart-panel[hidden] {
+  display: none;
+}
+
 .finance-monthly-trend {
   display: grid;
   gap: var(--space-sm);
-  padding: var(--space-lg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--dash-card-grad);
-  box-shadow: var(--dash-shadow), var(--dash-inner);
-}
-
-.finance-monthly-trend > .section-heading {
-  align-items: flex-start;
-  gap: var(--space-sm) var(--space-md);
-  margin-block-end: 0;
-}
-
-.finance-monthly-trend > .section-heading small {
-  display: block;
-  margin-block-start: .25rem;
-  color: var(--color-text-muted);
-  font-size: .72rem;
-  line-height: 1.6;
+  min-inline-size: 0;
 }
 
 .trend-mode-toggle {
   display: inline-flex;
-  flex: 0 0 auto;
+  align-self: flex-start;
   gap: .25rem;
   padding: .2rem;
   border: 1px solid var(--color-border-subtle);
@@ -1588,18 +1598,7 @@
 }
 
 @media (max-width: 48rem) {
-  .finance-monthly-trend {
-    padding: .7rem .75rem;
-  }
-
-  .finance-monthly-trend > .section-heading h2 {
-    font-size: .82rem;
-  }
-
-  .finance-monthly-trend > .section-heading small {
-    font-size: .62rem;
-  }
-
+  .analysis-chart-switch .button,
   .trend-mode-toggle .button {
     min-block-size: 2rem;
     padding: .3rem .6rem;
@@ -1617,24 +1616,30 @@
 }
 
 @media (max-width: 30rem) {
-  .finance-monthly-trend > .section-heading {
+  .finance-managerial-comparison .finance-analysis-card__heading {
     flex-direction: column;
   }
 
+  .analysis-chart-switch,
   .trend-mode-toggle {
     inline-size: 100%;
   }
 
+  .analysis-chart-switch .button,
   .trend-mode-toggle .button {
     flex: 1 1 0;
   }
 }
 
 @media print {
+  .analysis-chart-switch,
   .trend-mode-toggle,
   .combo-chart__tooltip {
     display: none !important;
   }
+
+  /* Print keeps the same single-chart rule as the screen: a hidden panel was
+     never laid out, so its chart would print at the fallback width. */
 
   .monthly-trend-table {
     min-inline-size: 0;

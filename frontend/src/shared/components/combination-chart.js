@@ -238,6 +238,14 @@ export function createCombinationChart({
       }
     },
 
+    /**
+     * Redraws against the container's current width. A chart built inside a
+     * hidden panel measures zero, so the panel that reveals it calls this.
+     */
+    resize() {
+      draw();
+    },
+
     destroy() {
       destroyed = true;
       observer?.disconnect();
