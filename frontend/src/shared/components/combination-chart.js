@@ -28,6 +28,9 @@ function svg(tag, attributes = {}) {
 
 function geometry(width, height, isNarrow, isCompact) {
   const barWidthRatio = isCompact ? 0.52 : 0.44;
+  // A short box spends a punishing share of itself on padding, so trim the top
+  // (which only holds air) and keep the bottom, which carries the month labels.
+  const isShort = height < 200;
   return {
     width,
     height,
@@ -35,8 +38,8 @@ function geometry(width, height, isNarrow, isCompact) {
       // Inline-start of an RTL chart is the right edge, where the value axis
       // sits. Labels are short numbers on one shared scale, so this is enough.
       value: isCompact ? 34 : 44,
-      top: 16,
-      bottom: isCompact ? 34 : 30,
+      top: isShort ? 8 : 16,
+      bottom: 30,
       far: isCompact ? 10 : 16,
     },
     barWidthRatio,
@@ -102,7 +105,11 @@ export function createCombinationChart({
     // the container has none of its own, such as a panel that is still hidden.
     const available = Math.floor(surface.clientHeight);
     const fallback = isCompact ? 230 : isNarrow ? 260 : 300;
-    const height = Math.max(available > 0 ? available : fallback, MIN_HEIGHT);
+    // The stylesheet stretches the SVG to its container, so the drawing must fit
+    // the height the container actually has: painting taller only pushes the
+    // category row past the clip. The floor applies to the fallback alone, for a
+    // panel that is still hidden and has no height of its own yet.
+    const height = available > 0 ? available : Math.max(fallback, MIN_HEIGHT);
     const box = geometry(width, height, isNarrow, isCompact);
     const plotWidth = Math.max(box.width - box.padding.value - box.padding.far, 40);
     const plotHeight = Math.max(box.height - box.padding.top - box.padding.bottom, 40);
