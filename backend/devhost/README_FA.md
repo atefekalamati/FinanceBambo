@@ -13,12 +13,29 @@
 # ۱. وابستگی فقط-توسعه (سرور ASGI؛ عمداً در backend/requirements.txt نیست)
 pip install -r devhost/requirements.txt
 
-# ۲. دیتابیس
-docker compose -f ../docker-compose.dev.yml up -d
-
-# ۳. میزبان (از پوشه backend)
+# ۲. میزبان (از پوشه backend)
 python -m devhost
 ```
+
+DSN پیش‌فرض به یک **PostgreSQL محلی** روی پورت ۵۵۴۳۲ اشاره می‌کند با کاربر `bambo`،
+رمز `bambo` و دیتابیس `bambo_finance`. سرور محلی باید قبل از اجرا بالا باشد.
+
+داکر فقط یک جایگزین است و روی پورت **۵۵۴۳۳** منتشر می‌شود تا هرگز سرور محلی را
+پنهان نکند:
+
+```bash
+docker compose -f ../docker-compose.dev.yml up -d
+python -m devhost --dsn postgresql://bambo:bambo@127.0.0.1:55433/bambo_finance
+```
+
+## ماندگاری داده
+
+هرچه از رابط کاربری ثبت شود مستقیم در PostgreSQL می‌نشیند و با Restart میزبان توسعه
+باقی می‌ماند. Seed **فقط وقتی اجرا می‌شود که پروژه نمونه اصلاً وجود نداشته باشد** — پس
+داده‌ای که خودتان وارد کرده‌اید هرگز بازنویسی نمی‌شود.
+
+تنها چیزی که داده را پاک می‌کند `--reseed` است. آن را روی دیتابیسی که کار واقعی
+داخلش دارید اجرا نکنید.
 
 سپس <http://127.0.0.1:8000> را باز کنید.
 
@@ -93,10 +110,10 @@ Seed فقط وقتی اجرا می‌شود که پروژه نمونه وجود 
 |---|---|---|
 | **Schema** | `backend/migrations/*.sql` | فقط ساختار: جدول، Constraint، Trigger. هیچ داده‌ای ندارد و دست‌نخورده می‌ماند. |
 | **داده Seed** | `backend/devhost/seed.sql` | SQL خام و قابل ویرایش. با `python -m devhost.generate_seed_sql` از روی قواعد Mock بازتولید می‌شود. |
-| **داده زنده** | Volume داکر `finance_finance-dev-data` | هرچه در UI ثبت کنید اینجا می‌نشیند و با Restart باقی می‌ماند. |
+| **داده زنده** | PostgreSQL محلی (پیش‌فرض) یا Volume داکر `finance_finance-dev-data` | هرچه در UI ثبت کنید اینجا می‌نشیند و با Restart باقی می‌ماند. |
 | **خوراک میزبان** | `backend/devhost/seed.py` | آنچه Port میزبان *سرو* می‌کند نه *ذخیره*: خوراک پیشرفت و فهرست فعالیت‌ها. |
 
-پاک‌کردن کامل داده زنده: `docker compose -f ../../docker-compose.dev.yml down -v`
+پاک‌کردن کامل داده: روی سرور محلی با `--reseed`، و روی داکر با `docker compose ... down -v`.
 
 ## داده نمونه
 
