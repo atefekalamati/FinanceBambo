@@ -25,9 +25,20 @@ test("requires only a registry unit for quantity-based resources", () => {
 });
 
 test("keeps estimate quantity as an exact decimal string", () => {
-  const result = validateEstimateLine({ activityExternalId: "ACT-01", resourceId: "resource-01", originalQuantity: "۱٬۲۵۰٫۵۰۰۰" });
+  const result = validateEstimateLine({ activityExternalId: "ACT-01", resourceId: "resource-01", originalQuantity: "۱٬۲۵۰٫۵۰۰۰", originalUnitPriceIRR: "285000" });
   assert.equal(result.valid, true);
   assert.equal(result.values.originalQuantity, "1250.5000");
+  assert.equal(result.values.originalUnitPriceIRR, "285000");
+});
+
+test("a quantified line requires the unit price its estimate was fixed at", () => {
+  const missing = validateEstimateLine({ activityExternalId: "ACT-01", resourceId: "resource-01", originalQuantity: "10.0000" });
+  assert.equal(missing.valid, false);
+  assert.match(missing.errors.originalUnitPriceIRR, /قیمت واحد اولیه/);
+
+  const general = validateEstimateLine({ activityExternalId: "ACT-01", resourceId: "resource-01", originalQuantity: "250000000" }, { isGeneralCost: true });
+  assert.equal(general.valid, true, "a general-cost line carries an amount, not a unit price");
+  assert.equal(general.values.originalUnitPriceIRR, null);
 });
 
 test("requires an audited reason for estimate revisions", () => {

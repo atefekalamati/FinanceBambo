@@ -1,3 +1,19 @@
+/* --------------------------------------------------------------------------
+   Responsive scale
+   Media queries cannot read custom properties, so these widths are the written
+   contract instead. Use one of them; do not invent a new value.
+
+     70rem  wide tables and filter grids give up their widest arrangement
+     64rem  multi-column analysis grids collapse toward two columns
+     48rem  the tablet break: side-by-side layouts become stacked
+     36rem  small phone: dense forms and dialogs relax
+     30rem  narrow phone: grids reach a single column
+
+   Two device-specific exceptions exist on purpose and are not part of the
+   scale: 26.5625rem (425px) in finance-home.css and 23rem (368px) in
+   reports.css, each tuned against a real handset width.
+   -------------------------------------------------------------------------- */
+
 :root {
   /* BAMBO host layout contract */
   --header-height: 3.5rem;

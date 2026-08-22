@@ -30,7 +30,7 @@ export function createMockProgressAdapter(context, { initialState = "success" } 
       contractMarker: "MOCK DEVELOPMENT CONTRACT — NOT A PRODUCTION BAMBO ENDPOINT",
       snapshot: { organizationId: context.organizationId, projectId: context.projectId, progressSnapshotId: "33333333-3333-4333-8333-333333333333", sourceFileVersionId: "44444444-4444-4444-8444-444444444443", sourceFileNameSafe: "sample-progress-v3.mpp", importedAt: "2026-08-03T08:30:00Z", importedBy: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3", status: "ready", reportingDate: "2026-08-02" },
       assignments: [
-        { assignmentExternalId: "asg-labor-formwork", resourceExternalId: "res-formwork-team", resourceName: "اکیپ قالب‌بندی نمونه", resourceType: "labor", unit: "person_hour", plannedQuantity: "900.0000", actualQuantity: "315.0000", remainingQuantity: "585.0000", plannedWork: "900.0000", actualWork: null, remainingWork: null, assignmentWorkCompletePercent: null, sourceMethod: "manual_override", quality: 1, task: { taskExternalId: "task-formwork", taskName: "قالب‌بندی نمونه", wbsCode: "2.2", activityCode: "ACT-202", parentTaskExternalId: "task-structure", taskProgressPercent: "30.0000", taskStart: "2026-07-10", taskFinish: "2026-09-20" }, manualOverride: { previousCalculatedValue: "270.0000", newValue: "315.0000", reason: "اصلاح ساختگی بر اساس صورت‌جلسه نمونه", userId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", occurredAt: "2026-08-03T09:00:00Z", source: "manual_override", progressSnapshotId: "33333333-3333-4333-8333-333333333333" } },
+        { assignmentExternalId: "asg-labor-formwork", resourceExternalId: "res-formwork-team", resourceName: "اکیپ قالب‌بندی نمونه", resourceType: "labor", unit: "hour", plannedQuantity: "900.0000", actualQuantity: "315.0000", remainingQuantity: "585.0000", plannedWork: "900.0000", actualWork: null, remainingWork: null, assignmentWorkCompletePercent: null, sourceMethod: "manual_override", quality: 1, task: { taskExternalId: "task-formwork", taskName: "قالب‌بندی نمونه", wbsCode: "2.2", activityCode: "ACT-202", parentTaskExternalId: "task-structure", taskProgressPercent: "30.0000", taskStart: "2026-07-10", taskFinish: "2026-09-20" }, manualOverride: { previousCalculatedValue: "270.0000", newValue: "315.0000", reason: "اصلاح ساختگی بر اساس صورت‌جلسه نمونه", userId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", occurredAt: "2026-08-03T09:00:00Z", source: "manual_override", progressSnapshotId: "33333333-3333-4333-8333-333333333333" } },
       ],
     },
   ];
@@ -38,7 +38,7 @@ export function createMockProgressAdapter(context, { initialState = "success" } 
   async function getSnapshots() {
     await wait();
     if (initialState === "error") throw new ApiError({ status: 503, code: "PROGRESS_FEED_UNAVAILABLE", message: "دریافت نسخه‌های پیشرفت انجام نشد.", requestId: "mock-progress-001" });
-    return clone(feeds.map((feed) => ({ snapshot: feed.snapshot, assignmentCount: feed.assignments.length })).sort((left, right) => right.snapshot.reportingDate.localeCompare(left.snapshot.reportingDate)));
+    return clone(feeds.map((feed) => feed.snapshot).sort((left, right) => right.reportingDate.localeCompare(left.reportingDate)));
   }
 
   async function getFeed(progressSnapshotId) {

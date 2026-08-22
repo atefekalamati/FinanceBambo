@@ -6,8 +6,10 @@ import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-prefe
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { getDialogOpener, showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
+import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { hasPermission } from "../../core/auth/permissions.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
+import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 
 const STATUS_LABELS = Object.freeze({ draft: "پیش‌نویس", awaitingConfirmation: "در انتظار تأیید", confirmed: "تأییدشده", voided: "باطل‌شده", corrected: "اصلاح‌شده" });
 const SOURCE_LABELS = Object.freeze({ manual: "ورود دستی", image: "تصویر", voice: "صدای فارسی", reversal: "سند برگشت", corrective: "سند اصلاحی" });
@@ -43,13 +45,6 @@ function renderInvoiceListSummary(items) {
     section.append(item);
   });
   return section;
-}
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
 }
 
 function option(value, label) {
@@ -215,7 +210,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
       button.disabled = true;
       button.textContent = "در حال محاسبه…";
       try { preview = await adapter.previewDraft({ header: headerData, lines, adjustments }); currentStep = 3; paintStep(); }
-      catch (error) { showMessage(`${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`, true); button.disabled = false; button.textContent = "مشاهده پیش‌نمایش"; }
+      catch (error) { showMessage(formatApiErrorMessage(error), true); button.disabled = false; button.textContent = "مشاهده پیش‌نمایش"; }
     } }));
     return section;
   }
@@ -282,7 +277,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
         dialog.close();
         onSaved();
       }
-      catch (error) { showMessage(`${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`, true); button.disabled = false; button.textContent = isCorrective ? "ثبت سند اصلاحی" : "ثبت پیش‌نویس"; }
+      catch (error) { showMessage(formatApiErrorMessage(error), true); button.disabled = false; button.textContent = isCorrective ? "ثبت سند اصلاحی" : "ثبت پیش‌نویس"; }
     } }));
     return section;
   }
@@ -346,10 +341,8 @@ function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm, on
 
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table invoice-lines-table");
-  const thead = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["ردیف", "اتصال مالی", "مقدار و واحد", "قیمت واحد", "مبلغ خط", "توضیح"].forEach((label) => header.append(element("th", "", label)));
-  thead.append(header);
+  table.append(tableCaption("ریز خطوط فاکتور انتخاب‌شده"));
+  const thead = tableHead(["ردیف", "اتصال مالی", "مقدار و واحد", "قیمت واحد", "مبلغ خط", "توضیح"]);
   const tbody = document.createElement("tbody");
   invoice.lines.forEach((line, index) => {
     const row = document.createElement("tr");
@@ -428,7 +421,7 @@ function createSubmitDraftDialog({ invoice, adapter, onSaved }) {
       dialog.close();
       onSaved();
     } catch (error) {
-      message.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      message.textContent = formatApiErrorMessage(error);
       message.className = "form-message form-message--error";
       submit.disabled = false;
       cancel.disabled = false;
@@ -467,7 +460,7 @@ function createConfirmInvoiceDialog({ invoice, adapter, onSaved }) {
       dialog.close();
       onSaved();
     } catch (error) {
-      message.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      message.textContent = formatApiErrorMessage(error);
       message.className = "form-message form-message--error";
       confirm.disabled = false;
       cancel.disabled = false;
@@ -508,7 +501,7 @@ function createVoidInvoiceDialog({ invoice, adapter, onSaved }) {
     cancel.disabled = true;
     submit.textContent = "در حال ثبت…";
     try { await adapter.voidInvoice({ invoiceId: invoice.invoiceId, expectedVersion: invoice.version, idempotencyKey, reason: auditedReason }); dialog.close(); onSaved(); }
-    catch (error) { message.textContent = `${error.message}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`; message.className = "form-message form-message--error"; submit.disabled = false; cancel.disabled = false; submit.textContent = "ایجاد سند برگشت"; }
+    catch (error) { message.textContent = formatApiErrorMessage(error); message.className = "form-message form-message--error"; submit.disabled = false; cancel.disabled = false; submit.textContent = "ایجاد سند برگشت"; }
   });
   actions.append(cancel, submit);
   dialog.append(title, warning, reasonField, message, actions);
@@ -518,19 +511,15 @@ function createVoidInvoiceDialog({ invoice, adapter, onSaved }) {
 function renderTable(items, onDetail) {
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table invoices-table");
-  table.append(element("caption", "sr-only", "فهرست فاکتورهای پروژه"));
-  const thead = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["شماره", "تاریخ", "فروشنده یا ارائه‌دهنده", "منبع", "وضعیت", "تعداد خطوط", "مبلغ نهایی", "اثر مالی", "عملیات"].forEach((label) => header.append(element("th", "", label)));
-  thead.append(header);
+  table.append(tableCaption("فهرست فاکتورهای پروژه"));
+  const thead = tableHead(["شماره", "تاریخ", "فروشنده یا ارائه‌دهنده", "منبع", "وضعیت", "تعداد ردیف", "مبلغ نهایی", ["", "عملیات"]]);
   const tbody = document.createElement("tbody");
   items.forEach((invoice) => {
     const row = document.createElement("tr");
     const identity = element("div", "invoice-table-identity");
     identity.append(element("strong", "", invoice.invoiceNumber));
     if (invoice.duplicateWarning) identity.append(element("span", "invoice-table-warning", "نیازمند بررسی تکرار"));
-    const effect = getInvoiceEffect(invoice);
-    const action = element("button", "button button--small button--ghost", "مشاهده جزئیات");
+    const action = element("button", "button button--small button--ghost", "جزئیات");
     action.type = "button";
     action.addEventListener("click", (event) => onDetail(invoice.invoiceId, event.currentTarget));
     row.append(
@@ -538,12 +527,11 @@ function renderTable(items, onDetail) {
       element("td", "", invoice.vendorName), element("td", "", SOURCE_LABELS[invoice.source] ?? "نامشخص"),
       element("td", "", ""), element("td", "numeric", formatDisplayNumber(String(invoice.lineCount))),
       element("td", "numeric", formatTomanFromIrr(invoice.finalAmountIRR)),
-      element("td", "", ""), element("td", "", ""),
+      element("td", "", ""),
     );
     row.children[0].append(identity);
     row.children[4].append(element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "نامشخص"));
-    row.children[7].append(element("span", `invoice-effect invoice-effect--${effect.tone}`, effect.label));
-    row.children[8].append(action);
+    row.children[7].append(action);
     tbody.append(row);
   });
   table.append(thead, tbody);
@@ -619,7 +607,7 @@ export function createInvoicesPage({ context, adapter }) {
       dialog.addEventListener("close", () => dialog.remove(), { once: true });
       showAccessibleDialog(dialog);
     } catch (error) {
-      detailMessage.textContent = `${error.message || "دریافت جزئیات انجام نشد."}${error.requestId ? ` · شناسه درخواست: ${error.requestId}` : ""}`;
+      detailMessage.textContent = formatApiErrorMessage(error, "دریافت جزئیات انجام نشد.");
       detailMessage.className = "form-message form-message--error invoice-detail-message";
     } finally {
       trigger.disabled = false;
@@ -631,7 +619,8 @@ export function createInvoicesPage({ context, adapter }) {
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
     copy.append(element("span", "feature-header__eyebrow", "اسناد هزینه پروژه"), element("h1", "", "فاکتورها"), element("p", "", "فاکتورهای پروژه را براساس وضعیت، منبع و مشخصات سند جست‌وجو و جزئیات ثبت‌شده را مشاهده کنید."));
-    const actions = element("div", "feature-header__actions");
+    const navigation = element("div", "feature-header__navigation");
+    const actions = element("div", "feature-header__actions feature-header__other-actions");
     const create = element("button", "button button--primary", canCreate ? "ثبت فاکتور دستی" : "بدون مجوز ثبت");
     create.type = "button";
     create.disabled = !canCreate;
@@ -646,8 +635,9 @@ export function createInvoicesPage({ context, adapter }) {
     back.href = "#/finance";
     const upload = element("a", "button button--ghost", "ورود از تصویر یا صدا");
     upload.href = "#/invoice-files";
-    actions.append(create, upload, back);
-    header.append(copy, actions);
+    actions.append(create, upload);
+    navigation.append(actions, back);
+    header.append(copy, navigation);
     return header;
   }
 

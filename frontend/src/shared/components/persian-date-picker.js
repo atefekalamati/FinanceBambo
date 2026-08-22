@@ -1,16 +1,10 @@
 import { getPersianMonthDays, getTehranTodayIso, gregorianIsoToPersian, persianToGregorianIso } from "../dates/persian-date.js";
 import { showAccessibleDialog } from "./accessible-dialog.js";
+import { element } from "../dom/elements.js";
 
 const MONTH_NAMES = Object.freeze(["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]);
 const WEEKDAYS = Object.freeze(["ش", "ی", "د", "س", "چ", "پ", "ج"]);
 const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function digits(value) {
   return String(value).replace(/\d/g, (digit) => PERSIAN_DIGITS[Number(digit)]);

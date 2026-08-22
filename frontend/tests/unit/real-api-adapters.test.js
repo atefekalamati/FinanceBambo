@@ -76,6 +76,28 @@ test("does not invent quantity truth when extracted total targets a quantified l
   await assert.rejects(adapter.confirmExtraction({ draftId: "draft-1", expectedVersion: 1, idempotencyKey: "confirm-quantified", fieldConfirmations: [], invoice: { invoiceDate: "2026-08-10", vendorName: "فروشنده", resourceId: "target-1", totalIRR: "5000" } }), (error) => error.code === "EXTRACTION_QUANTIFIED_LINE_DATA_MISSING");
 });
 
+test("lists progress snapshots with a single request and no per-snapshot feed fan-out", async () => {
+  const calls = [];
+  const client = {
+    async request(path) {
+      calls.push(path);
+      if (path.endsWith("/progress-snapshots")) {
+        return [
+          { progressSnapshotId: "snapshot-old", reportingDate: "2026-07-02", status: "superseded" },
+          { progressSnapshotId: "snapshot-new", reportingDate: "2026-08-02", status: "ready" },
+        ];
+      }
+      throw new Error(`unexpected request: ${path}`);
+    },
+  };
+
+  const snapshots = await createApiProgressAdapter(context, client).getSnapshots();
+
+  assert.deepEqual(calls, ["/api/projects/project-1/finance/progress-snapshots"], "one list request, never one feed per snapshot");
+  assert.deepEqual(snapshots.map((snapshot) => snapshot.progressSnapshotId), ["snapshot-new", "snapshot-old"], "newest reporting date first");
+  assert.ok(snapshots.every((snapshot) => !("assignmentCount" in snapshot)), "the list response carries no assignment count");
+});
+
 test("lets backend own the computed progress baseline", async () => {
   const calls = [];
   const client = { async request(path, options) { calls.push({ path, options }); if (path.endsWith("/estimate-lines")) return [{ id: "line-1", assignmentExternalId: "asg-1" }]; if (path.includes("/feed")) return { snapshot: {}, assignments: [{ assignmentExternalId: "asg-1", actualQuantity: "12.5", manualOverride: null }] }; if (path.includes("/progress-override")) return { computedValue: "12.5", overrideValue: "14" }; throw new Error(path); } };

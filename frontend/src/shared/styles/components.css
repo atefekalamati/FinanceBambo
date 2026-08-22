@@ -511,6 +511,29 @@
 .finance-back-link {
   flex: 0 0 auto;
   inline-size: fit-content;
-  margin-inline-start: auto;
-  margin-inline-end: 0;
+  margin-inline: 0;
+}
+
+.feature-header__navigation {
+  display: flex;
+  flex: 1 1 22rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
+.feature-header__other-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
+@media (max-width: 48rem) {
+  .feature-header__navigation {
+    flex-basis: 100%;
+    inline-size: 100%;
+  }
 }

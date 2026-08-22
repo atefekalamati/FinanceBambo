@@ -32,12 +32,12 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
     { code: "m2", label: "متر مربع", dimension: "area", dimensionLabel: "مساحت", decimalPrecision: 4 },
     { code: "m3", label: "متر مکعب", dimension: "volume", dimensionLabel: "حجم", decimalPrecision: 4 },
     { code: "hour", label: "ساعت", dimension: "equipment_time", dimensionLabel: "زمان تجهیز", decimalPrecision: 4 },
-    { code: "person_hour", label: "نفر-ساعت", dimension: "labor_time", dimensionLabel: "زمان کار", decimalPrecision: 4 },
+    { code: "hour", label: "نفر-ساعت", dimension: "labor_time", dimensionLabel: "زمان کار", decimalPrecision: 4 },
   ];
 
   let resources = initialState === "empty" ? [] : [
     { resourceId: "20000000-0000-4000-8000-000000000001", type: "material", code: "MAT-REBAR", title: "میلگرد", baseUnit: "kg", dimension: "جرم", externalResourceId: "res-rebar", source: "progress_feed" },
-    { resourceId: "20000000-0000-4000-8000-000000000002", type: "labor", code: "LAB-FORM", title: "اکیپ قالب‌بندی", baseUnit: "person_hour", dimension: "زمان کار", externalResourceId: "res-formwork-team", source: "progress_feed" },
+    { resourceId: "20000000-0000-4000-8000-000000000002", type: "labor", code: "LAB-FORM", title: "اکیپ قالب‌بندی", baseUnit: "hour", dimension: "زمان کار", externalResourceId: "res-formwork-team", source: "progress_feed" },
     { resourceId: "20000000-0000-4000-8000-000000000003", type: "equipment", code: "EQ-CRANE", title: "جرثقیل", baseUnit: "hour", dimension: "زمان تجهیز", externalResourceId: "res-crane", source: "progress_feed" },
     { resourceId: "20000000-0000-4000-8000-000000000004", type: "general_cost", code: "GEN-PERMIT", title: "هزینه مجوز", baseUnit: null, dimension: null, externalResourceId: "res-permit", source: "manual_entry" },
   ];
@@ -132,13 +132,15 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
 
   async function createEstimateLine(values) {
     await wait(380);
-    const validation = validateEstimateLine(values);
+    // The unit-price rule depends on the resource type, so it is resolved first.
+    const selectedResource = resources.find((item) => item.resourceId === String(values.resourceId ?? "").trim());
+    const isGeneralCost = selectedResource?.type === "general_cost";
+    const validation = validateEstimateLine(values, { isGeneralCost });
     if (!validation.valid) throw new ApiError({ status: 422, code: "VALIDATION_ERROR", message: "اطلاعات خط متره معتبر نیست.", details: validation.errors });
-    const resource = resources.find((item) => item.resourceId === validation.values.resourceId);
+    const resource = selectedResource;
     const activity = activities.find((item) => item.activityExternalId === validation.values.activityExternalId);
     if (!resource || !activity) throw new ApiError({ status: 422, code: "REFERENCE_NOT_FOUND", message: "فعالیت یا قلم مالی انتخاب‌شده معتبر نیست." });
 
-    const isGeneralCost = resource.type === "general_cost";
     const [amountInteger, amountFraction] = validation.values.originalQuantity.split(".");
     if (isGeneralCost && amountFraction !== undefined) {
       throw new ApiError({ status: 422, code: "VALIDATION_ERROR", message: `مبلغ IRR باید عدد صحیح ${CURRENCY_LABELS.IRR} باشد.` });
@@ -155,6 +157,7 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
       revisedQuantity: isGeneralCost ? null : validation.values.originalQuantity,
       originalAmount: isGeneralCost ? amountValue : null,
       revisedAmount: isGeneralCost ? amountValue : null,
+      originalUnitPriceIRR: isGeneralCost ? amountValue : validation.values.originalUnitPriceIRR,
       source: "manual_entry",
       revision: 1,
       revisions: [],

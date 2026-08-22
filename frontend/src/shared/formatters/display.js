@@ -4,14 +4,17 @@ const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 const persianDate = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { year: "numeric", month: "long", day: "numeric" });
 const persianDateTime = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tehran" });
 
+// Codes come from the Backend UNIT_REGISTRY: kg, ton, m, m2, m3, each, hour, day.
 const UNIT_LABELS = Object.freeze({
   IRR: CURRENCY_LABELS.IRR,
-  m2: "مترمربع",
   kg: "کیلوگرم",
-  hour: "ساعت",
-  person_hour: "نفر-ساعت",
-  equipment_day: "روز دستگاه",
   ton: "تن",
+  m: "متر",
+  m2: "مترمربع",
+  m3: "مترمکعب",
+  each: "عدد",
+  hour: "ساعت",
+  day: "روز دستگاه",
 });
 
 function toPersianDigits(value) {

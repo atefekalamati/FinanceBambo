@@ -1,22 +1,69 @@
 import { validatePositiveDecimal } from "../../shared/validation/decimal-validation.js";
 
-export const UNIT_OPTIONS = Object.freeze([
-  { value: "ton", label: "تن", dimension: "mass", dimensionLabel: "جرم" },
+/**
+ * Unit vocabulary.
+ *
+ * `GET /api/projects/{projectId}/finance/unit-registry` is the source of truth
+ * and `setUnitRegistry` replaces these defaults as soon as a page loads it.
+ * The defaults mirror the Backend registry exactly so validation still works
+ * before the first fetch — an invented code (the previous `person_hour` and
+ * `equipment_day`) is rejected by the API with UNIT_NOT_FOUND.
+ */
+const DEFAULT_UNITS = Object.freeze([
   { value: "kg", label: "کیلوگرم", dimension: "mass", dimensionLabel: "جرم" },
-  { value: "equipment_day", label: "روز دستگاه", dimension: "equipment_time", dimensionLabel: "زمان دستگاه" },
-  { value: "hour", label: "ساعت", dimension: "equipment_time", dimensionLabel: "زمان دستگاه" },
-  { value: "person_hour", label: "نفر-ساعت", dimension: "labor_time", dimensionLabel: "زمان نیروی انسانی" },
+  { value: "ton", label: "تن", dimension: "mass", dimensionLabel: "جرم" },
+  { value: "m", label: "متر", dimension: "length", dimensionLabel: "طول" },
+  { value: "m2", label: "مترمربع", dimension: "area", dimensionLabel: "مساحت" },
+  { value: "m3", label: "مترمکعب", dimension: "volume", dimensionLabel: "حجم" },
+  { value: "each", label: "عدد", dimension: "count", dimensionLabel: "تعداد" },
+  { value: "hour", label: "ساعت", dimension: "time", dimensionLabel: "زمان" },
+  { value: "day", label: "روز دستگاه", dimension: "equipment_time", dimensionLabel: "زمان تجهیز" },
 ]);
 
-const UNIT_MAP = new Map(UNIT_OPTIONS.map((unit) => [unit.value, unit]));
+let unitOptions = DEFAULT_UNITS;
+let unitMap = new Map(DEFAULT_UNITS.map((unit) => [unit.value, unit]));
+
+/** Replaces the defaults with the registry the Backend actually serves. */
+export function setUnitRegistry(units) {
+  const normalized = (units ?? [])
+    .filter((unit) => unit && unit.code)
+    .map((unit) => ({
+      value: unit.code,
+      label: unit.label ?? unit.labelFa ?? unit.code,
+      dimension: unit.dimension,
+      dimensionLabel: unit.dimensionLabel ?? unit.dimensionLabelFa ?? unit.dimension,
+    }));
+  if (!normalized.length) return unitOptions;
+  unitOptions = Object.freeze(normalized);
+  unitMap = new Map(normalized.map((unit) => [unit.value, unit]));
+  return unitOptions;
+}
+
+export function getUnitOptions() {
+  return unitOptions;
+}
+
+/**
+ * The conversions the Backend will accept, mirroring `units_are_compatible`:
+ * pairs inside one dimension, plus the sanctioned day↔hour crossing.
+ * `configurable` marks the working-time rule an operator may actually change;
+ * a fixed physical relationship like ton→kg is not editable.
+ */
+const CONVERSION_RULES = Object.freeze([
+  { sourceUnit: "ton", targetUnit: "kg", dimension: "mass", configurable: false },
+  { sourceUnit: "day", targetUnit: "hour", dimension: "equipment_time", configurable: true },
+]);
+
 const SCOPES = new Set(["organization", "project"]);
-const ALLOWED_CONVERSION_DIRECTIONS = new Map([
-  ["ton", new Set(["kg"])],
-  ["equipment_day", new Set(["hour"])],
-]);
-const CONFIGURABLE_CONVERSION_DIRECTIONS = new Map([
-  ["equipment_day", new Set(["hour"])],
-]);
+
+function findRule(sourceUnit, targetUnit) {
+  return CONVERSION_RULES.find((rule) => rule.sourceUnit === sourceUnit && rule.targetUnit === targetUnit) ?? null;
+}
+
+/** The dimension the API expects for this pair, not just the source's own. */
+export function getConversionDimension(sourceUnit, targetUnit) {
+  return findRule(sourceUnit, targetUnit)?.dimension ?? getUnitDefinition(sourceUnit)?.dimension ?? null;
+}
 
 function validateDate(value) {
   const normalized = String(value ?? "").trim();
@@ -30,26 +77,28 @@ function validateDate(value) {
 }
 
 export function getUnitDefinition(value) {
-  return UNIT_MAP.get(value) ?? null;
+  return unitMap.get(value) ?? null;
 }
 
 export function getCompatibleTargetUnits(sourceUnit) {
-  const source = getUnitDefinition(sourceUnit);
-  if (!source) return [];
-  const allowedTargets = ALLOWED_CONVERSION_DIRECTIONS.get(source.value) ?? new Set();
-  return UNIT_OPTIONS.filter((unit) => unit.dimension === source.dimension && allowedTargets.has(unit.value));
+  if (!getUnitDefinition(sourceUnit)) return [];
+  return CONVERSION_RULES
+    .filter((rule) => rule.sourceUnit === sourceUnit)
+    .map((rule) => getUnitDefinition(rule.targetUnit))
+    .filter(Boolean);
 }
 
 export function isSupportedConversionDirection(sourceUnit, targetUnit) {
-  return ALLOWED_CONVERSION_DIRECTIONS.get(sourceUnit)?.has(targetUnit) ?? false;
+  return findRule(sourceUnit, targetUnit) !== null;
 }
 
 export function isConfigurableConversionDirection(sourceUnit, targetUnit) {
-  return CONFIGURABLE_CONVERSION_DIRECTIONS.get(sourceUnit)?.has(targetUnit) ?? false;
+  return findRule(sourceUnit, targetUnit)?.configurable === true;
 }
 
 export function getConfigurableSourceUnits() {
-  return UNIT_OPTIONS.filter((unit) => CONFIGURABLE_CONVERSION_DIRECTIONS.has(unit.value));
+  const sources = new Set(CONVERSION_RULES.filter((rule) => rule.configurable).map((rule) => rule.sourceUnit));
+  return unitOptions.filter((unit) => sources.has(unit.value));
 }
 
 export function validateUnitConversion(values) {
@@ -70,8 +119,11 @@ export function validateUnitConversion(values) {
     factor: factor.message,
     scope: SCOPES.has(scope) ? "" : "سطح تبدیل معتبر نیست.",
     effectiveDate: effectiveDate.message,
-    dimension: source && target && source.dimension !== target.dimension ? "تبدیل بین دو بُعد ناسازگار مجاز نیست." : "",
-    direction: source && target && source.dimension === target.dimension && !isSupportedConversionDirection(sourceUnit, targetUnit)
+    // day→hour crosses dimensions on purpose, exactly as units_are_compatible allows.
+    dimension: source && target && source.dimension !== target.dimension && !isSupportedConversionDirection(sourceUnit, targetUnit) && !isSupportedConversionDirection(targetUnit, sourceUnit)
+      ? "تبدیل بین دو بُعد ناسازگار مجاز نیست."
+      : "",
+    direction: source && target && !isSupportedConversionDirection(sourceUnit, targetUnit) && isSupportedConversionDirection(targetUnit, sourceUnit)
       ? "جهت تبدیل مجاز نیست؛ تبدیل فقط از واحد بزرگ‌تر به واحد پایه کوچک‌تر ثبت می‌شود."
       : "",
     policy: source && target && isSupportedConversionDirection(sourceUnit, targetUnit) && !isConfigurableConversionDirection(sourceUnit, targetUnit)

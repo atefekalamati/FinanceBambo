@@ -1,7 +1,13 @@
 import { ApiError } from "../../core/api/api-error.js";
 import { financeBase, jsonOptions, mapResource } from "./api-utils.js";
 
-function mapInvoice(value) {
+/**
+ * InvoiceLineResponse carries estimateLineId and resourceId but no human
+ * label, so the label is resolved from the same target list the create form
+ * uses. Falling back to the line description showed the note the user typed
+ * where the item name belongs.
+ */
+function mapInvoice(value, targets = []) {
   return {
     invoiceId: value.id,
     invoiceNumber: value.invoiceNumber,
@@ -24,7 +30,23 @@ function mapInvoice(value) {
     confirmedAt: value.confirmedAt,
     createdAt: value.createdAt,
     rawLinesTotalIRR: value.lines.reduce((sum, line) => sum + BigInt(line.rawAmountIrr), 0n).toString(),
-    lines: value.lines.map((line, index) => ({ invoiceLineId: `${value.id}-${index + 1}`, targetType: line.estimateLineId ? "estimate_line" : "general_cost", targetLabel: line.description || "خط فاکتور", estimateLineId: line.estimateLineId, resourceId: line.resourceId, quantity: line.quantity, unit: line.unit, unitPriceIRR: line.unitPriceIrr, lineAmountIRR: line.finalLineAmountIrr, description: line.description })),
+    lines: value.lines.map((line, index) => {
+      const targetType = line.estimateLineId ? "estimate_line" : "general_cost";
+      const target = targets.find((item) => (line.estimateLineId && item.estimateLineId === line.estimateLineId))
+        ?? targets.find((item) => !line.estimateLineId && item.targetType === "general_cost" && item.resourceId === line.resourceId);
+      return {
+        invoiceLineId: `${value.id}-${index + 1}`,
+        targetType,
+        targetLabel: target?.label || line.description || "خط فاکتور",
+        estimateLineId: line.estimateLineId,
+        resourceId: line.resourceId,
+        quantity: line.quantity,
+        unit: line.unit,
+        unitPriceIRR: line.unitPriceIrr,
+        lineAmountIRR: line.finalLineAmountIrr,
+        description: line.description,
+      };
+    }),
   };
 }
 
@@ -62,7 +84,7 @@ export function createApiInvoicesAdapter(context, client) {
     if (source) params.set("source", source);
     const payload = await client.request(`${base}/invoices?${params.toString()}`);
     return {
-      items: payload.items.map(mapInvoice).map(({ lines, ...item }) => ({ ...item, lineCount: lines.length })),
+      items: payload.items.map((item) => mapInvoice(item, targetCache)).map(({ lines, ...item }) => ({ ...item, lineCount: lines.length })),
       page: payload.page,
       pageSize: payload.pageSize,
       totalItems: payload.totalItems,
@@ -70,7 +92,8 @@ export function createApiInvoicesAdapter(context, client) {
     };
   }
   async function getInvoice(invoiceId) {
-    return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}`));
+    if (!targetCache.length) await getInvoiceTargets();
+    return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}`), targetCache);
   }
   async function previewDraft({ lines, adjustments }) {
     return exactPreview(lines, adjustments);
@@ -85,20 +108,20 @@ export function createApiInvoicesAdapter(context, client) {
   }
   async function createDraft({ header, lines, adjustments, duplicateOverrideReason, idempotencyKey }) {
     const payload = { invoiceNumber: header.invoiceNumber || null, invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "manual", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: duplicateOverrideReason || null, directAdjustmentAllocations: [], lines: await linePayload(lines) };
-    return mapInvoice(await client.request(`${base}/invoices`, jsonOptions("POST", payload)));
+    return mapInvoice(await client.request(`${base}/invoices`, jsonOptions("POST", payload)), targetCache);
   }
   async function submitDraft({ invoiceId, expectedVersion }) {
-    return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}`, jsonOptions("PATCH", { status: "awaitingConfirmation", expectedVersion })));
+    return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}`, jsonOptions("PATCH", { status: "awaitingConfirmation", expectedVersion })), targetCache);
   }
   async function confirmInvoice({ invoiceId, expectedVersion, idempotencyKey }) {
-    return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}/confirm`, jsonOptions("POST", { expectedVersion, idempotencyKey })));
+    return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}/confirm`, jsonOptions("POST", { expectedVersion, idempotencyKey })), targetCache);
   }
   async function voidInvoice({ invoiceId, expectedVersion, idempotencyKey, reason }) {
-    return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}/void`, jsonOptions("POST", { expectedVersion, idempotencyKey, reason })));
+    return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}/void`, jsonOptions("POST", { expectedVersion, idempotencyKey, reason })), targetCache);
   }
   async function createCorrective({ originalInvoiceId, header, lines, adjustments, financialEffectSign, reason, idempotencyKey }) {
     const payload = { invoiceNumber: header.invoiceNumber || null, invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "corrective", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: null, directAdjustmentAllocations: [], lines: await linePayload(lines), financialEffectSign, reason };
-    return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(originalInvoiceId)}/corrective`, jsonOptions("POST", payload)));
+    return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(originalInvoiceId)}/corrective`, jsonOptions("POST", payload)), targetCache);
   }
   return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective });
 }
