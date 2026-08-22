@@ -83,7 +83,7 @@ def wire(application: FastAPI, connection: AsyncConnection, storage_root: Path) 
 
     storage = LocalFileStorage(storage_root)
     progress_provider = SeededProgressSnapshotProvider(
-        seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.SNAPSHOT_ID, seed.PROGRESS_ASSIGNMENTS)
+        seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.PROGRESS_SNAPSHOTS, seed.IMPORTER_ID)
     activity_provider = SeededActivityProvider(seed.ACTIVITIES)
 
     invoice_service = FinanceInvoiceService(PsycopgInvoiceRepository(connection))
