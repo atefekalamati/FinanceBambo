@@ -102,26 +102,39 @@ class SeededProgressSnapshotProvider:
     """Serves the progress feed the host normally proxies from the progress module.
 
     The feed shape follows the Integration Kit: a snapshot header that must match the
-    requested scope exactly, plus assignment rows keyed by assignmentExternalId.
+    requested scope exactly, plus assignment rows keyed by assignmentExternalId. The
+    header is built here rather than read from the finance-side ref row, because the
+    feed response is assembled from whatever this provider returns.
     """
 
-    def __init__(self, organization_id: UUID, project_id: str, snapshot_id: UUID, assignments):
+    def __init__(self, organization_id: UUID, project_id: str, snapshots, imported_by: UUID):
         self._organization_id, self._project_id = str(organization_id), project_id
-        self._snapshot_id, self._assignments = str(snapshot_id), list(assignments)
+        self._feeds = {}
+        for snapshot in snapshots:
+            snapshot_id = str(snapshot["progress_snapshot_id"])
+            self._feeds[snapshot_id] = {
+                "snapshot": {
+                    "organizationId": self._organization_id,
+                    "projectId": self._project_id,
+                    "progressSnapshotId": snapshot_id,
+                    "sourceFileVersionId": str(snapshot["source_file_version_id"]),
+                    "sourceFileNameSafe": snapshot["source_file_name_safe"],
+                    "reportingDate": snapshot["reporting_date"].isoformat(),
+                    "status": "ready",
+                    "importedBy": str(imported_by),
+                    "importedAt": snapshot["imported_at"].isoformat(),
+                },
+                "assignments": snapshot["assignments"],
+            }
 
     async def get_snapshot(self, organization_id, project_id, snapshot_id):
-        if (str(organization_id) != self._organization_id
-                or project_id != self._project_id
-                or str(snapshot_id) != self._snapshot_id):
+        feed = self._feeds.get(str(snapshot_id))
+        if (feed is None
+                or str(organization_id) != self._organization_id
+                or project_id != self._project_id):
             return {"snapshot": {}, "assignments": []}
-        return {
-            "snapshot": {
-                "organizationId": self._organization_id,
-                "projectId": self._project_id,
-                "progressSnapshotId": self._snapshot_id,
-            },
-            "assignments": [dict(row) for row in self._assignments],
-        }
+        return {"snapshot": dict(feed["snapshot"]),
+                "assignments": [dict(row) for row in feed["assignments"]]}
 
 
 class SeededActivityProvider:

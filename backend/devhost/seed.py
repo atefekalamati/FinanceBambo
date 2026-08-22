@@ -1,10 +1,18 @@
-"""Realistic development data for a single construction project.
+"""Development data mirrored from the frontend's own reference dataset.
 
-Figures are chosen so every screen has something meaningful to render: prices that
-moved after the estimate was approved, quantities executed beyond and below plan,
-a general cost that overran, invoices in several states, and one estimate line
-deliberately left without a current price so the incomplete-calculation path is
-visible rather than theoretical.
+Every identifier, title, quantity, price and date here is copied from the mock adapters
+under `frontend/src/adapters/mock/`, so the browser shows the same project whether it
+runs in standalone (mock) or host (database) mode. When the mock data changes, this file
+is what has to follow.
+
+Two deliberate additions, because the mock keeps them implicit:
+
+* Estimate lines carry `assignment_external_id`. The mock links lines to progress rows
+  through the activity code alone, which is ambiguous here: ACT-201 covers both the rebar
+  line and the crane line, so matching by activity would hand them the same assignment.
+* Invoices are written out explicitly. The mock generates demo invoices procedurally with
+  non-UUID ids that no database column could hold, so these reference the real resources
+  and estimate lines instead of reproducing that filler.
 """
 
 from datetime import date, datetime, timezone
@@ -14,122 +22,222 @@ from uuid import UUID
 ORGANIZATION_ID = UUID("11111111-1111-4111-8111-111111111111")
 PROJECT_ID = "sample_site_01"
 ACTOR_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1")
-SNAPSHOT_ID = UUID("70000000-0000-4000-8000-000000000001")
-SNAPSHOT_REF_ID = UUID("70000000-0000-4000-8000-0000000000ff")
+IMPORTER_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3")
 
-REPORTING_DATE = date(2026, 8, 20)
-NOW = datetime(2026, 8, 20, 8, 0, tzinfo=timezone.utc)
+# Master data is created before the first progress snapshot. The live report filters
+# estimate lines and revisions by created_at <= reportingDate, so a later timestamp would
+# make the whole estimate invisible to the report.
+NOW = datetime(2026, 6, 1, 9, 0, tzinfo=timezone.utc)
 
+# frontend/src/adapters/mock/settings-adapter.js
+SETTINGS_ID = UUID("10000000-0000-4000-8000-000000000001")
+GROSS_BUILT_AREA = Decimal("4250.0000")
+SETTINGS_REASON = "ثبت اولیه زیربنای کل پروژه"
+# The mock dates this revision 2026-08-06, which is after its own newest snapshot
+# (2026-08-02). Nothing in the mock computes from it, but here the report resolves the
+# gross area with effective_from <= reportingDate, so keeping that date would leave every
+# per-square-metre metric unresolved. The area and reason match the mock; only the
+# effective date is pulled back so it actually applies.
+SETTINGS_EFFECTIVE_FROM = date(2026, 6, 1)
 
-def _uuid(prefix: str, index: int) -> UUID:
-    return UUID(f"{prefix}-0000-4000-8000-{index:012d}")
-
-
+# frontend/src/adapters/mock/financial-items-adapter.js
+# id, type, code, title, base_unit, dimension, external_resource_id
 RESOURCES = [
-    # id, type, code, title, base_unit, dimension
-    (_uuid("20000000", 1), "material", "MAT-CEM", "سیمان تیپ ۲", "kg", "mass"),
-    (_uuid("20000000", 2), "material", "MAT-REB", "میلگرد آجدار A3", "kg", "mass"),
-    (_uuid("20000000", 3), "material", "MAT-BLK", "بلوک سبک دیواری", "each", "count"),
-    (_uuid("20000000", 4), "labor", "LAB-MAS", "بنّای ماهر", "hour", "time"),
-    (_uuid("20000000", 5), "labor", "LAB-HLP", "کارگر ساده", "hour", "time"),
-    (_uuid("20000000", 6), "equipment", "EQP-CRN", "جرثقیل برجی", "hour", "time"),
-    (_uuid("20000000", 7), "general_cost", "GEN-INS", "بیمه کارگاه", None, None),
-    (_uuid("20000000", 8), "general_cost", "GEN-PRM", "عوارض و مجوز شهرداری", None, None),
+    (UUID("20000000-0000-4000-8000-000000000001"), "material", "MAT-REBAR", "میلگرد",
+     "kg", "mass", "res-rebar"),
+    (UUID("20000000-0000-4000-8000-000000000002"), "labor", "LAB-FORM", "اکیپ قالب‌بندی",
+     "person_hour", "labor_time", "res-formwork-team"),
+    (UUID("20000000-0000-4000-8000-000000000003"), "equipment", "EQ-CRANE", "جرثقیل",
+     "hour", "time", "res-crane"),
+    (UUID("20000000-0000-4000-8000-000000000004"), "general_cost", "GEN-PERMIT", "هزینه مجوز",
+     None, None, "res-permit"),
 ]
+REBAR, FORMWORK, CRANE, PERMIT = (row[0] for row in RESOURCES)
 
 ACTIVITIES = [
-    {"activityExternalId": "ACT-001", "taskExternalId": "ACT-001",
-     "title": "اسکلت بتنی طبقات", "wbsCode": "1.2.1", "status": "active"},
-    {"activityExternalId": "ACT-002", "taskExternalId": "ACT-002",
-     "title": "دیوارچینی داخلی", "wbsCode": "1.3.2", "status": "active"},
-    {"activityExternalId": "ACT-003", "taskExternalId": "ACT-003",
-     "title": "تجهیز و پشتیبانی کارگاه", "wbsCode": "1.1.4", "status": "active"},
+    {"activityExternalId": "ACT-102", "taskExternalId": "task-foundation",
+     "title": "اجرای فونداسیون", "wbsCode": "1.2", "status": "active"},
+    {"activityExternalId": "ACT-201", "taskExternalId": "task-floor1-slab",
+     "title": "سقف طبقه اول", "wbsCode": "2.1", "status": "active"},
+    {"activityExternalId": "ACT-202", "taskExternalId": "task-formwork",
+     "title": "قالب‌بندی", "wbsCode": "2.2", "status": "active"},
+    {"activityExternalId": "ACT-002", "taskExternalId": "task-permit",
+     "title": "مجوزهای پروژه", "wbsCode": "0.2", "status": "active"},
 ]
 
 # id, resource, activity, assignment, original_quantity, original_unit_price_irr
+# The mock's revisedQuantity becomes an estimate revision below: the backend keeps the
+# original immutable and derives the revised value from the revision trail.
 ESTIMATE_LINES = [
-    (_uuid("30000000", 1), RESOURCES[0][0], "ACT-001", "ASG-001", Decimal("420000"), Decimal("4200")),
-    (_uuid("30000000", 2), RESOURCES[1][0], "ACT-001", "ASG-002", Decimal("96000"), Decimal("38000")),
-    (_uuid("30000000", 3), RESOURCES[2][0], "ACT-002", "ASG-003", Decimal("18500"), Decimal("62000")),
-    (_uuid("30000000", 4), RESOURCES[3][0], "ACT-001", "ASG-004", Decimal("7200"), Decimal("950000")),
-    (_uuid("30000000", 5), RESOURCES[4][0], "ACT-002", "ASG-005", Decimal("5400"), Decimal("520000")),
-    # No current price is seeded for the crane, so the report must report itself incomplete.
-    (_uuid("30000000", 6), RESOURCES[5][0], "ACT-001", "ASG-006", Decimal("1400"), Decimal("2800000")),
-    (_uuid("30000000", 7), RESOURCES[6][0], "ACT-003", None, None, Decimal("1850000000")),
-    (_uuid("30000000", 8), RESOURCES[7][0], "ACT-003", None, None, Decimal("940000000")),
+    (UUID("30000000-0000-4000-8000-000000000001"), REBAR, "ACT-102", "asg-foundation-rebar",
+     Decimal("10000.0000"), None),
+    # The feed has no rebar assignment for ACT-201, so this line reports no progress.
+    (UUID("30000000-0000-4000-8000-000000000002"), REBAR, "ACT-201", None,
+     Decimal("8500.0000"), None),
+    (UUID("30000000-0000-4000-8000-000000000003"), FORMWORK, "ACT-202", "asg-labor-formwork",
+     Decimal("900.0000"), None),
+    (UUID("30000000-0000-4000-8000-000000000004"), CRANE, "ACT-201", "asg-crane-floor1",
+     Decimal("160.0000"), None),
+    (UUID("30000000-0000-4000-8000-000000000005"), PERMIT, "ACT-002", "asg-permit-general",
+     None, Decimal("250000000")),
 ]
 
-# resource, scope, version, price, effective_from  (latest effective row wins)
+# estimate_line, revision, previous_quantity, new_quantity, reason
+# The line's reported revision is max(revision) + 1, so the first revision row is
+# numbered 1 and the line then reads as revision 2, matching the mock.
+ESTIMATE_REVISIONS = [
+    (ESTIMATE_LINES[0][0], 1, Decimal("10000.0000"), Decimal("11250.0000"),
+     "افزایش متره فونداسیون طبق نقشه اجرایی"),
+    (ESTIMATE_LINES[2][0], 1, Decimal("900.0000"), Decimal("980.0000"),
+     "افزایش ساعت قالب‌بندی طبق صورت‌جلسه"),
+]
+
+# frontend/src/adapters/mock/prices-adapter.js
+# id, resource, scope, version, unit_price_irr, effective_from
 PRICE_VERSIONS = [
-    (RESOURCES[0][0], "organization", 1, Decimal("4200"), date(2026, 3, 1)),
-    (RESOURCES[0][0], "organization", 2, Decimal("4850"), date(2026, 6, 1)),
-    (RESOURCES[0][0], "project", 3, Decimal("5100"), date(2026, 7, 15)),
-    (RESOURCES[1][0], "organization", 1, Decimal("38000"), date(2026, 3, 1)),
-    (RESOURCES[1][0], "organization", 2, Decimal("44500"), date(2026, 7, 1)),
-    (RESOURCES[2][0], "organization", 1, Decimal("62000"), date(2026, 3, 1)),
-    (RESOURCES[2][0], "project", 2, Decimal("59000"), date(2026, 6, 20)),
-    (RESOURCES[3][0], "organization", 1, Decimal("950000"), date(2026, 3, 1)),
-    (RESOURCES[3][0], "organization", 2, Decimal("1120000"), date(2026, 7, 1)),
-    (RESOURCES[4][0], "organization", 1, Decimal("520000"), date(2026, 3, 1)),
-    (RESOURCES[4][0], "organization", 2, Decimal("610000"), date(2026, 7, 1)),
+    (UUID("50000000-0000-4000-8000-000000000001"), REBAR, "organization", 1,
+     Decimal("285000"), date(2026, 7, 1)),
+    (UUID("50000000-0000-4000-8000-000000000002"), REBAR, "project", 2,
+     Decimal("302000"), date(2026, 8, 1)),
+    (UUID("50000000-0000-4000-8000-000000000003"), FORMWORK, "organization", 3,
+     Decimal("1850000"), date(2026, 7, 15)),
+    (UUID("50000000-0000-4000-8000-000000000004"), CRANE, "organization", 4,
+     Decimal("12500000"), date(2026, 6, 20)),
+    (UUID("50000000-0000-4000-8000-000000000005"), CRANE, "project", 5,
+     Decimal("13200000"), date(2026, 8, 3)),
+    (UUID("50000000-0000-4000-8000-000000000006"), REBAR, "project", 6,
+     Decimal("295000"), date(2026, 7, 15)),
 ]
 
-# source_unit, target_unit, dimension, factor
+# id, scope, version, source_unit, target_unit, dimension, factor, effective_from
 UNIT_CONVERSIONS = [
-    ("ton", "kg", "mass", Decimal("1000")),
-    ("bag", "kg", "mass", Decimal("50")),
-    ("pallet", "each", "count", Decimal("120")),
+    (UUID("55555555-5555-4555-8555-555555555551"), "organization", 1,
+     "ton", "kg", "mass", Decimal("1000.00000000"), date(2026, 1, 1)),
+    (UUID("55555555-5555-4555-8555-555555555552"), "organization", 1,
+     "equipment_day", "hour", "time", Decimal("8.00000000"), date(2026, 1, 1)),
+    (UUID("55555555-5555-4555-8555-555555555553"), "project", 2,
+     "equipment_day", "hour", "time", Decimal("10.00000000"), date(2026, 7, 1)),
 ]
 
-# Assignment feed: quantities the progress module reports for this snapshot.
-PROGRESS_ASSIGNMENTS = [
-    {"assignmentExternalId": "ASG-001", "plannedQuantity": "420000", "actualQuantity": "268000",
-     "manualOverride": None, "task": {"activityCode": "ACT-001", "taskProgressPercent": "64"}},
-    {"assignmentExternalId": "ASG-002", "plannedQuantity": "96000", "actualQuantity": "71500",
-     "manualOverride": None, "task": {"activityCode": "ACT-001", "taskProgressPercent": "74"}},
-    # Executed beyond the approved quantity: drives the overrun warning.
-    {"assignmentExternalId": "ASG-003", "plannedQuantity": "18500", "actualQuantity": "19240",
-     "manualOverride": None, "task": {"activityCode": "ACT-002", "taskProgressPercent": "104"}},
-    {"assignmentExternalId": "ASG-004", "plannedQuantity": "7200", "actualQuantity": "4980",
-     "manualOverride": None, "task": {"activityCode": "ACT-001", "taskProgressPercent": "69"}},
-    # No actual reported: resolution falls back to the task percentage.
-    {"assignmentExternalId": "ASG-005", "plannedQuantity": "5400", "actualQuantity": None,
-     "manualOverride": None, "task": {"activityCode": "ACT-002", "taskProgressPercent": "55"}},
-    {"assignmentExternalId": "ASG-006", "plannedQuantity": "1400", "actualQuantity": "860",
-     "manualOverride": None, "task": {"activityCode": "ACT-001", "taskProgressPercent": "61"}},
+# frontend/src/adapters/mock/progress-adapter.js
+_TASKS = {
+    "asg-foundation-rebar": {"taskExternalId": "task-foundation", "taskName": "اجرای فونداسیون نمونه",
+                             "wbsCode": "1.2", "activityCode": "ACT-102",
+                             "parentTaskExternalId": "task-structure", "taskProgressPercent": "25.0000",
+                             "taskStart": "2026-06-01", "taskFinish": "2026-08-30"},
+    "asg-permit-general": {"taskExternalId": "task-permit", "taskName": "مجوزهای نمونه",
+                           "wbsCode": "0.2", "activityCode": "ACT-002",
+                           "parentTaskExternalId": None, "taskProgressPercent": None,
+                           "taskStart": None, "taskFinish": None},
+    "asg-crane-floor1": {"taskExternalId": "task-floor1-slab", "taskName": "سقف طبقه اول نمونه",
+                         "wbsCode": "2.1", "activityCode": "ACT-201",
+                         "parentTaskExternalId": "task-structure", "taskProgressPercent": "28.0000",
+                         "taskStart": "2026-07-01", "taskFinish": "2026-09-15"},
+    "asg-labor-formwork": {"taskExternalId": "task-formwork", "taskName": "قالب‌بندی نمونه",
+                           "wbsCode": "2.2", "activityCode": "ACT-202",
+                           "parentTaskExternalId": "task-structure", "taskProgressPercent": "30.0000",
+                           "taskStart": "2026-07-10", "taskFinish": "2026-09-20"},
+}
+
+_REBAR_ROW = {"assignmentExternalId": "asg-foundation-rebar", "resourceExternalId": "res-rebar",
+              "resourceName": "میلگرد نمونه", "resourceType": "material", "unit": "kg",
+              "plannedQuantity": "10000.0000", "actualQuantity": "2500.0000",
+              "remainingQuantity": "7500.0000", "plannedWork": None, "actualWork": None,
+              "remainingWork": None, "assignmentWorkCompletePercent": None,
+              "task": _TASKS["asg-foundation-rebar"], "manualOverride": None}
+
+_PERMIT_ROW = {"assignmentExternalId": "asg-permit-general", "resourceExternalId": "res-permit",
+               "resourceName": "هزینه مجوز نمونه", "resourceType": "general_cost", "unit": None,
+               "plannedQuantity": None, "actualQuantity": None, "remainingQuantity": None,
+               "plannedWork": None, "actualWork": None, "remainingWork": None,
+               "assignmentWorkCompletePercent": None,
+               "task": _TASKS["asg-permit-general"], "manualOverride": None}
+
+_CRANE_ROW = {"assignmentExternalId": "asg-crane-floor1", "resourceExternalId": "res-crane",
+              "resourceName": "جرثقیل نمونه", "resourceType": "equipment", "unit": "hour",
+              "plannedQuantity": "160.0000", "actualQuantity": "48.0000",
+              "remainingQuantity": "112.0000", "plannedWork": "160.0000", "actualWork": "48.0000",
+              "remainingWork": "112.0000", "assignmentWorkCompletePercent": "30.0000",
+              "task": _TASKS["asg-crane-floor1"], "manualOverride": None}
+
+_FORMWORK_ROW = {"assignmentExternalId": "asg-labor-formwork",
+                 "resourceExternalId": "res-formwork-team", "resourceName": "اکیپ قالب‌بندی نمونه",
+                 "resourceType": "labor", "unit": "person_hour",
+                 "plannedQuantity": "900.0000", "actualQuantity": "315.0000",
+                 "remainingQuantity": "585.0000", "plannedWork": "900.0000", "actualWork": None,
+                 "remainingWork": None, "assignmentWorkCompletePercent": None,
+                 "task": _TASKS["asg-labor-formwork"], "manualOverride": None}
+
+PROGRESS_SNAPSHOTS = [
+    {"ref_id": UUID("33333333-3333-4333-8333-3333333331ff"),
+     "progress_snapshot_id": UUID("33333333-3333-4333-8333-333333333331"),
+     "source_file_version_id": UUID("44444444-4444-4444-8444-444444444441"),
+     "source_file_name_safe": "sample-progress-v1.mpp",
+     "reporting_date": date(2026, 7, 31),
+     "imported_at": datetime(2026, 8, 1, 8, 30, tzinfo=timezone.utc),
+     "assignments": [_REBAR_ROW, _PERMIT_ROW]},
+    {"ref_id": UUID("33333333-3333-4333-8333-3333333332ff"),
+     "progress_snapshot_id": UUID("33333333-3333-4333-8333-333333333332"),
+     "source_file_version_id": UUID("44444444-4444-4444-8444-444444444442"),
+     "source_file_name_safe": "sample-resource-loaded-v2.mpp",
+     "reporting_date": date(2026, 8, 1),
+     "imported_at": datetime(2026, 8, 2, 8, 30, tzinfo=timezone.utc),
+     "assignments": [_REBAR_ROW, _PERMIT_ROW, _CRANE_ROW]},
+    {"ref_id": UUID("33333333-3333-4333-8333-3333333333ff"),
+     "progress_snapshot_id": UUID("33333333-3333-4333-8333-333333333333"),
+     "source_file_version_id": UUID("44444444-4444-4444-8444-444444444443"),
+     "source_file_name_safe": "sample-progress-v3.mpp",
+     "reporting_date": date(2026, 8, 2),
+     "imported_at": datetime(2026, 8, 3, 8, 30, tzinfo=timezone.utc),
+     "assignments": [_REBAR_ROW, _PERMIT_ROW, _CRANE_ROW, _FORMWORK_ROW]},
 ]
 
-# invoice_id, number, date, vendor, source, status, discount, tax, shipping, other, sign
+LATEST_SNAPSHOT = PROGRESS_SNAPSHOTS[-1]
+SNAPSHOT_ID = LATEST_SNAPSHOT["progress_snapshot_id"]
+REPORTING_DATE = LATEST_SNAPSHOT["reporting_date"]
+
+# The mock records this override on the formwork assignment of the newest snapshot.
+PROGRESS_OVERRIDE = {
+    "id": UUID("66666666-6666-4666-8666-666666666661"),
+    "estimate_line_id": ESTIMATE_LINES[2][0],
+    "progress_snapshot_ref_id": LATEST_SNAPSHOT["ref_id"],
+    "computed_value": Decimal("270.0000"),
+    "override_value": Decimal("315.0000"),
+    "reason": "اصلاح ساختگی بر اساس صورت‌جلسه نمونه",
+    "created_by": UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2"),
+    "created_at": datetime(2026, 8, 3, 9, 0, tzinfo=timezone.utc),
+}
+
+# id, number, date, vendor, status, discount, tax, shipping, other
 INVOICES = [
-    (_uuid("40000000", 1), "INV-1405-0121", date(2026, 5, 12), "سیمان آبیک", "manual", "confirmed",
-     Decimal("0"), Decimal("84000000"), Decimal("12000000"), Decimal("0"), 1),
-    (_uuid("40000000", 2), "INV-1405-0163", date(2026, 6, 3), "فولاد کاوه", "manual", "confirmed",
-     Decimal("55000000"), Decimal("196000000"), Decimal("0"), Decimal("0"), 1),
-    (_uuid("40000000", 3), "INV-1405-0188", date(2026, 6, 28), "بلوک سازان پارس", "manual", "confirmed",
-     Decimal("0"), Decimal("41000000"), Decimal("8000000"), Decimal("0"), 1),
-    (_uuid("40000000", 4), "INV-1405-0201", date(2026, 7, 6), "پیمانکار نیروی انسانی البرز", "manual", "confirmed",
-     Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), 1),
-    (_uuid("40000000", 5), "INV-1405-0233", date(2026, 7, 19), "بیمه ایران", "manual", "confirmed",
-     Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), 1),
-    # General cost booked above its revised estimate: drives GENERAL_COST_OVERRUN.
-    (_uuid("40000000", 6), "INV-1405-0244", date(2026, 7, 30), "شهرداری منطقه ۵", "manual", "confirmed",
-     Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), 1),
-    (_uuid("40000000", 7), "INV-1405-0250", date(2026, 8, 2), "سیمان آبیک", "manual", "awaitingConfirmation",
-     Decimal("0"), Decimal("9000000"), Decimal("0"), Decimal("0"), 1),
-    (_uuid("40000000", 8), "INV-1405-0207", date(2026, 7, 9), "فولاد کاوه", "manual", "draft",
-     Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), 1),
+    (UUID("40000000-0000-4000-8000-000000000001"), "ف-۱۰۲۴", date(2026, 7, 8),
+     "فروشگاه ساختمانی بامبو نمونه", "confirmed",
+     Decimal("0"), Decimal("1200000"), Decimal("750000"), Decimal("0")),
+    (UUID("40000000-0000-4000-8000-000000000002"), "ف-۱۰۳۱", date(2026, 7, 19),
+     "شرکت مصالح پایدار نمونه", "confirmed",
+     Decimal("500000"), Decimal("0"), Decimal("0"), Decimal("0")),
+    (UUID("40000000-0000-4000-8000-000000000003"), "ف-۱۰۳۶", date(2026, 7, 24),
+     "تأمین تجهیزات سازه نمونه", "confirmed",
+     Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0")),
+    (UUID("40000000-0000-4000-8000-000000000004"), "ف-۱۰۴۰", date(2026, 7, 28),
+     "شرکت مصالح پایدار نمونه", "awaitingConfirmation",
+     Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0")),
+    (UUID("40000000-0000-4000-8000-000000000005"), "ف-۱۰۴۲", date(2026, 7, 30),
+     "فروشگاه ساختمانی بامبو نمونه", "draft",
+     Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0")),
 ]
 
-# invoice, estimate_line, resource, quantity, unit, unit_price, raw_amount
+# invoice, estimate_line, resource, quantity, unit, unit_price_irr, raw_amount_irr
 INVOICE_LINES = [
-    (INVOICES[0][0], ESTIMATE_LINES[0][0], RESOURCES[0][0], Decimal("240"), "bag", Decimal("242500"), Decimal("58200000")),
-    (INVOICES[1][0], ESTIMATE_LINES[1][0], RESOURCES[1][0], Decimal("62"), "ton", Decimal("44500000"), Decimal("2759000000")),
-    (INVOICES[2][0], ESTIMATE_LINES[2][0], RESOURCES[2][0], Decimal("11200"), "each", Decimal("59000"), Decimal("660800000")),
-    (INVOICES[3][0], ESTIMATE_LINES[3][0], RESOURCES[3][0], Decimal("4980"), "hour", Decimal("1120000"), Decimal("5577600000")),
-    (INVOICES[4][0], ESTIMATE_LINES[6][0], RESOURCES[6][0], None, None, None, Decimal("1420000000")),
-    (INVOICES[5][0], ESTIMATE_LINES[7][0], RESOURCES[7][0], None, None, None, Decimal("1080000000")),
-    (INVOICES[6][0], ESTIMATE_LINES[0][0], RESOURCES[0][0], Decimal("40"), "bag", Decimal("242500"), Decimal("9700000")),
-    (INVOICES[7][0], ESTIMATE_LINES[1][0], RESOURCES[1][0], Decimal("5"), "ton", Decimal("44500000"), Decimal("222500000")),
+    # Rebar bought in tonnes: exercises the ton -> kg conversion above.
+    (INVOICES[0][0], ESTIMATE_LINES[0][0], REBAR, Decimal("1.2500"), "ton",
+     Decimal("285000000"), Decimal("356250000")),
+    (INVOICES[0][0], ESTIMATE_LINES[4][0], PERMIT, None, None, None, Decimal("60000000")),
+    (INVOICES[1][0], ESTIMATE_LINES[0][0], REBAR, Decimal("2100.0000"), "kg",
+     Decimal("295000"), Decimal("619500000")),
+    (INVOICES[2][0], ESTIMATE_LINES[3][0], CRANE, Decimal("48.0000"), "hour",
+     Decimal("12500000"), Decimal("600000000")),
+    (INVOICES[3][0], ESTIMATE_LINES[2][0], FORMWORK, Decimal("120.0000"), "person_hour",
+     Decimal("1850000"), Decimal("222000000")),
+    (INVOICES[4][0], ESTIMATE_LINES[4][0], PERMIT, None, None, None, Decimal("90000000")),
 ]
-
-GROSS_BUILT_AREA = Decimal("14250.0000")
