@@ -1,16 +1,23 @@
 import { financeBase, formDataWithFile, jsonOptions, mapImportPreview, mapResource } from "./api-utils.js";
 import { compareDecimalStrings } from "../../shared/validation/decimal-validation.js";
+import { setUnitRegistry } from "../../features/prices/unit-conversions-validation.js";
 
-function mapLine(value, resources) {
+/**
+ * `estimate_lines` has no activity_title or wbs_code column and the read models
+ * return null for both, because the activity catalogue belongs to the host
+ * project module. The title is therefore joined here from /activities.
+ */
+function mapLine(value, resources, activities = []) {
   const resource = resources.find((item) => item.resourceId === value.resourceId);
   const general = resource?.type === "general_cost";
+  const activity = activities.find((item) => item.activityExternalId === value.activityExternalId);
   return {
     lineId: value.id,
     activityExternalId: value.activityExternalId,
-    taskExternalId: value.activityExternalId,
+    taskExternalId: activity?.taskExternalId ?? value.activityExternalId,
     assignmentExternalId: value.assignmentExternalId,
-    activityTitle: value.activityTitle || value.activityExternalId || "فعالیت بدون عنوان",
-    wbsCode: value.wbsCode || "—",
+    activityTitle: value.activityTitle || activity?.title || value.activityExternalId || "فعالیت بدون عنوان",
+    wbsCode: value.wbsCode || activity?.wbsCode || "—",
     resourceId: value.resourceId,
     originalQuantity: general ? null : value.originalQuantity,
     revisedQuantity: general ? null : value.revisedQuantity,
@@ -45,7 +52,6 @@ export function createApiFinancialItemsAdapter(context, client) {
     ]);
     const resources = resourcePayload.map(mapResource);
     resourceCache = resources;
-    const estimateLines = linePayload.map((line) => mapLine(line, resources));
     const activities = (activityPayload.items ?? []).map((item) => ({
       activityExternalId: item.activityExternalId,
       taskExternalId: item.taskExternalId,
@@ -53,6 +59,7 @@ export function createApiFinancialItemsAdapter(context, client) {
       wbsCode: item.wbsCode,
       status: item.status,
     }));
+    const estimateLines = linePayload.map((line) => mapLine(line, resources, activities));
     const unitRegistry = (unitPayload.items ?? []).filter((item) => item.active).map((item) => ({
       code: item.code,
       label: item.labelFa,
@@ -60,6 +67,8 @@ export function createApiFinancialItemsAdapter(context, client) {
       dimensionLabel: item.dimensionLabelFa,
       decimalPrecision: item.decimalPrecision,
     }));
+    // Unit validation elsewhere reads from the registry the service serves.
+    setUnitRegistry(unitRegistry);
     return { resources, estimateLines, activities, unitRegistry, scope: { organizationId: context.organizationId, projectId: context.projectId } };
   }
   async function createResource(values) {
