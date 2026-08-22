@@ -104,7 +104,52 @@
 }
 
 .finance-overview-layout .finance-managerial-comparison {
-  block-size: 100%;
+  --finance-chart-card-block: 27rem;
+  display: flex;
+  flex-direction: column;
+  block-size: var(--finance-chart-card-block);
+  /* A panel must fit the declared height by shrinking its own type and
+     spacing; nothing here may scroll or spill. */
+  overflow: hidden;
+}
+
+.finance-managerial-comparison .finance-analysis-card__heading {
+  flex: 0 0 auto;
+}
+
+.analysis-chart-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+.analysis-chart-panel > .managerial-deviation,
+.analysis-chart-panel > .breakdown-legend,
+.analysis-chart-panel > .inline-notice {
+  flex: 0 0 auto;
+}
+
+.analysis-chart-panel > .combo-chart {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/* The alternative table is for assistive technology and print, per PRD 12. On
+   screen the chart carries the meaning, and a table cannot share a fixed height
+   with it without forcing a scrollbar, so it is hidden the same way every other
+   screen-reader-only element in this project is. */
+.analysis-chart-panel > .table-scroll {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .finance-supplementary-summary {
@@ -112,6 +157,7 @@
   flex-direction: column;
   min-inline-size: 0;
   block-size: 100%;
+  overflow: hidden;
   padding: .85rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -151,7 +197,8 @@
 }
 
 .finance-supplementary-summary__list > .summary-card {
-  flex: 1 0 auto;
+  flex: 1 1 0;
+  min-block-size: 0;
   inline-size: 100%;
 }
 
@@ -432,7 +479,7 @@
   flex-direction: column;
   inline-size: 100%;
   min-block-size: 0;
-  margin-block-start: 1rem;
+  margin-block-start: .6rem;
   padding: .65rem .9rem .25rem;
   border-radius: var(--radius-md);
   background:
@@ -489,7 +536,7 @@
   container-type: inline-size;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 2.25rem minmax(10rem, 1fr) minmax(2.75rem, auto);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   align-items: end;
   justify-items: center;
   inline-size: 100%;
@@ -941,13 +988,46 @@
 }
 
 .breakdown-table {
-  min-inline-size: 44rem;
+  /* auto layout lets each column take what it needs; inline-size on .data-table
+     still stretches the table to fill the viewport when there is room, so a
+     scrolled table ends exactly where its content ends. */
+  table-layout: auto;
+  min-inline-size: 0;
+}
+
+.breakdown-table :is(th, td) {
+  white-space: nowrap;
 }
 
 .breakdown-table caption {
   padding-block: var(--space-sm);
   color: var(--color-text-muted);
   text-align: start;
+}
+
+@media (max-width: 70rem) {
+  .finance-managerial-comparison .finance-analysis-card__heading h2 {
+    font-size: .88rem;
+    line-height: 1.4;
+  }
+
+  .finance-managerial-comparison .finance-analysis-card__heading p {
+    font-size: .66rem;
+    line-height: 1.5;
+  }
+
+  .finance-insights {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-risk-stack {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+
+  .finance-risk-stack .finance-warnings {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 48rem) {
@@ -995,10 +1075,6 @@
     padding: .6rem;
   }
 
-  .finance-insights {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .finance-breakdown {
     padding: .6rem .65rem;
   }
@@ -1040,22 +1116,13 @@
     border-radius: 50%;
   }
 
-  .finance-risk-stack {
-    grid-template-rows: none;
-  }
-
   .finance-risk-stack .finance-analysis-card,
   .finance-risk-stack .finance-warnings {
     overflow-y: visible;
   }
 
   .managerial-combo-chart {
-    flex: none;
     overflow: visible;
-  }
-
-  .managerial-combo-chart__plot {
-    flex: none;
   }
 
   .breakdown-chart-viewport {
@@ -1124,10 +1191,8 @@
     line-height: 1.25;
   }
 
-  .breakdown-table {
-    min-inline-size: 38rem;
-    table-layout: fixed;
-  }
+  /* No reserved minimum here either: the columns decide the width, so a
+     scrolled table ends where its content ends. */
 
   .breakdown-table caption {
     padding: .35rem .45rem;
@@ -1201,15 +1266,6 @@
 }
 
 @media (min-width: 48.01rem) and (max-width: 70rem) {
-  .finance-insights {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .finance-risk-stack {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: none;
-  }
-
   .finance-risk-stack .finance-analysis-card,
   .finance-risk-stack .finance-warnings {
     overflow-y: auto;
@@ -1259,7 +1315,7 @@
   }
 
   .managerial-combo-chart__item {
-    grid-template-rows: 2.4rem 6rem minmax(2.7rem, auto);
+    grid-template-rows: auto minmax(0, 1fr) auto;
     padding-inline: .1rem;
     background: none;
   }
@@ -1378,13 +1434,7 @@
   }
 
   .finance-risk-stack {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: none;
     gap: .45rem;
-  }
-
-  .finance-risk-stack .finance-warnings {
-    grid-column: 1 / -1;
   }
 
   .finance-risk-stack .finance-variance-card {
@@ -1432,6 +1482,15 @@
   gap: var(--space-sm) var(--space-md);
 }
 
+.finance-managerial-comparison .finance-analysis-card__heading > div:first-child {
+  flex: 1 1 11rem;
+  min-inline-size: 0;
+}
+
+.analysis-chart-switch {
+  flex: 0 0 auto;
+}
+
 .analysis-chart-switch {
   display: inline-flex;
   flex: 0 0 auto;
@@ -1468,13 +1527,21 @@
 .combo-chart__surface {
   position: relative;
   min-inline-size: 0;
+  min-block-size: 0;
   inline-size: 100%;
+  block-size: 100%;
+}
+
+.combo-chart {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
 }
 
 .combo-chart__svg {
   display: block;
   inline-size: 100%;
-  block-size: auto;
+  block-size: 100%;
   /* Hard guarantee: nothing painted inside the chart can widen the document. */
   overflow: hidden;
 }
@@ -1604,6 +1671,11 @@
     flex-direction: column;
   }
 
+  /* In a column flex container that basis is a height, not a width. */
+  .finance-managerial-comparison .finance-analysis-card__heading > div:first-child {
+    flex: 0 0 auto;
+  }
+
   .analysis-chart-switch {
     inline-size: 100%;
   }
@@ -1617,6 +1689,17 @@
   .analysis-chart-switch,
   .combo-chart__tooltip {
     display: none !important;
+  }
+
+  /* On paper the table is the readable form, so it comes back out of hiding. */
+  .analysis-chart-panel > .table-scroll {
+    position: static;
+    inline-size: auto;
+    block-size: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
   }
 
   /* Print keeps the same single-chart rule as the screen: a hidden panel was
