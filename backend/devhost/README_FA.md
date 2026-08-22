@@ -22,6 +22,30 @@ python -m devhost
 
 سپس <http://127.0.0.1:8000> را باز کنید.
 
+### بدون Docker
+
+Docker فقط یک PostgreSQL محلی فراهم می‌کند و هیچ بخش دیگری از پروژه از آن خبر ندارد —
+نه ماژول، نه Migrationها، نه تست‌ها، نه Frontend. هر PostgreSQL دیگری هم کار می‌کند:
+
+```bash
+python -m devhost --dsn "postgresql://user:pass@127.0.0.1:5432/bambo_finance"
+# یا با متغیر محیطی
+set FINANCE_DEV_DSN=postgresql://user:pass@127.0.0.1:5432/bambo_finance
+```
+
+برای نسخه قابل‌حمل (بدون Administrator، بدون Service، با حذف پوشه برگشت‌پذیر):
+باینری‌های ویندوزی PostgreSQL را باز کنید، سپس
+
+```bash
+initdb -D <data> -U bambo --pwfile=<file> -E UTF8 --locale=C
+# در postgresql.conf:  listen_addresses = 'localhost'   و   port = 55432
+pg_ctl -D <data> -l server.log start
+createdb -h 127.0.0.1 -p 55432 -U bambo bambo_finance
+```
+
+`listen_addresses = 'localhost'` را جدی بگیرید. پیش‌فرض روی همه رابط‌ها گوش می‌دهد،
+و روی دستگاهی که VPN دارد یعنی دیتابیس روی آدرس تونل هم پاسخ می‌دهد.
+
 گزینه‌ها:
 
 | گزینه | کار |
