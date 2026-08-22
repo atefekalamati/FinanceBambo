@@ -11,6 +11,8 @@ import uvicorn
 
 from .app import build
 
+# A locally installed PostgreSQL. Docker is only a fallback and publishes on 55433,
+# so the two can run side by side without either shadowing the other.
 DEFAULT_DSN = "postgresql://bambo:bambo@127.0.0.1:55432/bambo_finance"
 
 
