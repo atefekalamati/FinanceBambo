@@ -10,10 +10,13 @@
 ## اجرا
 
 ```bash
-# ۱. دیتابیس
-docker compose -f ../../docker-compose.dev.yml up -d
+# ۱. وابستگی فقط-توسعه (سرور ASGI؛ عمداً در backend/requirements.txt نیست)
+pip install -r devhost/requirements.txt
 
-# ۲. میزبان (از پوشه backend)
+# ۲. دیتابیس
+docker compose -f ../docker-compose.dev.yml up -d
+
+# ۳. میزبان (از پوشه backend)
 python -m devhost
 ```
 
