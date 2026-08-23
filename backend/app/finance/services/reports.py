@@ -8,6 +8,8 @@ from openpyxl import Workbook
 from openpyxl.chart import BarChart,Reference
 from openpyxl.styles import Font
 
+from ..domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT,monthly_report
+from ..domain.persian_calendar import persian_month_window
 from ..domain.reports import calculate_live_report
 from ..domain.progress import apply_progress_overrides
 from ..domain.errors import FinanceDomainError
@@ -16,6 +18,18 @@ from ..domain.resources import FinanceRecordNotFound
 
 class ReportSnapshotIncomplete(FinanceDomainError):
     code="REPORT_SNAPSHOT_INCOMPLETE"
+    status=422
+
+
+class MonthlyWindowUnsupported(FinanceDomainError):
+    """The requested window cannot be expressed on the Persian calendar.
+
+    A reporting date near the Gregorian epoch walks the series back past Persian year 1.
+    That is bad input, not a server fault, so it is refused rather than raised out of
+    date() as a 500.
+    """
+
+    code="VALIDATION_ERROR"
     status=422
 
 
@@ -74,6 +88,29 @@ class FinanceLiveReportService:
         """Project the live report down to the operational fields finance.view may read."""
         report=await self.live(scope,reporting_date,progress_snapshot_id)
         return {key:report[key] for key in self.OVERVIEW_FIELDS}
+
+    DEFAULT_MONTH_COUNT=DEFAULT_MONTH_COUNT
+    MAX_MONTH_COUNT=MAX_MONTH_COUNT
+
+    async def monthly(self,scope,reporting_date:date,month_count=None):
+        """The Persian-month cost series ending on `reporting_date`.
+
+        The window closes on the reporting date rather than the end of its Persian month,
+        matching the live report's `invoice_date<=as_of`, so the last bar never includes
+        cost dated after the date the caller asked about — and is a partial month by
+        design, which `windowEnd` reports.
+
+        The window is bounded at MAX_MONTH_COUNT months. Cost older than `windowStart` is
+        outside the series, so the bars sum to the live report's actualCostIrr only when
+        the window covers the whole project; both ends are in the response so a caller can
+        tell which case it has.
+        """
+        count=self.DEFAULT_MONTH_COUNT if month_count is None else int(month_count)
+        if not 1<=count<=self.MAX_MONTH_COUNT:raise MonthlyWindowUnsupported("monthCount is out of range")
+        try:window_start,year,month=persian_month_window(reporting_date,count)
+        except ValueError as error:raise MonthlyWindowUnsupported(str(error)) from error
+        amounts,documents=await self.repo.monthly_actuals(scope,window_start,reporting_date)
+        return monthly_report(amounts,documents,(window_start,year,month,count),reporting_date)
 
     async def variances(self,scope,reporting_date:date,progress_snapshot_id=None,variance_type="all",resource_type=None,query=None,page=1,page_size=50,sort_by=None,sort_direction="desc"):
         report,_data,_snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)

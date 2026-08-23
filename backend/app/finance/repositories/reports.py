@@ -14,6 +14,19 @@ class PsycopgLiveReportRepository:
             await cursor.execute("SELECT id progress_snapshot_ref_id,progress_snapshot_id,reporting_date FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s AND reporting_date<=%s AND snapshot_status='ready' ORDER BY reporting_date DESC,imported_at DESC LIMIT 1",(scope.organization_id,scope.project_id,as_of));snapshot=await cursor.fetchone()
         return {"settings_id":None if settings is None else settings["id"],"gross_area":None if settings is None else settings["gross_built_area"],"estimates":estimates,"invoices":invoices,"conversions":conversions,"snapshot":snapshot}
 
+    async def monthly_actuals(self,scope,date_from,date_to):
+        """Day-level aggregates for the monthly series, summed by PostgreSQL.
+
+        The status set and the signed line amount are the live report's definition of
+        actual cost (see `load`), so the two cannot drift. Grouping stops at the day
+        because Persian months do not align with Gregorian ones — the calendar cut is
+        made in the domain, over at most one row per day per resource type.
+        """
+        async with self.db.cursor(row_factory=dict_row) as cursor:
+            await cursor.execute("""SELECT i.invoice_date,r.resource_type,SUM(il.final_line_amount_irr*i.financial_effect_sign) amount_irr FROM invoice_lines il JOIN invoices i ON i.organization_id=il.organization_id AND i.project_id=il.project_id AND i.id=il.invoice_id JOIN finance_resources r ON r.organization_id=il.organization_id AND r.project_id=il.project_id AND r.id=il.resource_id WHERE il.organization_id=%s AND il.project_id=%s AND i.status IN ('confirmed','voided','corrected') AND i.invoice_date>=%s AND i.invoice_date<=%s GROUP BY i.invoice_date,r.resource_type ORDER BY i.invoice_date,r.resource_type""",(scope.organization_id,scope.project_id,date_from,date_to));amounts=await cursor.fetchall()
+            await cursor.execute("""SELECT invoice_date,financial_effect_sign,COUNT(*) document_count FROM invoices WHERE organization_id=%s AND project_id=%s AND status IN ('confirmed','voided','corrected') AND invoice_date>=%s AND invoice_date<=%s GROUP BY invoice_date,financial_effect_sign ORDER BY invoice_date""",(scope.organization_id,scope.project_id,date_from,date_to));documents=await cursor.fetchall()
+        return amounts,documents
+
     async def snapshot(self,scope,snapshot_id):
         async with self.db.cursor(row_factory=dict_row) as cursor:
             await cursor.execute("SELECT id progress_snapshot_ref_id,progress_snapshot_id,reporting_date FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s AND progress_snapshot_id=%s AND snapshot_status='ready'",(scope.organization_id,scope.project_id,snapshot_id));return await cursor.fetchone()

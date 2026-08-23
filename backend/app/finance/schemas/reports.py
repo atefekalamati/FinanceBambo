@@ -174,3 +174,44 @@ class ReportSnapshotReference(ApiModel):
     unit_conversion_ids:list[UUID]
     calculated_metrics:dict[str,str]=Field(min_length=1)
     immutable:Literal[True]
+
+
+class MonthlyBreakdown(ApiModel):
+    """Signed actual cost of one Persian month, split by the resource type of each line.
+
+    Every invoice line carries a NOT NULL resource_id, so the four buckets are exhaustive
+    and always sum to the month's actualCostIrr — there is no uncategorised remainder.
+    """
+
+    material:Decimal
+    labor:Decimal
+    equipment:Decimal
+    general_cost:Decimal
+    @field_serializer("material","labor","equipment","general_cost")
+    def serialize_money(self,value):return format(value,"f")
+
+
+class MonthlyPoint(ApiModel):
+    persian_year:int=Field(ge=1)
+    persian_month:int=Field(ge=1,le=12)
+    actual_cost_irr:Decimal
+    # None, never zero: no estimate line carries a planned date, so there is no monthly
+    # baseline to report. Zero would assert that nothing was budgeted for this month.
+    estimate_irr:Decimal|None=None
+    # Documents that add cost (financial_effect_sign 1) and documents that remove it
+    # (-1) are counted apart, so a reversal never reads as new purchasing activity.
+    invoice_count:int=Field(ge=0)
+    reversal_count:int=Field(ge=0)
+    breakdown:MonthlyBreakdown
+    @field_serializer("actual_cost_irr","estimate_irr")
+    def serialize_money(self,value):return None if value is None else format(value,"f")
+
+
+class MonthlyReportResponse(ApiModel):
+    months:list[MonthlyPoint]
+    window_start:date
+    window_end:date
+    estimate_source:Literal["unavailable","schedule","manual_plan"]="unavailable"
+    actual_source:Literal["confirmed_financial_documents"]="confirmed_financial_documents"
+    calculation_status:Literal["complete","incomplete"]="complete"
+    warnings:list[ReportWarning]=Field(default_factory=list)
