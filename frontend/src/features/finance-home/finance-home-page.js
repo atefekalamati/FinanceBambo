@@ -243,53 +243,71 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   chart.className = "managerial-combo-chart";
   chart.setAttribute("role", "img");
   chart.setAttribute("aria-label", "مقایسه برآورد اولیه، هزینه واقعی، هزینه باقی‌مانده و پیش‌بینی نهایی");
+  /**
+   * Three bands stacked over one column set: the money, the bars, the labels.
+   * Each bar used to sit in a grid of its own, so a label that wrapped to a
+   * second line took that height out of its own bar and left the four bars
+   * standing on four different floors. A band is one grid over all four
+   * columns, so a cell is always under the cell above it, and the label band is
+   * given a height in lines rather than taking one from its text.
+   */
   const plot = document.createElement("div");
   plot.className = "managerial-combo-chart__plot";
-  const baseline = document.createElement("div");
-  baseline.className = "managerial-combo-chart__baseline";
-  const baselineLabel = document.createElement("div");
-  baselineLabel.className = "managerial-combo-chart__reference";
-  const baselineSwatch = document.createElement("span");
-  baselineSwatch.setAttribute("aria-hidden", "true");
-  const baselineText = document.createElement("strong");
-  baselineText.textContent = "خط مرجع برآورد اولیه";
-  baselineLabel.append(baselineSwatch, baselineText);
-  baseline.append(baselineLabel);
-  plot.append(baseline);
+  const valuesBand = document.createElement("div");
+  valuesBand.className = "managerial-combo-chart__band managerial-combo-chart__band--values";
+  const barsBand = document.createElement("div");
+  barsBand.className = "managerial-combo-chart__band managerial-combo-chart__band--bars";
+  const labelsBand = document.createElement("div");
+  labelsBand.className = "managerial-combo-chart__band managerial-combo-chart__band--labels";
 
-  let initialColumn = null;
   entries.forEach((entry) => {
-    const item = document.createElement("article");
-    item.className = `managerial-combo-chart__item managerial-combo-chart__item--${entry.key}`;
+    // Each cell is its own inline-size container, which is what lets the money
+    // inside it size itself against the width of its own column.
+    const valueCell = document.createElement("div");
+    valueCell.className = "managerial-combo-chart__cell managerial-combo-chart__cell--value";
+    const value = createTomanDisplay(entry.value, { compact: true });
+    value.classList.add("managerial-combo-chart__value");
+    valueCell.append(value);
+    valuesBand.append(valueCell);
+
+    const barCell = document.createElement("div");
+    barCell.className = `managerial-combo-chart__cell managerial-combo-chart__item--${entry.key}`;
     const column = document.createElement("div");
     column.className = "managerial-combo-chart__column";
     column.style.setProperty("--column-size", `${entry.magnitude}%`);
-    if (entry.key === "initial") initialColumn = column;
-    const value = createTomanDisplay(entry.value, { compact: true });
-    value.classList.add("managerial-combo-chart__value");
-    const label = document.createElement("h3");
-    label.textContent = entry.label;
-    item.append(value, column, label);
-    plot.append(item);
-  });
-  chart.append(plot);
-  const syncBaseline = () => {
-    if (!initialColumn?.isConnected || !plot.isConnected) return;
-    const plotRect = plot.getBoundingClientRect();
-    const columnRect = initialColumn.getBoundingClientRect();
-    baseline.style.setProperty("--baseline-top", `${columnRect.top - plotRect.top}px`);
-  };
-  const scheduleBaselineSync = typeof requestAnimationFrame === "function"
-    ? requestAnimationFrame
-    : (callback) => setTimeout(callback, 0);
+    barCell.append(column);
+    barsBand.append(barCell);
 
-  scheduleBaselineSync(() => {
-    syncBaseline();
-    if (typeof ResizeObserver === "function") {
-      const observer = new ResizeObserver(syncBaseline);
-      observer.observe(plot);
-    }
+    const label = document.createElement("h3");
+    label.className = "managerial-combo-chart__label";
+    label.textContent = entry.label;
+    // The band holds a fixed number of lines, so a longer label is clamped
+    // rather than allowed to move anything. The full wording stays on hover.
+    label.title = entry.label;
+    labelsBand.append(label);
   });
+
+  // The line marks the top of the initial-estimate bar, drawn from the same
+  // percentage of the same band the bar itself is drawn from — so it follows
+  // the bar through every resize and every value change, unmeasured.
+  const baseline = document.createElement("div");
+  baseline.className = "managerial-combo-chart__baseline";
+  baseline.setAttribute("aria-hidden", "true");
+  const baselineLabel = document.createElement("div");
+  baselineLabel.className = "managerial-combo-chart__reference";
+  // Two deliberate lines: the chip is narrow so it can stand clear of the bars,
+  // and letting the text find its own break would put it wherever it landed.
+  baselineLabel.append(element("span", "", "خط مرجع"), element("strong", "", "برآورد اولیه"));
+  baseline.append(baselineLabel);
+
+  const initialEntry = entries.find((entry) => entry.key === "initial");
+  if (initialEntry?.value != null) {
+    barsBand.style.setProperty("--baseline-size", `${initialEntry.magnitude}%`);
+    barsBand.append(baseline);
+  }
+
+  plot.append(valuesBand, barsBand, labelsBand);
+  chart.append(plot);
   // forecastFinalCostIrr is nullable in LiveMetrics: null means the Backend
   // could not compute it. Reading that as zero would subtract the whole initial
   // estimate and announce a saving the project has not made, so an

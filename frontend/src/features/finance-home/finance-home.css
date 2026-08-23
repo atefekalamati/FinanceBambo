@@ -501,66 +501,133 @@
   overflow: visible;
 }
 
+/* An arrow sitting on the line it names, rather than a caption parked above or
+   below it: the chip's middle is centred on the line and its point touches it,
+   so the two read as one mark. The +1px is half the rule's own 2px, which is
+   drawn downwards from this element's block-start edge. */
 .managerial-combo-chart__reference {
+  --managerial-reference-edge: color-mix(in srgb, var(--brand-teal) 62%, transparent);
+  /* Opaque on purpose: the chip has to cover the rule it sits on, and
+     --app-card-navy is a gradient, which color-mix cannot take. */
+  --managerial-reference-fill: color-mix(in srgb, var(--brand-teal) 20%, var(--color-surface-page));
+  --managerial-reference-point: .34rem;
   position: absolute;
   z-index: 5;
-  inset-block-start: .4rem;
-  inset-inline-start: .35rem;
-  inline-size: 4.9rem;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  /* Chip plus point fill the strip exactly, so the point lands on the end of
+     the rule and neither of them reaches into the first column. */
+  inline-size: calc(var(--managerial-reference-gutter) - var(--managerial-reference-point));
+  transform: translateY(calc(-50% + 1px));
   display: grid;
-  justify-items: stretch;
-  gap: .3rem;
-  padding: .4rem .45rem;
-  border: 1px solid color-mix(in srgb, var(--brand-teal) 62%, transparent);
+  justify-items: center;
+  padding: .25rem .3rem;
+  border: 1px solid var(--managerial-reference-edge);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--brand-teal) 18%, var(--app-card-navy));
-  box-shadow: 0 .3rem .9rem rgb(0 0 0 / 28%);
+  background: var(--managerial-reference-fill);
+  box-shadow: 0 .25rem .8rem rgb(0 0 0 / 32%);
   color: color-mix(in srgb, var(--brand-teal) 58%, white);
-  font-size: .61rem;
-  line-height: 1.45;
+  font-size: .58rem;
+  line-height: 1.3;
   text-align: center;
-  white-space: normal;
 }
 
 .managerial-combo-chart__reference span {
-  inline-size: 100%;
-  border-block-start: 2px solid currentColor;
-  box-shadow: 0 0 .4rem currentColor;
+  opacity: .8;
+  font-size: .92em;
+}
+
+/* The point, in two layers so it keeps the chip's 1px edge: the outer triangle
+   is the border colour, the inner one the fill, a hair shorter. */
+.managerial-combo-chart__reference::before,
+.managerial-combo-chart__reference::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 50%;
+  inline-size: 0;
+  block-size: 0;
+  transform: translateY(-50%);
+}
+
+.managerial-combo-chart__reference::before {
+  inset-inline-end: calc(var(--managerial-reference-point) * -1);
+  border-block: var(--managerial-reference-point) solid transparent;
+  border-inline-start: var(--managerial-reference-point) solid var(--managerial-reference-edge);
+}
+
+.managerial-combo-chart__reference::after {
+  inset-inline-end: calc(var(--managerial-reference-point) * -1 + 1px);
+  border-block: calc(var(--managerial-reference-point) - 1px) solid transparent;
+  border-inline-start: calc(var(--managerial-reference-point) - 1px) solid var(--managerial-reference-fill);
 }
 
 .managerial-combo-chart__reference strong {
   overflow-wrap: normal;
 }
 
+/* Three bands over one column set: the money, the bars, the labels.
+   Every bar used to sit in a grid of its own, so a label that wrapped to a
+   second line took that height out of its own bar and left the four bars
+   standing on four different floors. Each band is now a single grid over the
+   same tracks, so a cell is always under the cell above it, and the label band
+   is given a height in lines rather than taking one from its text. A
+   breakpoint changes the variables; it never restates the layout. */
 .managerial-combo-chart__plot {
-  position: relative;
+  --managerial-columns: repeat(4, minmax(0, 1fr));
+  --managerial-gap: clamp(.3rem, 1vw, .75rem);
+  --managerial-reference-gutter: clamp(3.9rem, 7vw, 4.9rem);
+  --managerial-label-lines: 3;
+  --managerial-label-size: .76rem;
+  --managerial-label-leading: 1.45;
+  --managerial-label-band: calc(var(--managerial-label-lines) * var(--managerial-label-leading) * var(--managerial-label-size));
+  display: flex;
   flex: 1 1 auto;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(4.5rem, 1fr));
-  gap: clamp(.3rem, 1vw, .75rem);
+  flex-direction: column;
+  gap: var(--managerial-gap);
+  min-block-size: 0;
   min-inline-size: 0;
   padding-inline: .25rem;
   background: none;
 }
 
-.managerial-combo-chart__item {
+.managerial-combo-chart__band {
+  display: grid;
+  grid-template-columns: var(--managerial-columns);
+  column-gap: var(--managerial-gap);
+  /* The same strip on every band, so the columns stay in step. */
+  padding-inline-start: var(--managerial-reference-gutter);
+  min-inline-size: 0;
+}
+
+.managerial-combo-chart__band--bars {
+  position: relative;
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/* Declared, not discovered: the band is exactly as tall as the lines it holds,
+   whatever the labels happen to say. */
+.managerial-combo-chart__band--labels {
+  block-size: var(--managerial-label-band);
+  align-items: start;
+}
+
+.managerial-combo-chart__cell {
   position: relative;
   z-index: 2;
   container-type: inline-size;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
   align-items: end;
   justify-items: center;
-  inline-size: 100%;
   min-inline-size: 0;
   padding-inline: .3rem;
-  border-radius: var(--radius-sm);
-  background: none;
+}
+
+.managerial-combo-chart__cell--value {
+  align-items: center;
 }
 
 .managerial-combo-chart__value {
-  align-self: center;
   justify-self: stretch;
   justify-content: center;
   flex-wrap: wrap;
@@ -614,25 +681,45 @@
   box-shadow: 0 0 1rem color-mix(in srgb, var(--dash-sev-med) 24%, transparent);
 }
 
-.managerial-combo-chart__item h3 {
-  align-self: start;
+.managerial-combo-chart__label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--managerial-label-lines);
+  line-clamp: var(--managerial-label-lines);
+  overflow: hidden;
+  min-inline-size: 0;
   max-inline-size: 100%;
-  margin: .55rem 0 0;
+  /* The band is the spacing; a margin here would make it taller than the lines
+     it was sized for. */
+  margin: 0;
+  padding-inline: .3rem;
   color: var(--color-text-secondary);
-  font-size: clamp(.62rem, 9cqi, .82rem);
+  font-size: var(--managerial-label-size);
   font-weight: 800;
-  line-height: 1.45;
+  line-height: var(--managerial-label-leading);
   text-align: center;
 }
 
+/* Drawn with the bar's own expression, floor included, so the line lands on
+   the bar's top edge instead of sinking below a bar too small to draw at its
+   true height. Zero height keeps it a line and gives the badge inside it
+   something to hang from. */
 .managerial-combo-chart__baseline {
   position: absolute;
   z-index: 3;
   inset-inline: 0;
-  inset-block-start: var(--baseline-top, 2.25rem);
+  inset-block-end: max(.25rem, var(--baseline-size, 0%));
+  block-size: 0;
+  pointer-events: none;
+}
+
+.managerial-combo-chart__baseline::before {
+  content: "";
+  position: absolute;
+  inset-inline: var(--managerial-reference-gutter) 0;
+  inset-block-start: 0;
   border-block-start: 2px solid color-mix(in srgb, var(--dash-plan) 88%, white);
   filter: drop-shadow(0 0 .3rem color-mix(in srgb, var(--dash-plan) 72%, transparent));
-  pointer-events: none;
 }
 
 @media (min-width: 64.01rem) {
@@ -648,8 +735,12 @@
     font-size: clamp(.78rem, 8cqi, .95rem);
   }
 
-  .managerial-combo-chart__item h3 {
-    font-size: clamp(.74rem, 7.5cqi, .88rem);
+  .managerial-combo-chart__plot {
+    --managerial-label-lines: 2;
+    --managerial-label-size: .86rem;
+  }
+
+  .managerial-combo-chart__label {
     font-weight: 900;
   }
 
@@ -1321,16 +1412,16 @@
   }
 
   .managerial-combo-chart__plot {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: .2rem;
-    min-inline-size: 0;
-    background: none;
+    --managerial-gap: .2rem;
+    --managerial-reference-gutter: 0rem;
+    --managerial-label-lines: 3;
+    --managerial-label-size: .58rem;
+    --managerial-label-leading: 1.35;
   }
 
-  .managerial-combo-chart__item {
-    grid-template-rows: auto minmax(0, 1fr) auto;
+  .managerial-combo-chart__cell,
+  .managerial-combo-chart__label {
     padding-inline: .1rem;
-    background: none;
   }
 
   .managerial-combo-chart__baseline {
@@ -1348,12 +1439,6 @@
 
   .managerial-combo-chart__value .money-display__unit {
     font-size: clamp(.46rem, 9cqi, .54rem);
-  }
-
-  .managerial-combo-chart__item h3 {
-    margin-block-start: .35rem;
-    font-size: clamp(.54rem, 10cqi, .62rem);
-    line-height: 1.35;
   }
 
   .managerial-combo-chart__column {
