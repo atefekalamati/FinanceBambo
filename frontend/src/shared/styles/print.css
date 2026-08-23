@@ -23,10 +23,35 @@
     display: none !important;
   }
 
+  /* The screen theme is a dark one; paper is not. `html` carries the app's
+     ground colour, so without it here the whole sheet prints navy — costly in
+     ink and unreadable in a photocopy. Everything inside the module drops its
+     decorative fills and prints as ink on white, which is what a financial
+     document is expected to look like. */
+  html,
   body,
   #finance-module-root {
     color: #000;
     background: #fff;
+  }
+
+  #finance-module-root :is(section, article, div, table, tbody, thead, tr, th, td, dl, p, aside) {
+    background: none;
+    box-shadow: none;
+  }
+
+  #finance-module-root :is(h1, h2, h3, h4, dt, dd, th, td, p, li, span, strong, small, bdi, caption) {
+    color: #000;
+  }
+
+  /* Direction still has to read on paper, so the two verdicts keep a colour —
+     darkened until it survives greyscale. */
+  .period-change--up { color: #8a4b00 !important; }
+  .period-change--down { color: #14532d !important; }
+
+  .period-change--unknown,
+  .money-display--unavailable {
+    color: #555 !important;
   }
 
   #finance-module-root {
@@ -96,5 +121,64 @@
     line-height: 1.25;
     box-shadow: none;
     break-inside: avoid;
+  }
+
+  /* ── Period report ──────────────────────────────────────────────────────
+     What prints is the report, not the tool that made it: the builder, the
+     page's own heading and the export buttons all belong to the screen. */
+  .period-builder,
+  .period-report-topbar,
+  .period-report-actions,
+  .period-report-header__note {
+    display: none !important;
+  }
+
+  .period-report-header,
+  .period-report-page > .report-section,
+  .period-report-output > .report-section {
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    break-inside: auto;
+  }
+
+  .period-report-header {
+    padding-block-end: 2mm;
+    border-block-end: 0.4pt solid #000;
+    margin-block-end: 3mm;
+  }
+
+  .period-report-header__facts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2mm;
+    padding-block-start: 2mm;
+    border-block-start: none;
+  }
+
+  /* On paper the cards would waste a page; the table they exist alongside says
+     the same thing in a quarter of the space, so it comes out of hiding. */
+  .period-metric-grid {
+    display: none;
+  }
+
+  .period-metric-table {
+    position: static;
+    inline-size: auto;
+    block-size: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+
+  .period-report-output > .report-section {
+    break-inside: avoid;
+    margin-block-end: 3mm;
+  }
+
+  .period-invoice-total {
+    padding: 1.5mm 2mm;
+    border: 0.4pt solid #000;
+    background: none;
   }
 }

@@ -1,3 +1,5 @@
+import { DUPLICATE_IMPORT_REASON } from "../../shared/imports/import-preview-notice.js";
+
 export function financeBase(context) {
   return `/api/projects/${encodeURIComponent(context.projectId)}/finance`;
 }
@@ -29,6 +31,10 @@ export function formDataWithFile(file, fields = {}) {
 }
 
 export function mapImportPreview(value, kind) {
+  // ImportPreviewResponse says a repeated file twice: on these three fields,
+  // and as an issue whose reason is the machine string `duplicate_import_file`.
+  // The structured form is the one a UI can phrase; the raw issue is dropped
+  // below so it cannot reach a reader as-is.
   const issueText = (issue) => `${issue.field}: ${issue.reason}`;
   const rows = (value.rows ?? []).map((row) => {
     const errors = (row.errors ?? []).map(issueText);
@@ -62,8 +68,6 @@ export function mapImportPreview(value, kind) {
       errors,
     };
   });
-  const invalidRows = value.invalidCount ?? rows.filter((row) => row.status === "invalid").length;
-  const validRows = value.validCount ?? rows.filter((row) => row.status === "valid").length;
   const rowNumbers = new Set((value.rows ?? []).map((row) => row.rowNumber));
   return {
     previewId: value.previewId,
@@ -71,7 +75,14 @@ export function mapImportPreview(value, kind) {
     validRows: value.validCount,
     invalidRows: value.invalidCount,
     rows,
-    fileErrors: (value.errors ?? []).filter((issue) => !rowNumbers.has(issue.row)).map(issueText),
+    fileErrors: (value.errors ?? [])
+      .filter((issue) => !rowNumbers.has(issue.row) && issue.reason !== DUPLICATE_IMPORT_REASON)
+      .map(issueText),
     canCommit: value.canCommit,
+    duplicateFile: value.duplicateFile ?? false,
+    // Carried, not displayed: no screen lists past imports yet, and the id is
+    // what a future one would need to link to. The date is what the wording uses.
+    duplicateOfImportId: value.duplicateOfImportId ?? null,
+    duplicateCommittedAt: value.duplicateCommittedAt ?? null,
   };
 }

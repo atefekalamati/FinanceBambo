@@ -11,6 +11,7 @@ import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-prefe
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { validatePriceVersion } from "./prices-validation.js";
 import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition, validateUnitConversion } from "./unit-conversions-validation.js";
+import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
 
 const SCOPE_LABELS = Object.freeze({ organization: "پایه سازمان", project: "اختصاصی پروژه" });
@@ -268,7 +269,11 @@ function createPriceImportDialog(adapter, onSaved) {
     });
     table.append(tableHead, body);
     wrapper.append(table);
-    const notice = element("div", preview.canCommit ? "inline-notice" : "price-import-warning", preview.canCommit ? "تمام ردیف‌ها معتبرند و آماده ثبت نهایی هستند." : preview.fileErrors?.length ? `فایل یا قالب معتبر نیست: ${preview.fileErrors.join(" · ")}` : "فایل ثبت نشده است. خطاها را اصلاح و دوباره پیش‌نمایش بگیرید.");
+    const verdict = describeImportPreview(preview, {
+      readyText: "تمام ردیف‌ها معتبرند و آماده ثبت نهایی هستند.",
+      invalidText: "فایل ثبت نشده است. خطاها را اصلاح و دوباره پیش‌نمایش بگیرید.",
+    });
+    const notice = element("div", verdict.tone === "ready" ? "inline-notice" : "price-import-warning", verdict.text);
     const commit = element("button", "button button--primary", "ثبت نهایی قیمت‌ها");
     commit.type = "button";
     commit.disabled = !preview.canCommit;
