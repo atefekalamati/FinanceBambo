@@ -1,6 +1,7 @@
 from uuid import uuid4
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from ..domain.imports import DuplicateImportFile
 class PsycopgFinanceImportRepository:
  def __init__(self,db):self.db=db
  async def resolve_resources(self,s,codes):
@@ -8,6 +9,15 @@ class PsycopgFinanceImportRepository:
   async with self.db.cursor(row_factory=dict_row) as c:
    await c.execute("SELECT id,code,title,base_unit,resource_type FROM finance_resources WHERE organization_id=%s AND project_id=%s AND code=ANY(%s) AND deleted_at IS NULL",(s.organization_id,s.project_id,list(codes)))
    return await c.fetchall()
+ async def committed_with_hash(self,s,kind,file_hash,exclude_id=None):
+  """The committed batch that already carries these bytes, if there is one.
+
+  Scoped to the tenant and the import kind: the same file may legitimately be imported
+  into another project, and an estimate sheet is not a price sheet even byte for byte.
+  """
+  async with self.db.cursor(row_factory=dict_row) as c:
+   await c.execute("SELECT id,committed_at FROM finance_import_batches WHERE organization_id=%s AND project_id=%s AND import_kind=%s AND file_sha256=%s AND status='committed' AND (%s::uuid IS NULL OR id<>%s) ORDER BY committed_at LIMIT 1",(s.organization_id,s.project_id,kind,file_hash,exclude_id,exclude_id))
+   return await c.fetchone()
  async def save_preview(self,s,pid,kind,currency,file_hash,rows,errors,at):
   async with self.db.transaction():
    async with self.db.cursor() as c:await c.execute("INSERT INTO finance_import_batches(id,organization_id,project_id,import_kind,currency_unit,file_sha256,normalized_rows,validation_errors,status,created_by,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'previewed',%s,%s)",(pid,s.organization_id,s.project_id,kind,currency,file_hash,Jsonb(rows),Jsonb(errors),s.actor_user_id,at))
@@ -16,6 +26,17 @@ class PsycopgFinanceImportRepository:
    async with self.db.cursor(row_factory=dict_row) as c:
     await c.execute("SELECT * FROM finance_import_batches WHERE organization_id=%s AND project_id=%s AND id=%s FOR UPDATE",(s.organization_id,s.project_id,pid));batch=await c.fetchone()
     if batch is None:return None
+    # Duplicates are settled before the generic committable guard, so a repeated file
+    # reports as a duplicate rather than as an unexplained uncommittable preview: the
+    # duplicate marker sits in validation_errors and would otherwise trip that guard first.
+    #
+    # The preview check happens outside this transaction, so two previews of the same file
+    # can reach here at once. Serialise them on the file's identity, then look again:
+    # whoever arrives second now sees the first one's committed row.
+    await c.execute("SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)",
+     (f"finance_import:{s.organization_id}:{s.project_id}:{batch['import_kind']}:{batch['file_sha256']}",))
+    await c.execute("SELECT id FROM finance_import_batches WHERE organization_id=%s AND project_id=%s AND import_kind=%s AND file_sha256=%s AND status='committed' AND id<>%s LIMIT 1",(s.organization_id,s.project_id,batch["import_kind"],batch["file_sha256"],pid))
+    if await c.fetchone() is not None:raise DuplicateImportFile("this file was already imported into this project")
     if batch["status"]!="previewed" or batch["validation_errors"]:raise ValueError("preview is not committable")
     count=0
     for row in batch["normalized_rows"]:
