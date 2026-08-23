@@ -5,6 +5,7 @@ that decides whether a dropped database means one failed request or a dead proce
 that is not something to leave unverified.
 """
 
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -130,6 +131,46 @@ class ReconnectingConnectionTests(unittest.IsolatedAsyncioTestCase):
         # And the handle is still usable afterwards.
         async with self.handle.cursor() as cursor:
             self.assertEqual(2, cursor.index)
+
+
+class SeedGuardTests(unittest.TestCase):
+    """Development fixtures must not be loadable into a deployed environment."""
+
+    def setUp(self):
+        self.original = dict(os.environ)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self.original)
+
+    def test_seeding_is_allowed_only_outside_production(self):
+        from devhost.environment import app_env, seeding_allowed
+        for value, expected in (("development", True), ("dev", True), ("test", True),
+                                ("staging", True), ("production", False), ("PRODUCTION", False),
+                                ("prod", False)):
+            with self.subTest(app_env=value):
+                os.environ["APP_ENV"] = value
+                self.assertEqual(expected, seeding_allowed())
+                self.assertEqual(value.strip().lower(), app_env())
+
+    def test_the_connection_string_is_never_echoed_with_its_password(self):
+        from devhost.environment import redacted
+        shown = redacted("postgresql://finance_app:s3cr3t@db.internal:5432/finance")
+        self.assertNotIn("s3cr3t", shown)
+        self.assertIn("finance_app", shown)
+        self.assertIn("db.internal:5432/finance", shown)
+
+    def test_a_missing_dsn_is_an_error_rather_than_a_guessable_default(self):
+        from devhost.environment import MissingConfiguration, database_url
+        os.environ.pop("FINANCE_DEV_DSN", None)
+        import devhost.environment as env
+        original = env.ENV_FILE
+        env.ENV_FILE = Path("does-not-exist.env")
+        try:
+            with self.assertRaises(MissingConfiguration):
+                database_url()
+        finally:
+            env.ENV_FILE = original
 
 
 if __name__ == "__main__":

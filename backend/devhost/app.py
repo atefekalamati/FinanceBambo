@@ -48,7 +48,7 @@ from app.finance.services.settings import FinanceSettingsService
 
 from . import database, seed
 from .connection import ReconnectingConnection
-from .environment import migration_url
+from .environment import app_env, migration_url, seeding_allowed
 from .ports import (ContextPermissionAuthorizer, LocalFileStorage, SeededActivityProvider,
                     SeededProgressSnapshotProvider, SingleTenantScopeAuthorizer,
                     StaticAuthContextProvider, UnavailableExtractor)
@@ -123,7 +123,10 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
             admin = ReconnectingConnection(admin_dsn)
             try:
                 await database.apply_migrations(admin)
-                if reseed or not await database.is_seeded(admin):
+                if not seeding_allowed():
+                    # A deployed environment gets its schema, never the demo project.
+                    print(f"development seed DISABLED (APP_ENV={app_env()})")
+                elif reseed or not await database.is_seeded(admin):
                     await database.reset(admin)
                     await database.load_seed(admin)
             finally:
@@ -148,7 +151,13 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
     @application.middleware("http")
     async def one_request_at_a_time(request: Request, call_next):
         async with gate:
-            return await call_next(request)
+            response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            # So a developer can tell a real answer from a mock one in the network panel.
+            # Development host only; the deployed module sets no such header.
+            response.headers["X-Finance-Data-Source"] = "postgresql"
+            response.headers["X-Finance-Environment"] = app_env()
+        return response
 
     @application.get("/", response_class=HTMLResponse)
     @application.get("/index.html", response_class=HTMLResponse)

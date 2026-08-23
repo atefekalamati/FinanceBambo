@@ -118,3 +118,14 @@ class InvoiceLifecycleTests(unittest.IsolatedAsyncioTestCase):
   command=CorrectiveInvoiceCreate(invoiceDate="2026-08-09",vendorName="Vendor",idempotencyKey="correct-1",financialEffectSign=-1,reason="price correction",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"20"}])
   corrected=await service.corrective(scope,INVOICE_ID,command)
   self.assertEqual(("corrective","corrected",-1,INVOICE_ID),(corrected.source,corrected.status,corrected.financial_effect_sign,corrected.original_invoice_id))
+
+ async def test_editing_a_confirmed_invoice_reports_the_reason_not_a_stale_version(self):
+  # STALE_VERSION tells the client to refresh and retry, which can never succeed here:
+  # a confirmed document is corrected through the void/corrective workflow instead.
+  repo=FakeInvoiceRepo(invoice("confirmed",3));service=FinanceInvoiceService(repo,clock=lambda:NOW)
+  scope=FinanceScope(ORG,"p1",ACTOR)
+  with self.assertRaises(InvoiceAlreadyConfirmed) as caught:
+   await service.update(scope,INVOICE_ID,InvoicePatch(description="edit",expectedVersion=3))
+  self.assertEqual(("INVOICE_ALREADY_CONFIRMED",409),(caught.exception.code,caught.exception.status))
+  self.assertIsNone(repo.saved if hasattr(repo,"saved") else None)
+
