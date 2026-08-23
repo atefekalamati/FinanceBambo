@@ -26,7 +26,8 @@ from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResp
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoiceListResponse,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from .schemas.attachments import AttachmentListResponse,AttachmentResponse
 from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionListResponse,ExtractionReject,ExtractionRetry,ExtractionStart
-from .schemas.reports import LiveReportResponse,OperationalOverviewResponse,ReportSnapshotCreate,ReportSnapshotListResponse,ReportSnapshotReference,ReportVarianceListResponse
+from .domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT
+from .schemas.reports import LiveReportResponse,MonthlyReportResponse,OperationalOverviewResponse,ReportSnapshotCreate,ReportSnapshotListResponse,ReportSnapshotReference,ReportVarianceListResponse
 from .schemas.audit import AuditEventListResponse,AuditEventResponse
 from datetime import date
 
@@ -351,6 +352,18 @@ async def live_report_variances(projectId:str,request:Request,reportingDate:date
     sortDirection:str=Query("desc",pattern="^(asc|desc)$")):
     scope=await _resource_scope(projectId,request,"finance_report.view")
     return await request.app.state.finance_live_report_service.variances(scope,reportingDate,progressSnapshotId,varianceType,resourceType,query,page,pageSize,sortBy,sortDirection)
+
+@router.get("/reports/monthly",response_model=MonthlyReportResponse)
+async def monthly_report(projectId:str,request:Request,reportingDate:date,
+    monthCount:int=Query(DEFAULT_MONTH_COUNT,ge=1,le=MAX_MONTH_COUNT)):
+    """Persian-month cost series for the trend chart, aggregated server-side.
+
+    The window is an anchor plus a month count rather than a from/to pair: Persian months
+    do not line up with Gregorian dates, so an arbitrary range would open and close on
+    half a month and the chart would draw those stubs as real dips.
+    """
+    scope=await _resource_scope(projectId,request,"finance_report.view")
+    return await request.app.state.finance_live_report_service.monthly(scope,reportingDate,monthCount)
 
 @router.post("/report-snapshots",response_model=ReportSnapshotReference,status_code=201)
 async def issue_report_snapshot(projectId:str,payload:ReportSnapshotCreate,request:Request):
