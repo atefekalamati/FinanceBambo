@@ -10,6 +10,7 @@ import { compareDecimalStrings } from "../../shared/validation/decimal-validatio
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js";
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
+import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
 
 const SOURCE_LABELS = Object.freeze({
@@ -415,10 +416,14 @@ function createEstimateImportDialog(adapter, onSaved) {
     table.append(head, body);
     wrapper.append(table);
 
+    const verdict = describeImportPreview(preview, {
+      readyText: "تمام ردیف‌ها معتبرند و فایل آماده ثبت نهایی است.",
+      invalidText: "فایل ثبت نشده است. خطاهای ردیفی را در فایل اصلاح و دوباره بارگذاری کنید.",
+    });
     const notice = element(
       "div",
-      preview.canCommit ? "inline-notice import-notice--valid" : "overrun-warning",
-      preview.canCommit ? "تمام ردیف‌ها معتبرند و فایل آماده ثبت نهایی است." : preview.fileErrors?.length ? `فایل یا قالب معتبر نیست: ${preview.fileErrors.join(" · ")}` : "فایل ثبت نشده است. خطاهای ردیفی را در فایل اصلاح و دوباره بارگذاری کنید.",
+      verdict.tone === "ready" ? "inline-notice import-notice--valid" : "overrun-warning",
+      verdict.text,
     );
     const commit = element("button", "button button--primary", "ثبت نهایی ردیف‌های معتبر");
     commit.type = "button";
