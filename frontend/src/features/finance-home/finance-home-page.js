@@ -44,6 +44,7 @@ const WORK_AREAS = Object.freeze([
   { key: "progress", title: "پیشرفت و مقادیر انجام‌شده", description: "مشاهده نسخه پیشرفت پروژه، کیفیت داده و اصلاح دستی مقدار", meta: "نسخه پیشرفت · مقدار انجام‌شده · هشدار", href: "#/progress" },
   { key: "invoices", title: "فاکتورها", description: "مشاهده فهرست، وضعیت، منبع، فروشنده، مبلغ و جزئیات خطوط", meta: "فهرست · جزئیات · وضعیت", href: "#/invoices" },
   { key: "reports", title: "گزارش مالی", description: "مشاهده گزارش به‌روز، ثبت گزارش دوره‌ای و دریافت خروجی", meta: "گزارش به‌روز · گزارش ثبت‌شده · چاپ", href: "#/reports" },
+  { key: "period-report", title: "گزارش دوره‌ای", description: "ساخت گزارش برای یک بازه زمانی دلخواه با خروجی چاپ و CSV", meta: "بازه دلخواه · مقایسه · خروجی", href: "#/period-report" },
   { key: "audit", title: "تاریخچه تغییرات مالی", description: "ردیابی اصلاحات، تأییدها و عملیات حساس مالی", meta: "انجام‌دهنده · زمان · دلیل", href: "#/audit" },
 ]);
 
