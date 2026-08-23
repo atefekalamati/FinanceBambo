@@ -14,6 +14,7 @@ const routes = [
   "invoice-files",
   "ai-review",
   "reports",
+  "period-report",
   "audit",
   "settings",
 ];

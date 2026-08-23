@@ -219,13 +219,21 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
       });
     }
 
+    // The Backend refuses a file whose bytes it has already committed for this
+    // project. A name carrying «تکراری» stands in for those bytes here, so the
+    // duplicate wording is reachable without a real repeated upload.
+    const duplicateFile = /duplicate|\u062a\u06a9\u0631\u0627\u0631\u06cc/i.test(fileName);
+
     const preview = {
       previewId,
       fileName,
       totalRows: rows.length,
       validRows: rows.filter((row) => row.status === "valid").length,
       invalidRows: rows.filter((row) => row.status === "invalid").length,
-      canCommit: rows.every((row) => row.status === "valid"),
+      canCommit: !duplicateFile && rows.every((row) => row.status === "valid"),
+      duplicateFile,
+      duplicateOfImportId: duplicateFile ? "b0000000-0000-4000-8000-000000000002" : null,
+      duplicateCommittedAt: duplicateFile ? "2026-08-09T14:05:00Z" : null,
       rows,
       committed: false,
     };

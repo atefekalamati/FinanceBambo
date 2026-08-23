@@ -9,6 +9,9 @@ const STATUS_PRESENTATION = Object.freeze({
 
 const CODE_PRESENTATION = Object.freeze({
   AI_EXTRACTION_FAILED: { title: "پردازش فایل انجام نشد", fallback: "فایل اصلی حفظ شده است و می‌توانید پردازش را دوباره اجرا کنید.", retryable: true },
+  // Raised for a repeated import file and for a repeated invoice attachment.
+  // Both carry an English developer message, so `override` keeps it off screen.
+  DUPLICATE_IMPORT_FILE: { title: "این فایل قبلاً ثبت شده است", fallback: "همین فایل پیش‌تر برای این پروژه ثبت شده است. اگر تغییری داده‌اید، نسخه به‌روزشده را بارگذاری کنید.", retryable: false, override: true },
   FINANCE_FORBIDDEN: STATUS_PRESENTATION[403],
   FINANCE_NOT_FOUND: STATUS_PRESENTATION[404],
   INVOICE_ALREADY_CONFIRMED: { title: "فاکتور قبلاً تأیید شده است", fallback: "فاکتور تأییدشده قابل ویرایش مستقیم نیست.", retryable: false },
@@ -35,9 +38,10 @@ export function presentApiError(error) {
   };
   const serverMessage = String(error?.message ?? "").trim();
   const genericMessages = new Set(["خطای پیش‌بینی‌نشده", "دریافت اطلاعات مالی انجام نشد."]);
+  const useServerMessage = !preset.override && serverMessage && !genericMessages.has(serverMessage);
   return Object.freeze({
     title: preset.title,
-    message: serverMessage && !genericMessages.has(serverMessage) ? serverMessage : preset.fallback,
+    message: useServerMessage ? serverMessage : preset.fallback,
     retryable: preset.retryable,
     code,
     requestId: error?.requestId ?? null,

@@ -55,16 +55,27 @@ const EVENTS = Object.freeze([...RECENT_EVENTS, ...buildHistoryEvents()]);
 export function createMockAuditAdapter(context, { initialState = "success" } = {}) {
   /**
    * Mirrors GET /audit-events: page/pageSize are clamped the way the router
-   * declares them (page ge 1, pageSize 1..200 default 50) and the response is
-   * the same paged envelope, so a filter cannot mistake an unfetched page for
-   * an empty history.
+   * declares them (page ge 1, pageSize 1..200 default 50), the date, action,
+   * entity and text filters are applied before paging exactly as the service
+   * applies them in SQL, and the response is the same paged envelope — so a
+   * filter cannot mistake an unfetched page for an empty history.
    */
-  async function getEvents({ page = 1, pageSize = 50 } = {}) {
+  async function getEvents({ page = 1, pageSize = 50, occurredFrom, occurredTo, action, entityType, query } = {}) {
     await new Promise((resolve) => setTimeout(resolve, 320));
     if (initialState === "error") throw new ApiError({ status: 503, code: "AUDIT_UNAVAILABLE", message: "دریافت تاریخچه تغییرات مالی انجام نشد.", requestId: "mock-audit-001" });
     const safePageSize = Math.min(Math.max(Number(pageSize) || 50, 1), 200);
     const safePage = Math.max(Number(page) || 1, 1);
-    const source = initialState === "empty" ? [] : EVENTS;
+    // The service filters before it pages, so the mock has to as well: filtering
+    // one page here would report that page's length as the total.
+    const source = initialState === "empty" ? [] : EVENTS.filter((event) => {
+      const day = event.occurredAt.slice(0, 10);
+      if (occurredFrom && day < occurredFrom) return false;
+      if (occurredTo && day > occurredTo) return false;
+      if (action && event.action !== action) return false;
+      if (entityType && event.entityType !== entityType) return false;
+      if (query?.trim() && !`${event.action} ${event.entityType} ${event.reason ?? ""}`.includes(query.trim())) return false;
+      return true;
+    });
     const offset = (safePage - 1) * safePageSize;
     return clone({
       items: source.slice(offset, offset + safePageSize).map((event) => ({ ...event, organizationId: context.organizationId, projectId: context.projectId })),
