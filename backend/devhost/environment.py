@@ -20,8 +20,13 @@ class MissingConfiguration(RuntimeError):
     pass
 
 
-def load_env_file(path: Path = ENV_FILE) -> dict[str, str]:
-    """Parse KEY=value lines. Existing environment variables always win."""
+def load_env_file(path: Path | None = None) -> dict[str, str]:
+    """Parse KEY=value lines. Existing environment variables always win.
+
+    The path is resolved on each call rather than bound as a default, so the file is
+    picked up if it appears after import.
+    """
+    path = ENV_FILE if path is None else path
     if not path.is_file():
         return {}
     values: dict[str, str] = {}
@@ -60,6 +65,19 @@ def migration_url() -> str | None:
     than granting CREATE to the runtime role for convenience.
     """
     return setting("FINANCE_MIGRATION_DSN")
+
+
+def app_env() -> str:
+    return (setting("APP_ENV", "development") or "development").strip().lower()
+
+
+def seeding_allowed() -> bool:
+    """Development fixtures must never load into anything but a development database.
+
+    The guard is on the environment rather than the connection string, because a
+    production DSN in a misconfigured shell would otherwise be seeded silently.
+    """
+    return app_env() in ("development", "dev", "test", "staging")
 
 
 def redacted(dsn: str) -> str:

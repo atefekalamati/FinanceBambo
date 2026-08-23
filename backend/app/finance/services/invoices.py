@@ -52,7 +52,10 @@ class FinanceInvoiceService:
   return lines,calc
  async def update(self,s,invoice_id,c):
   current=await self.get(s,invoice_id)
-  if current.status!="draft":raise StaleInvoice("only draft invoice can be edited")
+  # Not a stale version: retrying with a fresher one would fail identically, and
+  # STALE_VERSION tells the client to refresh and try again. A confirmed document is
+  # corrected through the void/corrective workflow instead.
+  if current.status!="draft":raise InvoiceAlreadyConfirmed("only a draft invoice can be edited directly")
   if current.version!=c.expected_version:raise StaleInvoice("stale invoice version")
   description=c.description if "description" in c.model_fields_set else current.description
   try:return await self.repo.update_draft(s,current,description,c.status,self.ids(),self.clock())
