@@ -7,6 +7,7 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { createCombinationChart } from "../../shared/components/combination-chart.js";
 import { buildMonthlyTrend, TREND_MODES } from "./monthly-trend.js";
+import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
 
 const SUMMARY_ITEMS = Object.freeze([
@@ -162,7 +163,7 @@ function createBreakdownChart(rows) {
       const track = document.createElement("div");
       track.className = "breakdown-chart__track";
       const bar = document.createElement("span");
-      bar.className = `breakdown-chart__bar breakdown-chart__bar--${series}`;
+      bar.className = `breakdown-chart__bar breakdown-chart__bar--${series} chart-mark`;
       bar.style.setProperty("--bar-width", `${magnitude}%`);
       bar.title = `${seriesLabel}: ${formatTomanFromIrr(value)}`;
       track.append(bar);
@@ -274,7 +275,7 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
     const barCell = document.createElement("div");
     barCell.className = `managerial-combo-chart__cell managerial-combo-chart__item--${entry.key}`;
     const column = document.createElement("div");
-    column.className = "managerial-combo-chart__column";
+    column.className = "managerial-combo-chart__column chart-mark";
     column.style.setProperty("--column-size", `${entry.magnitude}%`);
     barCell.append(column);
     barsBand.append(barCell);
@@ -287,6 +288,41 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
     label.title = entry.label;
     labelsBand.append(label);
   });
+
+  /**
+   * A value guide beside the columns: rows at round amounts, so the reader can
+   * tell what a bar's height is worth without reading its label.
+   *
+   * The amounts come from the project's own magnitude — a project topping out
+   * in millions gets lines in millions, one topping out in billions gets lines
+   * in billions — and they are round numbers rather than equal divisions of the
+   * largest bar, which is what makes them readable.
+   *
+   * Nothing already on the chart moves: the guide draws into the strip that was
+   * already reserved on the inline-start edge and into the empty space behind
+   * the bars, and its top line never rises above the tallest bar, so no column
+   * is rescaled.
+   */
+  const largestIrr = entries.reduce((largest, entry) => {
+    const value = /^-?\d+$/.test(String(entry.value ?? "")) ? BigInt(entry.value) : 0n;
+    const magnitude = value < 0n ? -value : value;
+    return magnitude > largest ? magnitude : largest;
+  }, 0n);
+  const ticks = buildValueTicks(largestIrr);
+  const tickScale = ticks.length ? compactMoneyScale(largestIrr.toString()) : null;
+
+  if (tickScale) {
+    const guide = element("div", "managerial-combo-chart__scale");
+    guide.setAttribute("aria-hidden", "true");
+    guide.append(element("span", "managerial-combo-chart__scale-unit", tickScale.unit));
+    ticks.forEach((tick) => {
+      const row = element("div", "managerial-combo-chart__scale-row");
+      row.style.setProperty("--scale-size", `${tick.magnitude}%`);
+      row.append(element("span", "managerial-combo-chart__scale-value", tickScale.format(tick.valueIrr) ?? ""));
+      guide.append(row);
+    });
+    barsBand.append(guide);
+  }
 
   // The line marks the top of the initial-estimate bar, drawn from the same
   // percentage of the same band the bar itself is drawn from — so it follows
