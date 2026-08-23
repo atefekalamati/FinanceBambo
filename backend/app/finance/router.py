@@ -233,15 +233,15 @@ async def _preview_import(projectId,request,kind,file):
         from .services.imports import ImportValidationError
         raise ImportValidationError("only .xlsx Excel files are accepted")
     return await request.app.state.finance_import_service.preview(scope,kind,await file.read())
-@router.post("/imports/estimate/preview",response_model=ImportPreviewResponse)
+@router.post("/imports/estimate/preview",response_model=ImportPreviewResponse,responses=FINANCE_ERROR_RESPONSES)
 async def preview_estimate(projectId:str,request:Request,file:UploadFile=File(...)):return await _preview_import(projectId,request,"estimate",file)
-@router.post("/imports/prices/preview",response_model=ImportPreviewResponse)
+@router.post("/imports/prices/preview",response_model=ImportPreviewResponse,responses=FINANCE_ERROR_RESPONSES)
 async def preview_prices(projectId:str,request:Request,file:UploadFile=File(...)):return await _preview_import(projectId,request,"prices",file)
 async def _commit_import(projectId,request,payload):
     scope=await _resource_scope(projectId,request,"finance.edit");return await request.app.state.finance_import_service.commit(scope,payload.preview_id)
-@router.post("/imports/estimate/commit",response_model=ImportCommitResponse)
+@router.post("/imports/estimate/commit",response_model=ImportCommitResponse,responses=FINANCE_ERROR_RESPONSES)
 async def commit_estimate(projectId:str,payload:ImportCommit,request:Request):return await _commit_import(projectId,request,payload)
-@router.post("/imports/prices/commit",response_model=ImportCommitResponse)
+@router.post("/imports/prices/commit",response_model=ImportCommitResponse,responses=FINANCE_ERROR_RESPONSES)
 async def commit_prices(projectId:str,payload:ImportCommit,request:Request):return await _commit_import(projectId,request,payload)
 
 @router.get("/invoices",response_model=InvoiceListResponse,responses=FINANCE_ERROR_RESPONSES)
