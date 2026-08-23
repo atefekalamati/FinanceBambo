@@ -26,7 +26,7 @@ from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResp
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoiceListResponse,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from .schemas.attachments import AttachmentListResponse,AttachmentResponse
 from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionListResponse,ExtractionReject,ExtractionRetry,ExtractionStart
-from .schemas.reports import LiveReportResponse,OperationalOverviewResponse,ReportSnapshotCreate,ReportSnapshotReference,ReportVarianceListResponse
+from .schemas.reports import LiveReportResponse,OperationalOverviewResponse,ReportSnapshotCreate,ReportSnapshotListResponse,ReportSnapshotReference,ReportVarianceListResponse
 from .schemas.audit import AuditEventListResponse,AuditEventResponse
 from datetime import date
 
@@ -244,8 +244,9 @@ async def commit_estimate(projectId:str,payload:ImportCommit,request:Request):re
 async def commit_prices(projectId:str,payload:ImportCommit,request:Request):return await _commit_import(projectId,request,payload)
 
 @router.get("/invoices",response_model=InvoiceListResponse,responses=FINANCE_ERROR_RESPONSES)
-async def invoices(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),query:str|None=Query(None,min_length=1,max_length=200),status:str|None=Query(None,pattern="^(draft|awaitingConfirmation|confirmed|voided|corrected)$"),source:str|None=Query(None,pattern="^(manual|image|voice|reversal|corrective)$")):
-    scope=await _resource_scope(projectId,request,"finance.view");items,total=await request.app.state.invoice_service.list(scope,page,pageSize,query,status,source)
+async def invoices(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),query:str|None=Query(None,min_length=1,max_length=200),status:str|None=Query(None,pattern="^(draft|awaitingConfirmation|confirmed|voided|corrected)$"),source:str|None=Query(None,pattern="^(manual|image|voice|reversal|corrective)$"),
+    invoiceDateFrom:date|None=None,invoiceDateTo:date|None=None):
+    scope=await _resource_scope(projectId,request,"finance.view");items,total=await request.app.state.invoice_service.list(scope,page,pageSize,query,status,source,invoiceDateFrom,invoiceDateTo)
     return InvoiceListResponse(items=[InvoiceResponse.from_domain(x) for x in items],page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 @router.post("/invoices",response_model=InvoiceResponse,status_code=201)
 async def create_invoice(projectId:str,payload:InvoiceCreate,request:Request):
@@ -355,6 +356,12 @@ async def live_report_variances(projectId:str,request:Request,reportingDate:date
 async def issue_report_snapshot(projectId:str,payload:ReportSnapshotCreate,request:Request):
     scope=await _resource_scope(projectId,request,"finance_report.issue")
     return await request.app.state.finance_live_report_service.issue(scope,payload.reporting_date,payload.progress_snapshot_id)
+
+@router.get("/report-snapshots",response_model=ReportSnapshotListResponse)
+async def report_snapshots(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),
+    reportingDateFrom:date|None=None,reportingDateTo:date|None=None):
+    scope=await _resource_scope(projectId,request,"finance_report.view")
+    return await request.app.state.finance_live_report_service.list_snapshots(scope,page,pageSize,reportingDateFrom,reportingDateTo)
 
 @router.get("/report-snapshots/{reportId}",response_model=ReportSnapshotReference)
 async def report_snapshot(projectId:str,reportId:UUID,request:Request):

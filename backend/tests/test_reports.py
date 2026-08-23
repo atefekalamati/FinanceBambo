@@ -384,3 +384,52 @@ class SnapshotRepository(Repository):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SnapshotRepo:
+    """Stands in for the paged repository read; records what the service asked for."""
+
+    def __init__(self, rows, total):
+        self.rows, self.total, self.call = rows, total, None
+
+    async def list(self, scope, limit=50, offset=0, **filters):
+        self.call = {"scope": scope, "limit": limit, "offset": offset, **filters}
+        return self.rows, self.total
+
+
+class ReportSnapshotListTests(unittest.IsolatedAsyncioTestCase):
+    def service(self, repo):
+        return FinanceLiveReportService(repo, Provider(UUID(int=2), "p1"))
+
+    async def test_the_envelope_reports_the_whole_match_not_the_page(self):
+        repo = SnapshotRepo([{"report_snapshot_id": UUID(int=1)}], 7)
+        result = await self.service(repo).list_snapshots(
+            SimpleNamespace(organization_id=UUID(int=2), project_id="p1"), page=3, page_size=2)
+        # total_items is the count of everything that matched, so the client can page
+        # through it; using the page size would say there is nothing more to fetch.
+        self.assertEqual((3, 2, 7, 4), (result["page"], result["page_size"],
+                                        result["total_items"], result["total_pages"]))
+        self.assertEqual(1, len(result["items"]))
+
+    async def test_the_date_range_is_handed_to_the_repository_not_applied_afterwards(self):
+        repo = SnapshotRepo([], 0)
+        await self.service(repo).list_snapshots(
+            SimpleNamespace(organization_id=UUID(int=2), project_id="p1"),
+            page=1, page_size=50,
+            reporting_date_from=date(2026, 4, 1), reporting_date_to=date(2026, 5, 1))
+        self.assertEqual(date(2026, 4, 1), repo.call["reporting_date_from"])
+        self.assertEqual(date(2026, 5, 1), repo.call["reporting_date_to"])
+        self.assertEqual((50, 0), (repo.call["limit"], repo.call["offset"]))
+
+    async def test_total_pages_is_zero_when_nothing_matches(self):
+        repo = SnapshotRepo([], 0)
+        result = await self.service(repo).list_snapshots(
+            SimpleNamespace(organization_id=UUID(int=2), project_id="p1"))
+        self.assertEqual(([], 0, 0), (result["items"], result["total_items"], result["total_pages"]))
+
+    async def test_the_offset_follows_the_requested_page(self):
+        repo = SnapshotRepo([], 0)
+        await self.service(repo).list_snapshots(
+            SimpleNamespace(organization_id=UUID(int=2), project_id="p1"), page=4, page_size=25)
+        self.assertEqual(75, repo.call["offset"])
+

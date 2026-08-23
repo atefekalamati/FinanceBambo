@@ -23,12 +23,17 @@ class PsycopgInvoiceRepository:
      await c.execute("SELECT EXISTS(SELECT 1 FROM estimate_lines WHERE organization_id=%s AND project_id=%s AND id=%s AND resource_id=%s) ok",(s.organization_id,s.project_id,line.estimate_line_id,line.resource_id))
     if not (await c.fetchone())["ok"]:return False
   return True
- async def list(self,s,page,page_size,query=None,status=None,source=None):
+ async def list(self,s,page,page_size,query=None,status=None,source=None,invoice_date_from=None,invoice_date_to=None):
   clauses=["organization_id=%s","project_id=%s"];args=[s.organization_id,s.project_id]
   if query:
    clauses.append("(invoice_number ILIKE %s OR vendor_name ILIKE %s OR COALESCE(description,'') ILIKE %s)");term=f"%{query}%";args.extend([term,term,term])
   if status:clauses.append("status=%s");args.append(status)
   if source:clauses.append("source=%s");args.append(source)
+  # invoice_date is a date, not a timestamptz, so both ends compare directly and both
+  # are inclusive. The reporting engine filters on this same column, so "the invoices of
+  # this period" and "the cost of this period" cannot drift apart.
+  if invoice_date_from:clauses.append("invoice_date>=%s");args.append(invoice_date_from)
+  if invoice_date_to:clauses.append("invoice_date<=%s");args.append(invoice_date_to)
   where=" AND ".join(clauses)
   async with self.db.cursor(row_factory=dict_row) as c:
    await c.execute("SELECT COUNT(*) total_count FROM invoices WHERE "+where,tuple(args));total=(await c.fetchone())["total_count"]

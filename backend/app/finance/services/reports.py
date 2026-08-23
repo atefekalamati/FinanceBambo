@@ -116,6 +116,13 @@ class FinanceLiveReportService:
         await self.repo.issue(scope,value,payload,self.ids())
         return self._response(scope,value)
 
+    async def list_snapshots(self,scope,page=1,page_size=50,reporting_date_from=None,reporting_date_to=None):
+        """Page and filter in the database, so a narrow range cannot miss older reports."""
+        items,total=await self.repo.list(scope,limit=page_size,offset=(page-1)*page_size,
+            reporting_date_from=reporting_date_from,reporting_date_to=reporting_date_to)
+        return {"items":items,"page":page,"page_size":page_size,"total_items":total,
+            "total_pages":0 if total==0 else ((total-1)//page_size)+1}
+
     async def get_snapshot(self,scope,report_id):
         value=await self.repo.get(scope,report_id)
         if value is None:raise FinanceRecordNotFound("report snapshot not found")
@@ -172,7 +179,7 @@ class FinanceLiveReportService:
     @staticmethod
     def _response(scope,value):
         return {"report_snapshot_id":value["report_snapshot_id"],"organization_id":scope.organization_id,"project_id":scope.project_id,
-            "issued_at":value["issued_at"],"issued_by":scope.actor_user_id if value.get("issued_by") is None else value["issued_by"],
+            "reporting_date":value["reporting_date"],"issued_at":value["issued_at"],"issued_by":scope.actor_user_id if value.get("issued_by") is None else value["issued_by"],
             "progress_snapshot_id":value["progress_snapshot_id"],"resource_version_ids":value["resource_version_ids"],
             "price_version_ids":value["price_version_ids"],"invoice_ids":value["invoice_ids"],
             "unit_conversion_ids":value["unit_conversion_ids"],"calculated_metrics":value["calculated_metrics"],"immutable":True}

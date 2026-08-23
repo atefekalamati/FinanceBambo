@@ -135,10 +135,36 @@ class ReportSnapshotCreate(ApiModel):
     progress_snapshot_id:UUID|None=None
 
 
+class ReportSnapshotSummary(ApiModel):
+    """One issued report, without the arrays the detail endpoint carries.
+
+    A snapshot pins every resource, price, revision, conversion and invoice it was built
+    from; sending those on a listing would grow the payload with the project rather than
+    with the page. A count answers what a list is asked for.
+    """
+
+    report_snapshot_id:UUID
+    reporting_date:date
+    issued_at:datetime
+    issued_by:UUID
+    progress_snapshot_id:UUID
+    invoice_count:int
+    price_version_count:int
+
+
+class ReportSnapshotListResponse(ApiModel):
+    items:list[ReportSnapshotSummary]
+    page:int
+    page_size:int
+    total_items:int
+    total_pages:int
+
+
 class ReportSnapshotReference(ApiModel):
     report_snapshot_id:UUID
     organization_id:UUID
     project_id:str=Field(pattern=r"^[A-Za-z0-9_-]+$")
+    reporting_date:date
     issued_at:datetime
     issued_by:UUID
     progress_snapshot_id:UUID
