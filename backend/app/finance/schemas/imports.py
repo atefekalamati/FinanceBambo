@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import date
+from datetime import date,datetime
 from typing import Literal
 from uuid import UUID
 from pydantic import field_serializer
@@ -28,6 +28,11 @@ class ImportPreviewRow(ApiModel):
  def serialize_decimal(self,value):return None if value is None else format(value,"f")
 class ImportPreviewResponse(ApiModel):
  preview_id:UUID;kind:Literal["estimate","prices"];row_count:int;valid_count:int;invalid_count:int;rows:list[ImportPreviewRow];errors:list[ImportIssue];can_commit:bool
+ # Set when these exact bytes were already committed for this project and kind. canCommit
+ # carries the decision; these say why, so the UI can name the earlier import.
+ duplicate_file:bool=False
+ duplicate_of_import_id:UUID|None=None
+ duplicate_committed_at:datetime|None=None
 class ImportCommit(ApiModel):
  preview_id:UUID
 class ImportCommitResponse(ApiModel):

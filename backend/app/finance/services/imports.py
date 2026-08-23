@@ -5,6 +5,7 @@ from uuid import uuid4
 from openpyxl import load_workbook
 from ..domain.resources import FinanceRecordNotFound
 from ..domain.errors import FinanceDomainError
+from ..domain.imports import DuplicateImportFile
 
 class ImportValidationError(FinanceDomainError):
  status=422;code="VALIDATION_ERROR"
@@ -58,6 +59,10 @@ class FinanceImportService:
  def __init__(self,repo,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.ids=id_factory;self.clock=clock
  async def preview(self,scope,kind,content):
   if scope.actor_user_id is None:raise PermissionError("authenticated actor is required")
+  # Hashed here, on the bytes as uploaded and before any parsing, so a client cannot
+  # influence the identity by what it claims the file is.
+  file_hash=hashlib.sha256(content).hexdigest()
+  duplicate=await self.repo.committed_with_hash(scope,kind,file_hash)
   rows,errors=parse_excel(content,kind)
   resources=await self.repo.resolve_resources(scope,{str(row.get("resourceCode") or "").strip() for row in rows})
   resource_by_code={str(item["code"]):item for item in resources}
@@ -85,11 +90,17 @@ class FinanceImportService:
     "normalizedUnitPriceIrr":row.get("unitPriceIrr"),"effectiveFrom":row.get("effectiveFrom"),"scope":row.get("scope")})
    preview_rows.append(common)
   valid_count=sum(not value["errors"] for value in preview_rows);invalid_count=len(preview_rows)-valid_count
-  pid=self.ids();await self.repo.save_preview(scope,pid,kind,None,hashlib.sha256(content).hexdigest(),rows,errors,self.clock())
+  if duplicate is not None:
+   errors=[*errors,{"row":0,"field":"file","reason":"duplicate_import_file"}]
+  pid=self.ids();await self.repo.save_preview(scope,pid,kind,None,file_hash,rows,errors,self.clock())
   return {"previewId":pid,"kind":kind,"rowCount":len(rows),"validCount":valid_count,"invalidCount":invalid_count,
-   "rows":preview_rows,"errors":errors,"canCommit":not errors and bool(rows)}
+   "rows":preview_rows,"errors":errors,"canCommit":not errors and bool(rows),
+   "duplicateFile":duplicate is not None,
+   "duplicateOfImportId":None if duplicate is None else duplicate["id"],
+   "duplicateCommittedAt":None if duplicate is None else duplicate["committed_at"]}
  async def commit(self,scope,preview_id):
   try:result=await self.repo.commit(scope,preview_id,self.clock())
+  except DuplicateImportFile:raise
   except ValueError as exc:raise ImportConflict(str(exc)) from exc
   if result is None:raise FinanceRecordNotFound("import preview not found")
   return {"previewId":preview_id,"status":"committed","committedCount":result}
