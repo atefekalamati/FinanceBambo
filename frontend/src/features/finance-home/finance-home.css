@@ -501,36 +501,57 @@
   overflow: visible;
 }
 
+/* An arrow sitting on the line it names, rather than a caption parked above or
+   below it: the chip's middle is centred on the line and its point touches it,
+   so the two read as one mark. The +1px is half the rule's own 2px, which is
+   drawn downwards from this element's block-start edge. */
 .managerial-combo-chart__reference {
+  --managerial-reference-edge: color-mix(in srgb, var(--brand-teal) 62%, transparent);
+  /* Opaque on purpose: the chip has to cover the rule it sits on, and
+     --app-card-navy is a gradient, which color-mix cannot take. */
+  --managerial-reference-fill: color-mix(in srgb, var(--brand-teal) 20%, var(--color-surface-page));
+  --managerial-reference-point: .34rem;
   position: absolute;
   z-index: 5;
-  inset-block-start: .4rem;
+  inset-block-start: 0;
   inset-inline-start: .35rem;
-  inline-size: 4.9rem;
-  display: grid;
-  justify-items: stretch;
-  gap: .3rem;
-  padding: .4rem .45rem;
-  border: 1px solid color-mix(in srgb, var(--brand-teal) 62%, transparent);
+  transform: translateY(calc(-50% + 1px));
+  display: flex;
+  align-items: center;
+  padding: .2rem .5rem;
+  border: 1px solid var(--managerial-reference-edge);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--brand-teal) 18%, var(--app-card-navy));
-  box-shadow: 0 .3rem .9rem rgb(0 0 0 / 28%);
+  background: var(--managerial-reference-fill);
+  box-shadow: 0 .25rem .8rem rgb(0 0 0 / 32%);
   color: color-mix(in srgb, var(--brand-teal) 58%, white);
   font-size: .61rem;
-  line-height: 1.45;
+  line-height: 1.35;
   text-align: center;
-  white-space: normal;
+  white-space: nowrap;
 }
 
-.managerial-combo-chart__baseline--low .managerial-combo-chart__reference {
-  inset-block-start: auto;
-  inset-block-end: .4rem;
+/* The point, in two layers so it keeps the chip's 1px edge: the outer triangle
+   is the border colour, the inner one the fill, a hair shorter. */
+.managerial-combo-chart__reference::before,
+.managerial-combo-chart__reference::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 50%;
+  inline-size: 0;
+  block-size: 0;
+  transform: translateY(-50%);
 }
 
-.managerial-combo-chart__reference span {
-  inline-size: 100%;
-  border-block-start: 2px solid currentColor;
-  box-shadow: 0 0 .4rem currentColor;
+.managerial-combo-chart__reference::before {
+  inset-inline-end: calc(var(--managerial-reference-point) * -1);
+  border-block: var(--managerial-reference-point) solid transparent;
+  border-inline-start: var(--managerial-reference-point) solid var(--managerial-reference-edge);
+}
+
+.managerial-combo-chart__reference::after {
+  inset-inline-end: calc(var(--managerial-reference-point) * -1 + 1px);
+  border-block: calc(var(--managerial-reference-point) - 1px) solid transparent;
+  border-inline-start: calc(var(--managerial-reference-point) - 1px) solid var(--managerial-reference-fill);
 }
 
 .managerial-combo-chart__reference strong {
@@ -679,9 +700,16 @@
   inset-inline: 0;
   inset-block-end: max(.25rem, var(--baseline-size, 0%));
   block-size: 0;
+  pointer-events: none;
+}
+
+.managerial-combo-chart__baseline::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
   border-block-start: 2px solid color-mix(in srgb, var(--dash-plan) 88%, white);
   filter: drop-shadow(0 0 .3rem color-mix(in srgb, var(--dash-plan) 72%, transparent));
-  pointer-events: none;
 }
 
 @media (min-width: 64.01rem) {

@@ -295,21 +295,12 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   baseline.setAttribute("aria-hidden", "true");
   const baselineLabel = document.createElement("div");
   baselineLabel.className = "managerial-combo-chart__reference";
-  const baselineSwatch = document.createElement("span");
-  baselineSwatch.setAttribute("aria-hidden", "true");
-  const baselineText = document.createElement("strong");
-  baselineText.textContent = "خط مرجع برآورد اولیه";
-  baselineLabel.append(baselineSwatch, baselineText);
+  baselineLabel.append(element("strong", "", "خط مرجع برآورد اولیه"));
   baseline.append(baselineLabel);
 
   const initialEntry = entries.find((entry) => entry.key === "initial");
   if (initialEntry?.value != null) {
     barsBand.style.setProperty("--baseline-size", `${initialEntry.magnitude}%`);
-    // The badge hangs off the line, so it has to hang towards the room there
-    // is: downwards from a high line, upwards from a low one. Otherwise a small
-    // initial estimate puts the line near the floor and the badge lands on the
-    // labels. The magnitude already says which, so nothing has to be measured.
-    if (initialEntry.magnitude < 50) baseline.classList.add("managerial-combo-chart__baseline--low");
     barsBand.append(baseline);
   }
 
