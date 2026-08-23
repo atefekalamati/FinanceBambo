@@ -173,5 +173,32 @@ class SeedGuardTests(unittest.TestCase):
             env.ENV_FILE = original
 
 
+class FixtureIdentityTests(unittest.TestCase):
+    """Telling a fixture from real activity must not depend on business columns."""
+
+    def test_every_seeded_id_belongs_to_a_declared_family(self):
+        import re
+        from devhost import seed
+        sql = (Path(seed.__file__).parent / "seed.sql").read_text(encoding="utf-8")
+        # Ids the seed writes, excluding the tenant and actor ids it merely references.
+        referenced = {str(seed.ORGANIZATION_ID)[:8], str(seed.ACTOR_ID)[:8],
+                      str(seed.IMPORTER_ID)[:8], "44444444",
+                      str(seed.PROGRESS_OVERRIDE["created_by"])[:8]}
+        written = {value[:8] for value in
+                   re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", sql)}
+        undeclared = written - set(seed.FIXTURE_ID_PREFIXES) - referenced
+        self.assertEqual(set(), undeclared,
+                         "seed.sql writes ids outside FIXTURE_ID_PREFIXES; --changes would "
+                         "report them as user activity")
+
+    def test_a_seeded_row_may_carry_any_source_value(self):
+        from devhost import seed
+        sources = {line[6] for line in seed.ESTIMATE_LINES}
+        # The permit line mirrors the mock's manual_entry, so `source` cannot identify
+        # fixtures - which is why the id family does.
+        self.assertIn("manual_entry", sources)
+        self.assertIn("progress_feed", sources)
+
+
 if __name__ == "__main__":
     unittest.main()

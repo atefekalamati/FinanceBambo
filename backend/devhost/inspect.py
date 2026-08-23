@@ -20,6 +20,7 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
+from . import seed
 from .environment import MissingConfiguration, database_url, redacted
 
 # Every finance table, with the column that says when the row appeared.
@@ -40,8 +41,10 @@ TABLES = (
     ("finance_audit_events", "occurred_at"),
 )
 
-# Rows the development seed writes carry this marker; anything else came from the UI.
-SEEDED_SOURCES = ("progress_feed",)
+# A fixture is identified by its id, not by its `source` column: `source` is part of the
+# data being mirrored and a seeded row can legitimately read "manual_entry". Rows created
+# through the API get a generated UUID, which never lands in these families.
+FIXTURE_PREFIXES = tuple(f"{prefix}-%" for prefix in seed.FIXTURE_ID_PREFIXES)
 
 
 def connect():
@@ -96,20 +99,26 @@ def changes(connection) -> None:
         SELECT l.activity_external_id, l.original_quantity, l.original_unit_price_irr,
                r.code AS resource, l.created_at
         FROM estimate_lines l JOIN finance_resources r ON r.id = l.resource_id
-        WHERE l.source <> ALL(%s) AND l.deleted_at IS NULL
-        ORDER BY l.created_at DESC""", (list(SEEDED_SOURCES),)).fetchall()
+        WHERE l.id::text NOT LIKE ALL(%s) AND l.deleted_at IS NULL
+        ORDER BY l.created_at DESC""", (list(FIXTURE_PREFIXES),)).fetchall()
     for row in lines:
         found = True
         amount = row["original_quantity"] or row["original_unit_price_irr"]
         print(f"  estimate_lines    {row['activity_external_id']:9} {row['resource']:12} "
               f"{amount}   {row['created_at']:%Y-%m-%d %H:%M}")
 
-    # The seed writes its audit trail at the seed timestamp; later events are real activity.
-    seeded_at = connection.execute(
-        "SELECT min(occurred_at) AS t FROM finance_audit_events").fetchone()["t"]
+    for table in ("finance_resources", "price_versions", "invoices", "finance_project_settings"):
+        rows = connection.execute(
+            f"SELECT id, created_at FROM {table} WHERE id::text NOT LIKE ALL(%s) "
+            "ORDER BY created_at DESC LIMIT 10", (list(FIXTURE_PREFIXES),)).fetchall()
+        for row in rows:
+            found = True
+            print(f"  {table:18}{str(row['id'])[:36]}   {row['created_at']:%Y-%m-%d %H:%M}")
+
     events = connection.execute("""
         SELECT action, entity_type, occurred_at FROM finance_audit_events
-        WHERE occurred_at > %s ORDER BY occurred_at DESC LIMIT 25""", (seeded_at,)).fetchall()
+        WHERE id::text NOT LIKE ALL(%s) ORDER BY occurred_at DESC LIMIT 25""",
+        (list(FIXTURE_PREFIXES),)).fetchall()
     for row in events:
         found = True
         print(f"  audit             {row['action']:30} {row['entity_type']:24} "
