@@ -19,6 +19,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.finance.repositories.audit import PsycopgFinanceAuditRepository
 from app.finance.repositories.progress import PsycopgProgressRepository
+from app.finance.repositories.reports import PsycopgLiveReportRepository
 from app.finance.repositories.settings import PsycopgFinanceSettingsRepository
 
 ORG = UUID("11111111-1111-4111-8111-111111111111")
@@ -98,6 +99,78 @@ class AuditQueryTests(unittest.IsolatedAsyncioTestCase):
         count_sql, count_values = executions[0]
         self.assertNotIn("DROP TABLE", count_sql)
         self.assertIn("%'; DROP TABLE finance_audit_events;--%", count_values)
+
+
+class ReportSnapshotListQueryTests(unittest.IsolatedAsyncioTestCase):
+    async def _run(self, **filters):
+        connection = Connection([{"total": 4}, [{"report_snapshot_id": UUID(int=1)}]])
+        rows, total = await PsycopgLiveReportRepository(connection).list(SCOPE, **filters)
+        return connection.cursor_instance.executions, rows, total
+
+    async def test_count_and_page_share_one_where_clause_and_its_values(self):
+        executions, rows, total = await self._run(limit=25, offset=50,
+            reporting_date_from=date(2026, 4, 1), reporting_date_to=date(2026, 5, 1))
+        (count_sql, count_values), (page_sql, page_values) = executions
+        # A count that filtered differently from the page would report a total the page
+        # cannot reach, which is exactly what filtering in Python after the fact produces.
+        self.assertEqual(4, total)
+        where = count_sql.split("WHERE", 1)[1]
+        self.assertIn(where, page_sql)
+        self.assertEqual(count_values, page_values[: len(count_values)])
+        self.assertEqual((25, 50), page_values[-2:])
+
+    async def test_both_ends_of_the_range_are_inclusive_and_bound(self):
+        executions, _rows, _total = await self._run(
+            reporting_date_from=date(2026, 4, 1), reporting_date_to=date(2026, 5, 1))
+        count_sql, count_values = executions[0]
+        self.assertIn("reporting_date>=%s", count_sql)
+        self.assertIn("reporting_date<=%s", count_sql)
+        self.assertEqual(count_sql.count("%s"), len(count_values))
+        self.assertEqual((ORG, "sample_site_01", date(2026, 4, 1), date(2026, 5, 1)), count_values)
+
+    async def test_an_unfiltered_read_is_still_scoped_to_both_tenant_keys(self):
+        executions, _rows, _total = await self._run()
+        count_sql, count_values = executions[0]
+        self.assertIn("WHERE organization_id=%s AND project_id=%s", count_sql)
+        self.assertEqual((ORG, "sample_site_01"), count_values)
+
+    async def test_the_listing_counts_the_pinned_arrays_instead_of_sending_them(self):
+        executions, _rows, _total = await self._run()
+        page_sql = executions[1][0]
+        self.assertIn("jsonb_array_length(invoice_ids) invoice_count", page_sql)
+        self.assertIn("jsonb_array_length(price_version_ids) price_version_count", page_sql)
+        # Those arrays grow with the project, so a listing must never carry them.
+        for column in ("resource_version_ids", "estimate_revision_ids",
+                       "unit_conversion_ids", "calculated_metrics", "snapshot_payload"):
+            self.assertNotIn(column, page_sql)
+        self.assertIn("ORDER BY reporting_date DESC,issued_at DESC,id DESC", page_sql)
+
+
+class InvoiceDateFilterQueryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_the_range_filters_on_invoice_date_and_binds_both_ends(self):
+        from app.finance.repositories.invoices import PsycopgInvoiceRepository
+
+        connection = Connection([{"total_count": 2}, [], []])
+        await PsycopgInvoiceRepository(connection).list(
+            SCOPE, page=1, page_size=50,
+            invoice_date_from=date(2026, 7, 1), invoice_date_to=date(2026, 7, 31))
+        count_sql, count_values = connection.cursor_instance.executions[0]
+        self.assertIn("invoice_date>=%s", count_sql)
+        self.assertIn("invoice_date<=%s", count_sql)
+        # The reporting engine filters on invoice_date, so the listing has to agree with
+        # it; confirmed_at would give "the invoices of this period" a different meaning
+        # from "the cost of this period".
+        self.assertNotIn("confirmed_at", count_sql)
+        self.assertEqual((ORG, "sample_site_01", date(2026, 7, 1), date(2026, 7, 31)), count_values)
+
+    async def test_the_range_is_optional_and_leaves_the_query_untouched(self):
+        from app.finance.repositories.invoices import PsycopgInvoiceRepository
+
+        connection = Connection([{"total_count": 0}, [], []])
+        await PsycopgInvoiceRepository(connection).list(SCOPE, page=1, page_size=50)
+        count_sql, count_values = connection.cursor_instance.executions[0]
+        self.assertNotIn("invoice_date>=", count_sql)
+        self.assertEqual((ORG, "sample_site_01"), count_values)
 
 
 class SettingsRevisionQueryTests(unittest.IsolatedAsyncioTestCase):

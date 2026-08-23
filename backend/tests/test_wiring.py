@@ -86,6 +86,7 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/overview", "get"),
                 ("/api/projects/{projectId}/finance/reports/live", "get"),
                 ("/api/projects/{projectId}/finance/reports/live/variances", "get"),
+                ("/api/projects/{projectId}/finance/report-snapshots", "get"),
                 ("/api/projects/{projectId}/finance/report-snapshots", "post"),
                 ("/api/projects/{projectId}/finance/report-snapshots/{reportId}", "get"),
                 ("/api/projects/{projectId}/finance/report-snapshots/{reportId}/csv", "get"),
@@ -103,7 +104,19 @@ class WiringTests(unittest.TestCase):
         for params in (file_params,extraction_params,invoice_params):
             self.assertEqual((50,200),(params["pageSize"]["default"],params["pageSize"]["maximum"]))
         self.assertTrue({"reviewStatus","source","fileId","linkedInvoiceId"}<=set(extraction_params))
-        self.assertTrue({"query","status","source"}<=set(invoice_params))
+        self.assertTrue({"query","status","source","invoiceDateFrom","invoiceDateTo"}<=set(invoice_params))
+        # The issued-report listing pages like every other list and filters on the date
+        # the report describes, not the moment it was drawn.
+        snapshot_params={item["name"] for item in paths["/api/projects/{projectId}/finance/report-snapshots"]["get"]["parameters"]}
+        self.assertTrue({"page","pageSize","reportingDateFrom","reportingDateTo"}<=snapshot_params)
+        self.assertTrue({"items","page","pageSize","totalItems","totalPages"}<=set(schemas["ReportSnapshotListResponse"]["properties"]))
+        summary=set(schemas["ReportSnapshotSummary"]["properties"])
+        self.assertTrue({"reportSnapshotId","reportingDate","issuedAt","issuedBy",
+                         "progressSnapshotId","invoiceCount","priceVersionCount"}<=summary)
+        # A listing must not carry arrays that grow with the project.
+        self.assertTrue({"invoiceIds","priceVersionIds","resourceVersionIds","calculatedMetrics"}.isdisjoint(summary))
+        # issuedAt alone cannot say what a report is about.
+        self.assertIn("reportingDate",schemas["ReportSnapshotReference"]["properties"])
         self.assertTrue({"version","createdAt","linkedInvoiceId"}<=set(schemas["ExtractionDraftResponse"]["properties"]))
         self.assertIn("lineAmountIrr",schemas["InvoiceLineCreate"]["properties"])
         self.assertIn("examples",schemas["ExtractionStart"])

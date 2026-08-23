@@ -30,6 +30,33 @@ class PsycopgLiveReportRepository:
             await cursor.execute("SELECT id report_snapshot_id,organization_id,project_id,reporting_date,progress_snapshot_ref_id,resource_version_ids,estimate_revision_ids,price_version_ids,unit_conversion_ids,invoice_ids,calculated_metrics,issued_by,issued_at,(SELECT progress_snapshot_id FROM progress_snapshot_refs p WHERE p.organization_id=r.organization_id AND p.project_id=r.project_id AND p.id=r.progress_snapshot_ref_id) progress_snapshot_id FROM report_snapshots r WHERE organization_id=%s AND project_id=%s AND id=%s",(scope.organization_id,scope.project_id,report_id))
             return await cursor.fetchone()
 
+    @staticmethod
+    def _snapshot_filters(scope,reporting_date_from,reporting_date_to):
+        """Build the shared WHERE clause so the count and the page always agree."""
+        clauses=["organization_id=%s","project_id=%s"];values=[scope.organization_id,scope.project_id]
+        # reporting_date is a date, so both ends compare directly and both are inclusive.
+        if reporting_date_from:clauses.append("reporting_date>=%s");values.append(reporting_date_from)
+        if reporting_date_to:clauses.append("reporting_date<=%s");values.append(reporting_date_to)
+        return " AND ".join(clauses),values
+
+    async def list(self,scope,limit=50,offset=0,reporting_date_from=None,reporting_date_to=None):
+        """Summaries only: the pinned id arrays and metrics belong to the detail endpoint."""
+        where,values=self._snapshot_filters(scope,reporting_date_from,reporting_date_to)
+        async with self.db.cursor(row_factory=dict_row) as cursor:
+            await cursor.execute(f"SELECT COUNT(*) AS total FROM report_snapshots WHERE {where}",tuple(values))
+            total=(await cursor.fetchone())["total"]
+            await cursor.execute(
+                "SELECT id report_snapshot_id,reporting_date,issued_at,issued_by,"
+                "jsonb_array_length(invoice_ids) invoice_count,"
+                "jsonb_array_length(price_version_ids) price_version_count,"
+                "(SELECT progress_snapshot_id FROM progress_snapshot_refs p"
+                " WHERE p.organization_id=r.organization_id AND p.project_id=r.project_id"
+                " AND p.id=r.progress_snapshot_ref_id) progress_snapshot_id"
+                f" FROM report_snapshots r WHERE {where}"
+                " ORDER BY reporting_date DESC,issued_at DESC,id DESC LIMIT %s OFFSET %s",
+                tuple(values+[limit,offset]))
+            return await cursor.fetchall(),total
+
     async def export_payload(self,scope,report_id):
         async with self.db.cursor(row_factory=dict_row) as cursor:
             await cursor.execute("SELECT id report_snapshot_id,reporting_date,snapshot_payload FROM report_snapshots WHERE organization_id=%s AND project_id=%s AND id=%s",(scope.organization_id,scope.project_id,report_id))

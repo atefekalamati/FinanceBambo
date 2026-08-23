@@ -14,7 +14,7 @@ def invoice_code(invoice_id):return f"F-{str(invoice_id).split('-')[0].upper()}"
 def resolve_invoice_number(value,invoice_id):return value.strip() if isinstance(value,str) and value.strip() else invoice_code(invoice_id)
 class FinanceInvoiceService:
  def __init__(self,repo,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.ids=id_factory;self.clock=clock
- async def list(self,s,page=1,page_size=50,query=None,status=None,source=None):return await self.repo.list(s,page,page_size,query,status,source)
+ async def list(self,s,page=1,page_size=50,query=None,status=None,source=None,invoice_date_from=None,invoice_date_to=None):return await self.repo.list(s,page,page_size,query,status,source,invoice_date_from,invoice_date_to)
  async def get(self,s,i):
   v=await self.repo.get(s,i)
   if v is None:raise FinanceRecordNotFound("invoice not found")

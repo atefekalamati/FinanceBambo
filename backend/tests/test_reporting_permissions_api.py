@@ -52,9 +52,15 @@ class Reports:
         return {"reportingDate":reporting_date,"progressSnapshotId":progress_snapshot_id or SNAPSHOT,
             "metrics":{"initialEstimateIrr":"100","actualCostIrr":"50","currentExecutedValueIrr":"40","remainingPhysicalCostIrr":"60","moneyRequiredToContinueIrr":"50","forecastFinalCostIrr":"100","actualCostPerSquareMeterIrr":"5","forecastPerSquareMeterIrr":"10"},
             "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":2,"excludedEstimateLineCount":3}
+    async def list_snapshots(self,scope,page=1,page_size=50,reporting_date_from=None,reporting_date_to=None):
+        self.list_call={"page":page,"page_size":page_size,"from":reporting_date_from,"to":reporting_date_to}
+        return {"items":[{"reportSnapshotId":REPORT,"reportingDate":"2026-08-09",
+                          "issuedAt":"2026-08-09T00:00:00Z","issuedBy":ACTOR,
+                          "progressSnapshotId":SNAPSHOT,"invoiceCount":3,"priceVersionCount":2}],
+                "page":page,"pageSize":page_size,"totalItems":9,"totalPages":1}
     async def get_snapshot(self,scope,report_id):
         return {"reportSnapshotId":report_id,"organizationId":scope.organization_id,"projectId":scope.project_id,
-            "issuedAt":"2026-08-09T00:00:00Z","issuedBy":ACTOR,"progressSnapshotId":SNAPSHOT,
+            "reportingDate":"2026-08-09","issuedAt":"2026-08-09T00:00:00Z","issuedBy":ACTOR,"progressSnapshotId":SNAPSHOT,
             "resourceVersionIds":[UUID(int=1)],"priceVersionIds":[UUID(int=2)],"invoiceIds":[],
             "unitConversionIds":[],"calculatedMetrics":{"actualCostIrr":"50"},"immutable":True}
 
@@ -118,6 +124,36 @@ class ReportingPermissionApiTests(unittest.TestCase):
         with client(("finance.view",)) as api:
             overview=api.get(f"/api/projects/{PROJECT}/finance/overview",params={"reportingDate":"2026-08-09"}).json()
         self.assertEqual((2,3),(overview["missingPriceCount"],overview["excludedEstimateLineCount"]))
+
+
+    def test_the_snapshot_listing_needs_report_view_and_summarises_rather_than_pins(self):
+        with client(("finance_report.view",)) as api:
+            listed=api.get(f"/api/projects/{PROJECT}/finance/report-snapshots",
+                params={"reportingDateFrom":"2026-08-01","reportingDateTo":"2026-08-31","page":1,"pageSize":50})
+        self.assertEqual(200,listed.status_code)
+        payload=listed.json()
+        self.assertEqual({"items","page","pageSize","totalItems","totalPages"},set(payload))
+        # The whole match, not the page: a client cannot page through a total it never sees.
+        self.assertEqual(9,payload["totalItems"])
+        row=payload["items"][0]
+        self.assertEqual({"reportSnapshotId","reportingDate","issuedAt","issuedBy",
+                          "progressSnapshotId","invoiceCount","priceVersionCount"},set(row))
+        # The pinned arrays belong to the detail endpoint; they grow with the project.
+        for field in ("invoiceIds","priceVersionIds","resourceVersionIds","calculatedMetrics"):
+            self.assertNotIn(field,row)
+
+    def test_finance_view_alone_cannot_list_issued_reports(self):
+        with client(("finance.view",)) as api:
+            denied=api.get(f"/api/projects/{PROJECT}/finance/report-snapshots")
+        self.assertEqual(403,denied.status_code)
+        self.assertEqual("FINANCE_FORBIDDEN",denied.json()["error"]["code"])
+
+    def test_the_issued_report_says_which_date_it_is_about(self):
+        with client(("finance_report.view",)) as api:
+            issued=api.get(f"/api/projects/{PROJECT}/finance/report-snapshots/{REPORT}")
+        self.assertEqual(200,issued.status_code)
+        # issuedAt says when it was drawn; reportingDate says what it describes.
+        self.assertEqual("2026-08-09",issued.json()["reportingDate"])
 
 
 if __name__=="__main__":unittest.main()
