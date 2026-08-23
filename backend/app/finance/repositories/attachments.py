@@ -1,7 +1,8 @@
+from psycopg import errors
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from ..domain.attachments import FinanceAttachment
+from ..domain.attachments import DuplicateAttachment, FinanceAttachment
 
 
 class PsycopgAttachmentRepository:
@@ -50,6 +51,15 @@ class PsycopgAttachmentRepository:
         return [self._map(row) for row in rows], total_count
 
     async def create(self, scope, value):
+        # The service checks for the digest first, but two uploads of the same bytes can
+        # pass that check together. UNIQUE (organization_id, project_id, sha256) settles
+        # it; without this the loser would surface psycopg's error to the client.
+        try:
+            return await self._insert(scope, value)
+        except errors.UniqueViolation as error:
+            raise DuplicateAttachment("identical file already exists") from error
+
+    async def _insert(self, scope, value):
         async with self.db.cursor() as cursor:
             await cursor.execute("INSERT INTO finance_attachments(id,organization_id,project_id,invoice_id,logical_type,original_name_safe,stored_name,mime_type,size_bytes,sha256,storage_key,processing_status,uploaded_by,uploaded_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'uploaded',%s,%s)", (value.file_id, scope.organization_id, scope.project_id, value.invoice_id, value.logical_type, value.original_name_safe, value.stored_name, value.mime_type, value.size_bytes, value.sha256, value.storage_key, value.uploaded_by, value.uploaded_at))
         return value

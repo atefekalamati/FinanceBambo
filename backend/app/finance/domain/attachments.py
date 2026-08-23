@@ -2,6 +2,20 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from .errors import FinanceDomainError
+
+
+class DuplicateAttachment(FinanceDomainError):
+    """These bytes are already stored for this project.
+
+    Not DUPLICATE_INVOICE: the same image may be attached while no invoice exists
+    yet, and a client shown "this invoice already exists" cannot act on it.
+    """
+
+    status = 409
+    code = "DUPLICATE_IMPORT_FILE"
+
+
 
 FILE_TRANSITIONS = {
     "uploaded": {"processing"},
