@@ -117,13 +117,13 @@ def build() -> str:
             f"{quote(base_unit)},{quote(dimension)},{quote(external_id)},{actor},{now});")
 
     out += ["", "-- Estimate lines"]
-    for line_id, resource_id, activity, assignment, quantity, price in seed.ESTIMATE_LINES:
+    for line_id, resource_id, activity, assignment, quantity, price, source in seed.ESTIMATE_LINES:
         out.append(
             "INSERT INTO estimate_lines"
             "(id,organization_id,project_id,resource_id,activity_external_id,assignment_external_id,"
             "original_quantity,original_unit_price_irr,source,created_by,created_at)"
             f" VALUES({quote(line_id)},{org},{project},{quote(resource_id)},{quote(activity)},"
-            f"{quote(assignment)},{quote(quantity)},{quote(price)},'progress_feed',{actor},{now});")
+            f"{quote(assignment)},{quote(quantity)},{quote(price)},{quote(source)},{actor},{now});")
 
     out += ["", "-- Estimate revisions (the mock's revisedQuantity)"]
     for index, (line_id, revision, previous, new_quantity, reason) in enumerate(seed.ESTIMATE_REVISIONS, 1):

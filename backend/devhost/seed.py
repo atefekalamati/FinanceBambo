@@ -68,22 +68,42 @@ ACTIVITIES = [
      "title": "مجوزهای پروژه", "wbsCode": "0.2", "status": "active"},
 ]
 
-# id, resource, activity, assignment, original_quantity, original_unit_price_irr
+# id, resource, activity, assignment, original_quantity, original_unit_price_irr, source
 # The mock's revisedQuantity becomes an estimate revision below: the backend keeps the
 # original immutable and derives the revised value from the revision trail.
+#
+# A general-cost line is amount-based: it carries no quantity, and its approved amount
+# lives in original_unit_price_irr. Quantified lines are the other way round.
 ESTIMATE_LINES = [
     (UUID("30000000-0000-4000-8000-000000000001"), REBAR, "ACT-102", "asg-foundation-rebar",
-     Decimal("10000.0000"), None),
+     Decimal("10000.0000"), None, "progress_feed"),
     # The feed has no rebar assignment for ACT-201, so this line reports no progress.
     (UUID("30000000-0000-4000-8000-000000000002"), REBAR, "ACT-201", None,
-     Decimal("8500.0000"), None),
+     Decimal("8500.0000"), None, "progress_feed"),
     (UUID("30000000-0000-4000-8000-000000000003"), FORMWORK, "ACT-202", "asg-labor-formwork",
-     Decimal("900.0000"), None),
+     Decimal("900.0000"), None, "progress_feed"),
     (UUID("30000000-0000-4000-8000-000000000004"), CRANE, "ACT-201", "asg-crane-floor1",
-     Decimal("160.0000"), None),
+     Decimal("160.0000"), None, "progress_feed"),
     (UUID("30000000-0000-4000-8000-000000000005"), PERMIT, "ACT-002", "asg-permit-general",
-     None, Decimal("250000000")),
+     None, Decimal("250000000"), "manual_entry"),
 ]
+
+# Every row this file writes takes its id from one of these families. Rows created through
+# the API get a generated UUID instead, so the prefix is what separates a fixture from real
+# activity - not the `source` column, which is itself part of the data being mirrored.
+FIXTURE_ID_PREFIXES = (
+    "10000000",  # finance_project_settings
+    "20000000",  # finance_resources
+    "30000000",  # estimate_lines
+    "31000000",  # estimate_revisions
+    "33333333",  # progress_snapshot_refs
+    "40000000",  # invoices
+    "41000000",  # invoice_lines
+    "50000000",  # price_versions
+    "55555555",  # unit_conversions
+    "66666666",  # progress_overrides
+    "90000000",  # finance_audit_events
+)
 
 # estimate_line, revision, previous_quantity, new_quantity, reason
 # The line's reported revision is max(revision) + 1, so the first revision row is
