@@ -125,6 +125,13 @@ class WiringTests(unittest.TestCase):
         self.assertIn("409",paths["/api/projects/{projectId}/finance/extractions/{draftId}/reject"]["post"]["responses"])
         preview=schemas["ImportPreviewResponse"]
         self.assertTrue({"previewId","kind","rowCount","validCount","invalidCount","rows","errors","canCommit"}<=set(preview["properties"]))
+        # The import screens branch on duplicateFile and name the earlier import from
+        # duplicateCommittedAt; renaming either would silently degrade the notice.
+        self.assertTrue({"duplicateFile","duplicateOfImportId","duplicateCommittedAt"}<=set(preview["properties"]))
+        # A repeated file is refused at commit with 409, so the spec has to say so.
+        for kind in ("estimate","prices"):
+            commit=paths["/api/projects/{projectId}/finance/imports/%s/commit" % kind]["post"]
+            self.assertIn("409",commit["responses"])
         self.assertTrue({"rowNumber","status","errors","resourceCode","resourceId","resourceTitle","baseUnit"}<=set(schemas["ImportPreviewRow"]["properties"]))
         self.assertTrue({"revision","revisions"}<=set(schemas["EstimateLineResponse"]["properties"]))
         self.assertTrue({"activityTitle","wbsCode"}<=set(schemas["EstimateLineResponse"]["properties"]))
