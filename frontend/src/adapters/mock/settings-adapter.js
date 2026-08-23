@@ -24,6 +24,8 @@ export function createMockSettingsAdapter(context, { initialState = "success" } 
   }];
   let settings = initialState === "empty" ? null : {
     settingsId: "10000000-0000-4000-8000-000000000001",
+    // FinanceSettingsResponse.canEdit: the Backend's verdict on this actor.
+    canEdit: true,
     currency: "IRR",
     displayCurrency: "TOMAN",
     grossBuiltArea: "4250.0000",

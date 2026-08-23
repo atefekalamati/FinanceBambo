@@ -27,13 +27,25 @@ function buildExactScale(entries) {
   }));
 }
 
+/**
+ * LiveMetrics declares four of its money fields as nullable, and null there
+ * means the Backend could not compute the number — a missing current price, an
+ * unset gross area — not that the number is zero. Coercing it to "0" would draw
+ * a real bar labelled ۰ تومان and tell the reader the project has no remaining
+ * cost. Keep the null: `createTomanDisplay` renders it as «قابل محاسبه نیست»,
+ * and an uncomputable value gets no bar, because there is no height to draw.
+ */
+function exactOrNull(value) {
+  return /^-?\d+$/.test(String(value ?? "")) ? String(value) : null;
+}
+
 export function buildOverviewComparisons(metrics = {}) {
   return Object.freeze({
     management: buildExactScale([
-      { key: "initial", label: "برآورد اولیه", value: String(metrics.initialEstimateIrr ?? "0") },
-      { key: "actual", label: "هزینه واقعی ثبت‌شده", value: String(metrics.actualCostIrr ?? "0") },
-      { key: "remaining", label: "هزینه کار باقی‌مانده با قیمت روز", value: String(metrics.remainingPhysicalCostIrr ?? "0") },
-      { key: "forecast", label: "پیش‌بینی هزینه نهایی", value: String(metrics.forecastFinalCostIrr ?? "0") },
+      { key: "initial", label: "برآورد اولیه", value: exactOrNull(metrics.initialEstimateIrr) },
+      { key: "actual", label: "هزینه واقعی ثبت‌شده", value: exactOrNull(metrics.actualCostIrr) },
+      { key: "remaining", label: "هزینه کار باقی‌مانده با قیمت روز", value: exactOrNull(metrics.remainingPhysicalCostIrr) },
+      { key: "forecast", label: "پیش‌بینی هزینه نهایی", value: exactOrNull(metrics.forecastFinalCostIrr) },
     ]),
   });
 }

@@ -48,3 +48,25 @@ test("builds exact overview comparisons without binary financial arithmetic", ()
   });
   assert.deepEqual(result.management.map((entry) => entry.magnitude), [80, 40, 60, 100]);
 });
+
+test("an uncomputable metric stays null instead of becoming a zero bar", () => {
+  // LiveMetrics declares these nullable: null is "the Backend could not work it
+  // out", and a finance screen must not redraw that as ۰ تومان.
+  const result = buildOverviewComparisons({
+    initialEstimateIrr: "250000000",
+    actualCostIrr: "1887800000",
+    remainingPhysicalCostIrr: null,
+    forecastFinalCostIrr: null,
+  });
+  const byKey = Object.fromEntries(result.management.map((entry) => [entry.key, entry]));
+  assert.equal(byKey.remaining.value, null);
+  assert.equal(byKey.forecast.value, null);
+  assert.equal(byKey.remaining.magnitude, 0, "nothing to draw for a number nobody computed");
+  assert.equal(byKey.actual.value, "1887800000", "the computed ones are untouched");
+  assert.equal(byKey.actual.magnitude, 100);
+});
+
+test("a metric that is not an exact integer is treated as uncomputable", () => {
+  const [initial] = buildOverviewComparisons({ initialEstimateIrr: "12.5" }).management;
+  assert.equal(initial.value, null, "money is exact integer IRR or it is nothing");
+});
