@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 from pathlib import PurePath
 from uuid import uuid4
 
-from ..domain.attachments import FinanceAttachment, require_file_transition
+from ..domain.attachments import (
+    DuplicateAttachment,
+    FinanceAttachment,
+    require_file_transition,
+)
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
 
@@ -35,11 +39,6 @@ class AttachmentTooLarge(FinanceDomainError):
 class UnsupportedAttachment(FinanceDomainError):
     status = 415
     code = "UNSUPPORTED_MEDIA_TYPE"
-
-
-class DuplicateAttachment(FinanceDomainError):
-    status = 409
-    code = "DUPLICATE_INVOICE"
 
 
 class AttachmentStorageUnavailable(FinanceDomainError):

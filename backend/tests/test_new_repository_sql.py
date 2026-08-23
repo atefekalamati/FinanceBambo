@@ -17,6 +17,10 @@ from uuid import UUID
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from psycopg import errors
+
+from app.finance.domain.attachments import DuplicateAttachment
+from app.finance.repositories.attachments import PsycopgAttachmentRepository
 from app.finance.repositories.audit import PsycopgFinanceAuditRepository
 from app.finance.repositories.progress import PsycopgProgressRepository
 from app.finance.repositories.reports import PsycopgLiveReportRepository
@@ -202,6 +206,35 @@ class OverrideHistoryQueryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("r.progress_snapshot_id", sql)
         self.assertIn("o.organization_id=%s AND o.project_id=%s AND o.estimate_line_id=%s", sql)
         self.assertIn("ORDER BY o.created_at DESC,o.id DESC", sql)
+
+
+class RaisingCursor(Cursor):
+    async def execute(self, query, parameters=()):
+        await super().execute(query, parameters)
+        raise errors.UniqueViolation("duplicate key value violates unique constraint")
+
+
+class RaisingConnection(Connection):
+    def __init__(self): self.cursor_instance = RaisingCursor([])
+
+
+class AttachmentDuplicateTests(unittest.IsolatedAsyncioTestCase):
+    """The service checks the digest first, but two concurrent uploads both pass it.
+
+    UNIQUE (organization_id, project_id, sha256) is what actually settles the race, and
+    the loser must come back as the domain error rather than psycopg's UniqueViolation.
+    """
+
+    async def test_unique_violation_becomes_the_domain_duplicate_error(self):
+        value = SimpleNamespace(
+            file_id=UUID(int=7), invoice_id=None, logical_type="invoice_image",
+            original_name_safe="bill.png", stored_name="stored.png", mime_type="image/png",
+            size_bytes=12, sha256="a" * 64, storage_key="k", uploaded_by=UUID(int=9), uploaded_at=NOW)
+        with self.assertRaises(DuplicateAttachment) as caught:
+            await PsycopgAttachmentRepository(RaisingConnection()).create(SCOPE, value)
+        # The frontend keys its message off this code; 409 keeps it out of the 500 path.
+        self.assertEqual(("DUPLICATE_IMPORT_FILE", 409), (caught.exception.code, caught.exception.status))
+        self.assertIsInstance(caught.exception.__cause__, errors.UniqueViolation)
 
 
 if __name__ == "__main__":
