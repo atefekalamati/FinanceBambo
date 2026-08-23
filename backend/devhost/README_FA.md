@@ -98,6 +98,33 @@ Seed فقط وقتی اجرا می‌شود که پروژه نمونه وجود 
 با خطا برمی‌گردد و از دومی به بعد سالم است — عمدی است: دستوری که وسط کار قطع شده دوباره
 اجرا نمی‌شود، چون تکرار خودکار یک نوشتن نیمه‌تمام بدتر از یک خطای قابل‌مشاهده است.
 
+## دیدن داده
+
+PostgreSQL هر جدول را در یک فایل باینری زیر `data/base/` نگه می‌دارد؛ آن فایل‌ها با هیچ
+ویرایشگری قابل خواندن نیستند و نامشان هم ثابت نمی‌ماند. برای دیدن داده باید از خود سرور
+پرسید:
+
+```bash
+cd backend
+
+python -m devhost.inspect                 # همه جدول‌ها با تعداد ردیف
+python -m devhost.inspect estimate_lines  # ردیف‌های یک جدول
+python -m devhost.inspect --changes       # فقط آنچه از رابط کاربری آمده
+python -m devhost.inspect --export        # یک CSV به‌ازای هر جدول
+```
+
+`--export` فایل‌ها را در `devhost/.export/` می‌نویسد و با UTF-8 BOM ذخیره می‌کند تا اکسل
+متن فارسی را درست باز کند.
+
+با `psql` هم می‌شود:
+
+```bash
+E:amboo\pgsql-dev\pgsqlin\psql.exe "postgresql://bambo@127.0.0.1:55432/bambo_finance_dev"
+\dt                    فهرست جدول‌ها
+\d estimate_lines      ساختار یک جدول
+SELECT * FROM estimate_lines WHERE source = 'manual_entry';
+```
+
 ## داده‌ها کجا ذخیره می‌شوند
 
 | لایه | محل | محتوا |
