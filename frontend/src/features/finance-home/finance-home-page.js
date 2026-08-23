@@ -295,7 +295,9 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   baseline.setAttribute("aria-hidden", "true");
   const baselineLabel = document.createElement("div");
   baselineLabel.className = "managerial-combo-chart__reference";
-  baselineLabel.append(element("strong", "", "خط مرجع برآورد اولیه"));
+  // Two deliberate lines: the chip is narrow so it can stand clear of the bars,
+  // and letting the text find its own break would put it wherever it landed.
+  baselineLabel.append(element("span", "", "خط مرجع"), element("strong", "", "برآورد اولیه"));
   baseline.append(baselineLabel);
 
   const initialEntry = entries.find((entry) => entry.key === "initial");
