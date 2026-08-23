@@ -127,10 +127,17 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
   function renderEmpty() {
     const card = element("section", "state-card settings-empty");
     card.append(element("h2", "", "تنظیمات مالی هنوز ثبت نشده است"), element("p", "", `برای شروع، زیربنای کل پروژه را ثبت کنید. واحد پول رسمی به‌صورت ثابت ${CURRENCY_LABELS.IRR} خواهد بود.`));
-    const button = element("button", "button button--primary", "ثبت اولین تنظیمات");
-    button.type = "button";
-    button.addEventListener("click", () => root.replaceChildren(renderHeader(), renderEditor(null)));
-    card.append(button);
+    // There is no settings row yet, so the Backend has had no chance to send a
+    // canEdit verdict — GET /settings answers 404. The host permission is all
+    // there is to go on, and it is the conservative half of the policy.
+    if (mayReviseArea(null)) {
+      const button = element("button", "button button--primary", "ثبت اولین تنظیمات");
+      button.type = "button";
+      button.addEventListener("click", () => root.replaceChildren(renderHeader(), renderEditor(null)));
+      card.append(button);
+    } else {
+      card.append(element("p", "inline-notice", "ثبت زیربنای کل نیازمند مجوز ویرایش اطلاعات مالی است."));
+    }
     return card;
   }
 
@@ -250,7 +257,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     const section = element("section", "settings-card settings-editor");
     const head = element("div", "settings-card__head");
     head.append(element("div", "settings-card__icon", "م²"), element("div", "", ""));
-    head.lastElementChild.append(element("h2", "", current ? "اصلاح زیربنای کل" : "ثبت زیربنای کل"), element("p", "", current ? `مقدار فعلی: ${formatArea(current.grossBuiltArea)} · بازنگری ${current.revision}` : "مقدار مثبت و دقیق زیربنای کل پروژه را وارد کنید."));
+    head.lastElementChild.append(element("h2", "", current ? "اصلاح زیربنای کل" : "ثبت زیربنای کل"), element("p", "", current ? `مقدار فعلی: ${formatArea(current.grossBuiltArea)} · بازنگری ${formatDisplayNumber(String(current.revision))}` : "مقدار مثبت و دقیق زیربنای کل پروژه را وارد کنید."));
 
     const form = element("form", "settings-form");
     form.noValidate = true;
@@ -342,6 +349,32 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     return section;
   }
 
+  /**
+   * The Backend ships `canEdit` on FinanceSettingsResponse so the UI does not
+   * have to reimplement its role policy and then disagree with it — offering a
+   * form the PATCH would refuse. Its verdict wins whenever it gives one; null
+   * means the adapter in front of us did not answer, so the host permission
+   * still decides.
+   */
+  function mayReviseArea(data) {
+    return data?.canEdit ?? hasPermission(context, "finance.edit");
+  }
+
+  function renderRevisionDenied(current) {
+    const section = element("section", "settings-card settings-editor settings-editor--denied");
+    const head = element("div", "settings-card__head");
+    head.append(element("div", "settings-card__icon", "م²"), element("div", "", ""));
+    head.lastElementChild.append(
+      element("h2", "", "اصلاح زیربنای کل"),
+      element("p", "", current
+        ? `مقدار فعلی: ${formatArea(current.grossBuiltArea)} · بازنگری ${formatDisplayNumber(String(current.revision))}`
+        : "زیربنای کل هنوز ثبت نشده است."),
+    );
+    const notice = element("p", "inline-notice", "حساب شما اجازه اصلاح زیربنای کل این پروژه را ندارد؛ این مقدار و تاریخچه آن فقط برای مشاهده است.");
+    section.append(head, notice);
+    return section;
+  }
+
   function renderContent(data) {
     const fragment = document.createDocumentFragment();
     const overview = element("section", "settings-overview");
@@ -367,12 +400,17 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     history.append(historyHead, createRevisionHistory(data));
     const primaryGrid = element("div", "settings-primary-grid");
     primaryGrid.append(renderCurrencyPolicy(), renderAccessSummary());
-    fragment.append(overview, primaryGrid, renderEditor(data), renderUnitConversions(), history);
+    const editor = mayReviseArea(data) ? renderEditor(data) : renderRevisionDenied(data);
+    fragment.append(overview, primaryGrid, editor, renderUnitConversions(), history);
     return fragment;
   }
 
   function paint() {
-    const contentState = hasPermission(context, "finance.edit") ? state : createRequestState(REQUEST_STATUS.DENIED);
+    // The Backend serves GET /settings and GET /settings/revisions to
+    // finance.view and asks for the edit permission only on PATCH, so reading
+    // is gated on reading. Whether the form is offered is a separate question,
+    // and `canEdit` answers it.
+    const contentState = hasPermission(context, "finance.view") ? state : createRequestState(REQUEST_STATUS.DENIED);
     root.replaceChildren(renderHeader(), renderPageState(contentState, { renderContent, renderEmpty, onRetry: load }));
   }
 

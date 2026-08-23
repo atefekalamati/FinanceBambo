@@ -8,7 +8,7 @@ export const ROUTES = Object.freeze([
   { key: "ai-review", path: "/ai-review", label: "بررسی هوشمند فاکتور", permission: "finance.view", enabled: true },
   { key: "reports", path: "/reports", label: "گزارش مالی", permission: "finance_report.view", enabled: true },
   { key: "audit", path: "/audit", label: "تاریخچه تغییرات مالی", permission: "finance.view", enabled: true },
-  { key: "settings", path: "/settings", label: "تنظیمات مالی", permission: "finance.edit", enabled: true },
+  { key: "settings", path: "/settings", label: "تنظیمات مالی", permission: "finance.view", enabled: true },
 ]);
 
 export const DEFAULT_ROUTE = "/finance";

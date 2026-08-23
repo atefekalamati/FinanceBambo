@@ -22,9 +22,10 @@ test("exposes the FinanceSettingsResponse fields plus the trail GET /settings/re
   const settings = await createMockSettingsAdapter(context).getSettings();
   assert.deepEqual(
     Object.keys(settings).sort(),
-    ["createdAt", "createdBy", "currency", "displayCurrency", "effectiveFrom", "grossBuiltArea", "grossBuiltAreaUnit", "revision", "reason", "revisions", "settingsId"].sort(),
+    ["canEdit", "createdAt", "createdBy", "currency", "displayCurrency", "effectiveFrom", "grossBuiltArea", "grossBuiltAreaUnit", "revision", "reason", "revisions", "settingsId"].sort(),
   );
   assert.equal(settings.currency, "IRR", "storage currency is always IRR per FR-002");
+  assert.equal(settings.canEdit, true, "the Backend's own verdict on whether this actor may revise the area");
   assert.equal(settings.revisions.length, 1);
   assert.equal(settings.revisions[0].previousValue, null, "the first revision replaced nothing");
 });

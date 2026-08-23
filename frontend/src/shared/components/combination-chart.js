@@ -17,6 +17,8 @@ import { element } from "../dom/elements.js";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const NARROW_WIDTH = 560;
 const COMPACT_WIDTH = 400;
+/** Below this the axis and category labels start colliding. */
+const MIN_HEIGHT = 150;
 
 function svg(tag, attributes = {}) {
   const node = document.createElementNS(SVG_NS, tag);
@@ -24,17 +26,20 @@ function svg(tag, attributes = {}) {
   return node;
 }
 
-function geometry(width, isNarrow, isCompact) {
+function geometry(width, height, isNarrow, isCompact) {
   const barWidthRatio = isCompact ? 0.52 : 0.44;
+  // A short box spends a punishing share of itself on padding, so trim the top
+  // (which only holds air) and keep the bottom, which carries the month labels.
+  const isShort = height < 200;
   return {
     width,
-    height: isCompact ? 230 : isNarrow ? 260 : 300,
+    height,
     padding: {
       // Inline-start of an RTL chart is the right edge, where the value axis
       // sits. Labels are short numbers on one shared scale, so this is enough.
       value: isCompact ? 34 : 44,
-      top: 16,
-      bottom: isCompact ? 34 : 30,
+      top: isShort ? 8 : 16,
+      bottom: 30,
       far: isCompact ? 10 : 16,
     },
     barWidthRatio,
@@ -96,7 +101,16 @@ export function createCombinationChart({
     const width = Math.max(Math.floor(surface.clientWidth), 240);
     const isNarrow = width < NARROW_WIDTH;
     const isCompact = width < COMPACT_WIDTH;
-    const box = geometry(width, isNarrow, isCompact);
+    // Fill the height the container was given; the fallback only applies when
+    // the container has none of its own, such as a panel that is still hidden.
+    const available = Math.floor(surface.clientHeight);
+    const fallback = isCompact ? 230 : isNarrow ? 260 : 300;
+    // The stylesheet stretches the SVG to its container, so the drawing must fit
+    // the height the container actually has: painting taller only pushes the
+    // category row past the clip. The floor applies to the fallback alone, for a
+    // panel that is still hidden and has no height of its own yet.
+    const height = available > 0 ? available : Math.max(fallback, MIN_HEIGHT);
+    const box = geometry(width, height, isNarrow, isCompact);
     const plotWidth = Math.max(box.width - box.padding.value - box.padding.far, 40);
     const plotHeight = Math.max(box.height - box.padding.top - box.padding.bottom, 40);
     const plotTop = box.padding.top;
