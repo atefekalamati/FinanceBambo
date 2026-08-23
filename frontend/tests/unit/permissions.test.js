@@ -32,6 +32,7 @@ const ROUTE_PERMISSIONS = Object.freeze({
   "invoice-files": "finance.view",
   "ai-review": "finance.view",
   reports: "finance_report.view",
+  "period-report": "finance_report.view",
   audit: "finance.view",
   settings: "finance.view",
 });

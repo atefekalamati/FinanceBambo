@@ -84,6 +84,24 @@ function countPdfPages(base64) {
 const documents = [
   { key: "financial-report", route: "reports", prepare: null },
   {
+    // The period report only exists once it is built, so the audit builds one
+    // the same way a reader would before checking what comes off the printer.
+    key: "period-report",
+    route: "period-report",
+    prepare: `(() => {
+      const preset = [...document.querySelectorAll('.period-presets button')]
+        .find((button) => button.textContent.includes('ابتدای سال'));
+      if (!preset) return false;
+      preset.click();
+      const form = document.querySelector('.period-builder__form');
+      if (!form) return false;
+      form.requestSubmit();
+      return true;
+    })()`,
+    settle: 4200,
+    maxPages: 6,
+  },
+  {
     key: "invoice-detail",
     route: "invoices",
     prepare: `(() => {
@@ -110,7 +128,7 @@ try {
     if (documentCase.prepare) {
       const prepared = await cdp.send("Runtime.evaluate", { expression: documentCase.prepare, returnByValue: true });
       if (!prepared.result.value) throw new Error(`Could not prepare ${documentCase.key} for printing.`);
-      await delay(700);
+      await delay(documentCase.settle ?? 700);
     }
 
     const pdf = await cdp.send("Page.printToPDF", {
@@ -120,7 +138,7 @@ try {
       generateTaggedPDF: true,
     });
     const pageCount = countPdfPages(pdf.data);
-    results.push({ key: documentCase.key, pageCount, exceptions: [...cdp.exceptions] });
+    results.push({ key: documentCase.key, pageCount, maxPages: documentCase.maxPages ?? 1, exceptions: [...cdp.exceptions] });
     cdp.close();
     await fetch(`http://127.0.0.1:${port}/json/close/${page.id}`);
   }
@@ -132,6 +150,9 @@ try {
   try { await rm(profile, { recursive: true, force: true }); } catch { /* profile still locked */ }
 }
 
-const failures = results.filter((result) => result.pageCount !== 1 || result.exceptions.length);
+// A document that must fit one page is held to one page. A period report is a
+// listing, so its length follows the data; the cap is there to catch a layout
+// that blows up, not to forbid a second page.
+const failures = results.filter((result) => result.pageCount < 1 || result.pageCount > (result.maxPages ?? 1) || result.exceptions.length);
 console.log(JSON.stringify({ documents: results, failures }, null, 2));
 if (failures.length) process.exitCode = 1;
