@@ -20,9 +20,20 @@ export function normalizeAuditPaging({ page = 1, pageSize = AUDIT_DEFAULT_PAGE_S
 export function createApiAuditAdapter(context, client) {
   const base = financeBase(context);
 
-  async function getEvents(paging = {}) {
+  /**
+   * The route also accepts occurredFrom/occurredTo, action, entityType and
+   * query, and applies them in SQL. Passing them through means a date-bounded
+   * read fetches only the period rather than paging the whole history and
+   * filtering what arrives — which would report a page as if it were the total.
+   */
+  async function getEvents({ occurredFrom, occurredTo, action, entityType, query, ...paging } = {}) {
     const { page, pageSize } = normalizeAuditPaging(paging);
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (occurredFrom) params.set("occurredFrom", occurredFrom);
+    if (occurredTo) params.set("occurredTo", occurredTo);
+    if (action) params.set("action", action);
+    if (entityType) params.set("entityType", entityType);
+    if (query?.trim()) params.set("query", query.trim());
     const payload = await client.request(`${base}/audit-events?${params.toString()}`);
     return {
       items: payload.items ?? [],

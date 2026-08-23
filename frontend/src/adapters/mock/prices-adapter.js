@@ -167,13 +167,21 @@ export function createMockPricesAdapter(context, { initialState = "success", res
     if (/invalid|error/i.test(fileName)) {
       rows.push({ rowNumber: 4, resourceId: null, resourceCode: "UNKNOWN", resourceTitle: "قلم ناشناخته", unitPriceIRR: "12.5", currency: "", effectiveFrom: "2026-02-30", scope: "unknown", status: "invalid", errors: ["کد قلم مالی پیدا نشد.", `قیمت باید عدد صحیح و مثبت به ${CURRENCY_LABELS.IRR} باشد.`, `واحد پول باید به‌صراحت ${CURRENCY_LABELS.IRR} یا ${CURRENCY_LABELS.TOMAN} باشد.`, "تاریخ اثر یا سطح قیمت معتبر نیست."] });
     }
+    // The Backend refuses a file whose bytes it has already committed for this
+    // project. A name carrying «تکراری» stands in for those bytes here, so the
+    // duplicate wording is reachable without a real repeated upload.
+    const duplicateFile = /duplicate|\u062a\u06a9\u0631\u0627\u0631\u06cc/i.test(fileName);
+
     const preview = {
       previewId,
       fileName,
       totalRows: rows.length,
       validRows: rows.filter((row) => row.status === "valid").length,
       invalidRows: rows.filter((row) => row.status === "invalid").length,
-      canCommit: rows.every((row) => row.status === "valid"),
+      canCommit: !duplicateFile && rows.every((row) => row.status === "valid"),
+      duplicateFile,
+      duplicateOfImportId: duplicateFile ? "b0000000-0000-4000-8000-000000000001" : null,
+      duplicateCommittedAt: duplicateFile ? "2026-08-11T09:20:00Z" : null,
       rows,
       committed: false,
     };
