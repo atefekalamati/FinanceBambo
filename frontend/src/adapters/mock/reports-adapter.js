@@ -20,6 +20,56 @@ function wait(duration = 320) {
   return new Promise((resolve) => setTimeout(resolve, duration));
 }
 
+/**
+ * The Backend rebuilds every figure as of the reporting date — down to
+ * `invoice_date <= as_of` — so a mock that answers the same numbers whatever
+ * date it is asked about would make a period report show no movement at all,
+ * and hide any bug in the comparison behind a row of zeroes.
+ *
+ * The share below is how much of the seeded project has happened by the date
+ * asked for: it is what drives actual cost and everything derived from it.
+ */
+const AS_OF_START = "2026-01-01";
+const AS_OF_END = "2026-08-31";
+
+function elapsedShare(reportingDate) {
+  const day = (value) => {
+    const [year, month, date] = String(value).split("-").map(Number);
+    return Number.isFinite(year) ? Date.UTC(year, month - 1, date) : NaN;
+  };
+  const asOf = day(reportingDate);
+  const start = day(AS_OF_START);
+  const end = day(AS_OF_END);
+  if (!Number.isFinite(asOf)) return 1;
+  if (asOf <= start) return 0;
+  if (asOf >= end) return 1;
+  return (asOf - start) / (end - start);
+}
+
+/** Exact integer IRR, the same contract real money uses. */
+function scaleIrr(value, share) {
+  return String(BigInt(Math.round(Number(value) * share)));
+}
+
+function scaleMetrics(metrics, share) {
+  // The estimate baseline is set at the outset and does not accumulate with
+  // time; everything else follows the work done by the reporting date.
+  const fixed = new Set(["initialEstimateIrr"]);
+  return Object.fromEntries(Object.entries(metrics).map(([key, value]) => [
+    key,
+    fixed.has(key) ? value : scaleIrr(value, share),
+  ]));
+}
+
+function scaleBreakdown(rows, share) {
+  return rows.map((row) => ({
+    ...row,
+    actualCostIrr: scaleIrr(row.actualCostIrr, share),
+    remainingPhysicalCostIrr: scaleIrr(row.remainingPhysicalCostIrr, 1 - share * 0.6),
+    forecastFinalIrr: scaleIrr(row.forecastFinalIrr, 0.82 + share * 0.18),
+  }));
+}
+
 export function createMockReportsAdapter(context, { initialState = "success" } = {}) {
   const snapshots = new Map();
 
@@ -27,7 +77,8 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     await wait();
     if (initialState === "error") throw new ApiError({ status: 503, code: "LIVE_REPORT_UNAVAILABLE", message: "دریافت خلاصه مالی زنده انجام نشد.", requestId: "mock-live-report-001" });
     if (initialState === "empty") return null;
-    return {
+    const share = elapsedShare(reportingDate);
+    const report = {
       reportingDate,
       progressSnapshotId,
       metrics: {
@@ -69,6 +120,11 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
         assignmentPercentFallbackCount: 0,
       },
       scope: { organizationId: context.organizationId, projectId: context.projectId },
+    };
+    return {
+      ...report,
+      metrics: scaleMetrics(report.metrics, share),
+      breakdown: scaleBreakdown(report.breakdown, share),
     };
   }
 

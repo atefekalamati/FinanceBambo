@@ -29,6 +29,7 @@ import { createInvoiceFilesPage } from "../features/ai-review/invoice-files-page
 import { createAiReviewPage } from "../features/ai-review/ai-review-page.js";
 import { createSettingsPage } from "../features/settings/settings-page.js";
 import { createReportsPage } from "../features/reports/reports-page.js";
+import { createPeriodReportPage } from "../features/period-report/period-report-page.js";
 import { createAuditPage } from "../features/audit/audit-page.js";
 import { DISPLAY_CURRENCY_CHANGED_EVENT } from "../shared/preferences/currency-preference.js";
 
@@ -89,6 +90,15 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
   if (route.key === "invoice-files") root.append(createInvoiceFilesPage({ context, adapter: adapters.attachments }));
   if (route.key === "ai-review") root.append(createAiReviewPage({ context, adapter: adapters.attachments }));
   if (route.key === "reports") root.append(createReportsPage({ context, adapter: adapters.reports }));
+  if (route.key === "period-report") {
+    root.append(createPeriodReportPage({
+      context,
+      reportsAdapter: adapters.reports,
+      auditAdapter: adapters.audit,
+      invoicesAdapter: adapters.invoices,
+      progressAdapter: adapters.progress,
+    }));
+  }
   if (route.key === "audit") root.append(createAuditPage({ adapter: adapters.audit }));
   if (route.key === "settings") {
     root.append(createSettingsPage({
