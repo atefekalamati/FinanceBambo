@@ -11,7 +11,7 @@ from openpyxl.styles import Font
 from ..domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT,monthly_report
 from ..domain.persian_calendar import persian_month_window
 from ..domain.reports import calculate_live_report
-from ..domain.progress import apply_progress_overrides
+from ..domain.progress import apply_progress_overrides,snapshot_assignments,snapshot_metadata
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
 
@@ -67,14 +67,10 @@ class FinanceLiveReportService:
         snapshot=data["snapshot"] if progress_snapshot_id is None else await self.repo.snapshot(scope,progress_snapshot_id)
         if snapshot is None or snapshot["reporting_date"]>reporting_date:raise FinanceRecordNotFound("progress snapshot not found for reporting date")
         feed=await self.provider.get_snapshot(str(scope.organization_id),scope.project_id,str(snapshot["progress_snapshot_id"]))
-        metadata=feed.get("snapshot") or {}
-        if (str(metadata.get("organizationId"))!=str(scope.organization_id)
-                or metadata.get("projectId")!=scope.project_id
-                or str(metadata.get("progressSnapshotId"))!=str(snapshot["progress_snapshot_id"])):
-            raise FinanceRecordNotFound("progress snapshot not found")
+        snapshot_metadata(feed,scope.organization_id,scope.project_id,snapshot["progress_snapshot_id"])
         for row in data["estimates"]:row["progress_snapshot_id"]=snapshot["progress_snapshot_id"]
         overrides=await self.repo.latest_overrides(scope,snapshot["progress_snapshot_ref_id"]) if hasattr(self.repo,"latest_overrides") else []
-        effective_feed={**feed,"assignments":apply_progress_overrides(feed.get("assignments",[]),overrides,snapshot["progress_snapshot_id"])}
+        effective_feed={**feed,"assignments":apply_progress_overrides(snapshot_assignments(feed),overrides,snapshot["progress_snapshot_id"])}
         report=calculate_live_report(data["estimates"],data["invoices"],effective_feed.get("assignments",[]),data["conversions"],data["gross_area"])
         return report,data,snapshot,effective_feed
 
