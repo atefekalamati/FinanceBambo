@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 
-from .progress import PROGRESS_FALLBACK, PROGRESS_MEASURED, resolve_progress_quantity
+from .progress import (PROGRESS_FALLBACK, PROGRESS_MEASURED, ProgressPairing, assignment_keys,
+                       line_keys, resolve_progress_quantity)
 
 IRR = Decimal("1")
 ZERO = Decimal(0)
@@ -93,8 +94,7 @@ class LiveReport:
 
 def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions, gross_area):
     warnings = []
-    assignment_by_id = {row.get("assignmentExternalId"): row for row in assignments if row.get("assignmentExternalId")}
-    assignment_by_activity = {(row.get("task") or {}).get("activityCode"): row for row in assignments if (row.get("task") or {}).get("activityCode")}
+    pairing = ProgressPairing(assignments, assignment_keys)
     conversion_by_key = {(row["source_unit"], row["target_unit"], row["dimension"]): Decimal(row["factor"]) for row in conversions}
     purchased_by_line = {}
     purchased_by_resource = {}
@@ -173,7 +173,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         initial = money(original_quantity * original_price)
         revised_estimate = money(revised_quantity * original_price)
         initial_total += initial;breakdown[kind]["initialEstimateIrr"] += initial;breakdown[kind]["revisedEstimateIrr"] += revised_estimate
-        assignment = assignment_by_id.get(row.get("assignment_external_id")) or assignment_by_activity.get(row.get("activity_external_id"))
+        assignment = pairing.match(*line_keys(row))
         # Three facts about the same line, deliberately separate. `_source` is the field the
         # number came from, `_measurement` is what kind of number it is, and `_status` is
         # whether there was a number at all -- so a reader can tell a measured zero from an
