@@ -1643,10 +1643,27 @@
     max-inline-size: 100%;
   }
 
+  /* Below this width the caption and the figure no longer share a line, and the
+     block doubles in height for a label the figure already implies: it reads
+     «… بیشتر از برآورد اولیه» on its own. The caption is taken out of the
+     layout so the block goes back to one short row — hidden the way every other
+     screen-reader-only element here is hidden, so it is still announced. */
   .managerial-deviation {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: .25rem;
+    align-items: center;
+    flex-direction: row;
+    gap: .4rem;
+    padding-block: .45rem;
+  }
+
+  .managerial-deviation > span {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
   }
 
   .managerial-combo-chart__plot {
