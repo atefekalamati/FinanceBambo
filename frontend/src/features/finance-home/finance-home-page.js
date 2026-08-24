@@ -562,6 +562,69 @@ function createSnapshotProvenance({ snapshots = [], selected, report, onSelect }
   return group;
 }
 
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+/**
+ * A gear, built node by node the way the price sparkline is.
+ *
+ * There is no icon set in this project, so the shape is drawn here: a hub, a
+ * body, and eight teeth placed by rotation. Everything strokes in
+ * `currentColor`, so the link's own hover and focus colours carry the icon with
+ * them and no second palette appears.
+ */
+function createSettingsIcon() {
+  const icon = document.createElementNS(SVG_NAMESPACE, "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("focusable", "false");
+  icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", "1.7");
+  icon.setAttribute("stroke-linecap", "round");
+  icon.classList.add("finance-project-settings-link__icon");
+
+  // Each tooth starts just inside the body so the two read as one shape rather
+  // than as spokes around a hub, and squares off at the tip the way a tooth does.
+  const teeth = document.createElementNS(SVG_NAMESPACE, "g");
+  teeth.setAttribute("stroke-width", "2.4");
+  teeth.setAttribute("stroke-linecap", "butt");
+  for (let index = 0; index < 8; index += 1) {
+    const tooth = document.createElementNS(SVG_NAMESPACE, "line");
+    tooth.setAttribute("x1", "12");
+    tooth.setAttribute("y1", "3.9");
+    tooth.setAttribute("x2", "12");
+    tooth.setAttribute("y2", "6.8");
+    tooth.setAttribute("transform", `rotate(${index * 45} 12 12)`);
+    teeth.append(tooth);
+  }
+
+  const body = document.createElementNS(SVG_NAMESPACE, "circle");
+  body.setAttribute("cx", "12");
+  body.setAttribute("cy", "12");
+  body.setAttribute("r", "5.9");
+  body.setAttribute("stroke-width", "2.2");
+
+  const hub = document.createElementNS(SVG_NAMESPACE, "circle");
+  hub.setAttribute("cx", "12");
+  hub.setAttribute("cy", "12");
+  hub.setAttribute("r", "2.5");
+
+  icon.append(teeth, body, hub);
+  return icon;
+}
+
+function createSettingsLink() {
+  const link = document.createElement("a");
+  link.className = "finance-project-settings-link";
+  link.href = "#/settings";
+  // The icon carries no text, so the name has to be spoken here — and shown on
+  // hover, since a lone gear is only conventional, never self-explanatory.
+  link.setAttribute("aria-label", "تنظیمات مالی پروژه");
+  link.title = "تنظیمات مالی پروژه";
+  link.append(createSettingsIcon());
+  return link;
+}
+
 function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null) {
   const fragment = document.createDocumentFragment();
   const pageHeader = document.createElement("header");
@@ -569,12 +632,7 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   const pageTitle = document.createElement("h1");
   pageTitle.className = "finance-page-title";
   pageTitle.textContent = "نمای کلی مالی";
-  const settingsLink = document.createElement("a");
-  settingsLink.className = "finance-project-settings-link";
-  settingsLink.href = "#/settings";
-  settingsLink.textContent = "تنظیمات مالی پروژه";
-  settingsLink.setAttribute("aria-label", "ورود به تنظیمات مالی پروژه جاری");
-  pageHeader.append(pageTitle, settingsLink);
+  pageHeader.append(pageTitle);
 
   const summaryHeader = document.createElement("div");
   summaryHeader.className = "section-heading";
@@ -587,7 +645,11 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   const reportMeta = document.createElement("small");
   reportMeta.className = "finance-report-meta";
   reportMeta.textContent = `تاریخ گزارش ${formatBusinessDate(data.reportingDate)} · نسخه پیشرفت پروژه`;
-  summaryHeader.append(summaryHeading, reportMeta);
+  // The heading sits at one end of the row and these at the other, which is
+  // what .section-heading's own space-between already arranges.
+  const summaryTrailing = element("div", "section-heading__trailing");
+  summaryTrailing.append(reportMeta, createSettingsLink());
+  summaryHeader.append(summaryHeading, summaryTrailing);
   const comparisons = buildOverviewComparisons(data.metrics);
   const overviewPanel = document.createElement("section");
   overviewPanel.className = "finance-overview-panel";

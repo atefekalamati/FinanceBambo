@@ -16,12 +16,23 @@
   min-inline-size: 0;
 }
 
+/* Groups the report caption with the settings link so the heading keeps two
+   children and lands at the two ends of the row. */
+.section-heading__trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
 .finance-project-settings-link {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   min-block-size: 2.5rem;
-  padding: .6rem 1rem;
+  min-inline-size: 2.5rem;
+  padding: .5rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   color: var(--color-text-secondary);
@@ -36,6 +47,11 @@
     border-color var(--duration-fast) var(--ease-standard),
     background var(--duration-fast) var(--ease-standard),
     box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.finance-project-settings-link__icon {
+  inline-size: 1.15rem;
+  block-size: 1.15rem;
 }
 
 .finance-project-settings-link:hover {
