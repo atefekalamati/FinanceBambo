@@ -15,7 +15,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 from app.finance.domain.reports import calculate_live_report
 from app.finance.domain.resources import FinanceRecordNotFound
 from app.finance.services.reports import FinanceLiveReportService
-from app.finance.schemas.reports import ReportSnapshotReference
+from app.finance.schemas.reports import PriceVariance,QuantityVariance,ReportSnapshotReference
 from app.finance.repositories.reports import PsycopgLiveReportRepository
 
 
@@ -304,7 +304,7 @@ class LiveReportDomainTests(unittest.TestCase):
             {"assignmentExternalId":"a-2","plannedQuantity":"10","task":{"taskProgressPercent":"50"}},
         ]
         report=calculate_live_report(estimates,[],assignments,[],"10")
-        self.assertEqual({"complete":False,"manualOverrideCount":1,"taskFallbackCount":1,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":2,"unmappedLineCount":0,"generalCostLineCount":0},report.progress_quality)
+        self.assertEqual({"complete":False,"manualOverrideCount":1,"taskFallbackCount":1,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":2,"unmappedLineCount":0,"generalCostLineCount":0,"workAsQuantityCount":0},report.progress_quality)
 
     def test_quantity_overrun_warns_with_deviation_without_clamping(self):
         row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-m")
@@ -529,3 +529,98 @@ class ReportSnapshotListTests(unittest.IsolatedAsyncioTestCase):
             SimpleNamespace(organization_id=UUID(int=2), project_id="p1"), page=4, page_size=25)
         self.assertEqual(75, repo.call["offset"])
 
+
+
+class WorkAsQuantityTests(unittest.TestCase):
+    """Effort reported as an executed quantity: labelled, warned about, and unchanged.
+
+    A schedule source states measured quantities and work effort in separate fields, and
+    only the first is denominated in the resource's unit. The report multiplies whichever
+    one it gets by a price per kg/m3/hour, so effort arriving there is a dimensional
+    question nobody has answered against real data yet. These tests pin the answer this
+    codebase actually gives: the number is left alone, and the report stops describing it
+    as a measurement.
+    """
+
+    def _report(self, assignment):
+        # One material line, 10 estimated at 100 IRR, priced. Executed 4 either way, so the
+        # only difference between the two runs is where the 4 came from.
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1")
+        return calculate_live_report([row], [], [assignment], [], "10")
+
+    def test_work_sourced_progress_moves_no_figure_at_all(self):
+        measured = self._report({"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}})
+        effort = self._report({"assignmentExternalId": "a-1", "actualWork": "4", "task": {}})
+        # The constraint this whole change was made under: clarify the data, decide nothing.
+        # Every metric, every breakdown row and every variance figure is identical.
+        self.assertEqual(measured.metrics, effort.metrics)
+        self.assertEqual(measured.breakdown, effort.breakdown)
+        self.assertEqual(measured.calculation_status, effort.calculation_status)
+        self.assertEqual([row["executedQuantity"] for row in measured.quantity_variances],
+                         [row["executedQuantity"] for row in effort.quantity_variances])
+        self.assertEqual(Decimal("400"), effort.metrics["currentExecutedValueIrr"])
+
+    def test_the_same_report_says_which_of_the_two_it_was(self):
+        measured = self._report({"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}})
+        effort = self._report({"assignmentExternalId": "a-1", "actualWork": "4", "task": {}})
+        self.assertEqual(("measured_quantity", "work_effort"),
+                         (measured.quantity_variances[0]["measurementType"],
+                          effort.quantity_variances[0]["measurementType"]))
+        # sourceMethod is deliberately unchanged: the value did come from the assignment's
+        # actual field. What it did not do is measure anything, and that is the new fact.
+        self.assertEqual("assignment_actual", effort.quantity_variances[0]["sourceMethod"])
+        self.assertEqual([], [w["code"] for w in measured.warnings if w["code"].startswith("PROGRESS_")])
+        self.assertEqual(["PROGRESS_WORK_NOT_QUANTITY"],
+                         [w["code"] for w in effort.warnings if w["code"].startswith("PROGRESS_")])
+
+    def test_the_warning_points_at_the_line_and_names_what_it_reaches(self):
+        report = self._report({"assignmentExternalId": "a-1", "actualWork": "4", "task": {}})
+        warning = next(w for w in report.warnings if w["code"] == "PROGRESS_WORK_NOT_QUANTITY")
+        self.assertEqual((str(MATERIAL_LINE), str(MATERIAL), "mat"),
+                         (warning["estimateLineId"], warning["resourceId"], warning["resourceCode"]))
+        # Not excluded: the value is in the metrics, which is exactly why it is worth saying.
+        self.assertFalse(warning["excludedFromCalculation"])
+        self.assertEqual(["currentExecutedValueIrr", "remainingPhysicalCostIrr", "forecastFinalCostIrr"],
+                         warning["affectedMetricKeys"])
+
+    def test_the_counter_is_a_subset_of_assignment_actual_and_forces_incomplete(self):
+        report = self._report({"assignmentExternalId": "a-1", "actualWork": "4", "task": {}})
+        quality = report.progress_quality
+        # Counted in both places on purpose: one line, one assignment actual, and that
+        # actual was effort. A reader comparing the two sees "all of them" rather than
+        # having to add the buckets up.
+        self.assertEqual((1, 1), (quality["assignmentActualCount"], quality["workAsQuantityCount"]))
+        self.assertFalse(quality["complete"])
+        # The line-count invariant is untouched: this is a sub-count, not a fourth bucket.
+        self.assertEqual(1, quality["mappedLineCount"] + quality["unmappedLineCount"]
+                         + quality["generalCostLineCount"])
+
+    def test_a_measured_quantity_beside_reported_work_is_still_measured(self):
+        # The shape the dev seed and the frontend mock both use for the crane: hours are
+        # reported as work AND as the resource's own quantity. Precedence already prefers
+        # the quantity, and the warning must not fire for it or every equipment line in the
+        # project would carry one.
+        report = self._report({"assignmentExternalId": "a-1", "actualQuantity": "4",
+                               "actualWork": "4", "task": {}})
+        self.assertEqual("measured_quantity", report.quantity_variances[0]["measurementType"])
+        self.assertEqual(0, report.progress_quality["workAsQuantityCount"])
+        self.assertNotIn("PROGRESS_WORK_NOT_QUANTITY", {w["code"] for w in report.warnings})
+
+    def test_a_line_that_measured_nothing_names_no_measurement_kind(self):
+        unmapped = self._report({"assignmentExternalId": "other", "actualQuantity": "4", "task": {}})
+        empty = self._report({"assignmentExternalId": "a-1", "task": {}})
+        self.assertEqual([None, None], [unmapped.quantity_variances[0]["measurementType"],
+                                       empty.quantity_variances[0]["measurementType"]])
+        self.assertEqual((0, 0), (unmapped.progress_quality["workAsQuantityCount"],
+                                  empty.progress_quality["workAsQuantityCount"]))
+
+    def test_every_variance_key_the_domain_produces_is_declared_on_the_dto(self):
+        # The DTOs forbid extras, so a key added here and not there turns every report
+        # containing it into a 500 at response validation. That has happened once already,
+        # to deviationQuantity on QUANTITY_OVERRUN.
+        report = self._report({"assignmentExternalId": "a-1", "actualWork": "4", "task": {}})
+        for row in report.quantity_variances:
+            QuantityVariance(**row)
+        for row in report.price_variances:
+            PriceVariance(**row)
+        self.assertIn("measurement_type", QuantityVariance.model_fields)

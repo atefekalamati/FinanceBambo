@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 BACKEND_ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(BACKEND_ROOT))
-from app.finance.domain.progress import consumed_quantity, resolve_progress_quantity
+from app.finance.domain.progress import MEASUREMENT_TYPES, consumed_quantity, resolve_progress_quantity
 from app.finance.domain.resources import FinanceRecordNotFound
 from app.finance.schemas.progress import ProgressOverrideCreate,ProgressOverrideResponse
 from app.finance.services.progress import ProgressService
@@ -87,3 +87,82 @@ class ProgressServiceTests(unittest.IsolatedAsyncioTestCase):
   with self.assertRaises(FinanceRecordNotFound):
    await self.service(Foreign()).override_history(SCOPE,LINE)
 
+
+class MeasurementTypeTests(unittest.TestCase):
+ """What kind of number each branch produced, beside which field produced it.
+
+ `source_method` answers "where did this come from". It cannot answer "is this a
+ measurement of physical work in the resource's unit", and only the second question tells
+ a reader whether multiplying the number by a unit price means anything.
+ """
+ BASE={"plannedQuantity":"20","actualQuantity":None,"assignmentWorkCompletePercent":None,"task":{"taskProgressPercent":None},"manualOverride":None}
+ OVERRIDE={"previousCalculatedValue":"3","newValue":"9","reason":"صورت‌جلسه","userId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1","occurredAt":"2026-08-08T00:00:00Z","source":"manual_override","progressSnapshotId":"11111111-1111-4111-8111-111111111111"}
+ def test_each_branch_declares_a_known_measurement_type(self):
+  cases={"manual_override":({"manualOverride":self.OVERRIDE},"stated_quantity"),
+   "assignment_actual":({"actualQuantity":"7"},"measured_quantity"),
+   "assignment_work":({"actualWork":"6"},"work_effort"),
+   "assignment_work_percent":({"assignmentWorkCompletePercent":"25"},"derived_from_percent"),
+   "task_progress_fallback":({"task":{"taskProgressPercent":"40"}},"derived_from_percent")}
+  for label,(patch,expected) in cases.items():
+   with self.subTest(label):
+    resolved=resolve_progress_quantity({**self.BASE,**patch})
+    self.assertEqual(expected,resolved["measurement_type"])
+    self.assertIn(resolved["measurement_type"],MEASUREMENT_TYPES)
+ def test_work_effort_keeps_its_value_and_loses_its_claim_to_confidence(self):
+  resolved=resolve_progress_quantity({**self.BASE,"actualWork":"6"})
+  # The number is untouched -- deciding what hours mean in kilograms is a product
+  # decision, and this module does not make it.
+  self.assertEqual((Decimal("6"),Decimal("6")),(resolved["computed_quantity"],resolved["effective_quantity"]))
+  # Below task_progress_fallback's 0.6: that fallback at least yields the right unit.
+  self.assertEqual(Decimal("0.5"),resolved["quality"])
+  self.assertLess(resolved["quality"],resolve_progress_quantity({**self.BASE,"task":{"taskProgressPercent":"40"}})["quality"])
+  self.assertEqual(["PROGRESS_WORK_NOT_QUANTITY"],[w["code"] for w in resolved["warnings"]])
+ def test_a_measured_quantity_is_full_confidence_and_silent(self):
+  resolved=resolve_progress_quantity({**self.BASE,"actualQuantity":"7"})
+  self.assertEqual((Decimal("1"),[]),(resolved["quality"],resolved["warnings"]))
+ def test_reported_work_beside_a_measured_quantity_raises_nothing(self):
+  # An equipment assignment priced by the hour reports both. Precedence takes the measured
+  # value, so the warning must stay silent; firing here would put one on every such row.
+  resolved=resolve_progress_quantity({**self.BASE,"actualQuantity":"7","actualWork":"6"})
+  self.assertEqual(("measured_quantity",[]),(resolved["measurement_type"],resolved["warnings"]))
+ def test_the_new_warning_does_not_displace_the_task_fallback_warning(self):
+  resolved=resolve_progress_quantity({**self.BASE,"task":{"taskProgressPercent":"40"}})
+  self.assertEqual(["TASK_PROGRESS_FALLBACK"],[w["code"] for w in resolved["warnings"]])
+ def test_a_feed_warning_carries_only_a_code_and_a_message(self):
+  # The progress feed's per-assignment warnings are bare dicts read by code, and the
+  # frontend keys off `code` alone. A third key here would be a shape the UI never reads.
+  resolved=resolve_progress_quantity({**self.BASE,"actualWork":"6"})
+  self.assertEqual([{"code","message"}],[set(w) for w in resolved["warnings"]])
+ def test_consumed_quantity_still_answers_in_two_parts(self):
+  # services/progress.py records an override baseline from this tuple; widening it would
+  # break that caller for no gain, since it never needed the measurement kind.
+  self.assertEqual((Decimal("6"),"assignment_actual"),consumed_quantity({**self.BASE,"actualWork":"6"}))
+
+class FeedMeasurementTests(unittest.IsolatedAsyncioTestCase):
+ """The per-assignment feed carries the same distinction the report does.
+
+ The progress page reads this feed row by row, so a reader looking at one assignment must
+ be able to tell a measured quantity from reported effort without opening the report.
+ """
+ class Source(Provider):
+  async def get_snapshot(self,organization_id,project_id,snapshot_id):
+   return {"snapshot":{"organizationId":organization_id,"projectId":project_id,"progressSnapshotId":snapshot_id},
+    "assignments":[{"assignmentExternalId":"AS1","actualQuantity":"7","manualOverride":None,"task":{"activityCode":"A1"}},
+     {"assignmentExternalId":"AS2","actualWork":"6","manualOverride":None,"task":{"activityCode":"A2"}},
+     {"assignmentExternalId":"AS3","manualOverride":None,"task":{"activityCode":"A3"}}]}
+ def service(self):return ProgressService(Repo(),self.Source(),id_factory=lambda:UUID(int=4),clock=lambda:AT)
+ async def test_each_row_says_what_kind_of_number_it_reports(self):
+  rows={row["assignmentExternalId"]:row for row in (await self.service().feed(SCOPE,SNAPSHOT))["assignments"]}
+  self.assertEqual(["measured_quantity","work_effort",None],
+   [rows["AS1"]["measurementType"],rows["AS2"]["measurementType"],rows["AS3"]["measurementType"]])
+ async def test_the_effort_row_keeps_its_quantity_and_carries_the_warning(self):
+  rows={row["assignmentExternalId"]:row for row in (await self.service().feed(SCOPE,SNAPSHOT))["assignments"]}
+  self.assertEqual(("6","6","0.5"),(rows["AS2"]["computedExecutedQuantity"],rows["AS2"]["effectiveExecutedQuantity"],rows["AS2"]["quality"]))
+  # Under the frontend's LOW_QUALITY_THRESHOLD of 0.8, so the existing low-quality note
+  # appears on this row with no frontend change at all.
+  self.assertLess(float(rows["AS2"]["quality"]),0.8)
+  self.assertEqual(["PROGRESS_WORK_NOT_QUANTITY"],[w["code"] for w in rows["AS2"]["warnings"]])
+ async def test_a_row_with_nothing_to_report_is_unchanged(self):
+  rows={row["assignmentExternalId"]:row for row in (await self.service().feed(SCOPE,SNAPSHOT))["assignments"]}
+  self.assertEqual(("missing",None,"0"),(rows["AS3"]["sourceMethod"],rows["AS3"]["measurementType"],rows["AS3"]["quality"]))
+  self.assertEqual(["PROGRESS_MISSING"],[w["code"] for w in rows["AS3"]["warnings"]])

@@ -56,6 +56,12 @@ class QuantityVariance(ApiModel):
     activity_external_id:str|None=None;activity_title:str|None=None;wbs_code:str|None=None;base_unit:str|None=None
     initial_quantity:Decimal|None=None;revised_quantity:Decimal|None=None;executed_quantity:Decimal|None=None;remaining_quantity:Decimal|None=None
     quantity_variance_percent:Decimal|None=None;source_method:str|None=None;progress_snapshot_id:UUID|None=None
+    #: What kind of number executedQuantity is, beside which field it came from. Notably
+    #: "work_effort" means it is reported effort in an unstated unit rather than a measured
+    #: quantity in baseUnit -- see PROGRESS_WORK_NOT_QUANTITY. None when nothing was
+    #: measured at all. Typed as str, like source_method beside it, so a new kind added in
+    #: the domain cannot turn a report into a 500 at response validation.
+    measurement_type:str|None=None
     actual_cost_irr:Decimal|None=None;remaining_physical_cost_irr:Decimal|None=None;forecast_final_irr:Decimal|None=None;impact_share_percent:Decimal|None=None
     price_available:bool=True
     @field_serializer("variance_quantity","initial_quantity","revised_quantity","executed_quantity","remaining_quantity","quantity_variance_percent","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr","impact_share_percent")
@@ -81,6 +87,11 @@ class ProgressQuality(ApiModel):
     missing_count:int=0
     assignment_actual_count:int=0
     assignment_percent_fallback_count:int=0
+    #: A subset of assignment_actual_count, not a sibling of it: lines whose executed
+    #: quantity is reported work effort rather than a measured quantity. The value did come
+    #: from the assignment's actual, so it is counted there too; this says how many of those
+    #: are effort. Non-zero always forces complete=False.
+    work_as_quantity_count:int=0
     #: These three partition every estimate line read for the reporting date, so their sum
     #: is the line count. General cost is its own bucket because progress does not apply
     #: to it, which previously left those lines in no bucket at all.
