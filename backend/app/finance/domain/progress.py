@@ -138,16 +138,76 @@ def snapshot_assignments(feed):
  if isinstance(rows,Sequence) and not isinstance(rows,(str,bytes)):return list(rows)
  return []
 
+
+def assignment_keys(row):
+ """The identifier pair a progress-feed row is found by."""
+ return row.get("assignmentExternalId"),(row.get("task") or {}).get("activityCode")
+
+def line_keys(row):
+ """The same pair as an estimate line -- or an override of one -- states it."""
+ return row.get("assignment_external_id"),row.get("activity_external_id")
+
+class ProgressPairing:
+ """Which progress-feed row belongs to which estimate line.
+
+ The rule: they are paired when their assignment external ids match, and failing that
+ when their activity external ids match. The assignment id wins because it is the more
+ specific claim -- an activity can carry many assignments, so an activity match says only
+ that the two are about the same piece of schedule, not about the same resource.
+
+ WHY THIS IS ONE OBJECT USED TWICE
+ The rule was written three times: once in `domain/reports.py` to find a line's
+ assignment, once in `services/progress.py` for the same thing, and once in
+ `apply_progress_overrides` below to go the other way -- from a feed row to the override
+ stored against a line. The last is the same pairing with the roles swapped, which is why
+ `keys` is a parameter: it says which of the two vocabularies the indexed rows speak, and
+ the direction follows from what the caller then matches against.
+
+ THE TWO THAT DISAGREED
+ They were not merely duplicated, they gave different answers. `domain/reports.py` built
+ two indexes and consulted the assignment one first, so the assignment id always won.
+ `services/progress.py` scanned the feed and took the first row satisfying either test, so
+ row order won: a line naming ASG-2 on activity ACT-1 paired with ASG-9 whenever ASG-9
+ merely shared ACT-1 and came first. An override's baseline could therefore be computed
+ from a different assignment than the one the report had used for that same line. This
+ class keeps the report's precedence, which is the one the code was reaching for.
+
+ Ties within one index are resolved as they always were: the last row wins, because both
+ previous versions built plain dicts.
+ """
+
+ __slots__=("_by_assignment","_by_activity")
+
+ def __init__(self,rows,keys):
+  self._by_assignment={};self._by_activity={}
+  for row in rows:
+   assignment_external_id,activity_external_id=keys(row)
+   if assignment_external_id:self._by_assignment[assignment_external_id]=row
+   if activity_external_id:self._by_activity[activity_external_id]=row
+
+ def match(self,assignment_external_id,activity_external_id):
+  """The paired row, or None.
+
+  No guard against a blank or absent identifier here: `__init__` refuses to index one, so
+  looking one up finds nothing. Guarding in both places would leave neither able to fail
+  on its own, and this is also exactly what `domain/reports.py` did before -- a plain
+  lookup of whatever the line claimed.
+  """
+  paired=self._by_assignment.get(assignment_external_id)
+  if paired is not None:return paired
+  return self._by_activity.get(activity_external_id)
+
 def _override_payload(row,snapshot_id):
  return {"previousCalculatedValue":str(row["computed_value"]),"newValue":str(row["override_value"]),"reason":row["reason"],"userId":str(row["created_by"]),"occurredAt":row["created_at"].isoformat(),"source":"manual_override","progressSnapshotId":str(snapshot_id)}
 
 def apply_progress_overrides(assignments,overrides,snapshot_id):
- by_assignment={row["assignment_external_id"]:row for row in overrides if row.get("assignment_external_id")}
- by_activity={row["activity_external_id"]:row for row in overrides if row.get("activity_external_id")}
+ # The reverse direction: the overrides are indexed by the line identifiers they carry,
+ # and each feed row is matched against them. Same rule, same precedence, read backwards.
+ pairing=ProgressPairing(overrides,line_keys)
  result=[]
  for source in assignments:
   row=dict(source)
-  override=by_assignment.get(row.get("assignmentExternalId")) or by_activity.get((row.get("task") or {}).get("activityCode"))
+  override=pairing.match(*assignment_keys(row))
   if override is not None:row["manualOverride"]=_override_payload(override,snapshot_id)
   result.append(row)
  return result

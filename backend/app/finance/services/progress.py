@@ -1,7 +1,8 @@
 from datetime import datetime,timezone
 from uuid import uuid4
-from ..domain.progress import (ProgressOverride,apply_progress_overrides,consumed_quantity,
- resolve_progress_quantity,snapshot_assignments,snapshot_metadata)
+from ..domain.progress import (ProgressOverride,ProgressPairing,apply_progress_overrides,
+ assignment_keys,consumed_quantity,line_keys,resolve_progress_quantity,snapshot_assignments,
+ snapshot_metadata)
 from ..domain.schedule import derive_snapshot_versions
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
@@ -64,7 +65,7 @@ class ProgressService:
   if line is None:raise FinanceRecordNotFound("estimate line not found")
   feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(c.progress_snapshot_id))
   snapshot_metadata(feed,s.organization_id,s.project_id,c.progress_snapshot_id)
-  assignment=next((row for row in snapshot_assignments(feed) if (line["assignment_external_id"] and row.get("assignmentExternalId")==line["assignment_external_id"]) or (line["activity_external_id"] and (row.get("task") or {}).get("activityCode")==line["activity_external_id"])),None)
+  assignment=ProgressPairing(snapshot_assignments(feed),assignment_keys).match(*line_keys(line))
   if assignment is None:raise ProgressMappingError("estimate line is not mapped to the selected progress snapshot")
   try:computed,_source=consumed_quantity({**assignment,"manualOverride":None})
   except ValueError as error:raise ProgressMappingError("progress snapshot has no computable baseline for this estimate line") from error
