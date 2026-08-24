@@ -95,7 +95,7 @@ class LiveReportDomainTests(unittest.TestCase):
                    "unit": "box", "base_unit": "each", "dimension": "count",
                    "final_line_amount_irr": "10", "financial_effect_sign": 1, "resource_type": "material"}
         report = calculate_live_report([row], [invoice], [], [], None)
-        self.assertEqual({"PROGRESS_MISSING", "CURRENT_PRICE_MISSING", "UNIT_CONVERSION_MISSING", "GROSS_AREA_MISSING"},
+        self.assertEqual({"PROGRESS_UNMAPPED", "CURRENT_PRICE_MISSING", "UNIT_CONVERSION_MISSING", "GROSS_AREA_MISSING"},
                          {warning["code"] for warning in report.warnings})
         self.assertIsNone(report.metrics["actualCostPerSquareMeterIrr"])
         self.assertEqual(("incomplete",1),(report.calculation_status,report.missing_price_count))
@@ -103,6 +103,102 @@ class LiveReportDomainTests(unittest.TestCase):
         self.assertIn("forecastFinalCostIrr",report.incomplete_metric_keys)
         warning=next(item for item in report.warnings if item["code"]=="CURRENT_PRICE_MISSING")
         self.assertEqual((str(MATERIAL_LINE),str(MATERIAL),"mat",True),(warning["estimateLineId"],warning["resourceId"],warning["resourceCode"],warning["excludedFromCalculation"]))
+
+    def test_an_unlinked_line_and_an_empty_assignment_report_different_codes(self):
+        """The two used to share PROGRESS_MISSING, which told the reader nothing.
+
+        An unlinked line is fixed here, by correcting its activity link. A linked line with
+        nothing on it needs a report from project controls. Neither changes what the line
+        contributes, so the codes are the only thing that differs.
+        """
+        unlinked = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-none")
+        linked = estimate(LABOR_LINE, LABOR, "labor", "10", "10", "100", "100", "a-empty")
+        # Matches by id, but carries no quantity, no work and no task percent.
+        empty = {"assignmentExternalId": "a-empty", "task": {}}
+        report = calculate_live_report([unlinked, linked], [], [empty], [], "10")
+        by_line = {(w["code"], w["estimateLineId"]) for w in report.warnings
+                   if w["code"] in ("PROGRESS_UNMAPPED", "PROGRESS_MISSING")}
+        self.assertEqual({("PROGRESS_UNMAPPED", str(MATERIAL_LINE)),
+                          ("PROGRESS_MISSING", str(LABOR_LINE))}, by_line)
+
+    def test_one_line_never_carries_both_progress_codes(self):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-none")
+        report = calculate_live_report([row], [], [], [], "10")
+        codes = [w["code"] for w in report.warnings if w["code"].startswith("PROGRESS_")]
+        self.assertEqual(["PROGRESS_UNMAPPED"], codes)
+
+    def test_the_new_code_keeps_the_shape_the_other_warnings_use(self):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-none")
+        report = calculate_live_report([row], [], [], [], "10")
+        unmapped = next(w for w in report.warnings if w["code"] == "PROGRESS_UNMAPPED")
+        self.assertEqual({"code", "message", "estimateLineId", "resourceId", "resourceCode",
+                          "activityExternalId", "severity", "excludedFromCalculation",
+                          "affectedMetricKeys"}, set(unmapped))
+        # Same affected metrics as PROGRESS_MISSING: the consequence is identical, only the
+        # cause differs.
+        self.assertEqual(["currentExecutedValueIrr", "remainingPhysicalCostIrr",
+                          "forecastFinalCostIrr"], unmapped["affectedMetricKeys"])
+
+    def test_splitting_the_codes_moved_no_financial_figure(self):
+        """An unlinked line and a linked-but-empty one must still produce identical money.
+
+        Both score executed = 0, so every metric, breakdown row and variance has to match
+        exactly. If the split had changed how either case is calculated, this fails -- which
+        is the whole guarantee, since the codes were meant to be diagnostic only.
+        """
+        unlinked = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-none")
+        linked = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-empty")
+        empty_assignment = [{"assignmentExternalId": "a-empty", "task": {}}]
+        unmapped_report = calculate_live_report([unlinked], [], [], [], "10")
+        missing_report = calculate_live_report([linked], [], empty_assignment, [], "10")
+        self.assertEqual(unmapped_report.metrics, missing_report.metrics)
+        self.assertEqual(unmapped_report.breakdown, missing_report.breakdown)
+        self.assertEqual(unmapped_report.calculation_status, missing_report.calculation_status)
+        self.assertEqual(unmapped_report.incomplete_metric_keys, missing_report.incomplete_metric_keys)
+        # Only the diagnosis differs.
+        self.assertNotEqual(
+            {w["code"] for w in unmapped_report.warnings},
+            {w["code"] for w in missing_report.warnings})
+
+    def test_a_fully_mapped_report_is_untouched_by_the_new_counters(self):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1")
+        report = calculate_live_report(
+            row and [row], [], [{"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}}], [], "10")
+        # Exact pre-split figures for this fixture: executed 4 of 10 at 100 IRR. The domain
+        # returns Decimal; the string form appears only after DTO serialisation.
+        self.assertEqual(Decimal("400"), report.metrics["currentExecutedValueIrr"])
+        self.assertEqual(Decimal("600"), report.metrics["remainingPhysicalCostIrr"])
+        self.assertEqual(Decimal("1000"), report.metrics["forecastFinalCostIrr"])
+        self.assertEqual([], [w["code"] for w in report.warnings if w["code"].startswith("PROGRESS_")])
+        self.assertTrue(report.progress_quality["complete"])
+        self.assertEqual((1, 0, 0), (report.progress_quality["mappedLineCount"],
+                                     report.progress_quality["unmappedLineCount"],
+                                     report.progress_quality["generalCostLineCount"]))
+
+    def test_the_three_line_counters_account_for_every_estimate_line(self):
+        rows = [
+            estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1"),
+            estimate(LABOR_LINE, LABOR, "labor", "10", "10", "100", "100", "a-none"),
+            estimate(GENERAL_LINE, GENERAL, "general_cost", "500", "500", "500", "500", None),
+        ]
+        report = calculate_live_report(
+            rows, [], [{"assignmentExternalId": "a-1", "actualQuantity": "3", "task": {}}], [], "10")
+        quality = report.progress_quality
+        self.assertEqual((1, 1, 1), (quality["mappedLineCount"], quality["unmappedLineCount"],
+                                     quality["generalCostLineCount"]))
+        # The invariant the counters exist for: general cost used to fall in no bucket.
+        self.assertEqual(len(rows), quality["mappedLineCount"] + quality["unmappedLineCount"]
+                         + quality["generalCostLineCount"])
+
+    def test_missing_count_now_excludes_unlinked_lines(self):
+        rows = [estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-none"),
+                estimate(LABOR_LINE, LABOR, "labor", "10", "10", "100", "100", "a-empty")]
+        report = calculate_live_report(
+            rows, [], [{"assignmentExternalId": "a-empty", "task": {}}], [], "10")
+        # Two problem lines, but only the linked one is "missing".
+        self.assertEqual((1, 1), (report.progress_quality["missingCount"],
+                                  report.progress_quality["unmappedLineCount"]))
+        self.assertFalse(report.progress_quality["complete"])
 
     def test_general_cost_remaining_is_allocated_per_line_without_cross_line_subsidy(self):
         line2=UUID("10000000-0000-4000-8000-000000000004");res2=UUID("20000000-0000-4000-8000-000000000004")
@@ -208,7 +304,7 @@ class LiveReportDomainTests(unittest.TestCase):
             {"assignmentExternalId":"a-2","plannedQuantity":"10","task":{"taskProgressPercent":"50"}},
         ]
         report=calculate_live_report(estimates,[],assignments,[],"10")
-        self.assertEqual({"complete":False,"manualOverrideCount":1,"taskFallbackCount":1,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0},report.progress_quality)
+        self.assertEqual({"complete":False,"manualOverrideCount":1,"taskFallbackCount":1,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":2,"unmappedLineCount":0,"generalCostLineCount":0},report.progress_quality)
 
     def test_quantity_overrun_warns_with_deviation_without_clamping(self):
         row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-m")

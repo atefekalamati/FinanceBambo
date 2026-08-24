@@ -12,6 +12,8 @@ LINKED_UP = BACKEND_ROOT / "migrations" / "0003_invoice_linked_documents.up.sql"
 LINKED_DOWN = BACKEND_ROOT / "migrations" / "0003_invoice_linked_documents.down.sql"
 REPORT_UP = BACKEND_ROOT / "migrations" / "0004_report_snapshot_payload.up.sql"
 REPORT_DOWN = BACKEND_ROOT / "migrations" / "0004_report_snapshot_payload.down.sql"
+SOURCE_UP = BACKEND_ROOT / "migrations" / "0005_progress_snapshot_source_type.up.sql"
+SOURCE_DOWN = BACKEND_ROOT / "migrations" / "0005_progress_snapshot_source_type.down.sql"
 
 TABLES = (
     "finance_project_settings",
@@ -156,6 +158,46 @@ class FinanceMigrationContractTests(unittest.TestCase):
         self.assertIn("DROP COLUMN IF EXISTS snapshot_payload", down)
         for script in (up, down):
             self.assertRegex(script.strip(), r"(?is)^begin\s*;.*commit\s*;$")
+
+    def test_snapshot_source_type_migration_adds_no_default_and_backfills_nothing(self):
+        """The column must not be written into existing rows.
+
+        progress_snapshot_refs carries a BEFORE UPDATE OR DELETE immutability trigger, so a
+        backfilling UPDATE would be rejected outright. ADD COLUMN with no DEFAULT is a
+        catalog-only change, which is why this migration can run at all -- and it is also
+        the honest outcome: the rows already there have no recorded source.
+        """
+        up = SOURCE_UP.read_text(encoding="utf-8")
+        self.assertIn("ADD COLUMN IF NOT EXISTS source_type text", up)
+        self.assertNotIn("DEFAULT", up.upper().replace("NO DEFAULT", ""))
+        self.assertNotIn("UPDATE progress_snapshot_refs", up)
+
+    def test_snapshot_source_type_is_constrained_and_admits_unknown(self):
+        up = SOURCE_UP.read_text(encoding="utf-8")
+        self.assertIn("source_type IS NULL", up)
+        for allowed in ("microsoft_project", "primavera", "manual", "other"):
+            self.assertIn("'%s'" % allowed, up)
+        # A filename extension is not evidence of a tool, so an unrecorded source stays
+        # unrecorded rather than being labelled.
+        self.assertNotIn(".mpp", up.lower().split("--")[0] if "--" in up else up.lower())
+
+    def test_snapshot_source_type_migration_is_reversible_and_rerunnable(self):
+        up, down = SOURCE_UP.read_text(encoding="utf-8"), SOURCE_DOWN.read_text(encoding="utf-8")
+        for script in (up, down):
+            self.assertTrue(script.strip().startswith("BEGIN;"))
+            self.assertTrue(script.strip().endswith("COMMIT;"))
+        self.assertIn("DROP CONSTRAINT IF EXISTS progress_snapshot_refs_source_type_check", down)
+        self.assertIn("DROP COLUMN IF EXISTS source_type", down)
+        # Re-runnable: the column guard is IF NOT EXISTS and the constraint guard is the
+        # explicit pg_constraint lookup ADD CONSTRAINT cannot express.
+        self.assertIn("IF NOT EXISTS", up)
+        self.assertIn("pg_constraint", up)
+
+    def test_the_rollback_drops_only_what_the_migration_added(self):
+        down = SOURCE_DOWN.read_text(encoding="utf-8")
+        self.assertNotIn("DROP TABLE", down.upper())
+        self.assertNotIn("DELETE FROM", down.upper())
+        self.assertNotIn("TRUNCATE", down.upper())
 
     def test_only_one_scoped_reversal_can_link_to_an_original(self):
         up = LINKED_UP.read_text(encoding="utf-8")

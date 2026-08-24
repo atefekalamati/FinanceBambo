@@ -51,7 +51,8 @@ def ref(snapshot_id, reporting_day, imported_day):
     return {"organization_id": ORG, "project_id": PROJECT, "progress_snapshot_id": snapshot_id,
             "source_file_version_id": UUID(int=1), "source_file_name_safe": "schedule.mpp",
             "imported_at": f"2026-08-{imported_day:02d}T08:30:00Z", "imported_by": ACTOR,
-            "status": "ready", "reporting_date": date(2026, 7, reporting_day)}
+            "status": "ready", "reporting_date": date(2026, 7, reporting_day),
+            "source_type": "microsoft_project" if reporting_day > 1 else None}
 
 
 # Newest first, exactly as the repository returns them.
@@ -402,6 +403,27 @@ class ProgressSnapshotApiTests(unittest.TestCase):
     def test_a_malformed_snapshot_id_is_refused(self):
         with client() as api:
             self.assertEqual(422, api.get("%s/not-a-uuid" % self.URL).status_code)
+
+    def test_the_listing_publishes_the_recorded_source_and_leaves_the_rest_blank(self):
+        with client() as api:
+            rows = api.get(self.URL).json()
+        by_id = {row["progressSnapshotId"]: row["sourceType"] for row in rows}
+        self.assertEqual("microsoft_project", by_id[str(SNAP_3)])
+        # A snapshot imported before the column existed reports nothing rather than a
+        # guess; a filename extension is not evidence of a tool.
+        self.assertIsNone(by_id[str(SNAP_1)])
+
+    def test_every_published_source_is_one_the_contract_allows(self):
+        allowed = {"microsoft_project", "primavera", "manual", "other", None}
+        with client() as api:
+            rows = api.get(self.URL).json()
+        self.assertTrue({row["sourceType"] for row in rows} <= allowed)
+
+    def test_an_unrecognised_source_is_refused_rather_than_passed_through(self):
+        from pydantic import ValidationError
+        with self.assertRaises(ValidationError):
+            ProgressSnapshotResponse(**{**{k.replace("_", ""): v for k, v in ref(SNAP_1, 1, 1).items()},
+                                        "sourceType": "msp"})
 
     def test_the_version_stays_optional_so_the_feed_contract_is_unchanged(self):
         # The feed's header comes from the host provider, which cannot know the version.

@@ -13,6 +13,7 @@
 2. `0002_invoice_confirmation.up.sql`
 3. `0003_invoice_linked_documents.up.sql`
 4. `0004_report_snapshot_payload.up.sql`
+5. `0005_progress_snapshot_source_type.up.sql`
 
 هر فایل transaction مستقل دارد و باید با `ON_ERROR_STOP=1` اجرا شود. Upها از نظر ساختاری rerunnable طراحی شده‌اند.
 
@@ -28,6 +29,31 @@
 | `numeric(18,0)` پول و Decimal quantity | PASS |
 | Scope indexها | PASS |
 | Triggerهای immutable/append-only | PASS |
+
+## 0005 — منبع نسخه پیشرفت
+
+یک ستون `source_type text` به `progress_snapshot_refs` اضافه می‌کند تا مبدأ نسخه
+پیشرفت به‌جای حدس‌زدن از پسوند نام فایل، صریح ثبت شود.
+
+| مورد | وضعیت |
+|---|---|
+| `ADD COLUMN` بدون `DEFAULT` | PASS — تغییر فقط در Catalog، هیچ ردیفی بازنویسی نمی‌شود |
+| اجرا روی PostgreSQL 16.4 واقعی | PASS — اجرا شد |
+| اجرای دوباره (idempotent) | PASS — دو بار اجرا شد، نتیجه یکسان |
+| Rollback واقعی | PASS — اجرا شد، ستون و CHECK حذف شد، سپس دوباره اعمال شد |
+| Rollback دوباره (idempotent) | PASS |
+| ردیف‌های موجود | PASS — هر ۳ ردیف `NULL` ماندند، هیچ Backfill انجام نشد |
+| CHECK روی مقادیر مجاز | PASS — چهار مقدار مجاز و `NULL` پذیرفته؛ `msp`، `Microsoft Project` و `''` رد شد (همه در Transaction و Rollback) |
+| سازگاری با Trigger تغییرناپذیری | PASS — `ALTER TABLE` Trigger را فعال نمی‌کند |
+
+**نکته مهم برای Production:** Trigger `progress_snapshot_refs_immutable` هر `UPDATE`
+را رد می‌کند (روی داده واقعی آزموده شد). یعنی `source_type` فقط در لحظه `INSERT`
+قابل تعیین است و ردیف‌های موجود هرگز مقدار نمی‌گیرند مگر آنکه نسخه دوباره Import شود.
+این عمدی است: تاریخچه پیشرفت append-only است و باید بماند.
+
+**Backfill انجام نشد و نباید انجام شود.** مبدأ واقعی ردیف‌های موجود در هیچ‌جا ثبت
+نشده است؛ `NULL` یعنی «ثبت نشده» که درست است، و `'other'` یعنی «ثبت شد که ابزاری
+بیرون از فهرست بوده» که ادعایی بدون پشتوانه است.
 
 ## Expected Schema Diff
 

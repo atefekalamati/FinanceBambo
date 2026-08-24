@@ -3,7 +3,7 @@ from psycopg.types.json import Jsonb
 class PsycopgProgressRepository:
  def __init__(self,db):self.db=db
  async def list_snapshots(self,s):
-  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT organization_id,project_id,progress_snapshot_id,source_file_version_id,source_file_name_safe,imported_at,imported_by,snapshot_status status,reporting_date FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s ORDER BY reporting_date DESC,imported_at DESC",(s.organization_id,s.project_id));return await c.fetchall()
+  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT organization_id,project_id,progress_snapshot_id,source_file_version_id,source_file_name_safe,imported_at,imported_by,snapshot_status status,reporting_date,source_type FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s ORDER BY reporting_date DESC,imported_at DESC",(s.organization_id,s.project_id));return await c.fetchall()
  async def get_snapshot(self,s,sid):
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT * FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s AND progress_snapshot_id=%s",(s.organization_id,s.project_id,sid));return await c.fetchone()
  async def get_line_mapping(self,s,line_id):
