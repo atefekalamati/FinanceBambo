@@ -12,11 +12,12 @@ from openpyxl import load_workbook
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.finance.domain.reports import (EXTRA_WARNING_KEYS, PROGRESS_STATUSES, WARNING_KEYS,
-                                        calculate_live_report)
+from app.finance.domain.reports import (EXTRA_WARNING_KEYS, PROGRESS_ABSENT, PROGRESS_STATUSES,
+                                        WARNING_KEYS, calculate_live_report)
 from app.finance.domain.resources import FinanceRecordNotFound
 from app.finance.services.reports import FinanceLiveReportService
-from app.finance.schemas.reports import PriceVariance,QuantityVariance,ReportSnapshotReference,ReportWarning
+from app.finance.schemas.reports import (LiveReportResponse,PriceVariance,ProgressQuality,
+                                          QuantityVariance,ReportSnapshotReference,ReportWarning)
 from app.finance.repositories.reports import PsycopgLiveReportRepository
 
 
@@ -653,7 +654,7 @@ class ProgressStateTests(unittest.TestCase):
         absent = self._report(self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}])
         self.assertEqual(("0", "0"), (format(measured.quantity_variances[0]["executedQuantity"], "f"),
                                       format(absent.quantity_variances[0]["executedQuantity"], "f")))
-        self.assertEqual(("mapped", "progress_not_available"),
+        self.assertEqual(("measured", "unavailable"),
                          (measured.quantity_variances[0]["progressStatus"],
                           absent.quantity_variances[0]["progressStatus"]))
         # A source that measured zero is complete data, and raises nothing.
@@ -687,7 +688,7 @@ class ProgressStateTests(unittest.TestCase):
                          quality["unmappedAssignmentCount"] + quality["unmappedActivityCount"])
         self.assertEqual(2, quality["unmappedLineCount"])
 
-    def test_missing_count_is_the_third_state_and_is_not_duplicated(self):
+    def test_missing_count_is_the_unavailable_state_and_is_not_duplicated(self):
         report = self._report(self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}])
         # PROGRESS_NOT_AVAILABLE is missingCount. No second counter was added for it, so a
         # reader summing the buckets cannot count the same line twice.
@@ -703,11 +704,11 @@ class ProgressStateTests(unittest.TestCase):
         warning = next(w for w in broken_reference.warnings if w["code"] == "PROGRESS_UNMAPPED")
         self.assertEqual("unmapped_assignment", warning["progressStatus"])
         absent = self._report(self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}])
-        self.assertEqual("progress_not_available",
+        self.assertEqual("unavailable",
                          next(w for w in absent.warnings
                               if w["code"] == "PROGRESS_MISSING")["progressStatus"])
 
-    def test_every_state_is_one_of_the_four_declared(self):
+    def test_every_state_is_one_of_those_declared(self):
         cases = {"measured": (self._line("a-1"), [{"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}}]),
                  "empty": (self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}]),
                  "broken reference": (self._line("a-missing", activity="ACT-1"), []),
@@ -761,6 +762,57 @@ class ProgressStateTests(unittest.TestCase):
         self.assertEqual(0, report.excluded_estimate_line_count)
         # And the metric is a number, not None -- it is presented, and qualified elsewhere.
         self.assertEqual(Decimal("1000"), report.metrics["forecastFinalCostIrr"])
+    def test_a_fallback_is_not_reported_as_a_measurement(self):
+        """The gap this vocabulary closes: both of these reached a source.
+
+        A quantity derived from a percentage and one measured on site were previously the
+        same status, so a reader wanting to know whether a number was measured had to know
+        which sourceMethod values counted as derivation. The status answers it directly.
+        """
+        cases = {
+            "measured on the assignment": ({"actualQuantity": "4"}, "measured"),
+            "stated by a person": ({"actualQuantity": "4", "manualOverride": {
+                "previousCalculatedValue": "4", "newValue": "5", "reason": "صورت‌جلسه",
+                "userId": str(UUID(int=8)), "occurredAt": "2026-08-02T00:00:00+00:00",
+                "progressSnapshotId": str(SNAPSHOT), "source": "manual_override"}}, "measured"),
+            "derived from the assignment percent": (
+                {"plannedQuantity": "10", "assignmentWorkCompletePercent": "40"}, "fallback"),
+            "derived from the task percent": (
+                {"plannedQuantity": "10", "task": {"taskProgressPercent": "40"}}, "fallback"),
+            "taken from reported effort": ({"actualWork": "4"}, "fallback"),
+        }
+        for label, (fields, expected) in cases.items():
+            with self.subTest(label):
+                assignment = {"assignmentExternalId": "a-1", "task": {}, **fields}
+                report = self._report(self._line("a-1"), [assignment])
+                self.assertEqual(expected, report.quantity_variances[0]["progressStatus"])
+
+    def test_the_coarse_status_and_the_precise_reason_agree(self):
+        # Two fields, one derivation: measurementType says which branch answered and
+        # progressStatus says how far to trust it. A reader using either must reach the
+        # same conclusion, so the mapping lives in one table rather than at each call site.
+        for fields, measurement, status in (
+                ({"actualQuantity": "4"}, "measured_quantity", "measured"),
+                ({"actualWork": "4"}, "work_effort", "fallback"),
+                ({"plannedQuantity": "10", "task": {"taskProgressPercent": "40"}},
+                 "derived_from_percent", "fallback")):
+            with self.subTest(measurement):
+                row = self._report(self._line("a-1"),
+                                   [{"assignmentExternalId": "a-1", "task": {}, **fields}]).quantity_variances[0]
+                self.assertEqual((measurement, status), (row["measurementType"], row["progressStatus"]))
+
+    def test_the_absent_statuses_are_named_in_one_place(self):
+        # PROGRESS_ABSENT is what a caller should ask with, rather than restating the list
+        # and forgetting one when a sixth status appears.
+        for line, assignments in ((self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}]),
+                                  (self._line("a-missing", activity="ACT-1"), []),
+                                  (self._line(None, activity="ACT-missing"), [])):
+            report = calculate_live_report([line], [], list(assignments), [], "10")
+            with self.subTest(report.quantity_variances[0]["progressStatus"]):
+                self.assertIn(report.quantity_variances[0]["progressStatus"], PROGRESS_ABSENT)
+        measured = self._report(self._line("a-1"),
+                                [{"assignmentExternalId": "a-1", "actualQuantity": "0", "task": {}}])
+        self.assertNotIn(measured.quantity_variances[0]["progressStatus"], PROGRESS_ABSENT)
 
 
 class WarningStructureTests(unittest.TestCase):
@@ -815,5 +867,123 @@ class WarningStructureTests(unittest.TestCase):
         warning = next(w for w in report.warnings if w["code"] == "PROGRESS_WORK_NOT_QUANTITY")
         self.assertEqual(set(WARNING_KEYS) | {"progressStatus"}, set(warning))
         ReportWarning(**warning)
-        # Mapped: the data is present, it is simply effort rather than a measurement.
-        self.assertEqual("mapped", warning["progressStatus"])
+        # A fallback, not a measurement: something was reported for this assignment, but it
+        # stands in for the quantity nobody stated.
+        self.assertEqual("fallback", warning["progressStatus"])
+class IssuedSnapshotStabilityTests(unittest.TestCase):
+    """A report issued before any of this still reads exactly as it was issued.
+
+    Issued snapshots are append-only rows holding the payload as JSON, and export reads
+    that stored payload rather than recalculating. So the guarantee is not that old numbers
+    would come out the same if recomputed -- it is that nothing recomputes them. These
+    tests use a payload in the shape the service produced before progressStatus and
+    measurementType existed, which is what the rows in the database actually contain.
+    """
+
+    def _payload_as_issued_before(self):
+        # Deliberately missing every field added since: no measurementType, no
+        # progressStatus, and a progressQuality without the newer counters.
+        return {"reportingDate": "2026-08-02",
+                "metrics": {"forecastFinalCostIrr": "2000", "actualCostIrr": "500"},
+                "breakdown": [{"resourceType": "material", "initialEstimateIrr": "1000",
+                               "revisedEstimateIrr": "1000", "actualCostIrr": "500",
+                               "remainingPhysicalCostIrr": "1500", "forecastFinalIrr": "2000"}],
+                "topPriceVariances": [],
+                "topQuantityVariances": [{"resourceCode": "mat", "resourceTitle": "material",
+                                          "resourceType": "material", "executedQuantity": "0",
+                                          "varianceQuantity": "0", "sourceMethod": "missing"}],
+                "warnings": [{"code": "PROGRESS_MISSING", "message": "no progress",
+                              "severity": "warning", "excludedFromCalculation": False,
+                              "affectedMetricKeys": ["forecastFinalCostIrr"]}],
+                "progressQuality": {"complete": False, "manualOverrideCount": 0,
+                                    "taskFallbackCount": 0, "missingCount": 1},
+                "calculationStatus": "complete"}
+
+    def test_an_old_payload_still_exports_and_is_not_rewritten(self):
+        import copy
+        payload = self._payload_as_issued_before()
+        untouched = copy.deepcopy(payload)
+        csv_bytes = FinanceLiveReportService._csv(payload, "fa")
+        xlsx_bytes = FinanceLiveReportService._xlsx(payload, "fa")
+        self.assertEqual(untouched, payload, "export must not modify the stored payload")
+        self.assertIn("forecastFinalCostIrr", csv_bytes.decode("utf-8-sig"))
+        self.assertTrue(xlsx_bytes.startswith(b"PK"))
+
+    def test_the_export_invents_no_field_the_snapshot_never_stored(self):
+        # If export started reading progressStatus, an old row would either 500 or grow a
+        # column that was never issued. Neither may happen.
+        content = FinanceLiveReportService._csv(self._payload_as_issued_before(), "fa").decode("utf-8-sig")
+        self.assertNotIn("progressStatus", content)
+        self.assertNotIn("measurementType", content)
+
+    def test_a_new_report_and_an_old_snapshot_can_disagree_without_either_breaking(self):
+        # The point of storing the payload: a report issued today carries the new fields, a
+        # report issued last month does not, and both remain readable forever.
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1")
+        fresh = calculate_live_report([row], [], [{"assignmentExternalId": "a-1", "task": {}}], [], "10")
+        self.assertIn("progressStatus", fresh.quantity_variances[0])
+        self.assertNotIn("progressStatus", self._payload_as_issued_before()["topQuantityVariances"][0])
+
+
+class BackwardCompatibilityTests(unittest.TestCase):
+    """Nothing that existed before was removed, renamed, or made required."""
+
+    #: The response fields as they stood before progressStatus, measurementType and the
+    #: three counters were added. Written out rather than derived, so that removing or
+    #: renaming one fails here instead of silently redefining the contract.
+    BASELINE = {
+        "QuantityVariance": ("variance_kind", "estimate_line_id", "resource_id", "resource_code",
+                             "resource_title", "resource_type", "variance_quantity",
+                             "activity_external_id", "activity_title", "wbs_code", "base_unit",
+                             "initial_quantity", "revised_quantity", "executed_quantity",
+                             "remaining_quantity", "quantity_variance_percent", "source_method",
+                             "progress_snapshot_id", "actual_cost_irr", "remaining_physical_cost_irr",
+                             "forecast_final_irr", "impact_share_percent", "price_available"),
+        "ProgressQuality": ("complete", "manual_override_count", "task_fallback_count",
+                            "missing_count", "assignment_actual_count",
+                            "assignment_percent_fallback_count", "mapped_line_count",
+                            "unmapped_line_count", "general_cost_line_count"),
+        "ReportWarning": ("code", "message", "estimate_line_id", "resource_id", "resource_code",
+                          "activity_external_id", "severity", "excluded_from_calculation",
+                          "affected_metric_keys", "deviation_quantity", "deviation_percent"),
+        "LiveReportResponse": ("reporting_date", "progress_snapshot_id", "metrics", "breakdown",
+                               "top_price_variances", "top_quantity_variances", "warnings",
+                               "calculation_status", "incomplete_metric_keys", "missing_price_count",
+                               "excluded_estimate_line_count", "excluded_estimate_line_ids",
+                               "progress_quality"),
+    }
+
+    def test_every_field_that_existed_before_still_exists_under_the_same_name(self):
+        models = {"QuantityVariance": QuantityVariance, "ProgressQuality": ProgressQuality,
+                  "ReportWarning": ReportWarning, "LiveReportResponse": LiveReportResponse}
+        for name, expected in self.BASELINE.items():
+            with self.subTest(name):
+                self.assertEqual(set(), set(expected) - set(models[name].model_fields))
+
+    def test_everything_added_since_is_optional(self):
+        # A client sending or storing the older shape must still validate. If any new field
+        # were required, every previously issued payload would fail to parse.
+        models = {"QuantityVariance": QuantityVariance, "ProgressQuality": ProgressQuality,
+                  "ReportWarning": ReportWarning}
+        for name, baseline in self.BASELINE.items():
+            if name not in models:
+                continue
+            for field in set(models[name].model_fields) - set(baseline):
+                with self.subTest("%s.%s" % (name, field)):
+                    self.assertFalse(models[name].model_fields[field].is_required())
+
+    def test_a_variance_row_in_the_old_shape_still_validates(self):
+        row = QuantityVariance(estimateLineId=MATERIAL_LINE, resourceId=MATERIAL, resourceCode="mat",
+                               resourceTitle="material", resourceType="material", varianceQuantity="0",
+                               executedQuantity="0", sourceMethod="missing")
+        self.assertEqual((None, None), (row.measurement_type, row.progress_status))
+        self.assertEqual("0", row.model_dump(by_alias=True)["executedQuantity"])
+
+    def test_executed_quantity_is_still_a_number_and_never_null_for_an_absent_measurement(self):
+        # The constraint the whole design turns on: the field was not converted to null to
+        # express "unknown". A client reading only executedQuantity sees what it always saw.
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1")
+        report = calculate_live_report([row], [], [{"assignmentExternalId": "a-1", "task": {}}], [], "10")
+        variance = report.quantity_variances[0]
+        self.assertEqual(Decimal("0"), variance["executedQuantity"])
+        self.assertEqual("0", QuantityVariance(**variance).model_dump(by_alias=True)["executedQuantity"])

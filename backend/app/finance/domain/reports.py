@@ -1,27 +1,37 @@
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 
-from .progress import resolve_progress_quantity
+from .progress import PROGRESS_FALLBACK, PROGRESS_MEASURED, resolve_progress_quantity
 
 IRR = Decimal("1")
 ZERO = Decimal(0)
 
-#: Why an estimate line has no executed quantity. Kept apart because each one is fixed by
-#: a different person: a line naming an assignment that matched nothing is a broken
-#: reference on the line, a line reachable only through its activity is a mapping gap, and
-#: an assignment that reported nothing is a question for project controls.
+#: What a line's executed quantity rests on. Five values in two groups.
 #:
-#: "mapped" is the load-bearing value. Without it, executedQuantity 0 is ambiguous -- it
-#: could be a source that measured zero, or no source at all. With it, "mapped" plus 0 is
-#: a measured zero and anything else plus 0 is an absence. The quantity itself is the same
-#: either way: what an absent measurement should do to the money is a product decision,
-#: and this reports the situation rather than deciding it.
-PROGRESS_MAPPED = "mapped"
+#: The line reached a source, and `domain/progress.py` says how far to trust what it said:
+#:   measured -- the assignment stated the quantity, or a person did with an audit record
+#:   fallback -- derived from a percentage, or taken from effort in an undeclared unit
+#:
+#: The line reached nothing, and each case needs a different person to fix it:
+#:   unavailable         -- reached an assignment which reported nothing
+#:   unmapped_assignment -- names an assignment that matched nothing: a broken reference
+#:   unmapped_activity   -- reachable only through an activity that matched nothing, or
+#:                          naming no identifier at all
+#:
+#: The group is the load-bearing part. Without it, executedQuantity 0 is ambiguous: it
+#: could be a source that measured zero, or no source at all. With it, "measured" plus 0 is
+#: a measured zero and any status in the second group plus 0 is an absence. The quantity is
+#: the same either way -- what an absent measurement should do to the money is a product
+#: decision, and this reports the situation rather than deciding it.
 PROGRESS_UNMAPPED_ASSIGNMENT = "unmapped_assignment"
 PROGRESS_UNMAPPED_ACTIVITY = "unmapped_activity"
-PROGRESS_NOT_AVAILABLE = "progress_not_available"
-PROGRESS_STATUSES = (PROGRESS_MAPPED, PROGRESS_UNMAPPED_ASSIGNMENT, PROGRESS_UNMAPPED_ACTIVITY,
-                     PROGRESS_NOT_AVAILABLE)
+PROGRESS_UNAVAILABLE = "unavailable"
+PROGRESS_STATUSES = (PROGRESS_MEASURED, PROGRESS_FALLBACK, PROGRESS_UNAVAILABLE,
+                     PROGRESS_UNMAPPED_ASSIGNMENT, PROGRESS_UNMAPPED_ACTIVITY)
+
+#: The statuses that mean "no quantity was reported for this line". Named once so a caller
+#: cannot ask the question with a different list.
+PROGRESS_ABSENT = (PROGRESS_UNAVAILABLE, PROGRESS_UNMAPPED_ASSIGNMENT, PROGRESS_UNMAPPED_ACTIVITY)
 
 #: Metrics that stop being trustworthy when a line's progress is unknown. All three
 #: progress warnings claim the same list, so a reader cannot conclude that one kind of gap
@@ -187,8 +197,8 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             try:
                 resolved = resolve_progress_quantity(assignment)
                 executed = resolved["effective_quantity"];_source = resolved["source_method"]
-                _measurement = resolved["measurement_type"];_status = PROGRESS_MAPPED
-            except ValueError: executed = ZERO;_source="missing";_status = PROGRESS_NOT_AVAILABLE
+                _measurement = resolved["measurement_type"];_status = resolved["progress_status"]
+            except ValueError: executed = ZERO;_source="missing";_status = PROGRESS_UNAVAILABLE
         if _source in ("missing","unmapped"):
             progress_quality["complete"] = False
             if _source == "unmapped":

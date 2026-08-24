@@ -47,6 +47,20 @@ MEASUREMENT_TYPES=("measured_quantity","work_effort","derived_from_percent","sta
 #: this is not. The number is only ever reported, never multiplied into a metric.
 WORK_AS_QUANTITY_QUALITY=Decimal("0.5")
 
+#: How much a reader should trust the quantity, coarser than `measurement_type` and meant
+#: for a reader who only wants to know whether to trust it:
+#:   measured -- the assignment stated this quantity, or a person did with an audit record
+#:   fallback -- it stands in for a quantity nobody stated: derived from a percentage, or
+#:               taken from effort in a unit the source never declared
+#: The finer reason stays in `measurement_type`, and the two are derived from one table so
+#: they cannot drift apart. Report-level statuses -- unavailable, and the two unmapped ones
+#: -- are about an estimate line rather than an assignment, so they live in
+#: `domain/reports.py` and never appear here.
+PROGRESS_MEASURED="measured"
+PROGRESS_FALLBACK="fallback"
+MEASUREMENT_STATUS={"measured_quantity":PROGRESS_MEASURED,"stated_quantity":PROGRESS_MEASURED,
+ "derived_from_percent":PROGRESS_FALLBACK,"work_effort":PROGRESS_FALLBACK}
+
 def resolve_progress_quantity(a):
  warnings=[]
  o=a.get("manualOverride")
@@ -54,24 +68,24 @@ def resolve_progress_quantity(a):
   required=("previousCalculatedValue","newValue","reason","userId","occurredAt","progressSnapshotId")
   if o.get("source")!="manual_override" or any(not o.get(k) for k in required):raise ValueError("manual override requires complete audit metadata")
   computed=Decimal(o["previousCalculatedValue"]);effective=Decimal(o["newValue"])
-  return {"computed_quantity":computed,"effective_quantity":effective,"source_method":"manual_override","measurement_type":"stated_quantity","quality":Decimal("1"),"warnings":warnings}
+  return {"computed_quantity":computed,"effective_quantity":effective,"source_method":"manual_override","measurement_type":"stated_quantity","progress_status":MEASUREMENT_STATUS["stated_quantity"],"quality":Decimal("1"),"warnings":warnings}
  if a.get("actualQuantity") is not None:
   value=Decimal(a["actualQuantity"])
-  return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_actual","measurement_type":"measured_quantity","quality":Decimal("1"),"warnings":warnings}
+  return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_actual","measurement_type":"measured_quantity","progress_status":MEASUREMENT_STATUS["measured_quantity"],"quality":Decimal("1"),"warnings":warnings}
  if a.get("actualWork") is not None:
   # Effort, taken as a quantity without any unit reconciliation. See the module docstring:
   # the value is unchanged, the metadata around it is not.
   value=Decimal(a["actualWork"])
-  return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_actual","measurement_type":"work_effort","quality":WORK_AS_QUANTITY_QUALITY,
+  return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_actual","measurement_type":"work_effort","progress_status":MEASUREMENT_STATUS["work_effort"],"quality":WORK_AS_QUANTITY_QUALITY,
    "warnings":[{"code":"PROGRESS_WORK_NOT_QUANTITY","message":"Executed quantity was taken from reported work effort; the source stated no measured quantity in the resource's unit."}]}
  planned=a.get("plannedQuantity")
  if planned is not None and a.get("assignmentWorkCompletePercent") is not None:
   value=Decimal(planned)*Decimal(a["assignmentWorkCompletePercent"])/100
-  return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_work_percent","measurement_type":"derived_from_percent","quality":Decimal("0.8"),"warnings":warnings}
+  return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_work_percent","measurement_type":"derived_from_percent","progress_status":MEASUREMENT_STATUS["derived_from_percent"],"quality":Decimal("0.8"),"warnings":warnings}
  percent=(a.get("task") or {}).get("taskProgressPercent")
  if planned is not None and percent is not None:
   value=Decimal(planned)*Decimal(percent)/100
-  return {"computed_quantity":value,"effective_quantity":value,"source_method":"task_progress_fallback","measurement_type":"derived_from_percent","quality":Decimal("0.6"),"warnings":[{"code":"TASK_PROGRESS_FALLBACK","message":"Executed quantity was resolved from task progress because assignment-level progress was unavailable."}]}
+  return {"computed_quantity":value,"effective_quantity":value,"source_method":"task_progress_fallback","measurement_type":"derived_from_percent","progress_status":MEASUREMENT_STATUS["derived_from_percent"],"quality":Decimal("0.6"),"warnings":[{"code":"TASK_PROGRESS_FALLBACK","message":"Executed quantity was resolved from task progress because assignment-level progress was unavailable."}]}
  raise ValueError("manual override is required when no calculation source exists")
 
 def consumed_quantity(a):

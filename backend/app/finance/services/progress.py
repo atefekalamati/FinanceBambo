@@ -36,6 +36,7 @@ class ProgressService:
     row["effectiveExecutedQuantity"]=format(resolved["effective_quantity"],"f")
     row["sourceMethod"]=resolved["source_method"]
     row["measurementType"]=resolved["measurement_type"]
+    row["progressStatus"]=resolved["progress_status"]
     row["quality"]=format(resolved["quality"],"f")
     row["warnings"]=resolved["warnings"]
    except ValueError:
@@ -44,6 +45,9 @@ class ProgressService:
     row["sourceMethod"]="missing"
     # Nothing was measured, so no kind of measurement can be named. None, not a label.
     row["measurementType"]=None
+    # The report's two unmapped statuses cannot occur here: they describe an estimate line
+    # that reached no assignment, and this row IS an assignment.
+    row["progressStatus"]="unavailable"
     row["quality"]="0"
     row["warnings"]=[{"code":"PROGRESS_MISSING","message":"No valid progress quantity is available for this assignment."}]
    assignments.append(row)
