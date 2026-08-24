@@ -6,6 +6,59 @@ from .progress import resolve_progress_quantity
 IRR = Decimal("1")
 ZERO = Decimal(0)
 
+#: Why an estimate line has no executed quantity. Kept apart because each one is fixed by
+#: a different person: a line naming an assignment that matched nothing is a broken
+#: reference on the line, a line reachable only through its activity is a mapping gap, and
+#: an assignment that reported nothing is a question for project controls.
+#:
+#: "mapped" is the load-bearing value. Without it, executedQuantity 0 is ambiguous -- it
+#: could be a source that measured zero, or no source at all. With it, "mapped" plus 0 is
+#: a measured zero and anything else plus 0 is an absence. The quantity itself is the same
+#: either way: what an absent measurement should do to the money is a product decision,
+#: and this reports the situation rather than deciding it.
+PROGRESS_MAPPED = "mapped"
+PROGRESS_UNMAPPED_ASSIGNMENT = "unmapped_assignment"
+PROGRESS_UNMAPPED_ACTIVITY = "unmapped_activity"
+PROGRESS_NOT_AVAILABLE = "progress_not_available"
+PROGRESS_STATUSES = (PROGRESS_MAPPED, PROGRESS_UNMAPPED_ASSIGNMENT, PROGRESS_UNMAPPED_ACTIVITY,
+                     PROGRESS_NOT_AVAILABLE)
+
+#: Metrics that stop being trustworthy when a line's progress is unknown. All three
+#: progress warnings claim the same list, so a reader cannot conclude that one kind of gap
+#: threatens the forecast while another does not.
+PROGRESS_AFFECTED_METRICS = ("currentExecutedValueIrr", "remainingPhysicalCostIrr",
+                             "forecastFinalCostIrr")
+
+#: The keys every warning carries. ReportWarning forbids extras, so a key invented at one
+#: call site turns every report containing it into a 500 at response validation -- which is
+#: what happened to deviationQuantity. Hence one constructor rather than eight hand-built
+#: dicts, and EXTRA_WARNING_KEYS naming the only additions allowed.
+WARNING_KEYS = ("code", "message", "estimateLineId", "resourceId", "resourceCode",
+                "activityExternalId", "severity", "excludedFromCalculation", "affectedMetricKeys")
+
+#: Per code, the keys that may appear beyond WARNING_KEYS. Anything else is a defect.
+EXTRA_WARNING_KEYS = {"QUANTITY_OVERRUN": ("deviationQuantity", "deviationPercent"),
+                      "PROGRESS_UNMAPPED": ("progressStatus",),
+                      "PROGRESS_MISSING": ("progressStatus",),
+                      "PROGRESS_WORK_NOT_QUANTITY": ("progressStatus",)}
+
+
+def _warning(code, message, *, estimate_line_id=None, resource_id=None, resource_code=None,
+             activity_external_id=None, excluded=False, affected=(), **extra):
+    """One shape for every warning, so a new call site cannot invent a different one."""
+    return {"code": code, "message": message, "estimateLineId": estimate_line_id,
+            "resourceId": resource_id, "resourceCode": resource_code,
+            "activityExternalId": activity_external_id, "severity": "warning",
+            "excludedFromCalculation": excluded, "affectedMetricKeys": list(affected), **extra}
+
+
+def _line_warning(row, code, message, *, excluded=False, affected=(), **extra):
+    """A warning about one estimate line, identified the same way every time."""
+    return _warning(code, message, estimate_line_id=str(row["id"]),
+                    resource_id=str(row["resource_id"]), resource_code=row["resource_code"],
+                    activity_external_id=row.get("activity_external_id"),
+                    excluded=excluded, affected=affected, **extra)
+
 
 def money(value):
     return Decimal(value).quantize(IRR, rounding=ROUND_HALF_UP)
@@ -51,7 +104,10 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             if factor is None:
                 missing_conversion_count += 1
                 missing_conversion_types.add(row["resource_type"])
-                warnings.append({"code":"UNIT_CONVERSION_MISSING","message":"Purchased quantity was excluded because its unit cannot be converted.","estimateLineId":str(row["estimate_line_id"]) if row.get("estimate_line_id") else None,"resourceId":str(row["resource_id"]),"resourceCode":row.get("resource_code"),"activityExternalId":None,"severity":"warning","excludedFromCalculation":True,"affectedMetricKeys":["moneyRequiredToContinueIrr","forecastFinalCostIrr"]})
+                warnings.append(_warning("UNIT_CONVERSION_MISSING","Purchased quantity was excluded because its unit cannot be converted.",
+                    estimate_line_id=str(row["estimate_line_id"]) if row.get("estimate_line_id") else None,
+                    resource_id=str(row["resource_id"]),resource_code=row.get("resource_code"),
+                    excluded=True,affected=("moneyRequiredToContinueIrr","forecastFinalCostIrr")))
                 continue
             quantity *= factor
         if row.get("estimate_line_id"):
@@ -82,7 +138,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     # mappedLineCount + unmappedLineCount + generalCostLineCount is every estimate line
     # read for this date. General cost is counted separately because progress is
     # meaningless for it, so it belongs in neither of the other two.
-    progress_quality={"complete":True,"manualOverrideCount":0,"taskFallbackCount":0,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":0,"unmappedLineCount":0,"generalCostLineCount":0,"workAsQuantityCount":0}
+    progress_quality={"complete":True,"manualOverrideCount":0,"taskFallbackCount":0,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":0,"unmappedLineCount":0,"generalCostLineCount":0,"workAsQuantityCount":0,"unmappedAssignmentCount":0,"unmappedActivityCount":0}
     for row in estimate_rows:
         kind = row["resource_type"]
         original_price = Decimal(row["original_unit_price_irr"] or 0)
@@ -100,7 +156,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             line_actual = linked_actual + pooled_allocated
             general_required += max(revised_amount - line_actual, ZERO)
             if line_actual > revised_amount:
-                warnings.append({"code":"GENERAL_COST_OVERRUN","message":"General cost actual exceeds its revised estimate.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["moneyRequiredToContinueIrr","forecastFinalCostIrr"]})
+                warnings.append(_line_warning(row,"GENERAL_COST_OVERRUN","General cost actual exceeds its revised estimate.",affected=("moneyRequiredToContinueIrr","forecastFinalCostIrr")))
             continue
         original_quantity = Decimal(row["original_quantity"] or 0)
         revised_quantity = Decimal(row["revised_quantity"] if row.get("revised_quantity") is not None else original_quantity)
@@ -108,30 +164,38 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         revised_estimate = money(revised_quantity * original_price)
         initial_total += initial;breakdown[kind]["initialEstimateIrr"] += initial;breakdown[kind]["revisedEstimateIrr"] += revised_estimate
         assignment = assignment_by_id.get(row.get("assignment_external_id")) or assignment_by_activity.get(row.get("activity_external_id"))
-        # Whether the line reached an assignment at all is a different fact from whether
-        # that assignment could produce a quantity, and it is fixed by a different person:
-        # an unmapped line needs its activity link corrected here, an empty one needs a
-        # report from project controls. The executed value is unchanged either way.
-        # `_source` is the field the number came from; `_measurement` is what kind of number
-        # it is. None while there is no number at all: nothing was measured.
+        # Three facts about the same line, deliberately separate. `_source` is the field the
+        # number came from, `_measurement` is what kind of number it is, and `_status` is
+        # whether there was a number at all -- so a reader can tell a measured zero from an
+        # absent measurement, which `executed = ZERO` alone cannot say. The executed value
+        # is the same in every branch below; only what the report says about it differs.
         _measurement = None
         if assignment is None:
             progress_quality["unmappedLineCount"] += 1
             executed = ZERO;_source = "unmapped"
+            # Classified by the most specific identifier the line claims. A line naming an
+            # assignment that matched nothing has a broken reference on the line itself; a
+            # line without one was only ever findable through its activity, and a line
+            # naming neither lands there too -- no activity could be found because none was
+            # named. The two need different people to fix them, which is why one count for
+            # both said nothing useful.
+            _status = PROGRESS_UNMAPPED_ASSIGNMENT if row.get("assignment_external_id") else PROGRESS_UNMAPPED_ACTIVITY
+            progress_quality["unmappedAssignmentCount" if _status == PROGRESS_UNMAPPED_ASSIGNMENT
+                             else "unmappedActivityCount"] += 1
         else:
             progress_quality["mappedLineCount"] += 1
             try:
                 resolved = resolve_progress_quantity(assignment)
                 executed = resolved["effective_quantity"];_source = resolved["source_method"]
-                _measurement = resolved["measurement_type"]
-            except ValueError: executed = ZERO;_source="missing"
+                _measurement = resolved["measurement_type"];_status = PROGRESS_MAPPED
+            except ValueError: executed = ZERO;_source="missing";_status = PROGRESS_NOT_AVAILABLE
         if _source in ("missing","unmapped"):
             progress_quality["complete"] = False
             if _source == "unmapped":
-                warnings.append({"code":"PROGRESS_UNMAPPED","message":"This estimate line is not linked to any assignment in the selected progress snapshot.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["currentExecutedValueIrr","remainingPhysicalCostIrr","forecastFinalCostIrr"]})
+                warnings.append(_line_warning(row,"PROGRESS_UNMAPPED","This estimate line is not linked to any assignment in the selected progress snapshot.",affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
             else:
                 progress_quality["missingCount"] += 1
-                warnings.append({"code":"PROGRESS_MISSING","message":"The linked assignment carries no usable progress quantity for this estimate line.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["currentExecutedValueIrr","remainingPhysicalCostIrr","forecastFinalCostIrr"]})
+                warnings.append(_line_warning(row,"PROGRESS_MISSING","The linked assignment carries no usable progress quantity for this estimate line.",affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
         elif _source == "manual_override": progress_quality["manualOverrideCount"] += 1
         elif _source == "task_progress_fallback": progress_quality["taskFallbackCount"] += 1;progress_quality["complete"] = False
         elif _source == "assignment_work_percent": progress_quality["assignmentPercentFallbackCount"] += 1;progress_quality["complete"] = False
@@ -144,19 +208,22 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             # the assignment's actual, so that counter stays true and this one says which of
             # those actuals was effort.
             progress_quality["workAsQuantityCount"] += 1;progress_quality["complete"] = False
-            warnings.append({"code":"PROGRESS_WORK_NOT_QUANTITY","message":"Executed quantity was taken from reported work effort, whose unit the progress source does not state.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["currentExecutedValueIrr","remainingPhysicalCostIrr","forecastFinalCostIrr"]})
+            warnings.append(_line_warning(row,"PROGRESS_WORK_NOT_QUANTITY","Executed quantity was taken from reported work effort, whose unit the progress source does not state.",affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
         remaining = max(revised_quantity - executed, ZERO)
         if executed > revised_quantity:
             deviation=executed-revised_quantity
             percent=None if revised_quantity==0 else (deviation*Decimal(100)/revised_quantity).quantize(Decimal("0.0001"),rounding=ROUND_HALF_UP)
-            warnings.append({"code":"QUANTITY_OVERRUN","message":"Executed quantity exceeds revised quantity.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr"],"deviationQuantity":format(deviation,"f"),"deviationPercent":None if percent is None else format(percent,"f")})
+            warnings.append(_line_warning(row,"QUANTITY_OVERRUN","Executed quantity exceeds revised quantity.",
+                affected=("remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr"),
+                deviationQuantity=format(deviation,"f"),deviationPercent=None if percent is None else format(percent,"f")))
         current_price = row.get("current_unit_price_irr")
         has_price = current_price is not None
         if current_price is None:
             missing_price_count += 1
             excluded_estimate_line_ids.append(str(row["id"]))
             excluded_lines_by_type[kind] += 1
-            warnings.append({"code":"CURRENT_PRICE_MISSING","message":"Current price is missing; live-value metrics exclude this line.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":True,"affectedMetricKeys":["currentExecutedValueIrr","remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr","forecastPerSquareMeterIrr"]})
+            warnings.append(_line_warning(row,"CURRENT_PRICE_MISSING","Current price is missing; live-value metrics exclude this line.",excluded=True,
+                affected=("currentExecutedValueIrr","remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr","forecastPerSquareMeterIrr")))
             current = ZERO
         else: current = Decimal(current_price)
         executed_value = money(executed * current); remaining_cost = money(remaining * current)
@@ -189,7 +256,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         quantity_variances.append({"varianceKind":"quantity","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"resourceTitle":row["resource_title"],"resourceType":kind,
             "activityExternalId":row.get("activity_external_id"),"activityTitle":row.get("activity_title"),"wbsCode":row.get("wbs_code"),"baseUnit":row.get("base_unit"),
             "initialQuantity":original_quantity,"revisedQuantity":revised_quantity,"executedQuantity":executed,"remainingQuantity":remaining,
-            "varianceQuantity":quantity_variance,"quantityVariancePercent":quantity_percent,"sourceMethod":_source,"measurementType":_measurement,"progressSnapshotId":row.get("progress_snapshot_id"),
+            "varianceQuantity":quantity_variance,"quantityVariancePercent":quantity_percent,"sourceMethod":_source,"measurementType":_measurement,"progressStatus":_status,"progressSnapshotId":row.get("progress_snapshot_id"),
             "actualCostIrr":actual_line,"remainingPhysicalCostIrr":remaining_cost if has_price else None,"forecastFinalIrr":forecast_line if has_price else None,
             "priceAvailable":has_price,"impactSharePercent":None})
 
@@ -208,7 +275,8 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         incomplete_metric_keys=["currentExecutedValueIrr","remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr","forecastPerSquareMeterIrr"]
     if area is None or area <= 0:
         actual_per_area = forecast_per_area = None
-        warnings.append({"code":"GROSS_AREA_MISSING","message":"Per-square-meter metrics are unavailable because gross built area is missing.","estimateLineId":None,"resourceId":None,"resourceCode":None,"activityExternalId":None,"severity":"warning","excludedFromCalculation":True,"affectedMetricKeys":["actualCostPerSquareMeterIrr","forecastPerSquareMeterIrr"]})
+        warnings.append(_warning("GROSS_AREA_MISSING","Per-square-meter metrics are unavailable because gross built area is missing.",
+            excluded=True,affected=("actualCostPerSquareMeterIrr","forecastPerSquareMeterIrr")))
     else:
         actual_per_area = money(actual_total / area);forecast_per_area = money(forecast / area)
     metrics = {"initialEstimateIrr":money(initial_total),"actualCostIrr":money(actual_total),

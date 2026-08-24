@@ -62,6 +62,12 @@ class QuantityVariance(ApiModel):
     #: measured at all. Typed as str, like source_method beside it, so a new kind added in
     #: the domain cannot turn a report into a 500 at response validation.
     measurement_type:str|None=None
+    #: Whether this line reached a progress source at all, and if not, why:
+    #: "mapped" | "unmapped_assignment" | "unmapped_activity" | "progress_not_available".
+    #: Read it together with executedQuantity, which is 0 in three of those four cases:
+    #: "mapped" with 0 executed is a source that measured zero, and any other status with 0
+    #: executed is an absence of data. Before this field the two were indistinguishable.
+    progress_status:str|None=None
     actual_cost_irr:Decimal|None=None;remaining_physical_cost_irr:Decimal|None=None;forecast_final_irr:Decimal|None=None;impact_share_percent:Decimal|None=None
     price_available:bool=True
     @field_serializer("variance_quantity","initial_quantity","revised_quantity","executed_quantity","remaining_quantity","quantity_variance_percent","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr","impact_share_percent")
@@ -72,6 +78,10 @@ class ReportWarning(ApiModel):
     code:str;message:str;estimate_line_id:UUID|None=None
     resource_id:UUID|None=None;resource_code:str|None=None;activity_external_id:str|None=None
     severity:str|None=None;excluded_from_calculation:bool|None=None;affected_metric_keys:list[str]|None=None
+    #: Present on the three progress codes, absent elsewhere: which of the four progress
+    #: states this line is in. It says whether the warning means "the data is somewhere
+    #: else" or "nobody has reported it", which the code alone does not.
+    progress_status:str|None=None
     # QUANTITY_OVERRUN carries how far past the revised quantity the line went. The model
     # forbids extras, so leaving these undeclared turned every report containing an
     # overrun into a 500 at response validation.
@@ -92,6 +102,17 @@ class ProgressQuality(ApiModel):
     #: from the assignment's actual, so it is counted there too; this says how many of those
     #: are effort. Non-zero always forces complete=False.
     work_as_quantity_count:int=0
+    #: unmapped_line_count split into the two situations behind it, because they are fixed
+    #: by different people: unmapped_assignment_count is lines naming an assignment that
+    #: matched nothing (a broken reference on the line), unmapped_activity_count is lines
+    #: reachable only through an activity that matched nothing, or naming neither. The two
+    #: always sum to unmapped_line_count, which keeps its previous meaning and value.
+    #:
+    #: The third state, PROGRESS_NOT_AVAILABLE, is missing_count above -- a line that did
+    #: reach an assignment which reported nothing. It is not repeated here under a second
+    #: name.
+    unmapped_assignment_count:int=0
+    unmapped_activity_count:int=0
     #: These three partition every estimate line read for the reporting date, so their sum
     #: is the line count. General cost is its own bucket because progress does not apply
     #: to it, which previously left those lines in no bucket at all.
