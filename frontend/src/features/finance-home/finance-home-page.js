@@ -498,63 +498,68 @@ function createSnapshotProvenance({ snapshots = [], selected, report, onSelect }
   if (!selected) return null;
   const section = element("section", "finance-snapshot-provenance");
   section.setAttribute("aria-label", "نسخه پیشرفت مبنای این محاسبه");
+  section.append(element("span", "finance-snapshot-provenance__lead", "مبنای محاسبه"));
 
-  const head = element("div", "finance-snapshot-provenance__head");
-  const copy = element("div");
-  copy.append(
-    element("span", "finance-snapshot-provenance__eyebrow", "مبنای محاسبه"),
-    element("h2", "", "این ارقام بر پایه کدام نسخه پیشرفت پروژه است"),
-  );
-  head.append(copy, element("span", "read-only-badge", "فقط‌خواندنی"));
-
+  /**
+   * The strip stays on one line at every width, so each fact carries a short
+   * label as well as a full one — the same long/narrow pairing the combination
+   * chart uses for its category names — and the facts drop out in order of how
+   * little they say as the room runs out. The file name is the only value with
+   * no natural length, so it is the one that gives way with an ellipsis.
+   */
   const facts = element("dl", "finance-snapshot-provenance__facts");
   [
-    ["تاریخ گزارش نسخه", formatBusinessDate(selected.reportingDate)],
-    ["وضعیت نسخه", SNAPSHOT_STATUS_LABELS[selected.status] ?? "وضعیت نامشخص"],
-    ["فایل مبدأ", selected.sourceFileNameSafe ?? "—"],
-    ["زمان ورود به سیستم", formatSystemDateTime(selected.importedAt)],
-  ].forEach(([label, value]) => {
-    const item = element("div");
-    item.append(element("dt", "", label), element("dd", "", value));
+    ["date", "تاریخ گزارش نسخه", "تاریخ", formatBusinessDate(selected.reportingDate)],
+    ["status", "وضعیت", "وضعیت", SNAPSHOT_STATUS_LABELS[selected.status] ?? "نامشخص"],
+    ["file", "فایل مبدأ", "فایل", selected.sourceFileNameSafe ?? "—"],
+    ["imported", "ورود به سیستم", "ورود", formatSystemDateTime(selected.importedAt)],
+  ].forEach(([key, label, shortLabel, value]) => {
+    const item = element("div", `finance-snapshot-provenance__fact finance-snapshot-provenance__fact--${key}`);
+    const term = element("dt");
+    term.append(
+      element("span", "finance-snapshot-provenance__label--full", label),
+      element("span", "finance-snapshot-provenance__label--short", shortLabel),
+    );
+    const definition = element("dd", "", value);
+    // Truncation hides characters, so the whole value stays reachable.
+    definition.title = value;
+    item.append(term, definition);
     facts.append(item);
   });
-
-  section.append(head, facts);
+  section.append(facts);
 
   // Only a ready snapshot can be reported on: the report endpoints refuse a
   // superseded one, so it is listed and disabled rather than silently failing.
   const selectable = snapshots.filter((snapshot) => snapshot.status === "ready");
   if (selectable.length > 1 && typeof onSelect === "function") {
-    const field = element("div", "form-field finance-snapshot-provenance__picker");
-    const label = element("label", "form-label", "نسخه پیشرفت مبنای محاسبه");
-    label.htmlFor = "financeSnapshotChoice";
     const picker = document.createElement("select");
-    picker.id = "financeSnapshotChoice";
-    picker.className = "app-select";
+    picker.className = "app-select finance-snapshot-provenance__picker";
+    picker.setAttribute("aria-label", "انتخاب نسخه پیشرفت مبنای محاسبه");
+    picker.title = "با تغییر نسخه، محاسبه از سمت سرویس مالی دوباره انجام می‌شود.";
     snapshots.forEach((snapshot) => {
       const option = document.createElement("option");
       option.value = snapshot.progressSnapshotId;
-      const status = snapshot.status === "ready" ? "" : ` · ${SNAPSHOT_STATUS_LABELS[snapshot.status] ?? "وضعیت نامشخص"}`;
+      const status = snapshot.status === "ready" ? "" : ` · ${SNAPSHOT_STATUS_LABELS[snapshot.status] ?? "نامشخص"}`;
       option.textContent = `${formatBusinessDate(snapshot.reportingDate)}${status}`;
       option.disabled = snapshot.status !== "ready";
       option.selected = snapshot.progressSnapshotId === selected.progressSnapshotId;
       picker.append(option);
     });
     picker.addEventListener("change", () => onSelect(picker.value));
-    field.append(label, picker, element("small", "form-hint", "با تغییر نسخه، محاسبه از سمت سرویس مالی دوباره انجام می‌شود."));
-    section.append(field);
+    section.append(picker);
   }
 
   // The response states which snapshot it actually used. If that is not the one
-  // we asked for, the reader is told rather than shown a mismatched heading.
+  // we asked for, the reader is told — below the strip rather than inside it,
+  // so the strip keeps its single line and the warning still gets said.
   const answered = report?.progressSnapshotId;
-  if (answered && answered !== selected.progressSnapshotId) {
-    const notice = element("p", "inline-notice", "سرویس مالی این ارقام را بر پایه نسخه دیگری محاسبه کرده است؛ نسخه انتخابی برای این تاریخ گزارش قابل استفاده نبود.");
-    notice.setAttribute("role", "status");
-    section.append(notice);
-  }
+  if (!answered || answered === selected.progressSnapshotId) return section;
 
-  return section;
+  const notice = element("p", "inline-notice finance-snapshot-provenance__notice", "سرویس مالی این ارقام را بر پایه نسخه دیگری محاسبه کرده است؛ نسخه انتخابی برای این تاریخ گزارش قابل استفاده نبود.");
+  notice.setAttribute("role", "status");
+  const group = document.createDocumentFragment();
+  group.append(section, notice);
+  return group;
 }
 
 function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null) {
