@@ -191,13 +191,67 @@ class FixtureIdentityTests(unittest.TestCase):
                          "seed.sql writes ids outside FIXTURE_ID_PREFIXES; --changes would "
                          "report them as user activity")
 
-    def test_a_seeded_row_may_carry_any_source_value(self):
+    def test_every_seeded_line_declares_the_source_its_own_data_implies(self):
+        """`source` says how a line entered the system, so each value is pinned per line.
+
+        The old assertion only checked that both values appeared somewhere in the list,
+        which would have passed with every source swapped. It also could not notice the
+        real defect this replaced: a value corrected here while the seeded database row
+        kept the old one. `devhost.inspect --drift` is what compares the two.
+        """
         from devhost import seed
-        sources = {line[6] for line in seed.ESTIMATE_LINES}
-        # The permit line mirrors the mock's manual_entry, so `source` cannot identify
-        # fixtures - which is why the id family does.
-        self.assertIn("manual_entry", sources)
-        self.assertIn("progress_feed", sources)
+        by_id = {str(line[0]): line[6] for line in seed.ESTIMATE_LINES}
+        self.assertEqual({
+            # Quantified lines linked to a schedule assignment: the progress feed's rows.
+            "30000000-0000-4000-8000-000000000001": "progress_feed",
+            "30000000-0000-4000-8000-000000000002": "progress_feed",
+            "30000000-0000-4000-8000-000000000003": "progress_feed",
+            "30000000-0000-4000-8000-000000000004": "progress_feed",
+            # The permit is an amount a person entered, not a measured quantity the
+            # schedule reported. It carries an activity link because the user chose one.
+            "30000000-0000-4000-8000-000000000005": "manual_entry",
+        }, by_id)
+
+    def test_the_seed_sql_agrees_with_the_seed_module_on_every_source(self):
+        """seed.sql is generated from seed.py, so a stale copy would ship a wrong origin."""
+        import re
+        from devhost import seed
+        sql = (BACKEND_ROOT / "devhost" / "seed.sql").read_text(encoding="utf-8")
+        written = {}
+        for line in sql.splitlines():
+            if "INSERT INTO estimate_lines" not in line:
+                continue
+            identifier = re.search(r"'([0-9a-f]{8}-[0-9a-f-]{27})'", line)
+            source = re.search(r"'(progress_feed|excel_import|manual_entry)'", line)
+            if identifier and source:
+                written[identifier.group(1)] = source.group(1)
+        self.assertEqual({str(line[0]): line[6] for line in seed.ESTIMATE_LINES}, written)
+
+    def test_every_declared_source_is_one_the_schema_admits(self):
+        import re
+        from devhost import seed
+        ddl = (BACKEND_ROOT / "migrations" / "0001_finance_core.up.sql").read_text(encoding="utf-8")
+        clause = re.search(r"source text NOT NULL CHECK \(source IN \(([^)]*)\)\)", ddl)
+        self.assertIsNotNone(clause, "the estimate_lines source CHECK moved")
+        allowed = set(re.findall(r"'([a-z_]+)'", clause.group(1)))
+        self.assertEqual({"progress_feed", "excel_import", "manual_entry"}, allowed)
+        self.assertTrue({line[6] for line in seed.ESTIMATE_LINES} <= allowed)
+
+    def test_the_seed_mirrors_the_frontend_mock_line_for_line(self):
+        """The seed exists so the dev database shows what the mock showed.
+
+        Compared against the mock itself rather than against a copied list, because a copy
+        is what lets the two drift while both look correct on their own.
+        """
+        import re
+        from devhost import seed
+        mock = (BACKEND_ROOT.parent / "frontend" / "src" / "adapters" / "mock"
+                / "financial-items-adapter.js").read_text(encoding="utf-8")
+        mocked = {}
+        for entry in re.finditer(r'lineId:\s*"([0-9a-f-]{36})"(.*?)source:\s*"([a-z_]+)"', mock):
+            mocked[entry.group(1)] = entry.group(3)
+        self.assertTrue(mocked, "no estimate lines found in the mock adapter")
+        self.assertEqual({str(line[0]): line[6] for line in seed.ESTIMATE_LINES}, mocked)
 
 
 if __name__ == "__main__":

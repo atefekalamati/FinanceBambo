@@ -144,12 +144,63 @@ def export(connection, directory: Path) -> None:
     print(f"\nopen any of these in Excel, or read them in a text editor.")
 
 
+def drift(connection) -> int:
+    """Report fixture estimate lines whose stored `source` no longer matches the seed.
+
+    `source` records how a line entered the system, so a stale value misstates its origin:
+    a hand-entered line reading "progress_feed" tells the reader the schedule produced it.
+    Nothing else catches this. The seed does not overwrite rows it already inserted, and
+    the unit tests read seed.ESTIMATE_LINES rather than the database, so a value corrected
+    in the declaration leaves the seeded row behind and both look right in isolation.
+
+    Returns the number of mismatches, so a caller can use it as an exit status.
+    """
+    declared = {str(line[0]): line[6] for line in seed.ESTIMATE_LINES}
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id, source FROM estimate_lines WHERE deleted_at IS NULL")
+        stored = {str(row["id"]): row["source"] for row in cursor.fetchall()}
+
+    mismatched = {line_id: (want, stored[line_id]) for line_id, want in declared.items()
+                  if line_id in stored and stored[line_id] != want}
+    absent = [line_id for line_id in declared if line_id not in stored]
+
+    print(f"  {'estimate line':38} {'seed declares':15} {'database holds':15}")
+    print(f"  {'-' * 38} {'-' * 15} {'-' * 15}")
+    for line_id, want in declared.items():
+        held = stored.get(line_id, "<not seeded>")
+        flag = "" if held == want else "   <-- mismatch"
+        print(f"  {line_id:38} {want:15} {held:15}{flag}")
+
+    # Rows outside the fixture families came through the API, so the seed says nothing
+    # about them and their source is whatever the code that created them recorded.
+    unseeded = sorted(set(stored) - set(declared))
+    if unseeded:
+        print()
+        print(f"  {len(unseeded)} line(s) created through the API, not covered by the seed:")
+        for line_id in unseeded:
+            print(f"    {line_id}  source={stored[line_id]}")
+
+    if mismatched:
+        print()
+        print(f"  {len(mismatched)} fixture line(s) disagree with the seed. Re-seed a fresh "
+              "database, or correct the stored value to the declared one.")
+    elif absent:
+        print()
+        print(f"  every seeded line agrees; {len(absent)} declared line(s) are not in this database.")
+    else:
+        print()
+        print("  every seeded estimate line's source matches the seed.")
+    return len(mismatched)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="devhost.inspect", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("table", nargs="?", help="show the rows of one table")
     parser.add_argument("--limit", type=int, default=20)
     parser.add_argument("--changes", action="store_true", help="only rows the UI created")
+    parser.add_argument("--drift", action="store_true",
+                        help="compare each seeded estimate line's source against the seed")
     parser.add_argument("--export", action="store_true", help="write one CSV per table")
     parser.add_argument("--into", default=str(Path(__file__).resolve().parent / ".export"))
     args = parser.parse_args()
@@ -157,6 +208,8 @@ def main() -> None:
     with connect() as connection:
         if args.export:
             export(connection, Path(args.into))
+        elif args.drift:
+            sys.exit(1 if drift(connection) else 0)
         elif args.changes:
             changes(connection)
         elif args.table:
