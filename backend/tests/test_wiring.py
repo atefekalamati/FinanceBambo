@@ -60,6 +60,7 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/unit-conversions", "post"),
                 ("/api/projects/{projectId}/finance/unit-conversions/{conversionId}", "patch"),
                 ("/api/projects/{projectId}/finance/progress-snapshots", "get"),
+                ("/api/projects/{projectId}/finance/progress-snapshots/{snapshotId}", "get"),
                 ("/api/projects/{projectId}/finance/progress-snapshots/{snapshotId}/feed", "get"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/progress-override", "post"),
                 ("/api/projects/{projectId}/finance/imports/estimate/preview", "post"),

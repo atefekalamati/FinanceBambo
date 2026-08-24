@@ -1,12 +1,26 @@
 from datetime import datetime,timezone
 from uuid import uuid4
 from ..domain.progress import ProgressOverride,apply_progress_overrides,consumed_quantity,resolve_progress_quantity
+from ..domain.schedule import derive_snapshot_versions
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
 class ProgressMappingError(FinanceDomainError):status=422;code="PROGRESS_LINE_MAPPING_MISSING"
 class ProgressService:
  def __init__(self,repo,provider,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.provider=provider;self.ids=id_factory;self.clock=clock
- async def list_snapshots(self,s):return await self.repo.list_snapshots(s)
+ async def list_snapshots(self,s):
+  """Newest first, each numbered by its place in this project's history."""
+  return derive_snapshot_versions(await self.repo.list_snapshots(s))
+
+ async def snapshot(self,s,snapshot_id):
+  """One snapshot, with the version the list would have given it.
+
+  Read from the same numbered list rather than from a second query, so a snapshot cannot
+  report one version here and another there. The list is per project and one row per
+  reporting period, so it stays small.
+  """
+  for row in await self.list_snapshots(s):
+   if str(row["progress_snapshot_id"])==str(snapshot_id):return row
+  raise FinanceRecordNotFound("progress snapshot not found")
  async def feed(self,s,snapshot_id):
   ref=await self.repo.get_snapshot(s,snapshot_id)
   if ref is None:raise FinanceRecordNotFound("progress snapshot not found")

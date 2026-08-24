@@ -7,6 +7,11 @@ from .base import ApiModel
 from .numeric import strict_decimal,strict_optional_decimal
 class ProgressSnapshotResponse(ApiModel):
  organization_id:UUID;project_id:str;progress_snapshot_id:UUID;source_file_version_id:UUID;source_file_name_safe:str;imported_at:datetime;imported_by:UUID;status:Literal["ready","superseded"];reporting_date:date
+ # Position in this project's own snapshot history, derived rather than stored: the table
+ # is append-only, so row order is the history and version 1 stays version 1. Optional
+ # because the feed's header comes from the host provider, which cannot know it.
+ version:int|None=None
+ is_latest:bool|None=None
 class ProgressFeedResponse(ApiModel):
  snapshot:ProgressSnapshotResponse;assignments:list[dict]
 class ProgressOverrideCreate(ApiModel):
