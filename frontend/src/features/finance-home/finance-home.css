@@ -80,6 +80,73 @@
   margin-block: 0;
 }
 
+/* ── Snapshot provenance ────────────────────────────────────────────────────
+   Which progress snapshot the figures below were computed from. It sits above
+   the metrics because it qualifies every one of them. */
+.finance-snapshot-provenance {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+  min-inline-size: 0;
+}
+
+.finance-snapshot-provenance__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-sm) var(--space-md);
+}
+
+.finance-snapshot-provenance__eyebrow {
+  color: var(--brand-teal);
+  font-size: .74rem;
+  font-weight: 700;
+}
+
+.finance-snapshot-provenance__head h2 {
+  margin: .15rem 0 0;
+  font-size: 1.05rem;
+}
+
+.finance-snapshot-provenance__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-md);
+  margin: 0;
+  padding-block-start: var(--space-md);
+  border-block-start: 1px solid var(--color-border-subtle);
+}
+
+.finance-snapshot-provenance__facts dt {
+  color: var(--color-text-muted);
+  font-size: .76rem;
+}
+
+.finance-snapshot-provenance__facts dd {
+  margin: .2rem 0 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.finance-snapshot-provenance__picker {
+  max-inline-size: 24rem;
+}
+
+@media (max-width: 48rem) {
+  .finance-snapshot-provenance {
+    padding: var(--space-md);
+  }
+
+  .finance-snapshot-provenance__picker {
+    max-inline-size: none;
+  }
+}
+
 .finance-overview-panel {
   position: relative;
   padding: .25rem .9rem .9rem;
@@ -576,6 +643,7 @@
   --managerial-columns: repeat(4, minmax(0, 1fr));
   --managerial-gap: clamp(.3rem, 1vw, .75rem);
   --managerial-reference-gutter: clamp(3.9rem, 7vw, 4.9rem);
+  --managerial-scale-gutter: clamp(3rem, 5vw, 3.8rem);
   --managerial-label-lines: 3;
   --managerial-label-size: .76rem;
   --managerial-label-leading: 1.45;
@@ -594,8 +662,9 @@
   display: grid;
   grid-template-columns: var(--managerial-columns);
   column-gap: var(--managerial-gap);
-  /* The same strip on every band, so the columns stay in step. */
+  /* The same strips on every band, so the columns stay in step. */
   padding-inline-start: var(--managerial-reference-gutter);
+  padding-inline-end: var(--managerial-scale-gutter);
   min-inline-size: 0;
 }
 
@@ -700,6 +769,63 @@
   text-align: center;
 }
 
+/* ── Value guide ────────────────────────────────────────────────────────────
+   Rows at round amounts, drawn behind the columns with their numbers in the
+   strip already reserved on the inline-start edge. It is a layer over the bar
+   band, so nothing else on the chart moves to make room for it. */
+.managerial-combo-chart__scale {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+}
+
+.managerial-combo-chart__scale-unit {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  inline-size: calc(var(--managerial-scale-gutter) - .25rem);
+  color: var(--color-text-muted);
+  font-size: .58rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.managerial-combo-chart__scale-row {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: var(--scale-size, 0%);
+  block-size: 0;
+}
+
+/* The rule stops where the strip begins, so it never runs under its own
+   numbers. Zero is the floor the bars stand on and is drawn a shade stronger. */
+.managerial-combo-chart__scale-row::before {
+  content: "";
+  position: absolute;
+  inset-inline: var(--managerial-reference-gutter) var(--managerial-scale-gutter);
+  inset-block-start: 0;
+  border-block-start: 1px dashed var(--color-border-subtle);
+}
+
+.managerial-combo-chart__scale-row:first-of-type::before {
+  border-block-start-style: solid;
+  border-block-start-color: var(--color-border);
+}
+
+.managerial-combo-chart__scale-value {
+  position: absolute;
+  inset-inline-end: 0;
+  inline-size: calc(var(--managerial-scale-gutter) - .25rem);
+  color: var(--color-text-muted);
+  font-size: .62rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: center;
+  transform: translateY(-50%);
+}
+
 /* Drawn with the bar's own expression, floor included, so the line lands on
    the bar's top edge instead of sinking below a bar too small to draw at its
    true height. Zero height keeps it a line and gives the badge inside it
@@ -716,7 +842,7 @@
 .managerial-combo-chart__baseline::before {
   content: "";
   position: absolute;
-  inset-inline: var(--managerial-reference-gutter) 0;
+  inset-inline: var(--managerial-reference-gutter) var(--managerial-scale-gutter);
   inset-block-start: 0;
   border-block-start: 2px solid color-mix(in srgb, var(--dash-plan) 88%, white);
   filter: drop-shadow(0 0 .3rem color-mix(in srgb, var(--dash-plan) 72%, transparent));
@@ -1413,7 +1539,10 @@
 
   .managerial-combo-chart__plot {
     --managerial-gap: .2rem;
+    /* The reference chip is dropped at this width and gives its strip back to
+       the columns. The value guide keeps its own, narrowed to the numbers. */
     --managerial-reference-gutter: 0rem;
+    --managerial-scale-gutter: 2.4rem;
     --managerial-label-lines: 3;
     --managerial-label-size: .58rem;
     --managerial-label-leading: 1.35;
@@ -1422,6 +1551,14 @@
   .managerial-combo-chart__cell,
   .managerial-combo-chart__label {
     padding-inline: .1rem;
+  }
+
+  .managerial-combo-chart__scale-value {
+    font-size: .52rem;
+  }
+
+  .managerial-combo-chart__scale-unit {
+    font-size: .48rem;
   }
 
   .managerial-combo-chart__baseline {
