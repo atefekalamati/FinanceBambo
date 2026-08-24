@@ -76,9 +76,17 @@ class ProgressQuality(ApiModel):
     complete:bool
     manual_override_count:int=0
     task_fallback_count:int=0
+    #: Lines that DID reach an assignment but found no usable quantity on it. Lines that
+    #: reached no assignment are counted by unmapped_line_count, not here.
     missing_count:int=0
     assignment_actual_count:int=0
     assignment_percent_fallback_count:int=0
+    #: These three partition every estimate line read for the reporting date, so their sum
+    #: is the line count. General cost is its own bucket because progress does not apply
+    #: to it, which previously left those lines in no bucket at all.
+    mapped_line_count:int=0
+    unmapped_line_count:int=0
+    general_cost_line_count:int=0
 
 
 class LiveReportResponse(ApiModel):

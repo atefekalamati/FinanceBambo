@@ -76,11 +76,18 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     general_revised = ZERO;general_required = ZERO;missing_price_count=0
     excluded_estimate_line_ids=[];resource_purchase_remaining=dict(purchased_by_resource);resource_actual_remaining=dict(actual_by_resource)
     excluded_lines_by_type={kind:0 for kind in actual_by_type}
-    progress_quality={"complete":True,"manualOverrideCount":0,"taskFallbackCount":0,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0}
+    # missingCount counts lines that DID match an assignment but had no usable quantity on
+    # it. Lines that matched nothing are unmappedLineCount instead: the two need different
+    # work from different people, so one number for both told the reader nothing.
+    # mappedLineCount + unmappedLineCount + generalCostLineCount is every estimate line
+    # read for this date. General cost is counted separately because progress is
+    # meaningless for it, so it belongs in neither of the other two.
+    progress_quality={"complete":True,"manualOverrideCount":0,"taskFallbackCount":0,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":0,"unmappedLineCount":0,"generalCostLineCount":0}
     for row in estimate_rows:
         kind = row["resource_type"]
         original_price = Decimal(row["original_unit_price_irr"] or 0)
         if kind == "general_cost":
+            progress_quality["generalCostLineCount"] += 1
             original_amount = original_price
             revised_amount = money(row["revised_quantity"]) if row.get("revised_quantity") is not None else original_amount
             initial_total += original_amount; general_revised += revised_amount
@@ -101,11 +108,24 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         revised_estimate = money(revised_quantity * original_price)
         initial_total += initial;breakdown[kind]["initialEstimateIrr"] += initial;breakdown[kind]["revisedEstimateIrr"] += revised_estimate
         assignment = assignment_by_id.get(row.get("assignment_external_id")) or assignment_by_activity.get(row.get("activity_external_id"))
-        try: executed, _source = consumed_quantity(assignment) if assignment else (ZERO,"missing")
-        except ValueError: executed = ZERO;_source="missing"
-        if _source == "missing":
-            progress_quality["missingCount"] += 1;progress_quality["complete"] = False
-            warnings.append({"code":"PROGRESS_MISSING","message":"No valid progress quantity is available for this estimate line.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["currentExecutedValueIrr","remainingPhysicalCostIrr","forecastFinalCostIrr"]})
+        # Whether the line reached an assignment at all is a different fact from whether
+        # that assignment could produce a quantity, and it is fixed by a different person:
+        # an unmapped line needs its activity link corrected here, an empty one needs a
+        # report from project controls. The executed value is unchanged either way.
+        if assignment is None:
+            progress_quality["unmappedLineCount"] += 1
+            executed = ZERO;_source = "unmapped"
+        else:
+            progress_quality["mappedLineCount"] += 1
+            try: executed, _source = consumed_quantity(assignment)
+            except ValueError: executed = ZERO;_source="missing"
+        if _source in ("missing","unmapped"):
+            progress_quality["complete"] = False
+            if _source == "unmapped":
+                warnings.append({"code":"PROGRESS_UNMAPPED","message":"This estimate line is not linked to any assignment in the selected progress snapshot.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["currentExecutedValueIrr","remainingPhysicalCostIrr","forecastFinalCostIrr"]})
+            else:
+                progress_quality["missingCount"] += 1
+                warnings.append({"code":"PROGRESS_MISSING","message":"The linked assignment carries no usable progress quantity for this estimate line.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["currentExecutedValueIrr","remainingPhysicalCostIrr","forecastFinalCostIrr"]})
         elif _source == "manual_override": progress_quality["manualOverrideCount"] += 1
         elif _source == "task_progress_fallback": progress_quality["taskFallbackCount"] += 1;progress_quality["complete"] = False
         elif _source == "assignment_work_percent": progress_quality["assignmentPercentFallbackCount"] += 1;progress_quality["complete"] = False

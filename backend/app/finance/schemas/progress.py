@@ -12,6 +12,10 @@ class ProgressSnapshotResponse(ApiModel):
  # because the feed's header comes from the host provider, which cannot know it.
  version:int|None=None
  is_latest:bool|None=None
+ # Where the snapshot came from. None means it was not recorded, which is the honest
+ # answer for rows imported before the column existed -- a filename extension is not
+ # evidence of a tool.
+ source_type:Literal["microsoft_project","primavera","manual","other"]|None=None
 class ProgressFeedResponse(ApiModel):
  snapshot:ProgressSnapshotResponse;assignments:list[dict]
 class ProgressOverrideCreate(ApiModel):
