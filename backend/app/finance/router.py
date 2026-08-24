@@ -211,6 +211,12 @@ async def progress_snapshots(projectId:str,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
     return await request.app.state.progress_service.list_snapshots(scope)
 
+@router.get("/progress-snapshots/{snapshotId}",response_model=ProgressSnapshotResponse)
+async def progress_snapshot(projectId:str,snapshotId:UUID,request:Request):
+    """One snapshot's metadata, including its version, without pulling the whole feed."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    return await request.app.state.progress_service.snapshot(scope,snapshotId)
+
 @router.get("/progress-snapshots/{snapshotId}/feed",response_model=ProgressFeedResponse)
 async def progress_feed(projectId:str,snapshotId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
