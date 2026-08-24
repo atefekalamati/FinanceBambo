@@ -1,6 +1,6 @@
 # سند اسکیما و تنظیمات دیتابیس ماژول مالی BAMBO
 
-تاریخ استخراج/بازبینی: ۱۴۰۵/۰۵/۲۰ — 2026-08-11  
+تاریخ استخراج/بازبینی: ۱۴۰۵/۰۶/۰۲ — 2026-08-24  
 منبع: Migrationهای SQL، Repositoryهای Psycopg، PRD و Integration Kit نسخه ۱.۱
 
 ## ۱. وضعیت دیتابیس
@@ -10,7 +10,7 @@ DBMS: PostgreSQL
 Minimum compatibility: PostgreSQL 16
 Driver: psycopg
 Schema source: SQL migrations
-Migration sequence: 0001 تا 0004
+Migration sequence: 0001 تا 0005
 Tables: 15
 Currency storage: IRR
 Money type: numeric(18,0)
@@ -153,9 +153,16 @@ report_snapshots
 
 ### progress_snapshot_refs
 
-`id`, `organization_id`, `project_id`, `progress_snapshot_id`, `source_file_version_id`, `source_file_name_safe`, `imported_at`, `imported_by`, `snapshot_status`, `reporting_date`.
+`id`, `organization_id`, `project_id`, `progress_snapshot_id`, `source_file_version_id`, `source_file_name_safe`, `imported_at`, `imported_by`, `snapshot_status`, `reporting_date`, `created_at`, `source_type`.
 
 این جدول فقط مرجع Snapshot پیشرفت سیستم میزبان را نگهداری می‌کند و داده میزبان را بازنویسی نمی‌کند.
+
+| ستون | نوع | توضیح |
+|---|---|---|
+| `source_type` | Text، Nullable | ابزار مبدأ زمان‌بندی: `microsoft_project`، `primavera`، `manual` یا `other`. در Migration 0005 اضافه شد. **بدون DEFAULT** — ردیف‌های پیش از آن `NULL` می‌مانند، و `NULL` یعنی «ثبت نشده»، نه «نامعلوم است پس حدس بزن». پسوند فایل شاهدِ ابزار نیست. |
+| `snapshot_status` | Text | ⚠️ هیچ CHECK ندارد و متن آزاد است، ولی DTO مقدار `ready` یا `superseded` اعلام می‌کند. اگر Production مقدار سومی داشته باشد پاسخ API با خطای اعتبارسنجی می‌شکند — بند ۴ سند `PRODUCTION_MSP_AUDIT_FA.md`. |
+
+> تریگر تغییرناپذیری این جدول هر `UPDATE` را رد می‌کند، پس `source_type` فقط در لحظه `INSERT` نوشتنی است و هیچ Backfillی روی ردیف‌های موجود ممکن نیست.
 
 ### progress_overrides
 
@@ -208,6 +215,14 @@ updated_at
 `id`, `organization_id`, `project_id`, `invoice_id`, `estimate_line_id`, `resource_id`, `quantity`, `unit`, `unit_price_snapshot_irr`, `raw_amount_irr`, `allocated_discount_irr`, `allocated_tax_irr`, `allocated_shipping_irr`, `allocated_other_costs_irr`, `final_line_amount_irr`, `price_version_id`, `description`, `created_at`.
 
 مبلغ خط، Snapshot قیمت و سهم تعدیلات در زمان ثبت نگهداری می‌شوند. هزینه عمومی می‌تواند بدون مقدار فیزیکی و با مبلغ مستقیم ثبت شود.
+
+### ستون `source_file_sha256` در `invoices`
+
+| ستون | نوع | توضیح |
+|---|---|---|
+| `source_file_sha256` | Text، Nullable | چکیده SHA-256 فایل مبدأ فاکتور، برای تشخیص بارگذاری تکراری. `NULL` یعنی فاکتور از فایلی نیامده (مثلاً ورود دستی). |
+
+Hash همیشه **سمت سرور** از بایت‌های دریافتی محاسبه می‌شود و هرگز از Client پذیرفته نمی‌شود؛ در غیر این صورت یک Client می‌توانست با ارسال چکیده دلخواه، تشخیص تکراری را دور بزند یا وجود فایلی را در سازمان دیگر استنتاج کند. مقایسه نیز درون همان `organization_id` و `project_id` انجام می‌شود.
 
 ## ۱۰. فایل‌های مالی
 
@@ -426,6 +441,7 @@ Migrationها Raw SQL هستند و به‌ترتیب زیر اجرا می‌ش�
 0002_invoice_confirmation.up.sql
 0003_invoice_linked_documents.up.sql
 0004_report_snapshot_payload.up.sql
+0005_progress_snapshot_source_type.up.sql
 ```
 
 کار هر Migration:
@@ -436,6 +452,7 @@ Migrationها Raw SQL هستند و به‌ترتیب زیر اجرا می‌ش�
 | `0002_invoice_confirmation` | افزودن Idempotency تأیید فاکتور و Unique Index |
 | `0003_invoice_linked_documents` | تضمین یک Reversal برای هر فاکتور اصلی |
 | `0004_report_snapshot_payload` | افزودن Payload کامل و شناسه نسخه‌های Pin‌شده گزارش |
+| `0005_progress_snapshot_source_type` | افزودن ستون `source_type` به `progress_snapshot_refs`؛ فقط تغییر Catalog، بدون DEFAULT و بدون بازنویسی هیچ ردیفی، تا تریگر تغییرناپذیری فعال نشود |
 
 برای هر Migration فایل Down متناظر وجود دارد. Down migration جایگزین Backup/Restore نیست.
 
