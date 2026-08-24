@@ -234,8 +234,43 @@
   overflow: hidden;
 }
 
+/* This heading keeps its row at every width, because the settings link has to
+   stay opposite the block it configures. The shared rule turns .section-heading
+   into a column below 36rem, which would drop the link underneath the title;
+   here the title block takes the room that is left, the report caption gives
+   way first, and the link holds its size at the far end. */
 .finance-overview-panel .section-heading {
+  flex-wrap: nowrap;
+  align-items: center;
+  flex-direction: row;
+  gap: var(--space-sm);
   padding-inline-start: .25rem;
+}
+
+.finance-overview-panel .section-heading > div:first-child {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.finance-overview-panel .section-heading__trailing {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  min-inline-size: 0;
+}
+
+/* The caption repeats the reporting date the provenance strip states just
+   below, so it is the part that yields when the row runs short. */
+.finance-overview-panel .finance-report-meta {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 48rem) {
+  .finance-overview-panel .finance-report-meta {
+    display: none;
+  }
 }
 
 .finance-overview-layout {
