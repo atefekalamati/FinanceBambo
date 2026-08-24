@@ -104,16 +104,18 @@ class LiveReportResponse(ApiModel):
     excluded_estimate_line_ids:list[UUID]=Field(default_factory=list,
         description="Reporting-only: names individual estimate lines and is absent from the finance.view projection.")
     progress_quality:ProgressQuality|None=Field(default=None,
-        description="Reporting-only: progress-feed diagnostics, absent from the finance.view projection.")
+        description="Aggregate counts only; named records stay in excludedEstimateLineIds. Present in the finance.view projection alongside missingPriceCount, which is the same kind of fact.")
 
 
 class OperationalOverviewResponse(ApiModel):
     """Read-only operational projection for finance.view.
 
     Deliberately narrower than LiveReportResponse: reporting-only fields stay
-    behind finance_report.view. The two completeness counters are in, because they
-    qualify the operational metrics themselves; excludedEstimateLineIds and
-    progressQuality name individual records and stay out.
+    behind finance_report.view. The completeness counters are in, because they qualify the
+    operational metrics themselves, and progressQuality joins them for the same reason --
+    it is aggregate counts, naming no record, and the reader of these metrics needs to know
+    how many lines the progress feed could not answer for. excludedEstimateLineIds stays
+    out: it names individual estimate lines.
     """
 
     reporting_date:date
@@ -127,6 +129,7 @@ class OperationalOverviewResponse(ApiModel):
     incomplete_metric_keys:list[str]=Field(default_factory=list)
     missing_price_count:int=0
     excluded_estimate_line_count:int=0
+    progress_quality:ProgressQuality|None=None
 
 
 class ReportVarianceListResponse(ApiModel):

@@ -82,7 +82,7 @@ class FinanceLiveReportService:
         report,_data,snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
         return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality}
 
-    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","excluded_estimate_line_count")
+    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","excluded_estimate_line_count","progress_quality")
 
     async def overview(self,scope,reporting_date:date,progress_snapshot_id=None):
         """Project the live report down to the operational fields finance.view may read."""
