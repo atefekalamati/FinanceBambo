@@ -51,7 +51,10 @@ class Reports:
     async def live(self,_scope,reporting_date,progress_snapshot_id=None):
         return {"reportingDate":reporting_date,"progressSnapshotId":progress_snapshot_id or SNAPSHOT,
             "metrics":{"initialEstimateIrr":"100","actualCostIrr":"50","currentExecutedValueIrr":"40","remainingPhysicalCostIrr":"60","moneyRequiredToContinueIrr":"50","forecastFinalCostIrr":"100","actualCostPerSquareMeterIrr":"5","forecastPerSquareMeterIrr":"10"},
-            "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":2,"excludedEstimateLineCount":3}
+            "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":2,"excludedEstimateLineCount":3,
+            "progressQuality":{"complete":False,"manualOverrideCount":1,"taskFallbackCount":0,"missingCount":1,
+                "assignmentActualCount":2,"assignmentPercentFallbackCount":0,"mappedLineCount":3,
+                "unmappedLineCount":1,"generalCostLineCount":1}}
     async def list_snapshots(self,scope,page=1,page_size=50,reporting_date_from=None,reporting_date_to=None):
         self.list_call={"page":page,"page_size":page_size,"from":reporting_date_from,"to":reporting_date_to}
         return {"items":[{"reportSnapshotId":REPORT,"reportingDate":"2026-08-09",
@@ -111,12 +114,26 @@ class ReportingPermissionApiTests(unittest.TestCase):
     def test_operational_projection_exposes_the_agreed_fields_and_nothing_reporting_only(self):
         self.assertEqual(("reporting_date","progress_snapshot_id","metrics","breakdown","top_price_variances",
             "top_quantity_variances","warnings","calculation_status","incomplete_metric_keys",
-            "missing_price_count","excluded_estimate_line_count"),
+            "missing_price_count","excluded_estimate_line_count","progress_quality"),
             FinanceLiveReportService.OVERVIEW_FIELDS)
         self.assertEqual(set(OperationalOverviewResponse.model_fields),set(FinanceLiveReportService.OVERVIEW_FIELDS))
-        # Reporting-only detail names individual records and stays behind finance_report.view.
-        self.assertTrue({"excluded_estimate_line_ids","progress_quality"}
-            .isdisjoint(FinanceLiveReportService.OVERVIEW_FIELDS))
+        # progressQuality is aggregate counts and joins the other counters that qualify these
+        # metrics. excludedEstimateLineIds still names individual estimate lines, so it is the
+        # one reporting-only field that must never reach this projection.
+        self.assertNotIn("excluded_estimate_line_ids",FinanceLiveReportService.OVERVIEW_FIELDS)
+        self.assertNotIn("excluded_estimate_line_ids",OperationalOverviewResponse.model_fields)
+
+    def test_the_operational_projection_carries_counts_but_never_a_record_id(self):
+        with client(("finance.view",)) as api:
+            overview=api.get(f"/api/projects/{PROJECT}/finance/overview",
+                params={"reportingDate":"2026-08-09"}).json()
+        quality=overview["progressQuality"]
+        self.assertEqual({"complete","manualOverrideCount","taskFallbackCount","missingCount",
+            "assignmentActualCount","assignmentPercentFallbackCount","mappedLineCount",
+            "unmappedLineCount","generalCostLineCount"},set(quality))
+        # Every value is a count or a flag; nothing here identifies a row.
+        self.assertTrue(all(isinstance(value,(int,bool)) for value in quality.values()))
+        self.assertNotIn("excludedEstimateLineIds",overview)
 
     def test_projection_carries_the_counters_the_dashboard_banner_reads(self):
         # finance-home-page.js renders "N قیمت و M ردیف ... لحاظ نشده" from these two.
