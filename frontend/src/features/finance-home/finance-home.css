@@ -197,14 +197,26 @@
 }
 
 /* Each tier gives up the fact that says least, in order. */
-@media (max-width: 64rem) {
+@media (max-width: 70rem) {
   .finance-snapshot-provenance__fact--imported {
     display: none;
   }
 }
 
-@media (max-width: 48rem) {
+@media (max-width: 64rem) {
   .finance-snapshot-provenance__fact--status {
+    display: none;
+  }
+}
+
+@media (max-width: 48rem) {
+  .finance-snapshot-provenance__fact--coverage {
+    display: none;
+  }
+}
+
+@media (max-width: 36rem) {
+  .finance-snapshot-provenance__fact--source {
     display: none;
   }
 }

@@ -482,6 +482,19 @@ const SNAPSHOT_STATUS_LABELS = Object.freeze({
 });
 
 /**
+ * Where the snapshot came from. The Backend records this rather than letting a
+ * filename extension stand in for it, and answers null for rows imported before
+ * it started recording — so a missing source is shown as unrecorded, never
+ * guessed from the `.mpp` on the end of a name.
+ */
+const SNAPSHOT_SOURCE_LABELS = Object.freeze({
+  microsoft_project: "Microsoft Project",
+  primavera: "Primavera",
+  manual: "ثبت دستی",
+  other: "منبع دیگر",
+});
+
+/**
  * Which progress snapshot these figures were computed from.
  *
  * Five of the eight headline metrics are derived from the executed quantity the
@@ -508,12 +521,23 @@ function createSnapshotProvenance({ snapshots = [], selected, report, onSelect }
    * no natural length, so it is the one that gives way with an ellipsis.
    */
   const facts = element("dl", "finance-snapshot-provenance__facts");
+  // mappedLineCount and its siblings partition every estimate line read for the
+  // reporting date, so "how much of this project the snapshot actually covers"
+  // is a fact the service states rather than one the page works out.
+  const quality = report?.progressQuality ?? null;
+  const coverage = quality && Number.isFinite(Number(quality.mappedLineCount))
+    ? `${formatDisplayNumber(String(quality.mappedLineCount ?? 0))} متصل · ${formatDisplayNumber(String(quality.unmappedLineCount ?? 0))} بدون تطبیق`
+    : null;
+
   [
+    ["version", "نسخه", "نسخه", selected.version == null ? null : `${formatDisplayNumber(String(selected.version))}${selected.isLatest ? " (آخرین)" : ""}`],
     ["date", "تاریخ گزارش نسخه", "تاریخ", formatBusinessDate(selected.reportingDate)],
+    ["source", "منبع", "منبع", SNAPSHOT_SOURCE_LABELS[selected.sourceType] ?? (selected.sourceType == null ? null : "منبع تعریف‌نشده")],
+    ["coverage", "پوشش خطوط", "پوشش", coverage],
     ["status", "وضعیت", "وضعیت", SNAPSHOT_STATUS_LABELS[selected.status] ?? "نامشخص"],
     ["file", "فایل مبدأ", "فایل", selected.sourceFileNameSafe ?? "—"],
     ["imported", "ورود به سیستم", "ورود", formatSystemDateTime(selected.importedAt)],
-  ].forEach(([key, label, shortLabel, value]) => {
+  ].filter(([, , , value]) => value != null).forEach(([key, label, shortLabel, value]) => {
     const item = element("div", `finance-snapshot-provenance__fact finance-snapshot-provenance__fact--${key}`);
     const term = element("dt");
     term.append(

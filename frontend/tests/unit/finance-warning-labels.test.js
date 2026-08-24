@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+  PROGRESS_STATUS,
   describeFeedWarning,
   describeReportWarning,
   feedWarningText,
@@ -14,17 +15,19 @@ import {
 const read = (path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 
 test("every warning code the Backend can emit has Persian wording", () => {
-  // The finance domain emits these seven on the report; the feed adds its own.
+  // The finance domain emits these nine on the report; the feed adds its own.
   assert.deepEqual([...REPORT_WARNING_CODES].sort(), [
     "CURRENT_PRICE_MISSING",
     "GENERAL_COST_OVERRUN",
     "GROSS_AREA_MISSING",
     "MONTHLY_ESTIMATE_UNAVAILABLE",
     "PROGRESS_MISSING",
+    "PROGRESS_UNMAPPED",
+    "PROGRESS_WORK_NOT_QUANTITY",
     "QUANTITY_OVERRUN",
     "UNIT_CONVERSION_MISSING",
   ]);
-  assert.deepEqual([...FEED_WARNING_CODES].sort(), ["PROGRESS_MISSING", "TASK_PROGRESS_FALLBACK"]);
+  assert.deepEqual([...FEED_WARNING_CODES].sort(), ["PROGRESS_MISSING", "PROGRESS_WORK_NOT_QUANTITY", "TASK_PROGRESS_FALLBACK"]);
   [...REPORT_WARNING_CODES, ...FEED_WARNING_CODES].forEach((code) => {
     const text = describeReportWarning(code) ?? describeFeedWarning(code);
     assert.match(text, /[؀-ۿ]/, `${code} has no Persian wording`);
@@ -32,13 +35,26 @@ test("every warning code the Backend can emit has Persian wording", () => {
   });
 });
 
-test("PROGRESS_MISSING does not claim which of the two causes it is", () => {
-  // The Backend cannot tell "not mapped to an activity" from "mapped but with no
-  // usable quantity" — both arrive as this one code — so the wording must not
-  // assert either. Claiming the wrong one sends the reader to the wrong fix.
-  const text = describeReportWarning("PROGRESS_MISSING");
-  assert.match(text, /متصل نشده/);
-  assert.match(text, /یا/, "both causes are offered, not one asserted");
+test("the three progress situations each get their own sentence", () => {
+  // They used to arrive as one PROGRESS_MISSING and the wording had to hedge.
+  // The Backend now separates them, and each is fixed by a different person: a
+  // broken reference on the line, a missing activity, or a silent assignment.
+  const brokenReference = describeReportWarning("PROGRESS_UNMAPPED", PROGRESS_STATUS.UNMAPPED_ASSIGNMENT);
+  const missingActivity = describeReportWarning("PROGRESS_UNMAPPED", PROGRESS_STATUS.UNMAPPED_ACTIVITY);
+  const silentAssignment = describeReportWarning("PROGRESS_MISSING");
+
+  assert.equal(new Set([brokenReference, missingActivity, silentAssignment]).size, 3, "three situations, three sentences");
+  assert.match(brokenReference, /تخصیصی را نام می‌برد/);
+  assert.match(missingActivity, /فعالیتش/);
+  assert.match(silentAssignment, /هیچ مقداری گزارش نکرده/);
+  // The hedge the old wording needed must be gone: none of them offers a choice.
+  assert.doesNotMatch(silentAssignment, /متصل نشده/);
+});
+
+test("an unmapped warning with no status still says something true", () => {
+  const text = describeReportWarning("PROGRESS_UNMAPPED");
+  assert.match(text, /به هیچ تخصیصی/);
+  assert.doesNotMatch(text, /undefined/);
 });
 
 test("the feed wording speaks about the one row it belongs to", () => {
@@ -87,4 +103,27 @@ test("the progress page renders the Backend's own feed warnings", () => {
 test("a refused progress request reads as a permission answer, not a fault", () => {
   const source = read("../../src/features/progress/progress-page.js");
   assert.match(source, /error\.status === 403 \? REQUEST_STATUS\.DENIED/);
+});
+
+test("the snapshot strip shows a source only when the service recorded one", () => {
+  // sourceType is null for rows imported before the Backend started recording
+  // it, and a filename extension is not evidence of a tool — so the fact is
+  // dropped rather than guessed.
+  const source = read("../../src/features/finance-home/finance-home-page.js");
+  assert.match(source, /microsoft_project: "Microsoft Project"/);
+  assert.match(source, /primavera: "Primavera"/);
+  // The label is keyed on what the service recorded, and the file name is never
+  // inspected for an extension to stand in for it.
+  assert.match(source, /SNAPSHOT_SOURCE_LABELS\[selected\.sourceType\]/);
+  assert.doesNotMatch(source, /sourceFileNameSafe.{0,60}?(endsWith|includes\(|match\()/, "the page must not read a tool out of a file name");
+  assert.match(source, /\.filter\(\(\[, , , value\]\) => value != null\)/, "a fact with no value is not rendered");
+});
+
+test("the strip states mapping coverage from the service, never derived here", () => {
+  const source = read("../../src/features/finance-home/finance-home-page.js");
+  assert.match(source, /report\?\.progressQuality/);
+  assert.match(source, /mappedLineCount/);
+  assert.match(source, /unmappedLineCount/);
+  // Deriving it would mean re-implementing the Backend's own pairing rule.
+  assert.doesNotMatch(source, /assignmentExternalId === /, "the page must not redo the pairing itself");
 });
