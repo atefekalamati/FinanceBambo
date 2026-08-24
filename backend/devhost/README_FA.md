@@ -17,6 +17,23 @@ pip install -r devhost/requirements.txt
 python -m devhost
 ```
 
+## اجرای تست‌ها
+
+```bash
+# از ریشه مخزن، داخل همان virtualenv
+python -m pip install -r backend/requirements.txt -r backend/requirements-test.txt
+python -m pytest backend/tests -q
+```
+
+اگر `No module named pytest` گرفتید یا خطای `no pq wrapper available` در مرحله Collection
+دیدید، یعنی `requirements-test.txt` نصب نشده است. ابزار تست عمداً در
+`backend/requirements.txt` نیست: ماژول مالی یک کتابخانه است و آن فایل همان چیزی است که
+به میزبان تحویل می‌رود.
+
+`psycopg[binary]` هم در همان فایل است، نه در فهرست Runtime — چون یک ماشین توسعه معمولاً
+هیچ `libpq` سیستمی ندارد، ولی انتخاب اینکه یک میزبان Deploy شده `libpq` خودش را بیاورد یا
+نه، تصمیم ما نیست.
+
 اتصال از متغیر محیطی `FINANCE_DEV_DSN` خوانده می‌شود — پیش‌فرضی در کد وجود ندارد، چون
 رشته اتصال رمز دارد و رمز نباید در مخزن باشد. `.env` را از `.env.example` بسازید.
 
