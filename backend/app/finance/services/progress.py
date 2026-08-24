@@ -35,12 +35,15 @@ class ProgressService:
     row["computedExecutedQuantity"]=format(resolved["computed_quantity"],"f")
     row["effectiveExecutedQuantity"]=format(resolved["effective_quantity"],"f")
     row["sourceMethod"]=resolved["source_method"]
+    row["measurementType"]=resolved["measurement_type"]
     row["quality"]=format(resolved["quality"],"f")
     row["warnings"]=resolved["warnings"]
    except ValueError:
     row["computedExecutedQuantity"]=None
     row["effectiveExecutedQuantity"]=None
     row["sourceMethod"]="missing"
+    # Nothing was measured, so no kind of measurement can be named. None, not a label.
+    row["measurementType"]=None
     row["quality"]="0"
     row["warnings"]=[{"code":"PROGRESS_MISSING","message":"No valid progress quantity is available for this assignment."}]
    assignments.append(row)

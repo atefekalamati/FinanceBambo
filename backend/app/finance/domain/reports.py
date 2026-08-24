@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 
-from .progress import consumed_quantity
+from .progress import resolve_progress_quantity
 
 IRR = Decimal("1")
 ZERO = Decimal(0)
@@ -82,7 +82,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     # mappedLineCount + unmappedLineCount + generalCostLineCount is every estimate line
     # read for this date. General cost is counted separately because progress is
     # meaningless for it, so it belongs in neither of the other two.
-    progress_quality={"complete":True,"manualOverrideCount":0,"taskFallbackCount":0,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":0,"unmappedLineCount":0,"generalCostLineCount":0}
+    progress_quality={"complete":True,"manualOverrideCount":0,"taskFallbackCount":0,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":0,"unmappedLineCount":0,"generalCostLineCount":0,"workAsQuantityCount":0}
     for row in estimate_rows:
         kind = row["resource_type"]
         original_price = Decimal(row["original_unit_price_irr"] or 0)
@@ -112,12 +112,18 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         # that assignment could produce a quantity, and it is fixed by a different person:
         # an unmapped line needs its activity link corrected here, an empty one needs a
         # report from project controls. The executed value is unchanged either way.
+        # `_source` is the field the number came from; `_measurement` is what kind of number
+        # it is. None while there is no number at all: nothing was measured.
+        _measurement = None
         if assignment is None:
             progress_quality["unmappedLineCount"] += 1
             executed = ZERO;_source = "unmapped"
         else:
             progress_quality["mappedLineCount"] += 1
-            try: executed, _source = consumed_quantity(assignment)
+            try:
+                resolved = resolve_progress_quantity(assignment)
+                executed = resolved["effective_quantity"];_source = resolved["source_method"]
+                _measurement = resolved["measurement_type"]
             except ValueError: executed = ZERO;_source="missing"
         if _source in ("missing","unmapped"):
             progress_quality["complete"] = False
@@ -130,6 +136,15 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         elif _source == "task_progress_fallback": progress_quality["taskFallbackCount"] += 1;progress_quality["complete"] = False
         elif _source == "assignment_work_percent": progress_quality["assignmentPercentFallbackCount"] += 1;progress_quality["complete"] = False
         elif _source == "assignment_actual": progress_quality["assignmentActualCount"] += 1
+        if _measurement == "work_effort":
+            # Effort reported as a quantity, about to be multiplied by a price per kg/m3/hour
+            # a few lines below. The number is left exactly as it was -- see
+            # domain/progress.py for why -- and the reader is told instead. This is counted
+            # beside assignmentActualCount rather than instead of it: the value did come from
+            # the assignment's actual, so that counter stays true and this one says which of
+            # those actuals was effort.
+            progress_quality["workAsQuantityCount"] += 1;progress_quality["complete"] = False
+            warnings.append({"code":"PROGRESS_WORK_NOT_QUANTITY","message":"Executed quantity was taken from reported work effort, whose unit the progress source does not state.","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"activityExternalId":row.get("activity_external_id"),"severity":"warning","excludedFromCalculation":False,"affectedMetricKeys":["currentExecutedValueIrr","remainingPhysicalCostIrr","forecastFinalCostIrr"]})
         remaining = max(revised_quantity - executed, ZERO)
         if executed > revised_quantity:
             deviation=executed-revised_quantity
@@ -174,7 +189,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         quantity_variances.append({"varianceKind":"quantity","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"resourceTitle":row["resource_title"],"resourceType":kind,
             "activityExternalId":row.get("activity_external_id"),"activityTitle":row.get("activity_title"),"wbsCode":row.get("wbs_code"),"baseUnit":row.get("base_unit"),
             "initialQuantity":original_quantity,"revisedQuantity":revised_quantity,"executedQuantity":executed,"remainingQuantity":remaining,
-            "varianceQuantity":quantity_variance,"quantityVariancePercent":quantity_percent,"sourceMethod":_source,"progressSnapshotId":row.get("progress_snapshot_id"),
+            "varianceQuantity":quantity_variance,"quantityVariancePercent":quantity_percent,"sourceMethod":_source,"measurementType":_measurement,"progressSnapshotId":row.get("progress_snapshot_id"),
             "actualCostIrr":actual_line,"remainingPhysicalCostIrr":remaining_cost if has_price else None,"forecastFinalIrr":forecast_line if has_price else None,
             "priceAvailable":has_price,"impactSharePercent":None})
 

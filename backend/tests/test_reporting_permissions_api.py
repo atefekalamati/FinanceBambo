@@ -54,7 +54,7 @@ class Reports:
             "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":2,"excludedEstimateLineCount":3,
             "progressQuality":{"complete":False,"manualOverrideCount":1,"taskFallbackCount":0,"missingCount":1,
                 "assignmentActualCount":2,"assignmentPercentFallbackCount":0,"mappedLineCount":3,
-                "unmappedLineCount":1,"generalCostLineCount":1}}
+                "unmappedLineCount":1,"generalCostLineCount":1,"workAsQuantityCount":1}}
     async def list_snapshots(self,scope,page=1,page_size=50,reporting_date_from=None,reporting_date_to=None):
         self.list_call={"page":page,"page_size":page_size,"from":reporting_date_from,"to":reporting_date_to}
         return {"items":[{"reportSnapshotId":REPORT,"reportingDate":"2026-08-09",
@@ -130,7 +130,10 @@ class ReportingPermissionApiTests(unittest.TestCase):
         quality=overview["progressQuality"]
         self.assertEqual({"complete","manualOverrideCount","taskFallbackCount","missingCount",
             "assignmentActualCount","assignmentPercentFallbackCount","mappedLineCount",
-            "unmappedLineCount","generalCostLineCount"},set(quality))
+            "unmappedLineCount","generalCostLineCount","workAsQuantityCount"},set(quality))
+        # Carried through the projection rather than defaulted away: the service reported one
+        # of its two assignment actuals as work effort, and finance.view is told so.
+        self.assertEqual((2,1),(quality["assignmentActualCount"],quality["workAsQuantityCount"]))
         # Every value is a count or a flag; nothing here identifies a row.
         self.assertTrue(all(isinstance(value,(int,bool)) for value in quality.values()))
         self.assertNotIn("excludedEstimateLineIds",overview)
