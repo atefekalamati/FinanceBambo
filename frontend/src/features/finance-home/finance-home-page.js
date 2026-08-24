@@ -498,63 +498,131 @@ function createSnapshotProvenance({ snapshots = [], selected, report, onSelect }
   if (!selected) return null;
   const section = element("section", "finance-snapshot-provenance");
   section.setAttribute("aria-label", "نسخه پیشرفت مبنای این محاسبه");
+  section.append(element("span", "finance-snapshot-provenance__lead", "مبنای محاسبه"));
 
-  const head = element("div", "finance-snapshot-provenance__head");
-  const copy = element("div");
-  copy.append(
-    element("span", "finance-snapshot-provenance__eyebrow", "مبنای محاسبه"),
-    element("h2", "", "این ارقام بر پایه کدام نسخه پیشرفت پروژه است"),
-  );
-  head.append(copy, element("span", "read-only-badge", "فقط‌خواندنی"));
-
+  /**
+   * The strip stays on one line at every width, so each fact carries a short
+   * label as well as a full one — the same long/narrow pairing the combination
+   * chart uses for its category names — and the facts drop out in order of how
+   * little they say as the room runs out. The file name is the only value with
+   * no natural length, so it is the one that gives way with an ellipsis.
+   */
   const facts = element("dl", "finance-snapshot-provenance__facts");
   [
-    ["تاریخ گزارش نسخه", formatBusinessDate(selected.reportingDate)],
-    ["وضعیت نسخه", SNAPSHOT_STATUS_LABELS[selected.status] ?? "وضعیت نامشخص"],
-    ["فایل مبدأ", selected.sourceFileNameSafe ?? "—"],
-    ["زمان ورود به سیستم", formatSystemDateTime(selected.importedAt)],
-  ].forEach(([label, value]) => {
-    const item = element("div");
-    item.append(element("dt", "", label), element("dd", "", value));
+    ["date", "تاریخ گزارش نسخه", "تاریخ", formatBusinessDate(selected.reportingDate)],
+    ["status", "وضعیت", "وضعیت", SNAPSHOT_STATUS_LABELS[selected.status] ?? "نامشخص"],
+    ["file", "فایل مبدأ", "فایل", selected.sourceFileNameSafe ?? "—"],
+    ["imported", "ورود به سیستم", "ورود", formatSystemDateTime(selected.importedAt)],
+  ].forEach(([key, label, shortLabel, value]) => {
+    const item = element("div", `finance-snapshot-provenance__fact finance-snapshot-provenance__fact--${key}`);
+    const term = element("dt");
+    term.append(
+      element("span", "finance-snapshot-provenance__label--full", label),
+      element("span", "finance-snapshot-provenance__label--short", shortLabel),
+    );
+    const definition = element("dd", "", value);
+    // Truncation hides characters, so the whole value stays reachable.
+    definition.title = value;
+    item.append(term, definition);
     facts.append(item);
   });
-
-  section.append(head, facts);
+  section.append(facts);
 
   // Only a ready snapshot can be reported on: the report endpoints refuse a
   // superseded one, so it is listed and disabled rather than silently failing.
   const selectable = snapshots.filter((snapshot) => snapshot.status === "ready");
   if (selectable.length > 1 && typeof onSelect === "function") {
-    const field = element("div", "form-field finance-snapshot-provenance__picker");
-    const label = element("label", "form-label", "نسخه پیشرفت مبنای محاسبه");
-    label.htmlFor = "financeSnapshotChoice";
     const picker = document.createElement("select");
-    picker.id = "financeSnapshotChoice";
-    picker.className = "app-select";
+    picker.className = "app-select finance-snapshot-provenance__picker";
+    picker.setAttribute("aria-label", "انتخاب نسخه پیشرفت مبنای محاسبه");
+    picker.title = "با تغییر نسخه، محاسبه از سمت سرویس مالی دوباره انجام می‌شود.";
     snapshots.forEach((snapshot) => {
       const option = document.createElement("option");
       option.value = snapshot.progressSnapshotId;
-      const status = snapshot.status === "ready" ? "" : ` · ${SNAPSHOT_STATUS_LABELS[snapshot.status] ?? "وضعیت نامشخص"}`;
+      const status = snapshot.status === "ready" ? "" : ` · ${SNAPSHOT_STATUS_LABELS[snapshot.status] ?? "نامشخص"}`;
       option.textContent = `${formatBusinessDate(snapshot.reportingDate)}${status}`;
       option.disabled = snapshot.status !== "ready";
       option.selected = snapshot.progressSnapshotId === selected.progressSnapshotId;
       picker.append(option);
     });
     picker.addEventListener("change", () => onSelect(picker.value));
-    field.append(label, picker, element("small", "form-hint", "با تغییر نسخه، محاسبه از سمت سرویس مالی دوباره انجام می‌شود."));
-    section.append(field);
+    section.append(picker);
   }
 
   // The response states which snapshot it actually used. If that is not the one
-  // we asked for, the reader is told rather than shown a mismatched heading.
+  // we asked for, the reader is told — below the strip rather than inside it,
+  // so the strip keeps its single line and the warning still gets said.
   const answered = report?.progressSnapshotId;
-  if (answered && answered !== selected.progressSnapshotId) {
-    const notice = element("p", "inline-notice", "سرویس مالی این ارقام را بر پایه نسخه دیگری محاسبه کرده است؛ نسخه انتخابی برای این تاریخ گزارش قابل استفاده نبود.");
-    notice.setAttribute("role", "status");
-    section.append(notice);
+  if (!answered || answered === selected.progressSnapshotId) return section;
+
+  const notice = element("p", "inline-notice finance-snapshot-provenance__notice", "سرویس مالی این ارقام را بر پایه نسخه دیگری محاسبه کرده است؛ نسخه انتخابی برای این تاریخ گزارش قابل استفاده نبود.");
+  notice.setAttribute("role", "status");
+  const group = document.createDocumentFragment();
+  group.append(section, notice);
+  return group;
+}
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+/**
+ * A gear, built node by node the way the price sparkline is.
+ *
+ * There is no icon set in this project, so the shape is drawn here: a hub, a
+ * body, and eight teeth placed by rotation. Everything strokes in
+ * `currentColor`, so the link's own hover and focus colours carry the icon with
+ * them and no second palette appears.
+ */
+function createSettingsIcon() {
+  const icon = document.createElementNS(SVG_NAMESPACE, "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("focusable", "false");
+  icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", "1.7");
+  icon.setAttribute("stroke-linecap", "round");
+  icon.classList.add("finance-project-settings-link__icon");
+
+  // Each tooth starts just inside the body so the two read as one shape rather
+  // than as spokes around a hub, and squares off at the tip the way a tooth does.
+  const teeth = document.createElementNS(SVG_NAMESPACE, "g");
+  teeth.setAttribute("stroke-width", "2.4");
+  teeth.setAttribute("stroke-linecap", "butt");
+  for (let index = 0; index < 8; index += 1) {
+    const tooth = document.createElementNS(SVG_NAMESPACE, "line");
+    tooth.setAttribute("x1", "12");
+    tooth.setAttribute("y1", "3.9");
+    tooth.setAttribute("x2", "12");
+    tooth.setAttribute("y2", "6.8");
+    tooth.setAttribute("transform", `rotate(${index * 45} 12 12)`);
+    teeth.append(tooth);
   }
 
-  return section;
+  const body = document.createElementNS(SVG_NAMESPACE, "circle");
+  body.setAttribute("cx", "12");
+  body.setAttribute("cy", "12");
+  body.setAttribute("r", "5.9");
+  body.setAttribute("stroke-width", "2.2");
+
+  const hub = document.createElementNS(SVG_NAMESPACE, "circle");
+  hub.setAttribute("cx", "12");
+  hub.setAttribute("cy", "12");
+  hub.setAttribute("r", "2.5");
+
+  icon.append(teeth, body, hub);
+  return icon;
+}
+
+function createSettingsLink() {
+  const link = document.createElement("a");
+  link.className = "finance-project-settings-link";
+  link.href = "#/settings";
+  // The icon carries no text, so the name has to be spoken here — and shown on
+  // hover, since a lone gear is only conventional, never self-explanatory.
+  link.setAttribute("aria-label", "تنظیمات مالی پروژه");
+  link.title = "تنظیمات مالی پروژه";
+  link.append(createSettingsIcon());
+  return link;
 }
 
 function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null) {
@@ -564,12 +632,7 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   const pageTitle = document.createElement("h1");
   pageTitle.className = "finance-page-title";
   pageTitle.textContent = "نمای کلی مالی";
-  const settingsLink = document.createElement("a");
-  settingsLink.className = "finance-project-settings-link";
-  settingsLink.href = "#/settings";
-  settingsLink.textContent = "تنظیمات مالی پروژه";
-  settingsLink.setAttribute("aria-label", "ورود به تنظیمات مالی پروژه جاری");
-  pageHeader.append(pageTitle, settingsLink);
+  pageHeader.append(pageTitle);
 
   const summaryHeader = document.createElement("div");
   summaryHeader.className = "section-heading";
@@ -582,7 +645,11 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   const reportMeta = document.createElement("small");
   reportMeta.className = "finance-report-meta";
   reportMeta.textContent = `تاریخ گزارش ${formatBusinessDate(data.reportingDate)} · نسخه پیشرفت پروژه`;
-  summaryHeader.append(summaryHeading, reportMeta);
+  // The heading sits at one end of the row and these at the other, which is
+  // what .section-heading's own space-between already arranges.
+  const summaryTrailing = element("div", "section-heading__trailing");
+  summaryTrailing.append(reportMeta, createSettingsLink());
+  summaryHeader.append(summaryHeading, summaryTrailing);
   const comparisons = buildOverviewComparisons(data.metrics);
   const overviewPanel = document.createElement("section");
   overviewPanel.className = "finance-overview-panel";
