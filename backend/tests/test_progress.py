@@ -166,3 +166,12 @@ class FeedMeasurementTests(unittest.IsolatedAsyncioTestCase):
   rows={row["assignmentExternalId"]:row for row in (await self.service().feed(SCOPE,SNAPSHOT))["assignments"]}
   self.assertEqual(("missing",None,"0"),(rows["AS3"]["sourceMethod"],rows["AS3"]["measurementType"],rows["AS3"]["quality"]))
   self.assertEqual(["PROGRESS_MISSING"],[w["code"] for w in rows["AS3"]["warnings"]])
+ async def test_each_row_says_how_far_to_trust_its_quantity(self):
+  rows={row["assignmentExternalId"]:row for row in (await self.service().feed(SCOPE,SNAPSHOT))["assignments"]}
+  self.assertEqual(["measured","fallback","unavailable"],
+   [rows["AS1"]["progressStatus"],rows["AS2"]["progressStatus"],rows["AS3"]["progressStatus"]])
+ async def test_the_feed_never_reports_a_line_level_status(self):
+  # unmapped_assignment and unmapped_activity describe an estimate line that reached no
+  # assignment. A feed row IS an assignment, so neither can be true of it.
+  for row in (await self.service().feed(SCOPE,SNAPSHOT))["assignments"]:
+   self.assertNotIn("unmapped",row["progressStatus"])
