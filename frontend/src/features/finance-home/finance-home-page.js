@@ -1,12 +1,14 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
-import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
+import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { compactMoneyFromIrr, compactMoneyScale, formatCompactMoneyFromIrr, formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
+import { reportWarningText } from "../../shared/warnings/finance-warning-labels.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { createCombinationChart } from "../../shared/components/combination-chart.js";
 import { buildMonthlyTrend, TREND_MODES } from "./monthly-trend.js";
+import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
 
 const SUMMARY_ITEMS = Object.freeze([
@@ -28,15 +30,6 @@ const SUPPLEMENTARY_SUMMARY_KEYS = new Set([
   "forecastPerSquareMeterIrr",
   "moneyRequiredToContinueIrr",
 ]);
-
-const WARNING_LABELS = Object.freeze({
-  UNIT_CONVERSION_MISSING: "تبدیل واحد لازم برای بخشی از مقدار خریداری‌شده تعریف نشده است.",
-  PROGRESS_MISSING: "برای یکی از خطوط برآورد، مقدار معتبر پیشرفت موجود نیست.",
-  QUANTITY_OVERRUN: "مقدار انجام‌شده یکی از ردیف‌ها از آخرین مقدار برآورد بیشتر است.",
-  CURRENT_PRICE_MISSING: "قیمت روز یکی از اقلام ثبت نشده و از محاسبات زنده آن خط کنار گذاشته شده است.",
-  GENERAL_COST_OVERRUN: "هزینه واقعی ثبت‌شده عمومی پروژه از آخرین برآورد هزینه‌های عمومی بیشتر است.",
-  GROSS_AREA_MISSING: "زیربنای کل ثبت نشده؛ شاخص‌های هر مترمربع قابل محاسبه نیستند.",
-});
 
 const WORK_AREAS = Object.freeze([
   { key: "financial-items", title: "اقلام و برآورد", description: "مدیریت اقلام پروژه، ریز برآورد و مقدارهای اولیه و اصلاح‌شده", meta: "اقلام · برآورد · اصلاحات", href: "#/financial-items" },
@@ -162,7 +155,7 @@ function createBreakdownChart(rows) {
       const track = document.createElement("div");
       track.className = "breakdown-chart__track";
       const bar = document.createElement("span");
-      bar.className = `breakdown-chart__bar breakdown-chart__bar--${series}`;
+      bar.className = `breakdown-chart__bar breakdown-chart__bar--${series} chart-mark`;
       bar.style.setProperty("--bar-width", `${magnitude}%`);
       bar.title = `${seriesLabel}: ${formatTomanFromIrr(value)}`;
       track.append(bar);
@@ -274,7 +267,7 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
     const barCell = document.createElement("div");
     barCell.className = `managerial-combo-chart__cell managerial-combo-chart__item--${entry.key}`;
     const column = document.createElement("div");
-    column.className = "managerial-combo-chart__column";
+    column.className = "managerial-combo-chart__column chart-mark";
     column.style.setProperty("--column-size", `${entry.magnitude}%`);
     barCell.append(column);
     barsBand.append(barCell);
@@ -287,6 +280,41 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
     label.title = entry.label;
     labelsBand.append(label);
   });
+
+  /**
+   * A value guide beside the columns: rows at round amounts, so the reader can
+   * tell what a bar's height is worth without reading its label.
+   *
+   * The amounts come from the project's own magnitude — a project topping out
+   * in millions gets lines in millions, one topping out in billions gets lines
+   * in billions — and they are round numbers rather than equal divisions of the
+   * largest bar, which is what makes them readable.
+   *
+   * Nothing already on the chart moves: the guide draws into the strip that was
+   * already reserved on the inline-start edge and into the empty space behind
+   * the bars, and its top line never rises above the tallest bar, so no column
+   * is rescaled.
+   */
+  const largestIrr = entries.reduce((largest, entry) => {
+    const value = /^-?\d+$/.test(String(entry.value ?? "")) ? BigInt(entry.value) : 0n;
+    const magnitude = value < 0n ? -value : value;
+    return magnitude > largest ? magnitude : largest;
+  }, 0n);
+  const ticks = buildValueTicks(largestIrr);
+  const tickScale = ticks.length ? compactMoneyScale(largestIrr.toString()) : null;
+
+  if (tickScale) {
+    const guide = element("div", "managerial-combo-chart__scale");
+    guide.setAttribute("aria-hidden", "true");
+    guide.append(element("span", "managerial-combo-chart__scale-unit", tickScale.unit));
+    ticks.forEach((tick) => {
+      const row = element("div", "managerial-combo-chart__scale-row");
+      row.style.setProperty("--scale-size", `${tick.magnitude}%`);
+      row.append(element("span", "managerial-combo-chart__scale-value", tickScale.format(tick.valueIrr) ?? ""));
+      guide.append(row);
+    });
+    barsBand.append(guide);
+  }
 
   // The line marks the top of the initial-estimate bar, drawn from the same
   // percentage of the same band the bar itself is drawn from — so it follows
@@ -448,7 +476,88 @@ function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
   return section;
 }
 
-function renderFinanceHome(data, monthly = null, chartState = {}) {
+const SNAPSHOT_STATUS_LABELS = Object.freeze({
+  ready: "آماده",
+  superseded: "جایگزین‌شده",
+});
+
+/**
+ * Which progress snapshot these figures were computed from.
+ *
+ * Five of the eight headline metrics are derived from the executed quantity the
+ * progress feed reports — the day value of work done, the remaining physical
+ * cost, the money required to continue, the final forecast and the forecast per
+ * square metre. Change the snapshot and those five change with it, so a reader
+ * who cannot see which snapshot was used cannot defend the numbers.
+ *
+ * The selector re-asks the Backend rather than recomputing anything here: the
+ * report endpoints accept a progressSnapshotId and rebuild the whole picture
+ * against it. No finance arithmetic happens in this file.
+ */
+function createSnapshotProvenance({ snapshots = [], selected, report, onSelect }) {
+  if (!selected) return null;
+  const section = element("section", "finance-snapshot-provenance");
+  section.setAttribute("aria-label", "نسخه پیشرفت مبنای این محاسبه");
+
+  const head = element("div", "finance-snapshot-provenance__head");
+  const copy = element("div");
+  copy.append(
+    element("span", "finance-snapshot-provenance__eyebrow", "مبنای محاسبه"),
+    element("h2", "", "این ارقام بر پایه کدام نسخه پیشرفت پروژه است"),
+  );
+  head.append(copy, element("span", "read-only-badge", "فقط‌خواندنی"));
+
+  const facts = element("dl", "finance-snapshot-provenance__facts");
+  [
+    ["تاریخ گزارش نسخه", formatBusinessDate(selected.reportingDate)],
+    ["وضعیت نسخه", SNAPSHOT_STATUS_LABELS[selected.status] ?? "وضعیت نامشخص"],
+    ["فایل مبدأ", selected.sourceFileNameSafe ?? "—"],
+    ["زمان ورود به سیستم", formatSystemDateTime(selected.importedAt)],
+  ].forEach(([label, value]) => {
+    const item = element("div");
+    item.append(element("dt", "", label), element("dd", "", value));
+    facts.append(item);
+  });
+
+  section.append(head, facts);
+
+  // Only a ready snapshot can be reported on: the report endpoints refuse a
+  // superseded one, so it is listed and disabled rather than silently failing.
+  const selectable = snapshots.filter((snapshot) => snapshot.status === "ready");
+  if (selectable.length > 1 && typeof onSelect === "function") {
+    const field = element("div", "form-field finance-snapshot-provenance__picker");
+    const label = element("label", "form-label", "نسخه پیشرفت مبنای محاسبه");
+    label.htmlFor = "financeSnapshotChoice";
+    const picker = document.createElement("select");
+    picker.id = "financeSnapshotChoice";
+    picker.className = "app-select";
+    snapshots.forEach((snapshot) => {
+      const option = document.createElement("option");
+      option.value = snapshot.progressSnapshotId;
+      const status = snapshot.status === "ready" ? "" : ` · ${SNAPSHOT_STATUS_LABELS[snapshot.status] ?? "وضعیت نامشخص"}`;
+      option.textContent = `${formatBusinessDate(snapshot.reportingDate)}${status}`;
+      option.disabled = snapshot.status !== "ready";
+      option.selected = snapshot.progressSnapshotId === selected.progressSnapshotId;
+      picker.append(option);
+    });
+    picker.addEventListener("change", () => onSelect(picker.value));
+    field.append(label, picker, element("small", "form-hint", "با تغییر نسخه، محاسبه از سمت سرویس مالی دوباره انجام می‌شود."));
+    section.append(field);
+  }
+
+  // The response states which snapshot it actually used. If that is not the one
+  // we asked for, the reader is told rather than shown a mismatched heading.
+  const answered = report?.progressSnapshotId;
+  if (answered && answered !== selected.progressSnapshotId) {
+    const notice = element("p", "inline-notice", "سرویس مالی این ارقام را بر پایه نسخه دیگری محاسبه کرده است؛ نسخه انتخابی برای این تاریخ گزارش قابل استفاده نبود.");
+    notice.setAttribute("role", "status");
+    section.append(notice);
+  }
+
+  return section;
+}
+
+function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null) {
   const fragment = document.createDocumentFragment();
   const pageHeader = document.createElement("header");
   pageHeader.className = "finance-page-header";
@@ -501,7 +610,7 @@ function renderFinanceHome(data, monthly = null, chartState = {}) {
     const list = document.createElement("ul");
     reportWarnings.forEach((warning) => {
       const item = document.createElement("li");
-      item.textContent = WARNING_LABELS[warning.code] ?? warning.message ?? "برای بخشی از محاسبات مالی هشدار ثبت شده است.";
+      item.textContent = reportWarningText(warning);
       list.append(item);
     });
     warnings.append(warningTitle, list);
@@ -534,7 +643,8 @@ function renderFinanceHome(data, monthly = null, chartState = {}) {
   areas.setAttribute("aria-label", "بخش‌های امور مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  fragment.append(pageHeader, overviewPanel, insights, areasHeader, areas);
+  if (provenance) fragment.append(pageHeader, provenance, overviewPanel, insights, areasHeader, areas);
+  else fragment.append(pageHeader, overviewPanel, insights, areasHeader, areas);
   return fragment;
 }
 
@@ -669,6 +779,8 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
   let trendError = null;
   let activeChart = "managerial";
   let chart = null;
+  let snapshots = [];
+  let selectedSnapshotId = null;
   const root = document.createElement("div");
   root.className = "finance-home-page";
 
@@ -681,11 +793,15 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
     state = createRequestState(REQUEST_STATUS.LOADING);
     paint();
     try {
-      const snapshots = await progressAdapter.getSnapshots();
-      if (!snapshots.length) {
+      snapshots = await progressAdapter.getSnapshots();
+      // Only a ready snapshot can be reported on. Defaulting to snapshots[0]
+      // would ask the Backend for a superseded one and be answered with a 404.
+      const reportable = snapshots.filter((snapshot) => snapshot.status === "ready");
+      if (!reportable.length) {
         state = createRequestState(REQUEST_STATUS.EMPTY);
       } else {
-        const latest = snapshots[0];
+        const latest = reportable.find((snapshot) => snapshot.progressSnapshotId === selectedSnapshotId) ?? reportable[0];
+        selectedSnapshotId = latest.progressSnapshotId;
         // The trend is independent of the overview: a failure there must not
         // take the eight headline metrics down with it.
         const [report, monthly] = await Promise.all([
@@ -708,6 +824,12 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
     activeChart = nextChart;
   }
 
+  function selectSnapshot(nextSnapshotId) {
+    if (!nextSnapshotId || nextSnapshotId === selectedSnapshotId) return;
+    selectedSnapshotId = nextSnapshotId;
+    load();
+  }
+
   function renderEmpty() {
     const card = document.createElement("section");
     card.className = "state-card";
@@ -728,7 +850,13 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
     const renderContent = (data) => {
       const built = createMonthlyTrendPanel({ trend, trendError });
       chart = built.chart;
-      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart });
+      const provenance = createSnapshotProvenance({
+        snapshots,
+        selected: snapshots.find((snapshot) => snapshot.progressSnapshotId === selectedSnapshotId) ?? null,
+        report: data,
+        onSelect: selectSnapshot,
+      });
+      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance);
     };
     root.replaceChildren(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }
