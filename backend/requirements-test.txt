@@ -1,0 +1,21 @@
+# Test tooling only. Kept apart from requirements.txt because the finance module is a
+# library: what it ships to a deployed host is the runtime list, and nothing here belongs
+# there.
+#
+# Without this file a fresh clone cannot run the suite. The tests were passing only
+# because pytest and httpx happened to be installed globally on one machine, so `python -m
+# pytest` worked outside a virtual environment and failed inside one.
+#
+#   python -m pip install -r backend/requirements.txt -r backend/requirements-test.txt
+#
+# httpx is not imported by any test directly. starlette's TestClient needs it, and every
+# API-level test goes through TestClient.
+pytest==9.1.1
+httpx==0.28.1
+
+# Same psycopg the runtime pins, plus the bundled libpq wheel. requirements.txt keeps the
+# bare package on purpose: a deployed host is expected to provide its own libpq, and that
+# choice is not ours to make here. A developer machine usually has no libpq at all, so
+# without this every test that imports a repository fails to collect with
+# "no pq wrapper available" -- which is what a fresh virtual environment does today.
+psycopg[binary]==3.3.4
