@@ -51,7 +51,9 @@ test("the DOM element helper is defined once and imported everywhere else", () =
  * The documented scale lives in shared/styles/tokens.css. Media queries cannot
  * read custom properties, so this test is what keeps the values from drifting.
  */
-const RESPONSIVE_SCALE = new Set(["70rem", "64rem", "64.01rem", "48rem", "48.01rem", "36rem", "30rem"]);
+// Each tier pairs a max-width with the min-width just above it, so a rule can
+// address either side of the same boundary without inventing a new one.
+const RESPONSIVE_SCALE = new Set(["70rem", "64rem", "64.01rem", "48rem", "48.01rem", "36rem", "30rem", "30.01rem"]);
 const SCALE_EXCEPTIONS = new Map([
   ["26.5625rem", "features/finance-home/finance-home.css"],
   ["23rem", "features/reports/reports.css"],
