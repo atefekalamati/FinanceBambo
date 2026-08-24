@@ -80,6 +80,73 @@
   margin-block: 0;
 }
 
+/* ── Snapshot provenance ────────────────────────────────────────────────────
+   Which progress snapshot the figures below were computed from. It sits above
+   the metrics because it qualifies every one of them. */
+.finance-snapshot-provenance {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+  min-inline-size: 0;
+}
+
+.finance-snapshot-provenance__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-sm) var(--space-md);
+}
+
+.finance-snapshot-provenance__eyebrow {
+  color: var(--brand-teal);
+  font-size: .74rem;
+  font-weight: 700;
+}
+
+.finance-snapshot-provenance__head h2 {
+  margin: .15rem 0 0;
+  font-size: 1.05rem;
+}
+
+.finance-snapshot-provenance__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-md);
+  margin: 0;
+  padding-block-start: var(--space-md);
+  border-block-start: 1px solid var(--color-border-subtle);
+}
+
+.finance-snapshot-provenance__facts dt {
+  color: var(--color-text-muted);
+  font-size: .76rem;
+}
+
+.finance-snapshot-provenance__facts dd {
+  margin: .2rem 0 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.finance-snapshot-provenance__picker {
+  max-inline-size: 24rem;
+}
+
+@media (max-width: 48rem) {
+  .finance-snapshot-provenance {
+    padding: var(--space-md);
+  }
+
+  .finance-snapshot-provenance__picker {
+    max-inline-size: none;
+  }
+}
+
 .finance-overview-panel {
   position: relative;
   padding: .25rem .9rem .9rem;

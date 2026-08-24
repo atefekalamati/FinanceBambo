@@ -6,6 +6,7 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { hasPermission } from "../../core/auth/permissions.js";
 import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
 import { element } from "../../shared/dom/elements.js";
+import { feedWarningText } from "../../shared/warnings/finance-warning-labels.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "آماده", superseded: "جایگزین‌شده" });
 const RESOURCE_TYPE_LABELS = Object.freeze({ material: "مصالح", labor: "نیروی انسانی", equipment: "دستگاه و تجهیزات", general_cost: "هزینه‌های عمومی پروژه" });
@@ -27,12 +28,31 @@ function dateOrMissing(value) {
   return value ? formatBusinessDate(value) : "داده موجود نیست";
 }
 
+/**
+ * What the Backend said about this assignment, first and verbatim by code.
+ *
+ * The feed carries a `warnings` array per assignment — PROGRESS_MISSING and
+ * TASK_PROGRESS_FALLBACK — and this page used to ignore it entirely and
+ * re-derive its own list from sourceMethod and quality. Reading the Backend's
+ * codes means the page reports what the service decided rather than guessing at
+ * it, and a code the service adds later still reaches the reader.
+ *
+ * Two notes are still made here, and neither is an inference about the data:
+ * a manual override is not a Backend warning at all (it is a sourceMethod), and
+ * the quality threshold is a display policy — the Backend publishes the number
+ * and has no opinion about when it is too low.
+ */
+const LOW_QUALITY_THRESHOLD = 0.8;
+
 function assignmentWarnings(assignment) {
-  const warnings = [];
-  if (assignment.sourceMethod === "task_progress_fallback") warnings.push("مقدار اجرا از درصد پیشرفت فعالیت به دست آمده است.");
+  const warnings = (assignment.warnings ?? []).map(feedWarningText).filter(Boolean);
+
   if (assignment.sourceMethod === "manual_override") warnings.push("مقدار با جایگزینی دستی تعیین شده و مقدار محاسبه‌شده اصلی حفظ شده است.");
-  if (assignment.quality < 0.8) warnings.push("کیفیت این مقدار پایین‌تر از هشتاد درصد است.");
-  if (assignment.actualQuantity === null && assignment.resourceType !== "general_cost") warnings.push("مقدار واقعی تخصیص موجود نیست.");
+  // `quality` arrives as a decimal string; Number keeps the comparison explicit.
+  const quality = Number(assignment.quality);
+  if (Number.isFinite(quality) && quality < LOW_QUALITY_THRESHOLD) {
+    warnings.push(`کیفیت این مقدار ${qualityFormatter.format(quality)} است و پایین‌تر از حد قابل اتکا قرار دارد.`);
+  }
   const deviation = calculateProgressDeviation(assignment.actualQuantity, assignment.plannedQuantity);
   if (deviation) {
     const percent = deviation.percent === null ? "درصد انحراف به‌دلیل برآورد صفر قابل محاسبه نیست" : `${formatDisplayNumber(deviation.percent)} درصد`;
@@ -325,7 +345,7 @@ export function createProgressPage({ context, adapter }) {
       snapshotsState = createRequestState(snapshots.length ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, snapshots);
       if (snapshots.length) await selectSnapshot(snapshots[0].progressSnapshotId);
     } catch (error) {
-      snapshotsState = createRequestState(REQUEST_STATUS.ERROR, null, error);
+      snapshotsState = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
       paint();
     }
   }
