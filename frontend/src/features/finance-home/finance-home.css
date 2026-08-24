@@ -81,69 +81,128 @@
 }
 
 /* ── Snapshot provenance ────────────────────────────────────────────────────
-   Which progress snapshot the figures below were computed from. It sits above
-   the metrics because it qualifies every one of them. */
+   A context strip that says which progress snapshot the figures below were
+   computed from. It is one line at every width and never wraps: the type
+   shrinks with the viewport, the labels fall back to short forms, the facts
+   that say least drop out as the room runs out, and the file name — the only
+   value with no natural length — truncates rather than pushing anything to a
+   second row. */
 .finance-snapshot-provenance {
-  display: grid;
-  gap: var(--space-md);
-  padding: var(--space-lg) var(--space-xl);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--app-card-navy);
-  box-shadow: var(--dash-shadow), var(--dash-inner);
-  min-inline-size: 0;
-}
-
-.finance-snapshot-provenance__head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-sm) var(--space-md);
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: clamp(.3rem, .8vw, .8rem);
+  min-inline-size: 0;
+  padding: .4rem clamp(.4rem, 1vw, .85rem);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgb(4 13 32 / 22%);
+  font-size: clamp(.52rem, 1.55vw, .76rem);
+  line-height: 1.6;
+  white-space: nowrap;
 }
 
-.finance-snapshot-provenance__eyebrow {
+.finance-snapshot-provenance__lead {
+  flex: 0 0 auto;
   color: var(--brand-teal);
-  font-size: .74rem;
   font-weight: 700;
-}
-
-.finance-snapshot-provenance__head h2 {
-  margin: .15rem 0 0;
-  font-size: 1.05rem;
 }
 
 .finance-snapshot-provenance__facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: var(--space-md);
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: clamp(.3rem, .8vw, .8rem);
+  /* Takes the room the picker does not need. Left to shrink freely it was
+     crushed to zero width, and its contents then painted over the picker. */
+  flex: 1 1 auto;
+  min-inline-size: 0;
   margin: 0;
-  padding-block-start: var(--space-md);
-  border-block-start: 1px solid var(--color-border-subtle);
 }
 
-.finance-snapshot-provenance__facts dt {
+.finance-snapshot-provenance__fact {
+  display: flex;
+  align-items: baseline;
+  gap: .3em;
+  flex: 0 0 auto;
+  min-inline-size: 0;
+}
+
+/* The file name is the one that gives way, because it is the one whose length
+   nobody controls. */
+.finance-snapshot-provenance__fact--file {
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+/* A hairline between facts instead of a bullet, so a fact that drops out at a
+   narrower width leaves no orphaned separator behind. */
+.finance-snapshot-provenance__fact + .finance-snapshot-provenance__fact {
+  padding-inline-start: clamp(.3rem, .8vw, .8rem);
+  border-inline-start: 1px solid var(--color-border-subtle);
+}
+
+.finance-snapshot-provenance__fact dt {
+  flex: 0 0 auto;
   color: var(--color-text-muted);
-  font-size: .76rem;
 }
 
-.finance-snapshot-provenance__facts dd {
-  margin: .2rem 0 0;
+.finance-snapshot-provenance__fact dd {
+  margin: 0;
+  min-inline-size: 0;
+  overflow: hidden;
   font-weight: 700;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
 }
 
-.finance-snapshot-provenance__picker {
-  max-inline-size: 24rem;
+.finance-snapshot-provenance__label--short {
+  display: none;
+}
+
+/* Written against .app-select as well as the strip's own class, because the
+   shared control carries `min-width: 150px` — a third of a phone screen, and
+   enough on its own to leave the facts no room at all. */
+.finance-snapshot-provenance .app-select {
+  flex: 0 1 auto;
+  inline-size: auto;
+  min-inline-size: 4.5rem;
+  max-inline-size: 38%;
+  margin-inline-start: auto;
+  padding-block: .1rem;
+  padding-inline: .3rem;
+  font-size: inherit;
+  text-overflow: ellipsis;
+}
+
+/* Sits below the strip, not in it, and only when the service used a snapshot
+   other than the one that was asked for. */
+.finance-snapshot-provenance__notice {
+  margin: 0;
+}
+
+/* Each tier gives up the fact that says least, in order. */
+@media (max-width: 64rem) {
+  .finance-snapshot-provenance__fact--imported {
+    display: none;
+  }
 }
 
 @media (max-width: 48rem) {
-  .finance-snapshot-provenance {
-    padding: var(--space-md);
+  .finance-snapshot-provenance__fact--status {
+    display: none;
+  }
+}
+
+@media (max-width: 36rem) {
+  /* The leading label is context the section's own accessible name already
+     carries, and the labels fall back to their short forms. */
+  .finance-snapshot-provenance__lead,
+  .finance-snapshot-provenance__label--full {
+    display: none;
   }
 
-  .finance-snapshot-provenance__picker {
-    max-inline-size: none;
+  .finance-snapshot-provenance__label--short {
+    display: inline;
   }
 }
 
@@ -685,6 +744,10 @@
   position: relative;
   z-index: 2;
   container-type: inline-size;
+  /* A hard guarantee: whatever a column is asked to show, it cannot widen the
+     document. The bands are sized for their content, so this only ever bites
+     when a value is longer than any width the type scale planned for. */
+  overflow: hidden;
   display: grid;
   align-items: end;
   justify-items: center;
@@ -718,8 +781,14 @@
   overflow-wrap: anywhere;
 }
 
+/* The unit has to be allowed to shrink and wrap. Pinned at `flex: 0 0 auto` it
+   set the flex line's minimum width, and once the value guide narrowed the
+   columns a long real amount — «۷۸۲٫۵۳ میلیون تومان» — pushed the page into a
+   horizontal scroll at 390. The mock's shorter amounts never showed it. */
 .managerial-combo-chart__value .money-display__unit {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
   font-size: clamp(.5rem, 7.5cqi, .68rem);
 }
 
@@ -1355,10 +1424,6 @@
     overflow: visible;
   }
 
-  .breakdown-chart-viewport {
-    overflow-x: visible;
-    scrollbar-gutter: auto;
-  }
 
   .breakdown-table-wrapper {
     max-inline-size: 100%;
@@ -1501,10 +1566,6 @@
     overflow-y: auto;
   }
 
-  .breakdown-chart-viewport {
-    overflow-x: visible;
-    scrollbar-gutter: auto;
-  }
 
   .breakdown-chart {
     min-inline-size: 0;
