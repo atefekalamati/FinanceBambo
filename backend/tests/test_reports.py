@@ -12,10 +12,11 @@ from openpyxl import load_workbook
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.finance.domain.reports import calculate_live_report
+from app.finance.domain.reports import (EXTRA_WARNING_KEYS, PROGRESS_STATUSES, WARNING_KEYS,
+                                        calculate_live_report)
 from app.finance.domain.resources import FinanceRecordNotFound
 from app.finance.services.reports import FinanceLiveReportService
-from app.finance.schemas.reports import PriceVariance,QuantityVariance,ReportSnapshotReference
+from app.finance.schemas.reports import PriceVariance,QuantityVariance,ReportSnapshotReference,ReportWarning
 from app.finance.repositories.reports import PsycopgLiveReportRepository
 
 
@@ -131,9 +132,11 @@ class LiveReportDomainTests(unittest.TestCase):
         row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-none")
         report = calculate_live_report([row], [], [], [], "10")
         unmapped = next(w for w in report.warnings if w["code"] == "PROGRESS_UNMAPPED")
-        self.assertEqual({"code", "message", "estimateLineId", "resourceId", "resourceCode",
-                          "activityExternalId", "severity", "excludedFromCalculation",
-                          "affectedMetricKeys"}, set(unmapped))
+        # The rule, not a copy of it: the standard keys plus exactly the extras this code
+        # declares. A hand-written key set here would have to be edited every time a code
+        # gains a documented extra, and would say nothing about the other seven codes.
+        self.assertEqual(set(WARNING_KEYS) | set(EXTRA_WARNING_KEYS["PROGRESS_UNMAPPED"]),
+                         set(unmapped))
         # Same affected metrics as PROGRESS_MISSING: the consequence is identical, only the
         # cause differs.
         self.assertEqual(["currentExecutedValueIrr", "remainingPhysicalCostIrr",
@@ -304,7 +307,7 @@ class LiveReportDomainTests(unittest.TestCase):
             {"assignmentExternalId":"a-2","plannedQuantity":"10","task":{"taskProgressPercent":"50"}},
         ]
         report=calculate_live_report(estimates,[],assignments,[],"10")
-        self.assertEqual({"complete":False,"manualOverrideCount":1,"taskFallbackCount":1,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":2,"unmappedLineCount":0,"generalCostLineCount":0,"workAsQuantityCount":0},report.progress_quality)
+        self.assertEqual({"complete":False,"manualOverrideCount":1,"taskFallbackCount":1,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":2,"unmappedLineCount":0,"generalCostLineCount":0,"workAsQuantityCount":0,"unmappedAssignmentCount":0,"unmappedActivityCount":0},report.progress_quality)
 
     def test_quantity_overrun_warns_with_deviation_without_clamping(self):
         row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-m")
@@ -624,3 +627,193 @@ class WorkAsQuantityTests(unittest.TestCase):
         for row in report.price_variances:
             PriceVariance(**row)
         self.assertIn("measurement_type", QuantityVariance.model_fields)
+
+
+class ProgressStateTests(unittest.TestCase):
+    """Telling "nobody measured this" apart from "it was measured at zero".
+
+    Both arrive as executedQuantity 0 and always have. The money is identical and stays
+    identical -- what an absent measurement should do to a forecast is a product decision.
+    What changes is that the report now says which of the two it is, and for an absence,
+    which of the three ways it happened.
+    """
+
+    def _report(self, line, assignments=()):
+        return calculate_live_report([line], [], list(assignments), [], "10")
+
+    def _line(self, assignment=None, activity=None):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", assignment)
+        row["activity_external_id"] = activity
+        return row
+
+    def test_a_measured_zero_is_no_longer_the_same_as_no_measurement(self):
+        # The defect this exists for: both rows report executedQuantity 0.
+        measured = self._report(self._line("a-1"),
+                                [{"assignmentExternalId": "a-1", "actualQuantity": "0", "task": {}}])
+        absent = self._report(self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}])
+        self.assertEqual(("0", "0"), (format(measured.quantity_variances[0]["executedQuantity"], "f"),
+                                      format(absent.quantity_variances[0]["executedQuantity"], "f")))
+        self.assertEqual(("mapped", "progress_not_available"),
+                         (measured.quantity_variances[0]["progressStatus"],
+                          absent.quantity_variances[0]["progressStatus"]))
+        # A source that measured zero is complete data, and raises nothing.
+        self.assertEqual([], [w["code"] for w in measured.warnings if w["code"].startswith("PROGRESS_")])
+        self.assertTrue(measured.progress_quality["complete"])
+
+    def test_the_two_unmapped_situations_are_counted_and_named_apart(self):
+        broken_reference = self._report(self._line("a-missing", activity="ACT-1"))
+        activity_gap = self._report(self._line(None, activity="ACT-missing"))
+        self.assertEqual(("unmapped_assignment", "unmapped_activity"),
+                         (broken_reference.quantity_variances[0]["progressStatus"],
+                          activity_gap.quantity_variances[0]["progressStatus"]))
+        self.assertEqual((1, 0), (broken_reference.progress_quality["unmappedAssignmentCount"],
+                                  broken_reference.progress_quality["unmappedActivityCount"]))
+        self.assertEqual((0, 1), (activity_gap.progress_quality["unmappedAssignmentCount"],
+                                  activity_gap.progress_quality["unmappedActivityCount"]))
+
+    def test_a_line_naming_neither_identifier_is_an_activity_gap(self):
+        # Nothing to look up: no assignment id and no activity id. It is not a broken
+        # reference, because the line never made one.
+        report = self._report(self._line(None, None))
+        self.assertEqual("unmapped_activity", report.quantity_variances[0]["progressStatus"])
+
+    def test_the_split_adds_up_to_the_counter_it_came_from(self):
+        rows = [self._line("a-missing", activity="ACT-1"),
+                dict(self._line(None, activity="ACT-missing"), id=LABOR_LINE, resource_id=LABOR)]
+        report = calculate_live_report(rows, [], [], [], "10")
+        quality = report.progress_quality
+        # unmappedLineCount keeps its old meaning and value; the new pair partitions it.
+        self.assertEqual(quality["unmappedLineCount"],
+                         quality["unmappedAssignmentCount"] + quality["unmappedActivityCount"])
+        self.assertEqual(2, quality["unmappedLineCount"])
+
+    def test_missing_count_is_the_third_state_and_is_not_duplicated(self):
+        report = self._report(self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}])
+        # PROGRESS_NOT_AVAILABLE is missingCount. No second counter was added for it, so a
+        # reader summing the buckets cannot count the same line twice.
+        self.assertEqual(1, report.progress_quality["missingCount"])
+        self.assertEqual((0, 0), (report.progress_quality["unmappedAssignmentCount"],
+                                  report.progress_quality["unmappedActivityCount"]))
+        self.assertNotIn("progressNotAvailableCount", report.progress_quality)
+
+    def test_the_warning_carries_the_state_so_the_code_alone_need_not(self):
+        # PROGRESS_UNMAPPED keeps its meaning and its wording; the state says which of the
+        # two situations produced it, which the code was never able to.
+        broken_reference = self._report(self._line("a-missing", activity="ACT-1"))
+        warning = next(w for w in broken_reference.warnings if w["code"] == "PROGRESS_UNMAPPED")
+        self.assertEqual("unmapped_assignment", warning["progressStatus"])
+        absent = self._report(self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}])
+        self.assertEqual("progress_not_available",
+                         next(w for w in absent.warnings
+                              if w["code"] == "PROGRESS_MISSING")["progressStatus"])
+
+    def test_every_state_is_one_of_the_four_declared(self):
+        cases = {"measured": (self._line("a-1"), [{"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}}]),
+                 "empty": (self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}]),
+                 "broken reference": (self._line("a-missing", activity="ACT-1"), []),
+                 "activity gap": (self._line(None, activity="ACT-missing"), [])}
+        for label, (line, assignments) in cases.items():
+            with self.subTest(label):
+                report = self._report(line, assignments)
+                self.assertIn(report.quantity_variances[0]["progressStatus"], PROGRESS_STATUSES)
+
+    def test_naming_the_state_moved_no_financial_figure(self):
+        """The four states, with the money each one produces spelled out.
+
+        Three of the four score executed 0 and therefore produce identical metrics; the
+        measured case is the only one that differs, and it differs because it measured
+        something. Hardcoded rather than compared, so a change in what an absent
+        measurement does to the money fails here with the old numbers on screen.
+        """
+        absent = {"initialEstimateIrr": Decimal("1000"), "actualCostIrr": Decimal("0"),
+                  "currentExecutedValueIrr": Decimal("0"),
+                  "remainingPhysicalCostIrr": Decimal("1000"),
+                  "moneyRequiredToContinueIrr": Decimal("1000"),
+                  "forecastFinalCostIrr": Decimal("1000"),
+                  "actualCostPerSquareMeterIrr": Decimal("0"),
+                  "forecastPerSquareMeterIrr": Decimal("100")}
+        for label, line, assignments in (
+                ("empty assignment", self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}]),
+                ("broken reference", self._line("a-missing", activity="ACT-1"), []),
+                ("activity gap", self._line(None, activity="ACT-missing"), []),
+                ("measured zero", self._line("a-1"),
+                 [{"assignmentExternalId": "a-1", "actualQuantity": "0", "task": {}}])):
+            with self.subTest(label):
+                self.assertEqual(absent, self._report(line, assignments).metrics)
+        measured = self._report(self._line("a-1"),
+                                [{"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}}])
+        self.assertEqual(Decimal("400"), measured.metrics["currentExecutedValueIrr"])
+        self.assertEqual(Decimal("600"), measured.metrics["remainingPhysicalCostIrr"])
+
+    def test_an_absence_is_still_reported_as_included_in_the_calculation(self):
+        """Pins today's behaviour, which is the open decision rather than a fix.
+
+        The line scores 0 and stays in every metric: excludedFromCalculation is False and
+        the line is absent from excludedEstimateLineIds. Whether an unknown quantity should
+        instead be excluded changes currentExecutedValueIrr, remainingPhysicalCostIrr and
+        forecastFinalCostIrr on live reports, so it is not decided here. This test exists so
+        that decision cannot be taken by accident.
+        """
+        report = self._report(self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}])
+        warning = next(w for w in report.warnings if w["code"] == "PROGRESS_MISSING")
+        self.assertFalse(warning["excludedFromCalculation"])
+        self.assertEqual([], report.excluded_estimate_line_ids)
+        self.assertEqual(0, report.excluded_estimate_line_count)
+        # And the metric is a number, not None -- it is presented, and qualified elsewhere.
+        self.assertEqual(Decimal("1000"), report.metrics["forecastFinalCostIrr"])
+
+
+class WarningStructureTests(unittest.TestCase):
+    """One shape for every warning, checked against every code the domain can emit."""
+
+    def _report_with_every_warning(self):
+        # A fixture chosen to raise as many codes at once as one report can: a general-cost
+        # overrun, an unmapped line, an empty assignment, an overrun, a missing price, an
+        # unconvertible invoice unit, and no gross area.
+        rows = [estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", None, "a-over"),
+                estimate(LABOR_LINE, LABOR, "labor", "10", "10", "100", "100", "a-empty"),
+                estimate(GENERAL_LINE, GENERAL, "general_cost", None, "10", "10", None, None)]
+        rows.append(dict(estimate(UUID(int=91), UUID(int=92), "material", "1", "1", "100", "100", None),
+                         activity_external_id=None))
+        invoices = [{"estimate_line_id": GENERAL_LINE, "resource_id": GENERAL, "quantity": None,
+                     "unit": None, "base_unit": None, "dimension": "lump_sum",
+                     "final_line_amount_irr": "500", "financial_effect_sign": 1,
+                     "resource_type": "general_cost"},
+                    {"estimate_line_id": MATERIAL_LINE, "resource_id": MATERIAL, "quantity": "1",
+                     "unit": "box", "base_unit": "each", "dimension": "count",
+                     "resource_code": "mat", "final_line_amount_irr": "10",
+                     "financial_effect_sign": 1, "resource_type": "material"}]
+        assignments = [{"assignmentExternalId": "a-over", "actualQuantity": "12", "task": {}},
+                       {"assignmentExternalId": "a-empty", "task": {}}]
+        return calculate_live_report(rows, invoices, assignments, [], None)
+
+    def test_the_fixture_really_does_raise_every_code(self):
+        # Without this, the contract test below could pass by checking almost nothing.
+        codes = {w["code"] for w in self._report_with_every_warning().warnings}
+        self.assertEqual({"UNIT_CONVERSION_MISSING", "GENERAL_COST_OVERRUN", "PROGRESS_UNMAPPED",
+                          "PROGRESS_MISSING", "QUANTITY_OVERRUN", "CURRENT_PRICE_MISSING",
+                          "GROSS_AREA_MISSING"}, codes)
+
+    def test_every_warning_carries_the_standard_keys_and_only_declared_extras(self):
+        for warning in self._report_with_every_warning().warnings:
+            with self.subTest(warning["code"]):
+                allowed = set(WARNING_KEYS) | set(EXTRA_WARNING_KEYS.get(warning["code"], ()))
+                self.assertEqual(set(), set(WARNING_KEYS) - set(warning), "a standard key is missing")
+                self.assertEqual(set(), set(warning) - allowed, "an undeclared key would 500 the report")
+
+    def test_every_warning_survives_the_dto_that_forbids_extras(self):
+        # The failure this prevents is not a wrong value but a 500 at response validation,
+        # which is how deviationQuantity was found.
+        for warning in self._report_with_every_warning().warnings:
+            with self.subTest(warning["code"]):
+                ReportWarning(**warning)
+
+    def test_the_work_effort_code_is_covered_too(self):
+        # It needs an effort-only assignment, which the fixture above cannot also carry.
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1")
+        report = calculate_live_report([row], [], [{"assignmentExternalId": "a-1", "actualWork": "4", "task": {}}], [], "10")
+        warning = next(w for w in report.warnings if w["code"] == "PROGRESS_WORK_NOT_QUANTITY")
+        self.assertEqual(set(WARNING_KEYS) | {"progressStatus"}, set(warning))
+        ReportWarning(**warning)
+        # Mapped: the data is present, it is simply effort rather than a measurement.
+        self.assertEqual("mapped", warning["progressStatus"])
