@@ -9,6 +9,7 @@ import { compactMoneyFromIrr, formatCompactMoneyFromIrr, formatTomanFromIrr } fr
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { buildPriceVariancePresentation, buildQuantityVariancePresentation } from "./report-analysis.js";
+import { reportWarningText } from "../../shared/warnings/finance-warning-labels.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 
 const METRICS = Object.freeze([
@@ -21,15 +22,6 @@ const METRICS = Object.freeze([
   ["actualCostPerSquareMeterIrr", "هزینه واقعی هر مترمربع"],
   ["forecastPerSquareMeterIrr", "پیش‌بینی هزینه هر مترمربع"],
 ]);
-
-const REPORT_WARNING_LABELS = Object.freeze({
-  UNIT_CONVERSION_MISSING: "تبدیل واحد لازم برای بخشی از محاسبات تعریف نشده است.",
-  PROGRESS_MISSING: "برای یکی از ردیف‌های برآورد، مقدار معتبر پیشرفت موجود نیست.",
-  QUANTITY_OVERRUN: "مقدار انجام‌شده یکی از ردیف‌ها از آخرین مقدار برآورد بیشتر است.",
-  CURRENT_PRICE_MISSING: "قیمت روز یکی از اقلام ثبت نشده و آن ردیف از محاسبات زنده کنار گذاشته شده است.",
-  GENERAL_COST_OVERRUN: "هزینه واقعی ثبت‌شده عمومی پروژه از آخرین برآورد هزینه‌های عمومی بیشتر است.",
-  GROSS_AREA_MISSING: "زیربنای کل پروژه ثبت نشده و شاخص‌های هر مترمربع قابل محاسبه نیستند.",
-});
 
 function renderMetrics(metrics) {
   const grid = element("section", "summary-grid report-metrics");
@@ -194,7 +186,7 @@ function renderReportWarnings(rows = [], report = {}) {
   const list = document.createElement("ul");
   warnings.forEach((warning) => {
     const item = document.createElement("li");
-    item.append(element("span", "", REPORT_WARNING_LABELS[warning.code] ?? warning.message ?? "هشداری برای محاسبات این گزارش ثبت شده است."));
+    item.append(element("span", "", reportWarningText(warning)));
     if (warning.estimateLineId) {
       const detail = element("a", "table-action", "مشاهده ردیف برآورد");
       detail.href = `#/financial-items?estimateLineId=${encodeURIComponent(warning.estimateLineId)}`;

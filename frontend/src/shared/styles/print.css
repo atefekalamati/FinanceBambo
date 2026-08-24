@@ -35,9 +35,20 @@
     background: #fff;
   }
 
-  #finance-module-root :is(section, article, div, table, tbody, thead, tr, th, td, dl, p, aside) {
+  /* Strip decorative fills — but not from the marks whose fill IS the data.
+     A bar chart printed without its bars is not a cheaper document, it is an
+     empty one, so the chart marks keep their colour and ask the browser to
+     actually put it on the page. */
+  #finance-module-root :is(section, article, div, table, tbody, thead, tr, th, td, dl, p, aside):not(.chart-mark) {
     background: none;
     box-shadow: none;
+  }
+
+  .chart-mark {
+    box-shadow: none;
+    filter: none;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   #finance-module-root :is(h1, h2, h3, h4, dt, dd, th, td, p, li, span, strong, small, bdi, caption) {
