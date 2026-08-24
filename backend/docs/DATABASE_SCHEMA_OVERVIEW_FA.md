@@ -67,20 +67,40 @@ report_snapshots
 
 ## ۳. تنظیمات مالی پروژه
 
+### راهنمای ستون «نقش»
+
+در جدول‌های زیر، ستون **نقش** می‌گوید هر ستون دیتابیس **برای چه ساخته شده**، جدا از اینکه
+چه چیزی در آن است. دلیلش یک بار اینجا نوشته شده تا در ۲۰۴ ردیف تکرار نشود:
+
+| نقش | یعنی | اگر نبود چه می‌شد |
+|---|---|---|
+| هویت | کلید اصلی ردیف | ردیف قابل ارجاع نبود |
+| Scope | مرز سازمان و پروژه | داده یک مستأجر در گزارش مستأجر دیگر دیده می‌شد |
+| پیوند | ارجاع به جدول مالی دیگر | رابطه بین برآورد، فاکتور و پیشرفت گم می‌شد |
+| یکپارچه‌سازی | شناسه یا نام متعلق به **سیستم میزبان** | Finance نمی‌توانست داده خودش را به زمان‌بندی و فایل میزبان وصل کند؛ این ستون‌ها را Finance نمی‌سازد، فقط نگه می‌دارد |
+| مبنای زمانی | تاریخی که تعیین می‌کند کدام نسخه معتبر است | گزارش تاریخ گذشته، قیمت و برآورد امروز را می‌دید |
+| داده مالی | عددی که مستقیم وارد محاسبه می‌شود | شاخصی قابل محاسبه نبود |
+| طبقه‌بندی | واژگان بسته و کنترل‌شده | مقدار آزاد وارد می‌شد و منطق شرطی بی‌صدا می‌شکست |
+| ممیزی | چه کسی، کِی، چرا | تغییر مالی بدون رد قابل پیگیری می‌ماند |
+| یکپارچگی | فقط برای جلوگیری از خرابی: تکرار، حذف، بازنویسی | ثبت دوباره یک فاکتور یا فایل تشخیص داده نمی‌شد |
+| تثبیت | وضعیت منجمدشده در لحظه ثبت یا صدور | گزارش قدیمی با تغییر قیمت یا کد امروز بازنویسی می‌شد |
+| توصیفی | متنی که انسان می‌خواند | ردیف برای کاربر قابل تشخیص نبود |
+
+
 ### finance_project_settings
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه نسخه تنظیمات |
-| organization_id | UUID | Scope سازمان |
-| project_id | Text | Scope پروژه |
-| gross_built_area | Numeric(18,4) | زیربنای ناخالص پروژه |
-| currency | Text | ارز ذخیره‌سازی؛ فقط `IRR` |
-| revision | Integer | شماره Revision مثبت |
-| effective_from | Date | تاریخ اثر نسخه |
-| reason | Text | دلیل ثبت یا اصلاح |
-| created_by | UUID | کاربر ثبت‌کننده |
-| created_at | Timestamptz | زمان ثبت |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه نسخه تنظیمات |
+| organization_id | UUID | Scope | Scope سازمان |
+| project_id | Text | Scope | Scope پروژه |
+| gross_built_area | Numeric(18,4) | داده مالی | زیربنای ناخالص پروژه |
+| currency | Text | طبقه‌بندی | ارز ذخیره‌سازی؛ فقط `IRR` |
+| revision | Integer | یکپارچگی | شماره Revision مثبت |
+| effective_from | Date | مبنای زمانی | تاریخ اثر نسخه |
+| reason | Text | ممیزی | دلیل ثبت یا اصلاح |
+| created_by | UUID | ممیزی | کاربر ثبت‌کننده |
+| created_at | Timestamptz | ممیزی | زمان ثبت |
 
 ترکیب `organization_id + project_id + revision` یکتا است. نسخه‌های تنظیمات با Trigger در برابر UPDATE و DELETE محافظت می‌شوند.
 
@@ -88,18 +108,18 @@ report_snapshots
 
 ### finance_resources
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه قلم مالی |
-| organization_id / project_id | UUID / Text | Scope سازمان و پروژه |
-| resource_type | Text | `material`، `labor`، `equipment` یا `general_cost` |
-| code | Text | کد یکتای قلم در پروژه |
-| title | Text | عنوان قلم |
-| base_unit | Text, Nullable | واحد پایه؛ برای هزینه عمومی اختیاری |
-| dimension | Text, Nullable | بُعد فیزیکی؛ برای هزینه عمومی اختیاری |
-| external_resource_id | Text, Nullable | شناسه قلم در سیستم میزبان |
-| created_by / created_at | UUID / Timestamptz | ثبت‌کننده و زمان ثبت |
-| deleted_at / deleted_by | Timestamptz / UUID | حذف منطقی |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه قلم مالی |
+| organization_id / project_id | UUID / Text | Scope | Scope سازمان و پروژه |
+| resource_type | Text | طبقه‌بندی | `material`، `labor`، `equipment` یا `general_cost` |
+| code | Text | توصیفی | کد یکتای قلم در پروژه |
+| title | Text | توصیفی | عنوان قلم |
+| base_unit | Text, Nullable | طبقه‌بندی | واحد پایه؛ برای هزینه عمومی اختیاری |
+| dimension | Text, Nullable | طبقه‌بندی | بُعد فیزیکی؛ برای هزینه عمومی اختیاری |
+| external_resource_id | Text, Nullable | یکپارچه‌سازی | شناسه قلم در سیستم میزبان |
+| created_by / created_at | UUID / Timestamptz | ممیزی | ثبت‌کننده و زمان ثبت |
+| deleted_at / deleted_by | Timestamptz / UUID | یکپارچگی | حذف منطقی |
 
 کد قلم در Scope پروژه یکتا است. برای اقلام غیر از `general_cost`، واحد پایه و بُعد الزامی هستند.
 
@@ -107,34 +127,34 @@ report_snapshots
 
 ### estimate_lines
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه خط برآورد |
-| organization_id / project_id | UUID / Text | Scope سازمان و پروژه |
-| resource_id | UUID, FK | قلم مالی؛ FK ترکیبی به `finance_resources(organization_id, project_id, id)` |
-| activity_external_id | Text, Nullable | شناسه فعالیت در سیستم زمان‌بندی میزبان. بدون فرمت اجباری؛ قرارداد پیشنهادی `ACT-{TaskUID}` است |
-| assignment_external_id | Text, Nullable | شناسه تخصیص در سیستم زمان‌بندی. ادعای مشخص‌تر است و در تطبیق پیشرفت بر `activity_external_id` مقدم می‌شود |
-| original_quantity | Numeric(18,4), Nullable | مقدار اولیه متره. برای `general_cost` خالی است، چون هزینه عمومی مقدار فیزیکی ندارد |
-| original_unit_price_irr | Numeric(18,0), Nullable | قیمت واحد اولیه به ریال صحیح. برای `general_cost` همین ستون **مبلغ مقطوع** را نگه می‌دارد، نه قیمت واحد |
-| source | Text | `progress_feed`، `excel_import` یا `manual_entry`؛ با CHECK محدود شده |
-| created_by / created_at | UUID / Timestamptz | ثبت‌کننده و زمان ثبت |
-| deleted_at / deleted_by | Timestamptz / UUID, Nullable | حذف منطقی؛ CHECK تضمین می‌کند هر دو با هم پر یا هر دو خالی باشند |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه خط برآورد |
+| organization_id / project_id | UUID / Text | Scope | Scope سازمان و پروژه |
+| resource_id | UUID, FK | پیوند | قلم مالی؛ FK ترکیبی به `finance_resources(organization_id, project_id, id)` |
+| activity_external_id | Text, Nullable | یکپارچه‌سازی | شناسه فعالیت در سیستم زمان‌بندی میزبان. بدون فرمت اجباری؛ قرارداد پیشنهادی `ACT-{TaskUID}` است |
+| assignment_external_id | Text, Nullable | یکپارچه‌سازی | شناسه تخصیص در سیستم زمان‌بندی. ادعای مشخص‌تر است و در تطبیق پیشرفت بر `activity_external_id` مقدم می‌شود |
+| original_quantity | Numeric(18,4), Nullable | داده مالی | مقدار اولیه متره. برای `general_cost` خالی است، چون هزینه عمومی مقدار فیزیکی ندارد |
+| original_unit_price_irr | Numeric(18,0), Nullable | داده مالی | قیمت واحد اولیه به ریال صحیح. برای `general_cost` همین ستون **مبلغ مقطوع** را نگه می‌دارد، نه قیمت واحد |
+| source | Text | طبقه‌بندی | `progress_feed`، `excel_import` یا `manual_entry`؛ با CHECK محدود شده |
+| created_by / created_at | UUID / Timestamptz | ممیزی | ثبت‌کننده و زمان ثبت |
+| deleted_at / deleted_by | Timestamptz / UUID, Nullable | یکپارچگی | حذف منطقی؛ CHECK تضمین می‌کند هر دو با هم پر یا هر دو خالی باشند |
 
 - `id` علاوه بر PK، در ترکیب `organization_id + project_id + id` هم یکتاست تا FKهای ترکیبی بتوانند به آن ارجاع دهند و مرز چندمستأجری در سطح دیتابیس بسته بماند.
 - فیلدهای Original با Trigger قابل بازنویسی نیستند.
 
 ### estimate_revisions
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه Revision |
-| organization_id / project_id | UUID / Text | Scope |
-| estimate_line_id | UUID, FK | خط برآوردی که اصلاح شده |
-| revision | Integer | شماره Revision؛ CHECK آن را مثبت نگه می‌دارد |
-| previous_quantity | Numeric(18,4), Nullable | مقدار پیش از اصلاح |
-| new_quantity | Numeric(18,4), Nullable | مقدار پس از اصلاح؛ مقدار جاری خط از آخرین Revision خوانده می‌شود، نه از `estimate_lines` |
-| reason | Text | دلیل اصلاح؛ CHECK رشته خالی یا فقط‌فاصله را رد می‌کند |
-| created_by / created_at | UUID / Timestamptz | ثبت‌کننده و زمان ثبت |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه Revision |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| estimate_line_id | UUID, FK | پیوند | خط برآوردی که اصلاح شده |
+| revision | Integer | یکپارچگی | شماره Revision؛ CHECK آن را مثبت نگه می‌دارد |
+| previous_quantity | Numeric(18,4), Nullable | داده مالی | مقدار پیش از اصلاح |
+| new_quantity | Numeric(18,4), Nullable | داده مالی | مقدار پس از اصلاح؛ مقدار جاری خط از آخرین Revision خوانده می‌شود، نه از `estimate_lines` |
+| reason | Text | ممیزی | دلیل اصلاح؛ CHECK رشته خالی یا فقط‌فاصله را رد می‌کند |
+| created_by / created_at | UUID / Timestamptz | ممیزی | ثبت‌کننده و زمان ثبت |
 
 هر Revision یک رکورد Append-only است و ترکیب خط برآورد و شماره Revision یکتا است.
 
@@ -142,17 +162,17 @@ report_snapshots
 
 ### price_versions
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه نسخه قیمت |
-| organization_id / project_id | UUID / Text | Scope |
-| resource_id | UUID, FK | قلم مالی |
-| scope_kind | Text | `organization` یا `project` |
-| version | Integer | شماره نسخه قیمت در Scope |
-| unit_price_irr | Numeric(18,0) | قیمت واحد به ریال صحیح |
-| effective_from | Date | تاریخ اثر |
-| reason | Text | دلیل ثبت قیمت |
-| created_by / created_at | UUID / Timestamptz | ثبت‌کننده و زمان ثبت |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه نسخه قیمت |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| resource_id | UUID, FK | پیوند | قلم مالی |
+| scope_kind | Text | طبقه‌بندی | `organization` یا `project` |
+| version | Integer | یکپارچگی | شماره نسخه قیمت در Scope |
+| unit_price_irr | Numeric(18,0) | داده مالی | قیمت واحد به ریال صحیح |
+| effective_from | Date | مبنای زمانی | تاریخ اثر |
+| reason | Text | ممیزی | دلیل ثبت قیمت |
+| created_by / created_at | UUID / Timestamptz | ممیزی | ثبت‌کننده و زمان ثبت |
 
 تاریخچه قیمت Strict Append-only است و Trigger از UPDATE یا DELETE جلوگیری می‌کند. قیمت جاری از نسخه معتبر سازمانی یا Override پروژه Resolve می‌شود.
 
@@ -160,19 +180,19 @@ report_snapshots
 
 ### unit_conversions
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه نسخه تبدیل |
-| organization_id / project_id | UUID / Text | Scope |
-| scope_kind | Text | `organization` یا `project`؛ نسخه پروژه بر نسخه سازمانی مقدم است |
-| version | Integer | شماره نسخه در همان Scope؛ CHECK مثبت |
-| source_unit | Text | واحد مبدأ، مثلاً `box` |
-| target_unit | Text | واحد مقصد، مثلاً `each` |
-| dimension | Text | بُعد فیزیکی؛ تبدیل فقط درون یک بُعد معنا دارد |
-| factor | Numeric(24,8) | ضریب تبدیل؛ CHECK آن را اکیداً مثبت نگه می‌دارد. دقت ۸ رقم اعشار عمدی است تا ضرب‌های زنجیره‌ای گرد نشوند |
-| effective_from | Date | تاریخ اثر |
-| reason | Text | دلیل ثبت؛ CHECK رشته خالی را رد می‌کند |
-| created_by / created_at | UUID / Timestamptz | ثبت‌کننده و زمان ثبت |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه نسخه تبدیل |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| scope_kind | Text | طبقه‌بندی | `organization` یا `project`؛ نسخه پروژه بر نسخه سازمانی مقدم است |
+| version | Integer | یکپارچگی | شماره نسخه در همان Scope؛ CHECK مثبت |
+| source_unit | Text | طبقه‌بندی | واحد مبدأ، مثلاً `box` |
+| target_unit | Text | طبقه‌بندی | واحد مقصد، مثلاً `each` |
+| dimension | Text | طبقه‌بندی | بُعد فیزیکی؛ تبدیل فقط درون یک بُعد معنا دارد |
+| factor | Numeric(24,8) | داده مالی | ضریب تبدیل؛ CHECK آن را اکیداً مثبت نگه می‌دارد. دقت ۸ رقم اعشار عمدی است تا ضرب‌های زنجیره‌ای گرد نشوند |
+| effective_from | Date | مبنای زمانی | تاریخ اثر |
+| reason | Text | ممیزی | دلیل ثبت؛ CHECK رشته خالی را رد می‌کند |
+| created_by / created_at | UUID / Timestamptz | ممیزی | ثبت‌کننده و زمان ثبت |
 
 - تبدیل مبدأ و مقصد یکسان با CHECK ممنوع است.
 - ترکیب `organization_id + project_id + scope_kind + source_unit + target_unit + dimension + version` یکتاست.
@@ -185,19 +205,19 @@ report_snapshots
 
 این جدول فقط مرجع Snapshot پیشرفت سیستم میزبان را نگهداری می‌کند و داده میزبان را بازنویسی نمی‌کند.
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه ردیف مرجع در سمت Finance |
-| organization_id / project_id | UUID / Text | Scope |
-| progress_snapshot_id | UUID | شناسه Snapshot در سیستم میزبان؛ در Scope پروژه یکتاست. این همان شناسه‌ای است که API با آن Feed را از میزبان می‌خواهد |
-| source_file_version_id | UUID | نسخه فایل زمان‌بندی مبدأ در سیستم میزبان |
-| source_file_name_safe | Text | نام فایل مبدأ، پاک‌سازی‌شده برای نمایش |
-| reporting_date | Date | تاریخ گزارش‌گیری که این Snapshot به آن تعلق دارد |
-| snapshot_status | Text | ⚠️ هیچ CHECK ندارد و متن آزاد است، ولی DTO مقدار `ready` یا `superseded` اعلام می‌کند. اگر Production مقدار سومی داشته باشد پاسخ API با خطای اعتبارسنجی می‌شکند — بند ۴ سند `PRODUCTION_MSP_AUDIT_FA.md` |
-| imported_by | UUID | کاربر واردکننده |
-| imported_at | Timestamptz | زمان ورود Snapshot در سیستم میزبان |
-| created_at | Timestamptz | زمان ثبت ردیف مرجع در Finance |
-| source_type | Text, Nullable | ابزار مبدأ زمان‌بندی: `microsoft_project`، `primavera`، `manual` یا `other`؛ با CHECK محدود شده که `NULL` را هم می‌پذیرد. در Migration 0005 اضافه شد، **بدون DEFAULT** — ردیف‌های پیش از آن `NULL` می‌مانند، و `NULL` یعنی «ثبت نشده»، نه «نامعلوم است پس حدس بزن». پسوند فایل شاهدِ ابزار نیست |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه ردیف مرجع در سمت Finance |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| progress_snapshot_id | UUID | یکپارچه‌سازی | شناسه Snapshot در سیستم میزبان؛ در Scope پروژه یکتاست. این همان شناسه‌ای است که API با آن Feed را از میزبان می‌خواهد |
+| source_file_version_id | UUID | یکپارچه‌سازی | نسخه فایل زمان‌بندی مبدأ در سیستم میزبان |
+| source_file_name_safe | Text | یکپارچه‌سازی | نام فایل مبدأ، پاک‌سازی‌شده برای نمایش |
+| reporting_date | Date | مبنای زمانی | تاریخ گزارش‌گیری که این Snapshot به آن تعلق دارد |
+| snapshot_status | Text | طبقه‌بندی | ⚠️ هیچ CHECK ندارد و متن آزاد است، ولی DTO مقدار `ready` یا `superseded` اعلام می‌کند. اگر Production مقدار سومی داشته باشد پاسخ API با خطای اعتبارسنجی می‌شکند — بند ۴ سند `PRODUCTION_MSP_AUDIT_FA.md` |
+| imported_by | UUID | ممیزی | کاربر واردکننده |
+| imported_at | Timestamptz | ممیزی | زمان ورود Snapshot در سیستم میزبان |
+| created_at | Timestamptz | ممیزی | زمان ثبت ردیف مرجع در Finance |
+| source_type | Text, Nullable | یکپارچه‌سازی | ابزار مبدأ زمان‌بندی: `microsoft_project`، `primavera`، `manual` یا `other`؛ با CHECK محدود شده که `NULL` را هم می‌پذیرد. در Migration 0005 اضافه شد، **بدون DEFAULT** — ردیف‌های پیش از آن `NULL` می‌مانند، و `NULL` یعنی «ثبت نشده»، نه «نامعلوم است پس حدس بزن». پسوند فایل شاهدِ ابزار نیست |
 
 > **نسخه‌بندی Snapshot ستون ندارد و لازم هم ندارد.** جدول با Trigger فقط-افزودنی است، پس ترتیب ردیف‌ها خودش تاریخچه است: `version` و `isLatest` در پاسخ API از روی جایگاه ردیف در تاریخچه همان پروژه محاسبه می‌شوند. نسخه ۱ همیشه قدیمی‌ترین می‌ماند، چون هیچ ورود بعدی نمی‌تواند خودش را جلوتر درج کند.
 
@@ -205,16 +225,16 @@ report_snapshots
 
 ### progress_overrides
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه Override |
-| organization_id / project_id | UUID / Text | Scope |
-| estimate_line_id | UUID, FK | خط برآوردی که مقدار اجرایش اصلاح شده |
-| progress_snapshot_ref_id | UUID, FK | Snapshot پیشرفتی که Override نسبت به آن ثبت شده |
-| computed_value | Numeric(18,4) | مقداری که سیستم خودش محاسبه کرده بود. **سمت سرور محاسبه می‌شود** و از Client پذیرفته نمی‌شود، وگرنه سابقه اصلاح قابل اتکا نبود |
-| override_value | Numeric(18,4) | مقداری که کاربر جایگزین کرده |
-| reason | Text | دلیل اصلاح؛ CHECK رشته خالی یا فقط‌فاصله را رد می‌کند |
-| created_by / created_at | UUID / Timestamptz | ثبت‌کننده و زمان ثبت |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه Override |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| estimate_line_id | UUID, FK | پیوند | خط برآوردی که مقدار اجرایش اصلاح شده |
+| progress_snapshot_ref_id | UUID, FK | پیوند | Snapshot پیشرفتی که Override نسبت به آن ثبت شده |
+| computed_value | Numeric(18,4) | داده مالی | مقداری که سیستم خودش محاسبه کرده بود. **سمت سرور محاسبه می‌شود** و از Client پذیرفته نمی‌شود، وگرنه سابقه اصلاح قابل اتکا نبود |
+| override_value | Numeric(18,4) | داده مالی | مقداری که کاربر جایگزین کرده |
+| reason | Text | ممیزی | دلیل اصلاح؛ CHECK رشته خالی یا فقط‌فاصله را رد می‌کند |
+| created_by / created_at | UUID / Timestamptz | ممیزی | ثبت‌کننده و زمان ثبت |
 
 Override پیشرفت همراه مقدار محاسبه‌شده، مقدار جایگزین، دلیل و actor به‌صورت Append-only ثبت می‌شود. نگهداری هم‌زمان مقدار محاسبه‌شده و مقدار جایگزین عمدی است: بدون آن معلوم نمی‌شد اصلاح چقدر بوده.
 
@@ -222,31 +242,31 @@ Override پیشرفت همراه مقدار محاسبه‌شده، مقدار �
 
 ### invoices
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه فاکتور |
-| organization_id / project_id | UUID / Text | Scope |
-| invoice_number | Text, Nullable | شماره فاکتور فروشنده؛ اختیاری، چون هر رسیدی شماره ندارد |
-| invoice_date | Date | تاریخ فاکتور. گزارش دوره‌ای بر همین ستون گروه‌بندی می‌شود، نه بر `created_at` |
-| vendor_name | Text | نام فروشنده |
-| description | Text, Nullable | شرح آزاد |
-| source | Text | `manual`، `image`، `voice`، `corrective` یا `reversal`؛ با CHECK محدود شده |
-| status | Text | `draft`، `awaitingConfirmation`، `confirmed`، `voided` یا `corrected`؛ با CHECK محدود شده |
-| discount_irr | Numeric(18,0), default 0 | تخفیف کل فاکتور؛ CHECK نامنفی |
-| tax_irr | Numeric(18,0), default 0 | مالیات کل؛ CHECK نامنفی |
-| shipping_irr | Numeric(18,0), default 0 | حمل کل؛ CHECK نامنفی |
-| other_costs_irr | Numeric(18,0), default 0 | سایر هزینه‌های کل؛ CHECK نامنفی |
-| final_amount_irr | Numeric(18,0), Nullable | مبلغ نهایی؛ تا پیش از تأیید خالی است |
-| financial_effect_sign | Smallint, default 1 | `1` برای فاکتور عادی و `-1` برای برگشتی؛ CHECK فقط همین دو مقدار را می‌پذیرد. تمام جمع‌های مالی در همین علامت ضرب می‌شوند، پس برگشت با درج ثبت می‌شود نه با حذف |
-| idempotency_key | Text, Nullable | کلید Idempotency ثبت؛ در Scope پروژه یکتاست |
-| source_file_sha256 | Text, Nullable | چکیده SHA-256 فایل مبدأ، برای تشخیص بارگذاری تکراری. `NULL` یعنی فاکتور از فایلی نیامده — مثلاً ورود دستی |
-| original_invoice_id | UUID, FK, Nullable | فاکتور اصلی، برای برگشتی و اصلاحی؛ FK به همین جدول |
-| version | Integer, default 1 | نسخه فاکتور؛ CHECK مثبت |
-| submitted_by | UUID | ثبت‌کننده |
-| confirmed_by | UUID, Nullable | تأییدکننده |
-| confirmed_at | Timestamptz, Nullable | زمان تأیید |
-| created_at / updated_at | Timestamptz | زمان ثبت و آخرین تغییر |
-| confirmation_idempotency_key | Text, Nullable | کلید Idempotency تأیید؛ با Index جزئی یکتا محافظت می‌شود |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه فاکتور |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| invoice_number | Text, Nullable | توصیفی | شماره فاکتور فروشنده؛ اختیاری، چون هر رسیدی شماره ندارد |
+| invoice_date | Date | مبنای زمانی | تاریخ فاکتور. گزارش دوره‌ای بر همین ستون گروه‌بندی می‌شود، نه بر `created_at` |
+| vendor_name | Text | توصیفی | نام فروشنده |
+| description | Text, Nullable | توصیفی | شرح آزاد |
+| source | Text | طبقه‌بندی | `manual`، `image`، `voice`، `corrective` یا `reversal`؛ با CHECK محدود شده |
+| status | Text | طبقه‌بندی | `draft`، `awaitingConfirmation`، `confirmed`، `voided` یا `corrected`؛ با CHECK محدود شده |
+| discount_irr | Numeric(18,0), default 0 | داده مالی | تخفیف کل فاکتور؛ CHECK نامنفی |
+| tax_irr | Numeric(18,0), default 0 | داده مالی | مالیات کل؛ CHECK نامنفی |
+| shipping_irr | Numeric(18,0), default 0 | داده مالی | حمل کل؛ CHECK نامنفی |
+| other_costs_irr | Numeric(18,0), default 0 | داده مالی | سایر هزینه‌های کل؛ CHECK نامنفی |
+| final_amount_irr | Numeric(18,0), Nullable | داده مالی | مبلغ نهایی؛ تا پیش از تأیید خالی است |
+| financial_effect_sign | Smallint, default 1 | داده مالی | `1` برای فاکتور عادی و `-1` برای برگشتی؛ CHECK فقط همین دو مقدار را می‌پذیرد. تمام جمع‌های مالی در همین علامت ضرب می‌شوند، پس برگشت با درج ثبت می‌شود نه با حذف |
+| idempotency_key | Text, Nullable | یکپارچگی | کلید Idempotency ثبت؛ در Scope پروژه یکتاست |
+| source_file_sha256 | Text, Nullable | یکپارچگی | چکیده SHA-256 فایل مبدأ، برای تشخیص بارگذاری تکراری. `NULL` یعنی فاکتور از فایلی نیامده — مثلاً ورود دستی |
+| original_invoice_id | UUID, FK, Nullable | پیوند | فاکتور اصلی، برای برگشتی و اصلاحی؛ FK به همین جدول |
+| version | Integer, default 1 | یکپارچگی | نسخه فاکتور؛ CHECK مثبت |
+| submitted_by | UUID | ممیزی | ثبت‌کننده |
+| confirmed_by | UUID, Nullable | ممیزی | تأییدکننده |
+| confirmed_at | Timestamptz, Nullable | ممیزی | زمان تأیید |
+| created_at / updated_at | Timestamptz | ممیزی | زمان ثبت و آخرین تغییر |
+| confirmation_idempotency_key | Text, Nullable | یکپارچگی | کلید Idempotency تأیید؛ با Index جزئی یکتا محافظت می‌شود |
 
 > یک CHECK ترکیبی تضمین می‌کند فاکتور `confirmed` حتماً `confirmed_by` و `confirmed_at` دارد: وضعیت تأییدشده بدون رد ممیزی ممکن نیست.
 
@@ -261,25 +281,25 @@ Override پیشرفت همراه مقدار محاسبه‌شده، مقدار �
 
 ### invoice_lines
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه خط فاکتور |
-| organization_id / project_id | UUID / Text | Scope |
-| invoice_id | UUID, FK | فاکتور دربردارنده |
-| estimate_line_id | UUID, FK, Nullable | خط برآورد متناظر. خالی بودنش مجاز است: خرید بدون خط برآورد مشخص، در سطح قلم مالی تجمیع می‌شود |
-| resource_id | UUID, FK | قلم مالی خریداری‌شده |
-| quantity | Numeric(18,4), Nullable | مقدار خریداری‌شده؛ برای هزینه عمومی خالی است |
-| unit | Text, Nullable | واحد خرید. اگر با `base_unit` قلم فرق کند، تبدیل واحد لازم می‌شود |
-| unit_price_snapshot_irr | Numeric(18,0), Nullable | قیمت واحد در لحظه ثبت. Snapshot است تا تغییر بعدی قیمت، فاکتور گذشته را بازنویسی نکند |
-| raw_amount_irr | Numeric(18,0) | مبلغ خط پیش از سرشکن‌کردن تعدیلات |
-| allocated_discount_irr | Numeric(18,0), default 0 | سهم این خط از تخفیف کل فاکتور |
-| allocated_tax_irr | Numeric(18,0), default 0 | سهم این خط از مالیات |
-| allocated_shipping_irr | Numeric(18,0), default 0 | سهم این خط از حمل |
-| allocated_other_costs_irr | Numeric(18,0), default 0 | سهم این خط از سایر هزینه‌ها |
-| final_line_amount_irr | Numeric(18,0) | مبلغ نهایی خط پس از تعدیلات. **تمام شاخص‌های هزینه واقعی از همین ستون جمع می‌شوند** |
-| price_version_id | UUID, FK, Nullable | نسخه قیمتی که Snapshot از آن گرفته شده |
-| description | Text, Nullable | شرح خط |
-| created_at | Timestamptz | زمان ثبت |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه خط فاکتور |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| invoice_id | UUID, FK | پیوند | فاکتور دربردارنده |
+| estimate_line_id | UUID, FK, Nullable | پیوند | خط برآورد متناظر. خالی بودنش مجاز است: خرید بدون خط برآورد مشخص، در سطح قلم مالی تجمیع می‌شود |
+| resource_id | UUID, FK | پیوند | قلم مالی خریداری‌شده |
+| quantity | Numeric(18,4), Nullable | داده مالی | مقدار خریداری‌شده؛ برای هزینه عمومی خالی است |
+| unit | Text, Nullable | طبقه‌بندی | واحد خرید. اگر با `base_unit` قلم فرق کند، تبدیل واحد لازم می‌شود |
+| unit_price_snapshot_irr | Numeric(18,0), Nullable | تثبیت | قیمت واحد در لحظه ثبت. Snapshot است تا تغییر بعدی قیمت، فاکتور گذشته را بازنویسی نکند |
+| raw_amount_irr | Numeric(18,0) | داده مالی | مبلغ خط پیش از سرشکن‌کردن تعدیلات |
+| allocated_discount_irr | Numeric(18,0), default 0 | داده مالی | سهم این خط از تخفیف کل فاکتور |
+| allocated_tax_irr | Numeric(18,0), default 0 | داده مالی | سهم این خط از مالیات |
+| allocated_shipping_irr | Numeric(18,0), default 0 | داده مالی | سهم این خط از حمل |
+| allocated_other_costs_irr | Numeric(18,0), default 0 | داده مالی | سهم این خط از سایر هزینه‌ها |
+| final_line_amount_irr | Numeric(18,0) | داده مالی | مبلغ نهایی خط پس از تعدیلات. **تمام شاخص‌های هزینه واقعی از همین ستون جمع می‌شوند** |
+| price_version_id | UUID, FK, Nullable | پیوند | نسخه قیمتی که Snapshot از آن گرفته شده |
+| description | Text, Nullable | توصیفی | شرح خط |
+| created_at | Timestamptz | ممیزی | زمان ثبت |
 
 مبلغ خط، Snapshot قیمت و سهم تعدیلات در زمان ثبت نگهداری می‌شوند. هزینه عمومی می‌تواند بدون مقدار فیزیکی و با مبلغ مستقیم ثبت شود.
 
@@ -293,21 +313,21 @@ Hash همیشه **سمت سرور** از بایت‌های دریافتی محا
 
 ### finance_attachments
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه فایل |
-| organization_id / project_id | UUID / Text | Scope |
-| invoice_id | UUID, FK, Nullable | فاکتور مرتبط. خالی بودنش مجاز است، چون تصویر می‌تواند پیش از ساخته‌شدن فاکتور بارگذاری شود |
-| logical_type | Text | `invoice_image` یا `invoice_voice`؛ با CHECK محدود شده |
-| original_name_safe | Text | نام اصلی فایل، پاک‌سازی‌شده برای نمایش |
-| stored_name | Text | نامی که فایل با آن در Storage ذخیره شده |
-| mime_type | Text | نوع MIME تأییدشده |
-| size_bytes | Bigint | اندازه فایل؛ CHECK آن را اکیداً مثبت نگه می‌دارد |
-| sha256 | Text | چکیده محتوا؛ CHECK طول ۶۴ کاراکتر را الزام می‌کند. در Scope پروژه **یکتا** است و همین Unique است که بارگذاری تکراری را تشخیص می‌دهد |
-| storage_key | Text | کلید فایل در Storage میزبان |
-| processing_status | Text | `uploaded`، `processing`، `ready` یا `failed`؛ با CHECK محدود شده |
-| uploaded_by / uploaded_at | UUID / Timestamptz | بارگذارنده و زمان بارگذاری |
-| deleted_at / deleted_by | Timestamptz / UUID, Nullable | حذف منطقی؛ CHECK تضمین می‌کند هر دو با هم پر یا هر دو خالی باشند |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه فایل |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| invoice_id | UUID, FK, Nullable | پیوند | فاکتور مرتبط. خالی بودنش مجاز است، چون تصویر می‌تواند پیش از ساخته‌شدن فاکتور بارگذاری شود |
+| logical_type | Text | طبقه‌بندی | `invoice_image` یا `invoice_voice`؛ با CHECK محدود شده |
+| original_name_safe | Text | توصیفی | نام اصلی فایل، پاک‌سازی‌شده برای نمایش |
+| stored_name | Text | یکپارچه‌سازی | نامی که فایل با آن در Storage ذخیره شده |
+| mime_type | Text | توصیفی | نوع MIME تأییدشده |
+| size_bytes | Bigint | یکپارچگی | اندازه فایل؛ CHECK آن را اکیداً مثبت نگه می‌دارد |
+| sha256 | Text | یکپارچگی | چکیده محتوا؛ CHECK طول ۶۴ کاراکتر را الزام می‌کند. در Scope پروژه **یکتا** است و همین Unique است که بارگذاری تکراری را تشخیص می‌دهد |
+| storage_key | Text | یکپارچه‌سازی | کلید فایل در Storage میزبان |
+| processing_status | Text | طبقه‌بندی | `uploaded`، `processing`، `ready` یا `failed`؛ با CHECK محدود شده |
+| uploaded_by / uploaded_at | UUID / Timestamptz | ممیزی | بارگذارنده و زمان بارگذاری |
+| deleted_at / deleted_by | Timestamptz / UUID, Nullable | یکپارچگی | حذف منطقی؛ CHECK تضمین می‌کند هر دو با هم پر یا هر دو خالی باشند |
 
 قواعد فایل:
 
@@ -323,21 +343,21 @@ Hash همیشه **سمت سرور** از بایت‌های دریافتی محا
 
 ### extraction_drafts
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه Draft استخراج |
-| organization_id / project_id | UUID / Text | Scope |
-| attachment_id | UUID, FK | فایلی که از آن استخراج شده |
-| version | Integer | نسخه استخراج برای همان فایل؛ CHECK مثبت. ترکیب فایل و نسخه یکتاست، پس استخراج دوباره نسخه قبلی را پاک نمی‌کند |
-| review_status | Text | `awaitingReview`، `accepted` یا `rejected`؛ با CHECK محدود شده |
-| provider_adapter | Text | نام Adapter استخراج‌کننده؛ ثبت می‌شود تا معلوم باشد کدام سرویس چه چیزی گفته |
-| extracted_fields | JSONB | آنچه Adapter خوانده است |
-| confirmed_fields | JSONB, Nullable | آنچه انسان تأیید یا اصلاح کرده؛ تا پیش از بازبینی خالی است |
-| financial_effect_irr | Numeric(18,0), default 0 | **CHECK آن را به صفر قفل کرده است.** یک Draft هرگز اثر مالی ندارد؛ عدد استخراج‌شده تا وقتی انسان فاکتور نسازد در هیچ شاخصی دیده نمی‌شود |
-| submitted_by | UUID | ثبت‌کننده |
-| confirmed_by | UUID, Nullable | تأییدکننده |
-| confirmed_at | Timestamptz, Nullable | زمان تأیید |
-| created_at / updated_at | Timestamptz | زمان ثبت و آخرین تغییر |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه Draft استخراج |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| attachment_id | UUID, FK | پیوند | فایلی که از آن استخراج شده |
+| version | Integer | یکپارچگی | نسخه استخراج برای همان فایل؛ CHECK مثبت. ترکیب فایل و نسخه یکتاست، پس استخراج دوباره نسخه قبلی را پاک نمی‌کند |
+| review_status | Text | طبقه‌بندی | `awaitingReview`، `accepted` یا `rejected`؛ با CHECK محدود شده |
+| provider_adapter | Text | یکپارچه‌سازی | نام Adapter استخراج‌کننده؛ ثبت می‌شود تا معلوم باشد کدام سرویس چه چیزی گفته |
+| extracted_fields | JSONB | تثبیت | آنچه Adapter خوانده است |
+| confirmed_fields | JSONB, Nullable | تثبیت | آنچه انسان تأیید یا اصلاح کرده؛ تا پیش از بازبینی خالی است |
+| financial_effect_irr | Numeric(18,0), default 0 | داده مالی | **CHECK آن را به صفر قفل کرده است.** یک Draft هرگز اثر مالی ندارد؛ عدد استخراج‌شده تا وقتی انسان فاکتور نسازد در هیچ شاخصی دیده نمی‌شود |
+| submitted_by | UUID | ممیزی | ثبت‌کننده |
+| confirmed_by | UUID, Nullable | ممیزی | تأییدکننده |
+| confirmed_at | Timestamptz, Nullable | ممیزی | زمان تأیید |
+| created_at / updated_at | Timestamptz | ممیزی | زمان ثبت و آخرین تغییر |
 
 - `extracted_fields` و `confirmed_fields` به‌صورت JSONB ذخیره می‌شوند.
 - Review status شامل `awaitingReview`، `accepted` و `rejected` است.
@@ -348,21 +368,21 @@ Hash همیشه **سمت سرور** از بایت‌های دریافتی محا
 
 ### report_snapshots
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه گزارش صادرشده |
-| organization_id / project_id | UUID / Text | Scope |
-| reporting_date | Date | تاریخ گزارش‌گیری |
-| progress_snapshot_ref_id | UUID, FK | Snapshot پیشرفتی که گزارش بر آن استوار است |
-| finance_settings_id | UUID, FK | نسخه تنظیمات مالی در لحظه صدور |
-| resource_version_ids | JSONB | شناسه نسخه اقلام مالی Pin‌شده |
-| estimate_revision_ids | JSONB | شناسه Revisionهای برآورد Pin‌شده |
-| price_version_ids | JSONB | شناسه نسخه‌های قیمت Pin‌شده |
-| unit_conversion_ids | JSONB | شناسه نسخه‌های تبدیل واحد Pin‌شده |
-| invoice_ids | JSONB | شناسه فاکتورهای لحاظ‌شده |
-| calculated_metrics | JSONB | شاخص‌های محاسبه‌شده، به‌صورت رشته‌های عددی دقیق |
-| snapshot_payload | JSONB | **کل گزارش در لحظه صدور**، شامل ورودی‌ها، Breakdown، انحرافات و هشدارها. خروجی CSV و XLSX از همین Payload خوانده می‌شود، نه از محاسبه دوباره — به همین دلیل گزارش قدیمی هرگز با تغییر کد عوض نمی‌شود |
-| issued_by / issued_at | UUID / Timestamptz | صادرکننده و زمان صدور |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه گزارش صادرشده |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| reporting_date | Date | مبنای زمانی | تاریخ گزارش‌گیری |
+| progress_snapshot_ref_id | UUID, FK | پیوند | Snapshot پیشرفتی که گزارش بر آن استوار است |
+| finance_settings_id | UUID, FK | پیوند | نسخه تنظیمات مالی در لحظه صدور |
+| resource_version_ids | JSONB | تثبیت | شناسه نسخه اقلام مالی Pin‌شده |
+| estimate_revision_ids | JSONB | تثبیت | شناسه Revisionهای برآورد Pin‌شده |
+| price_version_ids | JSONB | تثبیت | شناسه نسخه‌های قیمت Pin‌شده |
+| unit_conversion_ids | JSONB | تثبیت | شناسه نسخه‌های تبدیل واحد Pin‌شده |
+| invoice_ids | JSONB | تثبیت | شناسه فاکتورهای لحاظ‌شده |
+| calculated_metrics | JSONB | تثبیت | شاخص‌های محاسبه‌شده، به‌صورت رشته‌های عددی دقیق |
+| snapshot_payload | JSONB | تثبیت | **کل گزارش در لحظه صدور**، شامل ورودی‌ها، Breakdown، انحرافات و هشدارها. خروجی CSV و XLSX از همین Payload خوانده می‌شود، نه از محاسبه دوباره — به همین دلیل گزارش قدیمی هرگز با تغییر کد عوض نمی‌شود |
+| issued_by / issued_at | UUID / Timestamptz | ممیزی | صادرکننده و زمان صدور |
 
 > Pin‌کردن شناسه نسخه‌ها در کنار Payload، دو کار متفاوت می‌کند: Payload می‌گوید گزارش **چه چیزی نشان داد**، و شناسه‌های Pin‌شده می‌گویند **از کدام ردیف‌ها آمد**. اولی برای خواننده است و دومی برای ممیزی.
 
@@ -374,18 +394,18 @@ Snapshot شامل نسخه تنظیمات، Revisionهای برآورد، قیم
 
 ### finance_audit_events
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه رویداد |
-| organization_id / project_id | UUID / Text | Scope |
-| actor_user_id | UUID | کاربری که عمل را انجام داده |
-| action | Text | نوع عمل ثبت‌شده |
-| entity_type | Text | نوع موجودیت هدف، مثلاً فاکتور یا خط برآورد |
-| entity_id | UUID | شناسه موجودیت هدف |
-| reason | Text, Nullable | دلیل، وقتی عمل دلیل می‌طلبد |
-| before_values | JSONB, Nullable | وضعیت پیش از تغییر |
-| after_values | JSONB, Nullable | وضعیت پس از تغییر |
-| occurred_at | Timestamptz | زمان وقوع؛ مرتب‌سازی پایدار بر `occurred_at DESC, id DESC` است |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه رویداد |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| actor_user_id | UUID | ممیزی | کاربری که عمل را انجام داده |
+| action | Text | طبقه‌بندی | نوع عمل ثبت‌شده |
+| entity_type | Text | طبقه‌بندی | نوع موجودیت هدف، مثلاً فاکتور یا خط برآورد |
+| entity_id | UUID | پیوند | شناسه موجودیت هدف |
+| reason | Text, Nullable | ممیزی | دلیل، وقتی عمل دلیل می‌طلبد |
+| before_values | JSONB, Nullable | ممیزی | وضعیت پیش از تغییر |
+| after_values | JSONB, Nullable | ممیزی | وضعیت پس از تغییر |
+| occurred_at | Timestamptz | ممیزی | زمان وقوع؛ مرتب‌سازی پایدار بر `occurred_at DESC, id DESC` است |
 
 مقادیر قبل و بعد به‌صورت JSONB ثبت می‌شوند. Audit میان امور مالی و گزارش مالی مشترک و Append-only است.
 
@@ -395,18 +415,18 @@ API مشاهده Audit از همین جدول و با Scope دوگانه خوا�
 
 ### finance_import_batches
 
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | UUID, PK | شناسه Batch ورود گروهی |
-| organization_id / project_id | UUID / Text | Scope |
-| import_kind | Text | `estimate` یا `prices`؛ با CHECK محدود شده |
-| currency_unit | Text, Nullable | `IRR` یا `TOMAN`؛ با CHECK محدود شده. تومان فقط در ورودی پذیرفته می‌شود و پیش از ذخیره به ریال تبدیل می‌گردد — در دیتابیس هیچ مبلغی به تومان نگهداری نمی‌شود |
-| file_sha256 | Text | چکیده فایل ورودی؛ CHECK طول ۶۴ کاراکتر را الزام می‌کند |
-| normalized_rows | JSONB | ردیف‌های نرمال‌شده حاصل Preview |
-| validation_errors | JSONB | خطاهای اعتبارسنجی هر ردیف |
-| status | Text | `previewed` یا `committed`؛ با CHECK محدود شده |
-| created_by / created_at | UUID / Timestamptz | ثبت‌کننده و زمان Preview |
-| committed_at | Timestamptz, Nullable | زمان Commit؛ یک CHECK ترکیبی تضمین می‌کند این ستون **دقیقاً وقتی** پر است که `status` برابر `committed` باشد |
+| ستون | نوع | نقش | توضیح |
+|---|---|---|---|
+| id | UUID, PK | هویت | شناسه Batch ورود گروهی |
+| organization_id / project_id | UUID / Text | Scope | Scope |
+| import_kind | Text | طبقه‌بندی | `estimate` یا `prices`؛ با CHECK محدود شده |
+| currency_unit | Text, Nullable | طبقه‌بندی | `IRR` یا `TOMAN`؛ با CHECK محدود شده. تومان فقط در ورودی پذیرفته می‌شود و پیش از ذخیره به ریال تبدیل می‌گردد — در دیتابیس هیچ مبلغی به تومان نگهداری نمی‌شود |
+| file_sha256 | Text | یکپارچگی | چکیده فایل ورودی؛ CHECK طول ۶۴ کاراکتر را الزام می‌کند |
+| normalized_rows | JSONB | تثبیت | ردیف‌های نرمال‌شده حاصل Preview |
+| validation_errors | JSONB | تثبیت | خطاهای اعتبارسنجی هر ردیف |
+| status | Text | طبقه‌بندی | `previewed` یا `committed`؛ با CHECK محدود شده |
+| created_by / created_at | UUID / Timestamptz | ممیزی | ثبت‌کننده و زمان Preview |
+| committed_at | Timestamptz, Nullable | یکپارچگی | زمان Commit؛ یک CHECK ترکیبی تضمین می‌کند این ستون **دقیقاً وقتی** پر است که `status` برابر `committed` باشد |
 
 - `import_kind`: متره یا قیمت
 - `status`: `previewed` یا `committed`
