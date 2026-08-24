@@ -30,10 +30,13 @@ decision this module does not own, so it keeps the existing number and stops cla
 number is something it is not.
 """
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
+
+from .resources import FinanceRecordNotFound
 
 #: What kind of number `effective_quantity` is, independent of which field supplied it.
 #:   measured_quantity   -- reported in the resource's own unit
@@ -97,6 +100,43 @@ def consumed_quantity(a):
  """
  resolved=resolve_progress_quantity(a)
  return resolved["effective_quantity"],resolved["source_method"]
+
+def snapshot_metadata(feed,organization_id,project_id,snapshot_id):
+ """The feed's header, proven to describe the snapshot that was actually asked for.
+
+ `ProgressSnapshotProvider` is implemented by the host and its port constrains nothing
+ about the reply, so Finance has to treat every shape as possible: no reply at all, a
+ reply with no header, a header that is empty, or a header describing another tenant's
+ snapshot. Reading straight through any of those raised KeyError or TypeError and left
+ the caller with a 500, which says "this service is broken" about a request that was
+ simply for something the provider does not have.
+
+ All of them end as FinanceRecordNotFound -- a 404 in the existing envelope. Not found
+ rather than a validation error on purpose: the requester named a snapshot id, and
+ answering "malformed" for a header belonging to another tenant would confirm that the
+ id exists somewhere. A caller who may not see it and a caller asking for something
+ absent get the same answer.
+ """
+ metadata=feed.get("snapshot") if isinstance(feed,Mapping) else None
+ if not isinstance(metadata,Mapping):raise FinanceRecordNotFound("progress snapshot not found")
+ if (str(metadata.get("organizationId"))!=str(organization_id)
+   or metadata.get("projectId")!=project_id
+   or str(metadata.get("progressSnapshotId"))!=str(snapshot_id)):
+  raise FinanceRecordNotFound("progress snapshot not found")
+ return metadata
+
+def snapshot_assignments(feed):
+ """The feed's assignment rows, whatever the provider put in their place.
+
+ A snapshot with no assignments is a legitimate answer -- a schedule can be imported
+ before anyone reports against it -- so an absent or null list is an empty one here, not
+ an error. Only the header decides whether the snapshot exists; see `snapshot_metadata`.
+ A string is rejected along with everything else that is not a sequence of rows, because
+ iterating one would silently produce a feed of characters.
+ """
+ rows=feed.get("assignments") if isinstance(feed,Mapping) else None
+ if isinstance(rows,Sequence) and not isinstance(rows,(str,bytes)):return list(rows)
+ return []
 
 def _override_payload(row,snapshot_id):
  return {"previousCalculatedValue":str(row["computed_value"]),"newValue":str(row["override_value"]),"reason":row["reason"],"userId":str(row["created_by"]),"occurredAt":row["created_at"].isoformat(),"source":"manual_override","progressSnapshotId":str(snapshot_id)}

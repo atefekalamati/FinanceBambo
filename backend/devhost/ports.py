@@ -132,7 +132,12 @@ class SeededProgressSnapshotProvider:
         if (feed is None
                 or str(organization_id) != self._organization_id
                 or project_id != self._project_id):
-            return {"snapshot": {}, "assignments": []}
+            # None, not a header with nothing in it. An empty header claims "here is the
+            # snapshot you asked for" and then describes no snapshot at all, which is how
+            # a scope miss used to reach the caller as a 500 instead of a 404. Finance
+            # rejects both shapes now, but a development host should not model the wrong
+            # one for a production provider to copy.
+            return None
         return {"snapshot": dict(feed["snapshot"]),
                 "assignments": [dict(row) for row in feed["assignments"]]}
 

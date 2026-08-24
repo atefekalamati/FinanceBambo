@@ -1,6 +1,7 @@
 from datetime import datetime,timezone
 from uuid import uuid4
-from ..domain.progress import ProgressOverride,apply_progress_overrides,consumed_quantity,resolve_progress_quantity
+from ..domain.progress import (ProgressOverride,apply_progress_overrides,consumed_quantity,
+ resolve_progress_quantity,snapshot_assignments,snapshot_metadata)
 from ..domain.schedule import derive_snapshot_versions
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
@@ -25,11 +26,10 @@ class ProgressService:
   ref=await self.repo.get_snapshot(s,snapshot_id)
   if ref is None:raise FinanceRecordNotFound("progress snapshot not found")
   feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(snapshot_id))
-  meta=feed["snapshot"]
-  if str(meta["organizationId"])!=str(s.organization_id) or meta["projectId"]!=s.project_id or str(meta["progressSnapshotId"])!=str(snapshot_id):raise FinanceRecordNotFound("progress snapshot not found")
+  snapshot_metadata(feed,s.organization_id,s.project_id,snapshot_id)
   overrides=await self.repo.latest_overrides(s,ref["id"])
   assignments=[]
-  for row in apply_progress_overrides(feed.get("assignments",[]),overrides,snapshot_id):
+  for row in apply_progress_overrides(snapshot_assignments(feed),overrides,snapshot_id):
    try:
     resolved=resolve_progress_quantity(row)
     row["computedExecutedQuantity"]=format(resolved["computed_quantity"],"f")
@@ -62,9 +62,9 @@ class ProgressService:
   if ref is None:raise FinanceRecordNotFound("progress snapshot not found")
   line=await self.repo.get_line_mapping(s,line_id)
   if line is None:raise FinanceRecordNotFound("estimate line not found")
-  feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(c.progress_snapshot_id));meta=feed.get("snapshot") or {}
-  if str(meta.get("organizationId"))!=str(s.organization_id) or meta.get("projectId")!=s.project_id or str(meta.get("progressSnapshotId"))!=str(c.progress_snapshot_id):raise FinanceRecordNotFound("progress snapshot not found")
-  assignment=next((row for row in feed.get("assignments",[]) if (line["assignment_external_id"] and row.get("assignmentExternalId")==line["assignment_external_id"]) or (line["activity_external_id"] and (row.get("task") or {}).get("activityCode")==line["activity_external_id"])),None)
+  feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(c.progress_snapshot_id))
+  snapshot_metadata(feed,s.organization_id,s.project_id,c.progress_snapshot_id)
+  assignment=next((row for row in snapshot_assignments(feed) if (line["assignment_external_id"] and row.get("assignmentExternalId")==line["assignment_external_id"]) or (line["activity_external_id"] and (row.get("task") or {}).get("activityCode")==line["activity_external_id"])),None)
   if assignment is None:raise ProgressMappingError("estimate line is not mapped to the selected progress snapshot")
   try:computed,_source=consumed_quantity({**assignment,"manualOverride":None})
   except ValueError as error:raise ProgressMappingError("progress snapshot has no computable baseline for this estimate line") from error

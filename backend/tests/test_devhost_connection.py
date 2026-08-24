@@ -9,6 +9,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from uuid import UUID
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
@@ -256,3 +257,49 @@ class FixtureIdentityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SeededProgressProviderTests(unittest.IsolatedAsyncioTestCase):
+    """What the development host says when it does not have the snapshot.
+
+    Finance treats an empty header and a missing reply the same way now, so this is not
+    about avoiding a 500 any more. It is about the shape a production provider author
+    reads here and copies: a header with nothing in it claims "here is the snapshot you
+    asked for" and then describes no snapshot, which is a worse contract than saying
+    nothing.
+    """
+
+    from datetime import date as _date, datetime as _datetime, timezone as _timezone
+
+    ORG = UUID("11111111-1111-4111-8111-111111111111")
+    OTHER = UUID("22222222-2222-4222-8222-222222222222")
+    SNAPSHOT = UUID("30000000-0000-4000-8000-000000000001")
+
+    def provider(self):
+        from devhost.ports import SeededProgressSnapshotProvider
+        return SeededProgressSnapshotProvider(
+            self.ORG, "sample_site_01",
+            [{"progress_snapshot_id": self.SNAPSHOT, "source_file_version_id": UUID(int=7),
+              "source_file_name_safe": "plan.mpp", "reporting_date": self._date(2026, 8, 2),
+              "imported_at": self._datetime(2026, 8, 2, tzinfo=self._timezone.utc),
+              "assignments": [{"assignmentExternalId": "AS1"}]}],
+            UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"))
+
+    async def test_a_scope_it_does_not_serve_gets_no_reply_rather_than_an_empty_one(self):
+        provider = self.provider()
+        for label, args in {
+                "another organisation": (str(self.OTHER), "sample_site_01", str(self.SNAPSHOT)),
+                "another project": (str(self.ORG), "other_site", str(self.SNAPSHOT)),
+                "an unknown snapshot": (str(self.ORG), "sample_site_01", str(UUID(int=99)))}.items():
+            with self.subTest(label):
+                self.assertIsNone(await provider.get_snapshot(*args))
+
+    async def test_the_scope_it_does_serve_gets_a_header_naming_that_exact_scope(self):
+        feed = await self.provider().get_snapshot(str(self.ORG), "sample_site_01", str(self.SNAPSHOT))
+        self.assertEqual((str(self.ORG), "sample_site_01", str(self.SNAPSHOT)),
+                         (feed["snapshot"]["organizationId"], feed["snapshot"]["projectId"],
+                          feed["snapshot"]["progressSnapshotId"]))
+        # Copies, so a caller mutating the feed cannot corrupt the next request's answer.
+        feed["assignments"][0]["assignmentExternalId"] = "changed"
+        again = await self.provider().get_snapshot(str(self.ORG), "sample_site_01", str(self.SNAPSHOT))
+        self.assertEqual("AS1", again["assignments"][0]["assignmentExternalId"])
