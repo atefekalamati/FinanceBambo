@@ -209,12 +209,6 @@
   }
 }
 
-@media (max-width: 48rem) {
-  .finance-snapshot-provenance__fact--coverage {
-    display: none;
-  }
-}
-
 @media (max-width: 36rem) {
   .finance-snapshot-provenance__fact--source {
     display: none;
