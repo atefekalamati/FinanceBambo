@@ -8,6 +8,8 @@ const baseUrl = process.env.BAMBO_AUDIT_URL ?? "http://127.0.0.1:43127";
 const routes = [
   "finance",
   "finance-report",
+  "report-prices",
+  "report-items",
   "report-settings",
   "financial-items",
   "prices",
