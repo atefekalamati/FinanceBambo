@@ -11,11 +11,6 @@ import { buildSeedInvoices } from "./invoices-adapter.js";
  * is designed. The API adapter deliberately reports the series as unavailable
  * rather than deriving a lookalike, so nothing here can reach a real project.
  */
-const SEED_MONTHLY_ESTIMATE_IRR = Object.freeze([
-  "1180000000", "1240000000", "1310000000", "1400000000",
-  "1350000000", "1290000000", "1420000000", "1360000000",
-]);
-
 function wait(duration = 320) {
   return new Promise((resolve) => setTimeout(resolve, duration));
 }
@@ -196,13 +191,18 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
   async function getMonthlyTrend() {
     await wait(280);
     if (initialState === "error") throw new ApiError({ status: 503, code: "MONTHLY_TREND_UNAVAILABLE", message: "دریافت روند ماهانه هزینه انجام نشد.", requestId: "mock-monthly-trend-001" });
-    if (initialState === "empty") return { months: [], estimateSource: "mock_seed" };
-    const actualMonths = aggregateConfirmedInvoicesByMonth(buildSeedInvoices(context));
+    if (initialState === "empty") return { months: [], estimateSource: "unavailable" };
+    // No estimate line carries a planned date, so the service has no monthly
+    // baseline to report and answers null on every point. The mock seeded one
+    // while the endpoint did not exist; keeping it now would make standalone
+    // draw a comparison the real product cannot, which is the one thing a
+    // reference dataset must never do.
     return {
-      estimateSource: "mock_seed",
-      months: actualMonths.map((month, index) => ({
+      estimateSource: "unavailable",
+      actualSource: "confirmed_financial_documents",
+      months: aggregateConfirmedInvoicesByMonth(buildSeedInvoices(context)).map((month) => ({
         ...month,
-        estimateIrr: SEED_MONTHLY_ESTIMATE_IRR[index] ?? null,
+        estimateIrr: null,
       })),
     };
   }

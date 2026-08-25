@@ -133,13 +133,20 @@ test("an unknown mode falls back to periodic rather than rendering nothing", () 
 test("the mock reports adapter derives its trend from the seeded invoices across several months", async () => {
   const trend = await createMockReportsAdapter(context).getMonthlyTrend({ reportingDate: "2026-08-20" });
   assert.ok(trend.months.length > 1, "the seed must span more than one month or the chart has nothing to compare");
-  assert.equal(trend.estimateSource, "mock_seed");
   assert.ok(trend.months.every((month) => /^-?\d+$/.test(month.actualCostIrr)), "amounts stay exact IRR strings");
+  // The mock answers what the service can answer. It used to seed a monthly
+  // baseline while no endpoint existed, which made standalone draw a comparison
+  // the real product cannot — the one thing a reference dataset must not do.
+  assert.equal(trend.estimateSource, "unavailable");
+  assert.ok(trend.months.every((month) => month.estimateIrr === null));
 
   const view = buildMonthlyTrend({ months: trend.months, mode: TREND_MODES.CUMULATIVE });
-  assert.equal(view.hasEstimate, true);
+  assert.equal(view.hasEstimate, false);
+  // A cumulative total can still fall: a month whose reversals outweigh its
+  // purchases takes the running total back down, and the chart has to say so.
   const totals = view.points.map((point) => BigInt(point.actualIrr));
-  assert.deepEqual(totals, [...totals].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)), "a cumulative actual series never decreases while no reversal outweighs a month");
+  assert.equal(totals.length, trend.months.length);
+  assert.equal(String(totals.at(-1)), String(trend.months.reduce((sum, month) => sum + BigInt(month.actualCostIrr), 0n)));
 });
 
 test("mock trend reports empty and error states like every other adapter", async () => {
