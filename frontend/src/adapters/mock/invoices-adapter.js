@@ -12,17 +12,28 @@ function wait(duration = 320) {
 }
 
 /**
- * The seed spans eight Gregorian months so the monthly trend on the overview
- * has a real shape. Amounts and statuses are untouched; only the calendar
- * position of each invoice moves.
+ * The seed spans twelve Gregorian months so the monthly trend has a real shape.
+ * Amounts and statuses are untouched; only the calendar position of each
+ * invoice moves.
+ *
+ * The window ends on the month the rest of the dataset lives in rather than
+ * running past it. A future-dated invoice is excluded by every report — they
+ * are all built as of a reporting date — so it would be money that exists in
+ * the list and nowhere else, and the month it sits in would draw as empty.
+ *
+ * Twelve is also what the monthly report asks the service for by default, so
+ * every column the chart draws has something behind it.
  */
-const SEED_MONTH_SPAN = 8;
-const SEED_FIRST_MONTH = 4; // 2026-04, which falls in فروردین ۱۴۰۵
+const SEED_MONTH_SPAN = 12;
+const SEED_FIRST_YEAR = 2025;
+const SEED_FIRST_MONTH = 9; // 2025-09 through 2026-08, ending in مرداد ۱۴۰۵
 
 function seedInvoiceDate(index) {
-  const month = SEED_FIRST_MONTH + ((index - 1) % SEED_MONTH_SPAN);
+  const offset = SEED_FIRST_MONTH - 1 + ((index - 1) % SEED_MONTH_SPAN);
+  const year = SEED_FIRST_YEAR + Math.floor(offset / 12);
+  const month = (offset % 12) + 1;
   const day = ((index * 7) % 27) + 1;
-  return `2026-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function makeInvoice(index, context) {
@@ -54,7 +65,10 @@ function makeInvoice(index, context) {
     submittedBy: context.userId,
     createdAt: `${invoiceDate}T08:30:00Z`,
     confirmedBy: status === "confirmed" || status === "voided" || status === "corrected" ? context.userId : null,
-    confirmedAt: status === "confirmed" || status === "voided" || status === "corrected" ? "2026-08-01T09:15:00Z" : null,
+    // Confirmed on the day it is dated. A fixed timestamp would sit before the
+    // invoice date for anything later than it, and read as a document approved
+    // before it existed.
+    confirmedAt: status === "confirmed" || status === "voided" || status === "corrected" ? `${invoiceDate}T09:15:00Z` : null,
     relatedInvoiceId: status === "voided" || status === "corrected" ? "invoice-demo-001" : null,
     originalInvoiceId: status === "voided" || status === "corrected" ? "invoice-demo-001" : null,
     financialEffectSign: status === "voided" ? -1 : 1,

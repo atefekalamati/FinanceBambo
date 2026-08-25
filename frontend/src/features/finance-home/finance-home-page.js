@@ -840,19 +840,6 @@ function createMonthlyTrendPanel({ trend, trendError }) {
     return { panel, chart: null, description };
   }
 
-  // TEMPORARY: remove with monthly-trend-preview.js. Placeholder money on a
-  // finance screen is indistinguishable from real money once it is drawn, so it
-  // says what it is, above the chart, every time.
-  if (trend?.estimateSource === "preview") {
-    const warning = element("p", "inline-notice monthly-trend-preview-notice");
-    warning.setAttribute("role", "status");
-    warning.append(
-      element("strong", "", "داده نمایشی"),
-      document.createTextNode(` ${trend.previewNotice ?? "این نمودار با داده آزمایشی رسم شده است."}`),
-    );
-    panel.append(warning);
-  }
-
   const axisScale = compactMoneyScale(view.maximumIrr);
   panel.append(trendLegend());
   const chart = createCombinationChart({
@@ -862,7 +849,7 @@ function createMonthlyTrendPanel({ trend, trendError }) {
     renderTooltip: trendTooltip,
     ariaLabel: "نمودار ستونی هزینه واقعی و خط برآورد ماهانه",
   });
-  chart.setData({ points: view.points, ticks: view.axisTicks });
+  chart.setData({ points: view.points, ticks: view.axisTicks, zeroMagnitude: view.zeroMagnitude });
   panel.append(chart.element);
 
   if (!view.hasEstimate) {
