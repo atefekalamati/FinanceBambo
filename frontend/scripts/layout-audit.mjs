@@ -7,6 +7,8 @@ const chromePath = process.env.CHROME_PATH ?? "C:\\Program Files\\Google\\Chrome
 const baseUrl = process.env.BAMBO_AUDIT_URL ?? "http://127.0.0.1:43127";
 const routes = [
   "finance",
+  "finance-report",
+  "report-settings",
   "financial-items",
   "prices",
   "progress",

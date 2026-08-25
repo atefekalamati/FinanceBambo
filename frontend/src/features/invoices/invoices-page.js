@@ -1,4 +1,5 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
+import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
@@ -630,9 +631,9 @@ export function createInvoicesPage({ context, adapter }) {
       dialog.addEventListener("close", () => dialog.remove(), { once: true });
       showAccessibleDialog(dialog);
     });
-    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
     back.classList.add("finance-back-link");
-    back.href = "#/finance";
+    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
     const upload = element("a", "button button--ghost", "ورود از تصویر یا صدا");
     upload.href = "#/invoice-files";
     actions.append(create, upload);

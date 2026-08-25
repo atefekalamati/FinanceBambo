@@ -1,4 +1,5 @@
 import { hasPermission } from "../../core/auth/permissions.js";
+import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -318,7 +319,7 @@ export function createReportsPage({ context, adapter }) {
     const fragment = document.createDocumentFragment();
     const toolbar = element("section", "report-toolbar");
     const heading = element("div");
-    heading.append(element("h1", "", "گزارش مالی"), element("p", "", "گزارش به‌روز پروژه بر پایه داده‌های قطعی مالی و نسخه پیشرفت پروژه"));
+    heading.append(element("h1", "", "گزارش وضعیت مالی"), element("p", "", "گزارش به‌روز پروژه بر پایه داده‌های قطعی مالی و نسخه پیشرفت پروژه"));
     const controls = element("div", "report-toolbar__controls");
     const picker = createPersianDatePicker({ id: "reportingDate", label: "تاریخ گزارش", value: reportingDate, hint: "تاریخ در رابط کاربری جلالی و در API به‌صورت استاندارد ارسال می‌شود." });
     const refresh = element("button", "button button--ghost", "به‌روزرسانی گزارش");
@@ -328,7 +329,9 @@ export function createReportsPage({ context, adapter }) {
       snapshot = null;
       load();
     });
-    controls.append(picker.field, refresh);
+    const back = element("a", "button button--ghost finance-back-link", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
+    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
+    controls.append(picker.field, refresh, back);
     if (hasPermission(context, "finance_report.issue")) {
       const issueButton = element("button", "button button--primary", "ثبت گزارش دوره‌ای");
       issueButton.type = "button";

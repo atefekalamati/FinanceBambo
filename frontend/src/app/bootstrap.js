@@ -21,6 +21,7 @@ import { canAccessRoute } from "../core/auth/permissions.js";
 import { DEFAULT_ROUTE, ROUTES } from "../core/config/routes.js";
 import { createHashRouter } from "../core/routing/router.js";
 import { createFinanceHomePage } from "../features/finance-home/finance-home-page.js";
+import { createOperationsHomePage } from "../features/finance-home/operations-home-page.js";
 import { createFinancialItemsPage } from "../features/financial-items/financial-items-page.js";
 import { createPricesPage } from "../features/prices/prices-page.js";
 import { createProgressPage } from "../features/progress/progress-page.js";
@@ -75,7 +76,11 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
     return;
   }
 
-  if (route.key === "finance-home") root.append(createFinanceHomePage({ reportsAdapter: adapters.reports, progressAdapter: adapters.progress }));
+  // امور مالی opens on the state of the inputs; گزارش مالی opens on the figures
+  // those inputs produce. Both read the same adapters, so the report shows an
+  // operations change as soon as the service has it.
+  if (route.key === "finance-home") root.append(createOperationsHomePage({ progressAdapter: adapters.progress }));
+  if (route.key === "report-home") root.append(createFinanceHomePage({ context, reportsAdapter: adapters.reports, progressAdapter: adapters.progress }));
   if (route.key === "financial-items") {
     root.append(createFinancialItemsPage({
       context,
@@ -100,11 +105,12 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
     }));
   }
   if (route.key === "audit") root.append(createAuditPage({ adapter: adapters.audit }));
-  if (route.key === "settings") {
+  if (route.key === "settings" || route.key === "report-settings") {
     root.append(createSettingsPage({
       context,
       adapter: adapters.settings,
       pricesAdapter: adapters.prices,
+      surface: route.surface,
     }));
   }
   liveRegion.textContent = `صفحه ${route.label} نمایش داده شد.`;
