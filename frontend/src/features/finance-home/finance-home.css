@@ -807,10 +807,12 @@
   position: relative;
   z-index: 2;
   container-type: inline-size;
-  /* A hard guarantee: whatever a column is asked to show, it cannot widen the
-     document. The bands are sized for their content, so this only ever bites
-     when a value is longer than any width the type scale planned for. */
-  overflow: hidden;
+  /* Deliberately not clipped. The money above each bar carries the exact figure
+     in a tooltip drawn as an ::after that sits above the value and wider than
+     it, so a cell that clips silently swallows it. The horizontal overflow this
+     once guarded against had a different cause — a unit that could not shrink,
+     and a chart viewport that was told not to scroll — and both are fixed at
+     the source. */
   display: grid;
   align-items: end;
   justify-items: center;
@@ -836,6 +838,21 @@
   line-height: 1.25;
   text-align: center;
   white-space: normal;
+}
+
+/* The exact figure hangs below the value here, not above it.
+   The shared tooltip opens upward, but these values sit along the top edge of a
+   card whose height is fixed and which therefore clips — so upward meant
+   invisible. Below, it opens over the bars, which is empty space inside the
+   same card. */
+.managerial-combo-chart__value.compact-money::after {
+  inset-block-end: auto;
+  inset-block-start: calc(100% + .35rem);
+  transform: translateX(50%) translateY(-.2rem);
+}
+
+.managerial-combo-chart__value.compact-money:is(:hover, :focus-visible)::after {
+  transform: translateX(50%) translateY(0);
 }
 
 .managerial-combo-chart__value .money-display__amount {
@@ -1692,6 +1709,14 @@
   .managerial-combo-chart__cell,
   .managerial-combo-chart__label {
     padding-inline: .1rem;
+  }
+
+  /* Centred on a column this narrow, the outermost tooltip reached past the
+     card and was clipped by it. Smaller type and tighter padding bring it back
+     inside rather than moving it off centre. */
+  .managerial-combo-chart__value.compact-money::after {
+    padding: .25rem .4rem;
+    font-size: .62rem;
   }
 
   .managerial-combo-chart__scale-value {
