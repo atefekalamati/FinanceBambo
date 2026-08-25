@@ -16,6 +16,85 @@
   min-inline-size: 0;
 }
 
+/* The one link between the two surfaces. It sits opposite the page title, and
+   is never allowed to shrink into two lines — it is three words. */
+.finance-surface-link {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   امور مالی — the state of the inputs
+   -------------------------------------------------------------------------- */
+
+/* The operations home answers one question before anything else: what is the
+   calculation currently resting on. Unlike the provenance strip on the report,
+   this one is allowed to wrap — it carries no picker to collide with. */
+.operations-input-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: clamp(.35rem, 1vw, .85rem);
+  min-inline-size: 0;
+  padding: .55rem clamp(.5rem, 1.2vw, 1rem);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgb(4 13 32 / 22%);
+  font-size: clamp(.68rem, 1.6vw, .82rem);
+  line-height: 1.6;
+}
+
+.operations-input-state__lead {
+  flex: 0 0 auto;
+  color: var(--brand-teal);
+  font-weight: 700;
+}
+
+.operations-input-state__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: clamp(.35rem, 1vw, .85rem);
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  margin: 0;
+}
+
+.operations-input-state__facts > div {
+  display: flex;
+  align-items: baseline;
+  gap: .3em;
+  min-inline-size: 0;
+}
+
+/* A hairline rather than a bullet, so a fact that is absent leaves no orphaned
+   separator behind. */
+.operations-input-state__facts > div + div {
+  padding-inline-start: clamp(.35rem, 1vw, .85rem);
+  border-inline-start: 1px solid var(--color-border-subtle);
+}
+
+.operations-input-state__facts dt {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.operations-input-state__facts dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* When there is no snapshot at all the notice takes the whole row rather than
+   competing with the facts for it. */
+.operations-input-state .inline-notice {
+  flex: 1 0 100%;
+  margin: 0;
+}
+
 /* Groups the report caption with the settings link so the heading keeps two
    children and lands at the two ends of the row. */
 .section-heading__trailing {
@@ -1114,7 +1193,9 @@
     background-color var(--duration-fast) var(--ease-standard);
 }
 
-.finance-variance-card__link:hover {
+/* A deviation row is a link only for an account that can act on it. For a
+   reader it is a row of figures, and must not light up as though it were. */
+a.finance-variance-card__link:hover {
   color: var(--color-accent);
   background: var(--color-btn-action);
 }
@@ -1660,7 +1741,8 @@
     flex-direction: column;
   }
 
-  .finance-project-settings-link {
+  .finance-project-settings-link,
+  .finance-surface-link {
     align-self: flex-end;
     inline-size: fit-content;
     max-inline-size: 100%;

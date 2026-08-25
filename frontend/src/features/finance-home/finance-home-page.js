@@ -10,6 +10,8 @@ import { createCombinationChart } from "../../shared/components/combination-char
 import { buildMonthlyTrend, TREND_MODES } from "./monthly-trend.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
+import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
+import { hasPermission } from "../../core/auth/permissions.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -31,14 +33,14 @@ const SUPPLEMENTARY_SUMMARY_KEYS = new Set([
   "moneyRequiredToContinueIrr",
 ]);
 
+/* The destinations of the گزارش مالی surface, in the order a reader wants them:
+   the current report, the same report over a chosen period, the documents the
+   figures are built from, and how the amounts are displayed. */
 const WORK_AREAS = Object.freeze([
-  { key: "financial-items", title: "اقلام و برآورد", description: "مدیریت اقلام پروژه، ریز برآورد و مقدارهای اولیه و اصلاح‌شده", meta: "اقلام · برآورد · اصلاحات", href: "#/financial-items" },
-  { key: "prices", title: "قیمت روز و تبدیل واحد", description: "ثبت قیمت پایه سازمان، قیمت اختصاصی پروژه و مشاهده تاریخچه قیمت", meta: "قیمت روز · تاریخچه · واحد", href: "#/prices" },
-  { key: "progress", title: "پیشرفت و مقادیر انجام‌شده", description: "مشاهده نسخه پیشرفت پروژه، کیفیت داده و اصلاح دستی مقدار", meta: "نسخه پیشرفت · مقدار انجام‌شده · هشدار", href: "#/progress" },
-  { key: "invoices", title: "فاکتورها", description: "مشاهده فهرست، وضعیت، منبع، فروشنده، مبلغ و جزئیات خطوط", meta: "فهرست · جزئیات · وضعیت", href: "#/invoices" },
-  { key: "reports", title: "گزارش مالی", description: "مشاهده گزارش به‌روز، ثبت گزارش دوره‌ای و دریافت خروجی", meta: "گزارش به‌روز · گزارش ثبت‌شده · چاپ", href: "#/reports" },
+  { key: "reports", title: "گزارش وضعیت مالی", description: "گزارش به‌روز پروژه، انحراف قیمت و مقدار، و ثبت گزارش تثبیت‌شده", meta: "گزارش به‌روز · انحرافات · چاپ", href: "#/reports" },
   { key: "period-report", title: "گزارش دوره‌ای", description: "ساخت گزارش برای یک بازه زمانی دلخواه با خروجی چاپ و CSV", meta: "بازه دلخواه · مقایسه · خروجی", href: "#/period-report" },
-  { key: "audit", title: "تاریخچه تغییرات مالی", description: "ردیابی اصلاحات، تأییدها و عملیات حساس مالی", meta: "انجام‌دهنده · زمان · دلیل", href: "#/audit" },
+  { key: "invoices", title: "ثبت و مشاهده فاکتورها", description: "ثبت فاکتور و مشاهده فهرست، وضعیت، فروشنده، مبلغ و جزئیات خطوط", meta: "ثبت · فهرست · وضعیت", href: "#/invoices" },
+  { key: "report-settings", title: "تنظیمات نمایش", description: "واحد نمایش مبالغ و فهرست دسترسی‌های مالی این حساب", meta: "واحد مبلغ · دسترسی‌ها", href: "#/report-settings" },
 ]);
 
 function createTomanDisplay(value, { compact = false } = {}) {
@@ -436,6 +438,12 @@ function createSupplementarySummary(metrics) {
   return section;
 }
 
+/**
+ * `baseHref` is null for a reader. The rows still say what deviated and by how
+ * much — that is what this surface is for — but they stop being a way into the
+ * price and item editors, which live on امور مالی. Nobody loses the shortcut:
+ * it is offered to exactly the accounts that could have used it.
+ */
 function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
   const section = document.createElement("section");
   section.className = "finance-analysis-card finance-variance-card";
@@ -452,23 +460,28 @@ function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
   const list = document.createElement("ol");
   rows.slice(0, 5).forEach((row) => {
     const item = document.createElement("li");
-    const link = document.createElement("a");
+    const link = document.createElement(baseHref ? "a" : "div");
     link.className = "finance-variance-card__link";
-    const target = new URLSearchParams();
-    if (row.resourceId) target.set("resourceId", row.resourceId);
-    if (row.estimateLineId) target.set("estimateLineId", row.estimateLineId);
-    link.href = `${baseHref}${target.size ? `?${target.toString()}` : ""}`;
-    link.setAttribute("aria-label", `${row.resourceTitle || row.resourceCode || "قلم هزینه بدون عنوان"}؛ مشاهده جزئیات ${title}`);
+    if (baseHref) {
+      const target = new URLSearchParams();
+      if (row.resourceId) target.set("resourceId", row.resourceId);
+      if (row.estimateLineId) target.set("estimateLineId", row.estimateLineId);
+      link.href = `${baseHref}${target.size ? `?${target.toString()}` : ""}`;
+      link.setAttribute("aria-label", `${row.resourceTitle || row.resourceCode || "قلم هزینه بدون عنوان"}؛ مشاهده جزئیات ${title}`);
+    }
     const identity = document.createElement("span");
     identity.textContent = row.resourceTitle || row.resourceCode || "قلم هزینه بدون عنوان";
     const value = document.createElement("strong");
     value.className = "numeric";
     value.textContent = valueFormatter(row[valueKey]);
+    link.append(identity, value);
+    // The chevron promises somewhere to go. A row that is not a link keeps the
+    // column so the rows stay aligned, and keeps it empty.
     const indicator = document.createElement("span");
     indicator.className = "finance-variance-card__indicator";
     indicator.setAttribute("aria-hidden", "true");
-    indicator.textContent = "‹";
-    link.append(identity, value, indicator);
+    if (baseHref) indicator.textContent = "‹";
+    link.append(indicator);
     item.append(link);
     list.append(item);
   });
@@ -631,23 +644,28 @@ function createSettingsIcon() {
 function createSettingsLink() {
   const link = document.createElement("a");
   link.className = "finance-project-settings-link";
-  link.href = "#/settings";
+  // The settings this surface owns are the display ones. The gross built area
+  // and the conversion rules change what the figures come out as, and they are
+  // authored on امور مالی.
+  link.href = "#/report-settings";
   // The icon carries no text, so the name has to be spoken here — and shown on
   // hover, since a lone gear is only conventional, never self-explanatory.
-  link.setAttribute("aria-label", "تنظیمات مالی پروژه");
-  link.title = "تنظیمات مالی پروژه";
+  link.setAttribute("aria-label", "تنظیمات نمایش");
+  link.title = "تنظیمات نمایش";
   link.append(createSettingsIcon());
   return link;
 }
 
-function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null) {
+function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null, canOperate = false) {
   const fragment = document.createDocumentFragment();
   const pageHeader = document.createElement("header");
   pageHeader.className = "finance-page-header";
   const pageTitle = document.createElement("h1");
   pageTitle.className = "finance-page-title";
-  pageTitle.textContent = "نمای کلی مالی";
-  pageHeader.append(pageTitle);
+  pageTitle.textContent = "گزارش مالی پروژه";
+  const toOperations = element("a", "button button--ghost finance-surface-link", "رفتن به امور مالی");
+  toOperations.href = `#${homeRouteFor(SURFACES.OPERATIONS)?.path ?? "/finance"}`;
+  pageHeader.append(pageTitle, toOperations);
 
   const summaryHeader = document.createElement("div");
   summaryHeader.className = "section-heading";
@@ -710,19 +728,19 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   riskStack.className = "finance-risk-stack";
   riskStack.append(
     warnings,
-    createVariancePanel("بیشترین انحراف قیمت", data.topPriceVariances, "varianceIrr", formatCompactMoneyFromIrr, "#/prices"),
-    createVariancePanel("بیشترین انحراف مقدار", data.topQuantityVariances, "varianceQuantity", formatDisplayNumber, "#/financial-items"),
+    createVariancePanel("بیشترین انحراف قیمت", data.topPriceVariances, "varianceIrr", formatCompactMoneyFromIrr, canOperate ? "#/prices" : null),
+    createVariancePanel("بیشترین انحراف مقدار", data.topQuantityVariances, "varianceQuantity", formatDisplayNumber, canOperate ? "#/financial-items" : null),
   );
   insights.append(breakdown, riskStack);
 
   const areasHeader = document.createElement("div");
   areasHeader.className = "section-heading";
   const areasHeading = document.createElement("div");
-  areasHeading.append(element("span", "", "فضای کاری"), element("h2", "", "عملیات مالی پروژه"));
+  areasHeading.append(element("span", "", "بخش‌های گزارش مالی"), element("h2", "", "گزارش‌ها و اسناد این پروژه"));
   areasHeader.append(areasHeading);
   const areas = document.createElement("section");
   areas.className = "work-area-grid";
-  areas.setAttribute("aria-label", "بخش‌های امور مالی");
+  areas.setAttribute("aria-label", "بخش‌های گزارش مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
   if (provenance) fragment.append(pageHeader, provenance, overviewPanel, insights, areasHeader, areas);
@@ -855,7 +873,12 @@ function createMonthlyTrendPanel({ trend, trendError }) {
   };
 }
 
-export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
+export function createFinanceHomePage({ context = null, reportsAdapter, progressAdapter }) {
+  // This surface is the customer's, and its own destinations are all on it. The
+  // three shortcuts that lead into امور مالی are offered only to an account
+  // that could act there; for everyone else they would be a door to a page they
+  // have no business on.
+  const canOperate = hasPermission(context, "finance.edit");
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let trend = null;
   let trendError = null;
@@ -918,12 +941,15 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
     const title = document.createElement("h1");
     title.textContent = "خلاصه مالی هنوز قابل محاسبه نیست";
     const message = document.createElement("p");
-    message.textContent = "برای محاسبه شاخص‌های مالی، حداقل یک نسخه پیشرفت پروژه لازم است.";
-    const link = document.createElement("a");
-    link.className = "button button--primary";
-    link.href = "#/progress";
-    link.textContent = "مشاهده نسخه‌های پیشرفت";
-    card.append(title, message, link);
+    message.textContent = "برای محاسبه شاخص‌های مالی، حداقل یک نسخه پیشرفت پروژه لازم است. نسخه‌های پیشرفت در سربرگ امور مالی ثبت می‌شوند.";
+    card.append(title, message);
+    if (canOperate) {
+      const link = document.createElement("a");
+      link.className = "button button--primary";
+      link.href = "#/progress";
+      link.textContent = "مشاهده نسخه‌های پیشرفت";
+      card.append(link);
+    }
     return card;
   }
 
@@ -938,7 +964,7 @@ export function createFinanceHomePage({ reportsAdapter, progressAdapter }) {
         report: data,
         onSelect: selectSnapshot,
       });
-      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance);
+      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance, canOperate);
     };
     root.replaceChildren(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }
