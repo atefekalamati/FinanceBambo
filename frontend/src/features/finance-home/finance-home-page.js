@@ -12,6 +12,7 @@ import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
 import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
 import { canAccessSurface } from "../../core/auth/permissions.js";
+import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/variances/variance-rollup.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -730,8 +731,10 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   riskStack.className = "finance-risk-stack";
   riskStack.append(
     warnings,
-    createVariancePanel("بیشترین انحراف قیمت", data.topPriceVariances, "varianceIrr", formatCompactMoneyFromIrr, "#/report-prices"),
-    createVariancePanel("بیشترین انحراف مقدار", data.topQuantityVariances, "varianceQuantity", formatDisplayNumber, "#/report-items"),
+    // One row per item. The service answers with an estimate line each, and the
+    // same item used on two activities would otherwise be listed twice.
+    createVariancePanel("بیشترین انحراف قیمت", rollupPriceVariances(data.topPriceVariances), "varianceIrr", formatCompactMoneyFromIrr, "#/report-prices"),
+    createVariancePanel("بیشترین انحراف مقدار", rollupQuantityVariances(data.topQuantityVariances), "varianceQuantity", formatDisplayNumber, "#/report-items"),
   );
   insights.append(breakdown, riskStack);
 

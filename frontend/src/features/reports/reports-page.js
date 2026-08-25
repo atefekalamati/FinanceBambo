@@ -100,7 +100,7 @@ function renderPriceVariances(rows = []) {
   chart.setAttribute("aria-label", "نمودار بیشترین اثر تغییر قیمت بر پروژه");
   presentation.forEach((row) => {
     const link = element("a", `price-impact-chart__row price-impact-chart__row--${row.direction}`);
-    link.href = varianceLink("#/prices", row);
+    link.href = varianceLink("#/report-prices", row);
     const identity = element("span", "price-impact-chart__identity");
     identity.append(element("strong", "", row.resourceTitle || "قلم بدون عنوان"), element("small", "numeric", row.resourceCode || "بدون کد"));
     const track = element("span", "price-impact-chart__track");
@@ -127,7 +127,7 @@ function renderPriceVariances(rows = []) {
     const identity = document.createElement("td");
     identity.append(element("strong", "", row.resourceTitle || "قلم بدون عنوان"), element("small", "table-subtext numeric", row.resourceCode || "بدون کد"));
     const detail = element("a", "table-action", "مشاهده قیمت");
-    detail.href = varianceLink("#/prices", row);
+    detail.href = varianceLink("#/report-prices", row);
     record.append(identity, element("td", "", row.resourceTypeLabel), element("td", "numeric", formatTomanFromIrr(row.varianceIrr)), element("td", `variance-direction variance-direction--${row.direction}`, row.directionLabel), element("td", "", ""));
     record.lastElementChild.append(detail);
     body.append(record);
@@ -162,7 +162,7 @@ function renderQuantityVariances(rows = []) {
     const identity = document.createElement("td");
     identity.append(element("strong", "", row.resourceTitle || "قلم بدون عنوان"), element("small", "table-subtext numeric", row.resourceCode || "بدون کد"));
     const detail = element("a", "table-action", "مشاهده ردیف");
-    detail.href = varianceLink("#/financial-items", row);
+    detail.href = varianceLink("#/report-items", row);
     record.append(identity, element("td", "", row.resourceTypeLabel), element("td", "numeric", formatDisplayNumber(row.varianceQuantity)), element("td", "", ""));
     record.lastElementChild.append(detail);
     body.append(record);
