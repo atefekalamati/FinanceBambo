@@ -106,8 +106,18 @@ function deviationPercentText(deviation, baseline) {
   return fraction === 0n ? String(whole) : `${whole}.${fraction}`;
 }
 
-function magnitude(value, maximum) {
-  return maximum === 0n ? 0 : Number((absolute(value) * 10000n) / maximum) / 100;
+/**
+ * A point on the value axis, from 0 at the floor to 100 at the ceiling.
+ *
+ * A month can be negative: a month whose reversals and corrections outweigh its
+ * purchases removes more cost than it adds. Scaling on the absolute value would
+ * draw that month exactly as tall as a month that spent the same amount, which
+ * is the opposite of what happened. So the axis carries its own floor, and zero
+ * sits wherever it falls between them.
+ */
+function magnitude(value, floor, ceiling) {
+  const span = ceiling - floor;
+  return span === 0n ? 0 : Number(((value - floor) * 10000n) / span) / 100;
 }
 
 /**
@@ -165,35 +175,51 @@ export function buildMonthlyTrend({ months = [], mode = TREND_MODES.PERIODIC } =
     };
   });
 
-  const maximum = rows.reduce((result, row) => {
-    const candidates = [absolute(exactInteger(row.actualIrr))];
-    if (row.estimateIrr !== null) candidates.push(absolute(exactInteger(row.estimateIrr)));
-    return candidates.reduce((inner, value) => (value > inner ? value : inner), result);
-  }, 0n);
+  const drawn = rows.flatMap((row) => {
+    const values = [exactInteger(row.actualIrr)];
+    if (row.estimateIrr !== null) values.push(exactInteger(row.estimateIrr));
+    return values;
+  });
+  // Zero is always on the axis, so a chart of only positive months still starts
+  // at the baseline and a chart of only negative ones still ends at it.
+  const ceiling = drawn.reduce((result, value) => (value > result ? value : result), 0n);
+  const floor = drawn.reduce((result, value) => (value < result ? value : result), 0n);
 
   const points = rows.map((row) => ({
     ...row,
-    actualMagnitude: magnitude(exactInteger(row.actualIrr), maximum),
-    estimateMagnitude: row.estimateIrr === null ? null : magnitude(exactInteger(row.estimateIrr), maximum),
+    actualMagnitude: magnitude(exactInteger(row.actualIrr), floor, ceiling),
+    estimateMagnitude: row.estimateIrr === null ? null : magnitude(exactInteger(row.estimateIrr), floor, ceiling),
   }));
 
   return Object.freeze({
     mode: normalizedMode,
     points,
-    maximumIrr: String(maximum),
-    axisTicks: buildAxisTicks(maximum),
+    maximumIrr: String(ceiling),
+    minimumIrr: String(floor),
+    // Where the value zero falls on the axis. The bars grow from here, up or
+    // down, and the axis draws its heavier line across it.
+    zeroMagnitude: magnitude(0n, floor, ceiling),
+    hasNegative: floor < 0n,
+    axisTicks: buildAxisTicks(ceiling, 4, floor),
     hasEstimate: points.some((point) => point.estimateIrr !== null),
     estimatePartial: estimatePartial && points.length > 0,
     isEmpty: points.length === 0,
   });
 }
 
-/** Four gridlines plus the baseline, at exact fractions of the tallest value. */
-export function buildAxisTicks(maximum, steps = 4) {
+/**
+ * Gridlines at exact fractions of the axis, from its floor to its ceiling.
+ *
+ * The floor is zero unless some month went below it, so an all-positive chart
+ * keeps the axis it always had.
+ */
+export function buildAxisTicks(maximum, steps = 4, minimum = 0n) {
   const top = typeof maximum === "bigint" ? maximum : exactInteger(maximum);
-  if (top <= 0n) return [{ magnitude: 0, valueIrr: "0" }];
+  const bottom = typeof minimum === "bigint" ? minimum : exactInteger(minimum);
+  const span = top - bottom;
+  if (span <= 0n) return [{ magnitude: 0, valueIrr: String(bottom) }];
   return Array.from({ length: steps + 1 }, (unused, index) => ({
     magnitude: (index * 100) / steps,
-    valueIrr: String((top * BigInt(index)) / BigInt(steps)),
+    valueIrr: String(bottom + (span * BigInt(index)) / BigInt(steps)),
   }));
 }

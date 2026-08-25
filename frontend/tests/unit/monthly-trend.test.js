@@ -161,3 +161,58 @@ test("the Persian month boundary decides the bucket, not the Gregorian one", () 
     "فروردین ends on 2026-04-20; the next day belongs to اردیبهشت even though both are April",
   );
 });
+
+test("a month that removed more cost than it added hangs below the line", () => {
+  // A month whose reversals and corrections outweigh its purchases is a real
+  // month in the data. Scaling on the absolute value drew it exactly as tall as
+  // a month that spent the same amount, which is the opposite of what happened.
+  const view = buildMonthlyTrend({
+    months: [
+      { persianYear: 1404, persianMonth: 7, actualCostIrr: "-144500000", estimateIrr: null },
+      { persianYear: 1404, persianMonth: 8, actualCostIrr: "205300000", estimateIrr: null },
+      { persianYear: 1404, persianMonth: 9, actualCostIrr: "506900000", estimateIrr: null },
+    ],
+  });
+  assert.equal(view.hasNegative, true);
+  assert.equal(view.minimumIrr, "-144500000");
+  assert.equal(view.maximumIrr, "506900000");
+  // Zero is no longer the bottom of the plot: it sits where it falls.
+  assert.ok(view.zeroMagnitude > 0 && view.zeroMagnitude < 100);
+  const [down, small, tall] = view.points;
+  assert.ok(down.actualMagnitude < view.zeroMagnitude, "a negative month must sit below zero");
+  assert.ok(small.actualMagnitude > view.zeroMagnitude, "a positive month must sit above zero");
+  assert.equal(tall.actualMagnitude, 100, "the largest month reaches the ceiling");
+  assert.equal(down.actualMagnitude, 0, "the most negative month reaches the floor");
+  // The two must not be the same height, which is what the old scale did.
+  const nearlyEqual = buildMonthlyTrend({
+    months: [
+      { persianYear: 1404, persianMonth: 7, actualCostIrr: "-1000" },
+      { persianYear: 1404, persianMonth: 8, actualCostIrr: "1000" },
+    ],
+  });
+  assert.notEqual(nearlyEqual.points[0].actualMagnitude, nearlyEqual.points[1].actualMagnitude);
+  assert.equal(nearlyEqual.zeroMagnitude, 50);
+});
+
+test("an all-positive chart keeps the axis it always had", () => {
+  const view = buildMonthlyTrend({
+    months: [
+      { persianYear: 1405, persianMonth: 1, actualCostIrr: "400" },
+      { persianYear: 1405, persianMonth: 2, actualCostIrr: "1000" },
+    ],
+  });
+  assert.equal(view.hasNegative, false);
+  assert.equal(view.zeroMagnitude, 0, "zero stays at the bottom of the plot");
+  assert.equal(view.minimumIrr, "0");
+  assert.equal(view.points[0].actualMagnitude, 40);
+  assert.equal(view.points[1].actualMagnitude, 100);
+  assert.deepEqual(buildAxisTicks(1000n, 4, 0n).map((tick) => tick.valueIrr), ["0", "250", "500", "750", "1000"]);
+});
+
+test("the axis spans the floor when there is one, and stays exact", () => {
+  const ticks = buildAxisTicks(300n, 4, -100n);
+  assert.deepEqual(ticks.map((tick) => tick.valueIrr), ["-100", "0", "100", "200", "300"]);
+  assert.deepEqual(ticks.map((tick) => tick.magnitude), [0, 25, 50, 75, 100]);
+  // A span of nothing is one line at the value, not a division by zero.
+  assert.deepEqual(buildAxisTicks(0n, 4, 0n), [{ magnitude: 0, valueIrr: "0" }]);
+});

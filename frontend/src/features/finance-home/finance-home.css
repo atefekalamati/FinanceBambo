@@ -1993,18 +1993,18 @@ a.finance-variance-card__link:hover {
   min-inline-size: 0;
 }
 
-/* TEMPORARY: remove with monthly-trend-preview.js. */
-.monthly-trend-preview-notice {
-  flex: 0 0 auto;
-  padding: .35rem .6rem;
-  border-inline-start-color: var(--dash-sev-med);
-  background: color-mix(in srgb, var(--dash-sev-med) 12%, transparent);
-  font-size: .68rem;
-  line-height: 1.5;
+/* A month that removed more cost than it added. It hangs below the zero line
+   and is drawn as a credit rather than as spending, so the two are never read
+   as the same thing at a glance. */
+.combo-chart__bar--negative {
+  fill: var(--dash-sev-low, #4f9d69);
+  opacity: .85;
 }
 
-.monthly-trend-preview-notice strong {
-  color: var(--dash-sev-med);
+/* Only drawn when zero is not the bottom of the plot. */
+.combo-chart__zero-line {
+  stroke: var(--color-border);
+  stroke-width: 1;
 }
 
 .monthly-trend-legend {
