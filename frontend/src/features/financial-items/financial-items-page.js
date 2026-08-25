@@ -1,4 +1,6 @@
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { downloadCsvFile } from "../../shared/exports/csv.js";
+import { buildEstimateLinesCsv, estimateLinesFileName } from "./financial-items-csv.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -708,7 +710,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
 
 export function createFinancialItemsPage({ context, adapter, focusResourceId = "", focusEstimateLineId = "" }) {
   const root = element("div", "financial-items-page");
-  const canEdit = hasPermission(context, "finance.edit");
+  const canEdit = capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
 
   async function load() {
@@ -769,6 +771,17 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
     });
 
     const lineActions = element("div", "items-section__actions");
+    // Reading the estimate and taking a copy of it are the same act; only
+    // changing it is privileged.
+    const exportCsv = element("button", "button button--ghost", "خروجی اکسل");
+    exportCsv.type = "button";
+    exportCsv.addEventListener("click", () => {
+      downloadCsvFile(
+        buildEstimateLinesCsv({ lines: workspace.estimateLines, resources: workspace.resources }),
+        estimateLinesFileName({ projectCode: context.projectCode }),
+      );
+    });
+    lineActions.append(exportCsv);
     if (canEdit) {
       const addLine = element("button", "button button--primary", "خط متره جدید");
       addLine.type = "button";

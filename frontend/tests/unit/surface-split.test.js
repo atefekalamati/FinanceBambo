@@ -78,7 +78,7 @@ test("the report home leads into امور مالی only for an account that can 
   // the empty state's way to the progress versions. Each is behind canOperate,
   // which is the edit permission — the accounts that had the shortcut before
   // still have it, and a reader is not sent to a page they cannot use.
-  assert.match(source, /const canOperate = hasPermission\(context, "finance\.edit"\)/);
+  assert.match(source, /const canOperate = capabilitiesFor\(context\)\.writeFinance/);
   assert.match(source, /canOperate \? "#\/prices" : null/);
   assert.match(source, /canOperate \? "#\/financial-items" : null/);
   assert.match(source, /if \(canOperate\) \{[\s\S]{0,220}?"#\/progress"/);

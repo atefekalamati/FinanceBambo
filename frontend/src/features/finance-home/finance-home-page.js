@@ -11,7 +11,7 @@ import { buildMonthlyTrend, TREND_MODES } from "./monthly-trend.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
 import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -878,7 +878,7 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
   // three shortcuts that lead into امور مالی are offered only to an account
   // that could act there; for everyone else they would be a door to a page they
   // have no business on.
-  const canOperate = hasPermission(context, "finance.edit");
+  const canOperate = capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let trend = null;
   let trendError = null;

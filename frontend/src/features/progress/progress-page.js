@@ -3,7 +3,7 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
 import { element } from "../../shared/dom/elements.js";
 import { feedWarningText } from "../../shared/warnings/finance-warning-labels.js";
@@ -297,11 +297,13 @@ function renderAssignments(assignments, { canOverride, onOverride }) {
     dates.append(element("dt", "", "شروع"), element("dd", assignment.task.taskStart ? "" : "missing-value", dateOrMissing(assignment.task.taskStart)), element("dt", "", "پایان"), element("dd", assignment.task.taskFinish ? "" : "missing-value", dateOrMissing(assignment.task.taskFinish)));
     const override = document.createElement("td");
     override.append(renderOverrideDetails(assignment.manualOverride));
-    if (assignment.actualQuantity !== null && assignment.resourceType !== "general_cost") {
-      const button = element("button", "button button--small button--ghost progress-override-button", canOverride ? "اصلاح دستی مقدار" : "بدون مجوز ویرایش");
+    // A disabled button on every row of a long table is noise for an account
+    // that will never be able to press one, and it invites the reading that the
+    // interface is what stops them. The row still shows the reported quantity
+    // and any override already recorded on it.
+    if (canOverride && assignment.actualQuantity !== null && assignment.resourceType !== "general_cost") {
+      const button = element("button", "button button--small button--ghost progress-override-button", "اصلاح دستی مقدار");
       button.type = "button";
-      button.disabled = !canOverride;
-      if (!canOverride) button.title = "مجوز عمومی ویرایش مالی برای این عملیات لازم است.";
       button.addEventListener("click", () => onOverride(assignment));
       override.append(button);
     }
@@ -322,7 +324,7 @@ export function createProgressPage({ context, adapter }) {
   let snapshotsState = createRequestState(REQUEST_STATUS.LOADING);
   let feedState = createRequestState(REQUEST_STATUS.IDLE);
   let selectedId = null;
-  const canOverride = hasPermission(context, "finance.edit");
+  const canOverride = capabilitiesFor(context).writeFinance;
 
   async function selectSnapshot(snapshotId) {
     selectedId = snapshotId;
