@@ -72,23 +72,48 @@ test("both surfaces read the same adapters, so one shows what the other changed"
   assert.doesNotMatch(bootstrap, /createApi\w+Adapter\(context, client\)[\s\S]{0,200}?route\.key/, "no route builds an adapter of its own");
 });
 
-test("the report home leads into امور مالی only for an account that can act there", () => {
+test("the deviation rows lead to this surface's own read-only tables", () => {
   const source = read("../../src/features/finance-home/finance-home-page.js");
-  // The three shortcuts that cross the split: the two deviation drill-downs and
-  // the empty state's way to the progress versions. Each is behind canOperate,
-  // which is the edit permission — the accounts that had the shortcut before
-  // still have it, and a reader is not sent to a page they cannot use.
-  assert.match(source, /const canOperate = capabilitiesFor\(context\)\.writeFinance/);
-  assert.match(source, /canOperate \? "#\/prices" : null/);
-  assert.match(source, /canOperate \? "#\/financial-items" : null/);
+  // They used to lead into the price and item editors on امور مالی — a link
+  // that worked for an administrator and was a way straight past the split for
+  // everyone else. The twin routes are read-only whoever opens them.
+  assert.match(source, /formatCompactMoneyFromIrr, "#\/report-prices"\)/);
+  assert.match(source, /formatDisplayNumber, "#\/report-items"\)/);
+  assert.doesNotMatch(source, /"#\/prices"/);
+  assert.doesNotMatch(source, /"#\/financial-items"/);
+  // The one shortcut left that crosses the split is behind the surface check
+  // itself, not a permission this page names for itself.
+  assert.match(source, /const canOperate = canAccessSurface\(context, SURFACES\.OPERATIONS\)/);
   assert.match(source, /if \(canOperate\) \{[\s\S]{0,220}?"#\/progress"/);
-  // The gear on the report opens the settings this surface owns, not the ones
-  // that change what the figures come out as.
+  // The gear opens the settings this surface owns.
   assert.match(source, /finance-project-settings-link[\s\S]{0,320}?link\.href = "#\/report-settings"/);
   assert.doesNotMatch(source, /link\.href = "#\/settings"/);
-  // A row that goes nowhere must not be an anchor, must not carry the chevron
-  // that promises somewhere to go, and must not light up on hover.
-  assert.match(source, /document\.createElement\(baseHref \? "a" : "div"\)/);
-  assert.match(source, /if \(baseHref\) indicator\.textContent = "‹"/);
-  assert.match(read("../../src/features/finance-home/finance-home.css"), /a\.finance-variance-card__link:hover/);
+});
+
+test("the read-only mode follows the route, not the account", () => {
+  // An administrator reading the report gets the read-only table too. One mode
+  // per route is a thing you can reason about; one mode per account is not.
+  ["../../src/features/prices/prices-page.js", "../../src/features/financial-items/financial-items-page.js"].forEach((path) => {
+    const source = read(path);
+    assert.match(source, /const readOnly = surface === SURFACES\.REPORT;/, `${path} does not read its surface`);
+    assert.match(source, /const canEdit = !readOnly && capabilitiesFor\(context\)\.writeFinance;/, `${path} lets the permission alone decide`);
+    // The back link and the framing follow the same surface, so a reader is not
+    // told they came from a workspace they were never on.
+    assert.match(source, /homeRouteFor\(surface\)\?\.path/, `${path} sends the reader back to the wrong surface`);
+  });
+  const bootstrap = read("../../src/app/bootstrap.js");
+  assert.match(bootstrap, /route\.key === "prices" \|\| route\.key === "report-prices"/);
+  assert.match(bootstrap, /route\.key === "financial-items" \|\| route\.key === "report-items"/);
+  assert.equal((bootstrap.match(/surface: route\.surface/g) ?? []).length, 3, "every twinned page must be told which route opened it");
+});
+
+test("a closed door redirects to the readable twin instead of denying", () => {
+  const bootstrap = read("../../src/app/bootstrap.js");
+  assert.match(bootstrap, /const twin = readOnlyTwinOf\(route\.path\)/);
+  assert.match(bootstrap, /if \(twin && canAccessRoute\(context, twin\)\)/);
+  // The deep link's own query has to survive the redirect, or the row the
+  // reader clicked is not the row they arrive at.
+  assert.match(bootstrap, /window\.location\.hash = `#\$\{twin\.path\}\$\{query \? `\?\$\{query\}` : ""\}`/);
+  // And the landing route is resolved from the account, not fixed.
+  assert.match(bootstrap, /defaultPath: defaultRouteFor\(context\)/);
 });

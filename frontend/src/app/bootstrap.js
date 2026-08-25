@@ -17,8 +17,8 @@ import { createApiReportsAdapter } from "../adapters/api/reports-api-adapter.js"
 import { createMockReportsAdapter } from "../adapters/mock/reports-adapter.js";
 import { createApiAuditAdapter } from "../adapters/api/audit-api-adapter.js";
 import { createMockAuditAdapter } from "../adapters/mock/audit-adapter.js";
-import { canAccessRoute } from "../core/auth/permissions.js";
-import { DEFAULT_ROUTE, ROUTES } from "../core/config/routes.js";
+import { canAccessRoute, defaultRouteFor } from "../core/auth/permissions.js";
+import { ROUTES, readOnlyTwinOf } from "../core/config/routes.js";
 import { createHashRouter } from "../core/routing/router.js";
 import { createFinanceHomePage } from "../features/finance-home/finance-home-page.js";
 import { createOperationsHomePage } from "../features/finance-home/operations-home-page.js";
@@ -58,7 +58,7 @@ function resolveContext() {
   return hostContext ?? getStandaloneContext();
 }
 
-function renderDenied() {
+function renderDenied(context = null) {
   const section = document.createElement("section");
   section.className = "state-card state-card--danger";
   const heading = document.createElement("h1");
@@ -66,13 +66,33 @@ function renderDenied() {
   const message = document.createElement("p");
   message.textContent = "مجوز لازم برای مشاهده این صفحه مالی وجود ندارد.";
   section.append(heading, message);
+  // A refusal with no way out is a dead end. Whoever arrived here has a home of
+  // their own, and it is one click away.
+  const home = context ? ROUTES.find((route) => route.path === defaultRouteFor(context)) : null;
+  if (home) {
+    const link = document.createElement("a");
+    link.className = "button button--primary";
+    link.href = `#${home.path}`;
+    link.textContent = `رفتن به ${home.label}`;
+    section.append(link);
+  }
   root.replaceChildren(section);
 }
 
 function renderRoute(route, context, adapters, routeQuery = new URLSearchParams()) {
   root.replaceChildren();
   if (!canAccessRoute(context, route)) {
-    renderDenied();
+    // An account that may not be on امور مالی can still read the table it was
+    // reaching for. Sending it to the read-only twin is a better answer than a
+    // locked door, and it keeps a link that was written for an administrator
+    // working for everyone else.
+    const twin = readOnlyTwinOf(route.path);
+    if (twin && canAccessRoute(context, twin)) {
+      const query = routeQuery.toString();
+      window.location.hash = `#${twin.path}${query ? `?${query}` : ""}`;
+      return;
+    }
+    renderDenied(context);
     return;
   }
 
@@ -81,15 +101,18 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
   // operations change as soon as the service has it.
   if (route.key === "finance-home") root.append(createOperationsHomePage({ progressAdapter: adapters.progress }));
   if (route.key === "report-home") root.append(createFinanceHomePage({ context, reportsAdapter: adapters.reports, progressAdapter: adapters.progress }));
-  if (route.key === "financial-items") {
+  if (route.key === "financial-items" || route.key === "report-items") {
     root.append(createFinancialItemsPage({
       context,
       adapter: adapters.financialItems,
+      surface: route.surface,
       focusResourceId: routeQuery.get("resourceId") ?? "",
       focusEstimateLineId: routeQuery.get("estimateLineId") ?? "",
     }));
   }
-  if (route.key === "prices") root.append(createPricesPage({ context, adapter: adapters.prices, focusResourceId: routeQuery.get("resourceId") ?? "" }));
+  if (route.key === "prices" || route.key === "report-prices") {
+    root.append(createPricesPage({ context, adapter: adapters.prices, surface: route.surface, focusResourceId: routeQuery.get("resourceId") ?? "" }));
+  }
   if (route.key === "progress") root.append(createProgressPage({ context, adapter: adapters.progress }));
   if (route.key === "invoices") root.append(createInvoicesPage({ context, adapter: adapters.invoices }));
   if (route.key === "invoice-files") root.append(createInvoiceFilesPage({ context, adapter: adapters.attachments }));
@@ -155,7 +178,9 @@ try {
   }
   let activeRoute = null;
   let activeRouteQuery = new URLSearchParams();
-  createHashRouter({ routes: ROUTES, defaultPath: DEFAULT_ROUTE, onNavigate: (route, routeQuery) => {
+  // Where an account lands with no route of its own depends on which home it
+  // may open: a customer must not be dropped at the door of امور مالی.
+  createHashRouter({ routes: ROUTES, defaultPath: defaultRouteFor(context), onNavigate: (route, routeQuery) => {
     activeRoute = route;
     activeRouteQuery = routeQuery;
     renderRoute(route, context, adapters, routeQuery);

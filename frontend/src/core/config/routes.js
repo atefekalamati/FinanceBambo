@@ -25,6 +25,23 @@ export const SURFACE_LABELS = Object.freeze({
   [SURFACES.REPORT]: "گزارش مالی",
 });
 
+/**
+ * What an account must hold to be on a surface at all.
+ *
+ * امور مالی is a workspace, not a longer version of the report: everything on it
+ * exists to change a number. Letting an account that cannot change anything walk
+ * around inside it means every page there has to keep proving, control by
+ * control, that it is harmless — and one of them eventually forgets.
+ *
+ * So the door is checked once, here, and گزارش مالی carries its own read-only
+ * copy of anything a reader legitimately needs. Reading is never taken away;
+ * it is moved to the surface built for reading.
+ */
+export const SURFACE_REQUIREMENTS = Object.freeze({
+  [SURFACES.OPERATIONS]: "finance.edit",
+  [SURFACES.REPORT]: "finance.view",
+});
+
 export const ROUTES = Object.freeze([
   // ── امور مالی ────────────────────────────────────────────────────────────
   { key: "finance-home", path: "/finance", label: "امور مالی", permission: "finance.view", surface: SURFACES.OPERATIONS, home: true, enabled: true },
@@ -41,10 +58,12 @@ export const ROUTES = Object.freeze([
   { key: "reports", path: "/reports", label: "گزارش وضعیت مالی", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
   { key: "period-report", path: "/period-report", label: "گزارش دوره‌ای", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
   { key: "invoices", path: "/invoices", label: "فاکتورها", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
+  // The two tables a reader is sent to from the deviation cards. Same pages as
+  // on امور مالی, opened in a mode that offers no way to change anything.
+  { key: "report-prices", path: "/report-prices", label: "جدول قیمت‌ها", permission: "finance.view", surface: SURFACES.REPORT, readOnlyTwinOf: "prices", enabled: true },
+  { key: "report-items", path: "/report-items", label: "جدول اقلام و برآورد", permission: "finance.view", surface: SURFACES.REPORT, readOnlyTwinOf: "financial-items", enabled: true },
   { key: "report-settings", path: "/report-settings", label: "تنظیمات نمایش", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
 ]);
-
-export const DEFAULT_ROUTE = "/finance";
 
 export function routesForSurface(surface) {
   return ROUTES.filter((route) => route.enabled && route.surface === surface);
@@ -56,4 +75,15 @@ export function homeRouteFor(surface) {
 
 export function surfaceOfPath(path) {
   return ROUTES.find((route) => route.path === path)?.surface ?? null;
+}
+
+/**
+ * The read-only route showing the same table as an operations one, if there is
+ * one. Typing `#/prices` without the right to be on امور مالی is not a mistake
+ * worth answering with a locked door when the same rows are one route away.
+ */
+export function readOnlyTwinOf(path) {
+  const source = ROUTES.find((route) => route.path === path);
+  if (!source) return null;
+  return ROUTES.find((route) => route.enabled && route.readOnlyTwinOf === source.key) ?? null;
 }

@@ -11,7 +11,7 @@ import { buildMonthlyTrend, TREND_MODES } from "./monthly-trend.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildBreakdownPresentation, buildOverviewComparisons } from "./report-presentation.js";
 import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
-import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { canAccessSurface } from "../../core/auth/permissions.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -40,6 +40,8 @@ const WORK_AREAS = Object.freeze([
   { key: "reports", title: "گزارش وضعیت مالی", description: "گزارش به‌روز پروژه، انحراف قیمت و مقدار، و ثبت گزارش تثبیت‌شده", meta: "گزارش به‌روز · انحرافات · چاپ", href: "#/reports" },
   { key: "period-report", title: "گزارش دوره‌ای", description: "ساخت گزارش برای یک بازه زمانی دلخواه با خروجی چاپ و CSV", meta: "بازه دلخواه · مقایسه · خروجی", href: "#/period-report" },
   { key: "invoices", title: "ثبت و مشاهده فاکتورها", description: "ثبت فاکتور و مشاهده فهرست، وضعیت، فروشنده، مبلغ و جزئیات خطوط", meta: "ثبت · فهرست · وضعیت", href: "#/invoices" },
+  { key: "report-prices", title: "جدول قیمت‌ها", description: "قیمت پایه سازمان، قیمت اختصاصی پروژه و قیمت روز هر قلم، با خروجی اکسل", meta: "فقط‌خواندنی · خروجی اکسل", href: "#/report-prices" },
+  { key: "report-items", title: "جدول اقلام و برآورد", description: "ریز برآورد هر فعالیت، مقدار اولیه و آخرین مقدار اصلاح‌شده، با خروجی اکسل", meta: "فقط‌خواندنی · خروجی اکسل", href: "#/report-items" },
   { key: "report-settings", title: "تنظیمات نمایش", description: "واحد نمایش مبالغ و فهرست دسترسی‌های مالی این حساب", meta: "واحد مبلغ · دسترسی‌ها", href: "#/report-settings" },
 ]);
 
@@ -439,10 +441,10 @@ function createSupplementarySummary(metrics) {
 }
 
 /**
- * `baseHref` is null for a reader. The rows still say what deviated and by how
- * much — that is what this surface is for — but they stop being a way into the
- * price and item editors, which live on امور مالی. Nobody loses the shortcut:
- * it is offered to exactly the accounts that could have used it.
+ * The rows lead to this surface's own tables, which are read-only whoever opens
+ * them. They used to lead into the price and item editors on امور مالی — a link
+ * that worked for an administrator and was a way straight past the split for
+ * everyone else.
  */
 function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
   const section = document.createElement("section");
@@ -656,7 +658,7 @@ function createSettingsLink() {
   return link;
 }
 
-function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null, canOperate = false) {
+function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null) {
   const fragment = document.createDocumentFragment();
   const pageHeader = document.createElement("header");
   pageHeader.className = "finance-page-header";
@@ -728,8 +730,8 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   riskStack.className = "finance-risk-stack";
   riskStack.append(
     warnings,
-    createVariancePanel("بیشترین انحراف قیمت", data.topPriceVariances, "varianceIrr", formatCompactMoneyFromIrr, canOperate ? "#/prices" : null),
-    createVariancePanel("بیشترین انحراف مقدار", data.topQuantityVariances, "varianceQuantity", formatDisplayNumber, canOperate ? "#/financial-items" : null),
+    createVariancePanel("بیشترین انحراف قیمت", data.topPriceVariances, "varianceIrr", formatCompactMoneyFromIrr, "#/report-prices"),
+    createVariancePanel("بیشترین انحراف مقدار", data.topQuantityVariances, "varianceQuantity", formatDisplayNumber, "#/report-items"),
   );
   insights.append(breakdown, riskStack);
 
@@ -874,11 +876,10 @@ function createMonthlyTrendPanel({ trend, trendError }) {
 }
 
 export function createFinanceHomePage({ context = null, reportsAdapter, progressAdapter }) {
-  // This surface is the customer's, and its own destinations are all on it. The
-  // three shortcuts that lead into امور مالی are offered only to an account
-  // that could act there; for everyone else they would be a door to a page they
-  // have no business on.
-  const canOperate = capabilitiesFor(context).writeFinance;
+  // The deviation rows lead to this surface's own read-only tables now, so the
+  // only thing left that crosses into امور مالی is the empty state's shortcut to
+  // the progress versions — offered only to an account that may be there.
+  const canOperate = canAccessSurface(context, SURFACES.OPERATIONS);
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let trend = null;
   let trendError = null;
@@ -964,7 +965,7 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
         report: data,
         onSelect: selectSnapshot,
       });
-      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance, canOperate);
+      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance);
     };
     root.replaceChildren(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }
