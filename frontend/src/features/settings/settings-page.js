@@ -1,4 +1,4 @@
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor, describeAccess } from "../../core/auth/capabilities.js";
 import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -204,13 +204,10 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
       element("p", "", "این بخش فقط وضعیت دسترسی‌های دریافتی از سیستم اصلی BAMBO را نمایش می‌دهد."),
     );
     const list = element("ul", "settings-access__list");
-    [
-      ["finance.view", "مشاهده اطلاعات مالی"],
-      ["finance.edit", "ویرایش اطلاعات و تنظیمات مالی"],
-      ["finance_report.view", "مشاهده گزارش‌های مالی"],
-      ["finance_report.export", "دریافت خروجی گزارش‌ها"],
-    ].forEach(([code, label]) => {
-      const allowed = hasPermission(context, code);
+    // Read back from the one place the host's codes are named, so a code the
+    // module starts honouring cannot be missing from the list that claims to
+    // show this account everything it may do.
+    describeAccess(context).forEach(({ label, allowed }) => {
       const item = element("li", `settings-access__item settings-access__item--${allowed ? "allowed" : "denied"}`);
       item.append(element("span", "", label), element("strong", "", allowed ? "فعال" : "غیرفعال"));
       list.append(item);
@@ -230,7 +227,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
     );
     head.append(element("div", "settings-card__icon", "↔"), copy);
     const editorHost = element("div", "settings-conversions__editor-host");
-    if (hasPermission(context, "finance.edit")) {
+    if (capabilitiesFor(context).writeFinance) {
       const add = element("button", "button button--primary", "تعریف تبدیل کاری");
       add.type = "button";
       add.addEventListener("click", () => {
@@ -387,7 +384,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
    * still decides.
    */
   function mayReviseArea(data) {
-    return data?.canEdit ?? hasPermission(context, "finance.edit");
+    return data?.canEdit ?? capabilitiesFor(context).writeFinance;
   }
 
   function renderRevisionDenied(current) {
@@ -448,7 +445,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
     // finance.view and asks for the edit permission only on PATCH, so reading
     // is gated on reading. Whether the form is offered is a separate question,
     // and `canEdit` answers it.
-    const contentState = hasPermission(context, "finance.view") ? state : createRequestState(REQUEST_STATUS.DENIED);
+    const contentState = capabilitiesFor(context).viewFinance ? state : createRequestState(REQUEST_STATUS.DENIED);
     root.replaceChildren(renderHeader(), renderPageState(contentState, { renderContent, renderEmpty, onRetry: load }));
   }
 

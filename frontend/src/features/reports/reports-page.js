@@ -1,4 +1,4 @@
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
@@ -332,7 +332,7 @@ export function createReportsPage({ context, adapter }) {
     const back = element("a", "button button--ghost finance-back-link", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
     back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
     controls.append(picker.field, refresh, back);
-    if (hasPermission(context, "finance_report.issue")) {
+    if (capabilitiesFor(context).issueReport) {
       const issueButton = element("button", "button button--primary", "ثبت گزارش دوره‌ای");
       issueButton.type = "button";
       issueButton.addEventListener("click", openIssueDialog);
@@ -344,7 +344,7 @@ export function createReportsPage({ context, adapter }) {
     analysis.append(renderPriceVariances(report.topPriceVariances), renderQuantityVariances(report.topQuantityVariances));
     fragment.append(toolbar, renderMetrics(report.metrics), renderBreakdown(report.breakdown), analysis, renderReportWarnings(report.warnings, report));
     if (actionError) fragment.append(element("p", "inline-notice state-card--danger", actionError));
-    if (snapshot) fragment.append(renderSnapshot(snapshot, { canExport: hasPermission(context, "finance_report.export"), onDownload: downloadCsv }));
+    if (snapshot) fragment.append(renderSnapshot(snapshot, { canExport: capabilitiesFor(context).exportReport, onDownload: downloadCsv }));
     return fragment;
   }
 

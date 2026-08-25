@@ -1,4 +1,6 @@
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { downloadCsvFile } from "../../shared/exports/csv.js";
+import { buildPricesCsv, pricesFileName } from "./prices-csv.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -616,7 +618,7 @@ export function renderConversionHistory(history) {
 
 export function createPricesPage({ context, adapter, focusResourceId = "" }) {
   const root = element("div", "prices-page");
-  const canEdit = hasPermission(context, "finance.edit");
+  const canEdit = capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let listFilters = { query: "", scope: "all" };
 
@@ -671,6 +673,17 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
     const fragment = document.createDocumentFragment();
     const toolbar = element("div", "prices-toolbar");
     toolbar.append(element("p", "", "قیمت روز، آخرین قیمت معتبر است و قیمت اختصاصی پروژه بر قیمت پایه سازمان اولویت دارد."));
+    // Taking away a copy of a table you are already reading is not a privilege,
+    // so the export is offered to every account that can see the page.
+    const toolbarActions = element("div", "prices-toolbar__actions");
+    const exportCsv = element("button", "button button--ghost", "خروجی اکسل");
+    exportCsv.type = "button";
+    exportCsv.addEventListener("click", () => {
+      // What leaves is what is on screen: the filters are already applied.
+      downloadCsvFile(buildPricesCsv(filteredPrices), pricesFileName({ projectCode: context.projectCode, asOfDate: workspace.asOfDate }));
+    });
+    toolbarActions.append(exportCsv);
+    toolbar.append(toolbarActions);
     if (canEdit) {
       const importPrices = element("button", "button button--ghost", "ورود گروهی قیمت");
       importPrices.type = "button";
@@ -687,9 +700,7 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
       add.addEventListener("click", () => openEditor(workspace));
       const conversions = element("a", "button button--ghost", "مدیریت تبدیل واحد");
       conversions.href = "#/settings";
-      const toolbarActions = element("div", "prices-toolbar__actions");
       toolbarActions.append(conversions, importPrices, add);
-      toolbar.append(toolbarActions);
     }
     const normalizedQuery = listFilters.query.toLocaleLowerCase("fa-IR");
     const filteredPrices = workspace.currentPrices.filter((item) => {
