@@ -119,11 +119,9 @@ test("the snapshot strip shows a source only when the service recorded one", () 
   assert.match(source, /\.filter\(\(\[, , , value\]\) => value != null\)/, "a fact with no value is not rendered");
 });
 
-test("the strip states mapping coverage from the service, never derived here", () => {
+test("the page never works out the snapshot pairing for itself", () => {
+  // The mapped/unmapped counts are no longer shown, and if they come back they
+  // come from the service: repeating its pairing rule here would drift from it.
   const source = read("../../src/features/finance-home/finance-home-page.js");
-  assert.match(source, /report\?\.progressQuality/);
-  assert.match(source, /mappedLineCount/);
-  assert.match(source, /unmappedLineCount/);
-  // Deriving it would mean re-implementing the Backend's own pairing rule.
   assert.doesNotMatch(source, /assignmentExternalId === /, "the page must not redo the pairing itself");
 });
