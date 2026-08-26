@@ -66,9 +66,6 @@ export function createCombinationChart({
 
   let points = [];
   let ticks = [];
-  // Where the value zero sits on the axis, 0 at the bottom of the plot and 100
-  // at the top. It only moves off the bottom when a series goes below zero.
-  let zeroMagnitude = 0;
   let observer = null;
   let activeIndex = -1;
   let destroyed = false;
@@ -147,21 +144,17 @@ export function createCombinationChart({
 
     const barWidth = bandWidth * box.barWidthRatio;
     const centreOf = (index) => plotRight - bandWidth * (index + 0.5);
-    // Bars grow from the value zero, which is at the bottom of the plot unless
-    // some point went below it. A month whose reversals outweigh its purchases
-    // hangs below the line rather than standing as tall as a month that spent
-    // the same amount.
-    const zeroY = plotBottom - (plotHeight * zeroMagnitude) / 100;
 
     points.forEach((point, index) => {
       const centre = centreOf(index);
-      const valueY = plotBottom - (plotHeight * point[barSeries.magnitudeKey]) / 100;
-      const barHeight = Math.abs(valueY - zeroY);
+      // The baseline is the bottom of the plot and stays there. A magnitude is
+      // never negative, so a bar never grows downward out of it.
+      const barHeight = (plotHeight * point[barSeries.magnitudeKey]) / 100;
       if (barHeight > 0) {
         root.append(svg("rect", {
-          class: `combo-chart__bar${valueY > zeroY ? " combo-chart__bar--negative" : ""}`,
+          class: "combo-chart__bar",
           x: centre - barWidth / 2,
-          y: Math.min(valueY, zeroY),
+          y: plotBottom - barHeight,
           width: barWidth,
           height: barHeight,
           rx: Math.min(4, barWidth / 3),
@@ -203,11 +196,6 @@ export function createCombinationChart({
     });
 
     root.append(svg("line", { class: "combo-chart__baseline", x1: plotRight - plotWidth, x2: plotRight, y1: plotBottom, y2: plotBottom }));
-    // With anything below zero the bottom of the plot is no longer the value
-    // zero, so the line the bars are measured from has to be drawn where it is.
-    if (Math.abs(zeroY - plotBottom) > 0.5) {
-      root.append(svg("line", { class: "combo-chart__zero-line", x1: plotRight - plotWidth, x2: plotRight, y1: zeroY, y2: zeroY }));
-    }
 
     points.forEach((point, index) => {
       const centre = centreOf(index);
@@ -247,10 +235,9 @@ export function createCombinationChart({
   return Object.freeze({
     element: container,
 
-    setData({ points: nextPoints = [], ticks: nextTicks = [], zeroMagnitude: nextZero = 0 } = {}) {
+    setData({ points: nextPoints = [], ticks: nextTicks = [] } = {}) {
       points = nextPoints;
       ticks = nextTicks;
-      zeroMagnitude = Number.isFinite(nextZero) ? nextZero : 0;
       activeIndex = -1;
       tooltip.hidden = true;
       draw();
