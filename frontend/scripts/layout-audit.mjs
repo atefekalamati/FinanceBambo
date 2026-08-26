@@ -107,7 +107,7 @@ const measurementExpression = `(() => {
     .filter((element) => {
       const rect = element.getBoundingClientRect();
       if (rect.width < 1 || rect.height < 1) return false;
-      if (element.closest('.table-scroll, .breakdown-chart-viewport, .breakdown-table-wrapper')) return false;
+      if (element.closest('.table-scroll, .bullet-chart-viewport, .breakdown-table-wrapper')) return false;
       const style = getComputedStyle(element);
       if (style.position === 'fixed') return false;
       return rect.right > viewportWidth + 2 || rect.left < -2;

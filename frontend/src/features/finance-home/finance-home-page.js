@@ -9,7 +9,7 @@ import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { createCombinationChart } from "../../shared/components/combination-chart.js";
 import { buildMonthlyTrend, TREND_MODES } from "./monthly-trend.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
-import { buildBreakdownPresentation, buildBulletPresentation, buildOverviewComparisons } from "./report-presentation.js";
+import { buildBulletPresentation, buildOverviewComparisons } from "./report-presentation.js";
 import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
 import { canAccessSurface } from "../../core/auth/permissions.js";
 import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/variances/variance-rollup.js";
@@ -207,12 +207,7 @@ function createBulletChart(view) {
   return viewport;
 }
 
-const BREAKDOWN_FORMS = Object.freeze({
-  bars: { label: "میله‌ای", hint: "مقیاس هر دو سری در تمام ردیف‌ها یکسان است" },
-  bullet: { label: "هدف و عملکرد", hint: "میله هزینه واقعی است و نشانگر، برآورد همان نوع قلم" },
-});
-
-function createBreakdownChart(rows, { form = "bullet", onFormChange = () => {} } = {}) {
+function createBreakdownChart(view) {
   const section = document.createElement("section");
   section.className = "finance-breakdown";
   const heading = document.createElement("div");
@@ -224,69 +219,8 @@ function createBreakdownChart(rows, { form = "bullet", onFormChange = () => {} }
   title.textContent = "مقایسه برآورد اولیه و هزینه واقعی";
   copy.append(eyebrow, title);
   const hint = document.createElement("small");
-  hint.textContent = BREAKDOWN_FORMS[form]?.hint ?? BREAKDOWN_FORMS.bars.hint;
-  const trailing = element("div", "section-heading__trailing");
-  const switcher = element("div", "analysis-chart-switch breakdown-form-switch");
-  switcher.setAttribute("role", "group");
-  switcher.setAttribute("aria-label", "انتخاب شکل نمودار ترکیب هزینه");
-  Object.entries(BREAKDOWN_FORMS).forEach(([key, meta]) => {
-    const button = element("button", `button button--small button--ghost${key === form ? " is-active" : ""}`, meta.label);
-    button.type = "button";
-    button.dataset.form = key;
-    button.setAttribute("aria-pressed", String(key === form));
-    button.addEventListener("click", () => onFormChange(key));
-    switcher.append(button);
-  });
-  trailing.append(hint, switcher);
-  heading.append(copy, trailing);
-
-  const legend = document.createElement("ul");
-  legend.className = "breakdown-legend";
-  [["initial", "برآورد اولیه"], ["actual", "هزینه واقعی"]].forEach(([key, label]) => {
-    const item = document.createElement("li");
-    item.dataset.series = key;
-    item.textContent = label;
-    legend.append(item);
-  });
-
-  const chart = document.createElement("div");
-  chart.className = "breakdown-chart";
-  chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", "نمودار مقایسه برآورد اولیه و هزینه واقعی به تفکیک نوع قلم هزینه");
-  rows.forEach((row) => {
-    const group = document.createElement("article");
-    group.className = "breakdown-chart__group";
-    const label = document.createElement("h3");
-    label.textContent = row.label;
-    const bars = document.createElement("div");
-    bars.className = "breakdown-chart__bars";
-    [["initial", row.bars.initial, row.initialEstimateIrr, "برآورد اولیه"], ["actual", row.bars.actual, row.actualCostIrr, "هزینه واقعی"]].forEach(([series, magnitude, value, seriesLabel]) => {
-      const seriesRow = document.createElement("div");
-      seriesRow.className = "breakdown-chart__series";
-      seriesRow.setAttribute("aria-label", `${seriesLabel}: ${formatTomanFromIrr(value)}`);
-      const track = document.createElement("div");
-      track.className = "breakdown-chart__track";
-      const bar = document.createElement("span");
-      bar.className = `breakdown-chart__bar breakdown-chart__bar--${series} chart-mark`;
-      bar.style.setProperty("--bar-width", `${magnitude}%`);
-      bar.title = `${seriesLabel}: ${formatTomanFromIrr(value)}`;
-      track.append(bar);
-      const amount = document.createElement("span");
-      amount.className = "breakdown-chart__value numeric";
-      amount.textContent = formatCompactMoneyFromIrr(value);
-      amount.dataset.exact = formatTomanFromIrr(value);
-      amount.classList.add("compact-money");
-      amount.setAttribute("aria-label", formatTomanFromIrr(value));
-      amount.tabIndex = 0;
-      seriesRow.append(track, amount);
-      bars.append(seriesRow);
-    });
-    group.append(label, bars);
-    chart.append(group);
-  });
-  const chartViewport = document.createElement("div");
-  chartViewport.className = "breakdown-chart-viewport";
-  chartViewport.append(chart);
+  hint.textContent = "میله هزینه واقعی است و نشانگر، برآورد همان نوع قلم";
+  heading.append(copy, hint);
 
   const wrapper = document.createElement("div");
   wrapper.className = "table-scroll breakdown-table-wrapper";
@@ -306,8 +240,7 @@ function createBreakdownChart(rows, { form = "bullet", onFormChange = () => {} }
   });
   thead.append(header);
   const tbody = document.createElement("tbody");
-  const ratios = new Map(buildBulletPresentation(rows).rows.map((row) => [row.resourceType, row]));
-  rows.forEach((row) => {
+  view.rows.forEach((row) => {
     const record = document.createElement("tr");
     [row.label, row.initialEstimateIrr, row.actualCostIrr].forEach((text, index) => {
       const cell = document.createElement("td");
@@ -316,13 +249,12 @@ function createBreakdownChart(rows, { form = "bullet", onFormChange = () => {} }
       record.append(cell);
     });
     // The one column the table never had: the comparison itself, in a number.
-    const ratio = ratios.get(row.resourceType);
     const ratioCell = document.createElement("td");
-    if (ratio?.consumedPercent === null || ratio === undefined) {
+    if (row.consumedPercent === null) {
       ratioCell.textContent = row.actualCostIrr === "0" ? "—" : "برآورد ثبت نشده";
     } else {
-      ratioCell.className = `numeric${ratio.overBudget ? " variance-direction variance-direction--increase" : ""}`;
-      ratioCell.textContent = `${formatDisplayNumber(String(Math.round(ratio.consumedPercent)))}٪`;
+      ratioCell.className = `numeric${row.overBudget ? " variance-direction variance-direction--increase" : ""}`;
+      ratioCell.textContent = `${formatDisplayNumber(String(Math.round(row.consumedPercent)))}٪`;
     }
     record.append(ratioCell);
     const forecast = document.createElement("td");
@@ -332,13 +264,7 @@ function createBreakdownChart(rows, { form = "bullet", onFormChange = () => {} }
   });
   table.append(caption, thead, tbody);
   wrapper.append(table);
-  if (form === "bullet") {
-    const view = buildBulletPresentation(rows);
-    // The legend names two bars; the bullet form has a bar and a marker.
-    section.append(heading, createBulletLegend(), createBulletChart(view), wrapper);
-  } else {
-    section.append(heading, legend, chartViewport, wrapper);
-  }
+  section.append(heading, createBulletLegend(), createBulletChart(view), wrapper);
   return section;
 }
 
@@ -799,7 +725,6 @@ function createSettingsLink() {
 }
 
 function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null) {
-  const breakdownForm = chartState.breakdownForm ?? "bullet";
   const fragment = document.createDocumentFragment();
   const pageHeader = document.createElement("header");
   pageHeader.className = "finance-page-header";
@@ -862,10 +787,8 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
     warnings.textContent = "برای محاسبات زنده فعلی هشداری ثبت نشده است.";
   }
 
-  const breakdownRows = buildBreakdownPresentation(data.breakdown);
-  const breakdown = breakdownRows.length
-    ? createBreakdownChart(breakdownRows, { form: breakdownForm, onFormChange: chartState.onBreakdownFormChange })
-    : document.createDocumentFragment();
+  const breakdownView = buildBulletPresentation(data.breakdown);
+  const breakdown = breakdownView.rows.length ? createBreakdownChart(breakdownView) : document.createDocumentFragment();
   const insights = document.createElement("section");
   insights.className = "finance-insights";
   insights.setAttribute("aria-label", "تحلیل و هشدارهای مالی");
@@ -1016,9 +939,6 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
   let trend = null;
   let trendError = null;
   let activeChart = "managerial";
-  // Which shape the cost breakdown is drawn in. Both forms read the same rows;
-  // the reader is choosing a question, not a dataset.
-  let breakdownForm = "bullet";
   let chart = null;
   let snapshots = [];
   let selectedSnapshotId = null;
@@ -1065,12 +985,6 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
     activeChart = nextChart;
   }
 
-  function setBreakdownForm(nextForm) {
-    if (nextForm === breakdownForm) return;
-    breakdownForm = nextForm;
-    paint();
-  }
-
   function selectSnapshot(nextSnapshotId) {
     if (!nextSnapshotId || nextSnapshotId === selectedSnapshotId) return;
     selectedSnapshotId = nextSnapshotId;
@@ -1106,7 +1020,7 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
         report: data,
         onSelect: selectSnapshot,
       });
-      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart, breakdownForm, onBreakdownFormChange: setBreakdownForm }, provenance);
+      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance);
     };
     root.replaceChildren(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }
