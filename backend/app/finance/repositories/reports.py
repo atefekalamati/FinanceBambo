@@ -3,6 +3,21 @@ from psycopg.types.json import Jsonb
 
 
 class PsycopgLiveReportRepository:
+    async def progress_reference_for_host(self,scope,host_snapshot_id):
+        """The stored reference for one Core snapshot, if there is one. Read-only."""
+        from .progress import REFERENCE_COLUMNS
+        async with self.db.cursor(row_factory=dict_row) as cursor:
+            await cursor.execute(
+                "SELECT %s FROM progress_snapshot_refs WHERE organization_id=%%s "
+                "AND project_id=%%s AND host_snapshot_id=%%s" % REFERENCE_COLUMNS,
+                (scope.organization_id,scope.project_id,host_snapshot_id))
+            return await cursor.fetchone()
+
+    async def ensure_progress_reference(self,scope,value):
+        """The same idempotent write the progress repository uses, not a second copy."""
+        from .progress import ensure_progress_reference
+        return await ensure_progress_reference(self.db,scope,value)
+
     def __init__(self,db):self.db=db
 
     async def load(self,scope,as_of):
@@ -11,7 +26,7 @@ class PsycopgLiveReportRepository:
             await cursor.execute("""SELECT l.id,l.resource_id,l.activity_external_id,NULL::text activity_title,NULL::text wbs_code,l.assignment_external_id,l.original_quantity,l.original_unit_price_irr,COALESCE((SELECT er.id FROM estimate_revisions er WHERE er.organization_id=l.organization_id AND er.project_id=l.project_id AND er.estimate_line_id=l.id AND er.created_at::date<=%s ORDER BY er.revision DESC LIMIT 1),l.id) estimate_version_id,COALESCE((SELECT er.new_quantity FROM estimate_revisions er WHERE er.organization_id=l.organization_id AND er.project_id=l.project_id AND er.estimate_line_id=l.id AND er.created_at::date<=%s ORDER BY er.revision DESC LIMIT 1),l.original_quantity) revised_quantity,r.resource_type,r.code resource_code,r.title resource_title,r.base_unit,r.dimension,(SELECT pv.id FROM price_versions pv WHERE pv.organization_id=l.organization_id AND pv.project_id=l.project_id AND pv.resource_id=l.resource_id AND pv.effective_from<=%s ORDER BY (pv.scope_kind='project') DESC,pv.effective_from DESC,pv.version DESC,pv.created_at DESC,pv.id DESC LIMIT 1) price_version_id,(SELECT pv.unit_price_irr FROM price_versions pv WHERE pv.organization_id=l.organization_id AND pv.project_id=l.project_id AND pv.resource_id=l.resource_id AND pv.effective_from<=%s ORDER BY (pv.scope_kind='project') DESC,pv.effective_from DESC,pv.version DESC,pv.created_at DESC,pv.id DESC LIMIT 1) current_unit_price_irr,(SELECT pv.scope_kind FROM price_versions pv WHERE pv.organization_id=l.organization_id AND pv.project_id=l.project_id AND pv.resource_id=l.resource_id AND pv.effective_from<=%s ORDER BY (pv.scope_kind='project') DESC,pv.effective_from DESC,pv.version DESC,pv.created_at DESC,pv.id DESC LIMIT 1) current_price_scope,(SELECT pv.effective_from FROM price_versions pv WHERE pv.organization_id=l.organization_id AND pv.project_id=l.project_id AND pv.resource_id=l.resource_id AND pv.effective_from<=%s ORDER BY (pv.scope_kind='project') DESC,pv.effective_from DESC,pv.version DESC,pv.created_at DESC,pv.id DESC LIMIT 1) current_price_effective_from FROM estimate_lines l JOIN finance_resources r ON r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.id=l.resource_id WHERE l.organization_id=%s AND l.project_id=%s AND l.deleted_at IS NULL AND r.deleted_at IS NULL AND l.created_at::date<=%s ORDER BY l.created_at,l.id""",(as_of,as_of,as_of,as_of,as_of,as_of,scope.organization_id,scope.project_id,as_of));estimates=await cursor.fetchall()
             await cursor.execute("""SELECT i.id invoice_id,il.estimate_line_id,il.resource_id,il.quantity,il.unit,il.final_line_amount_irr,i.financial_effect_sign,r.resource_type,r.code resource_code,r.base_unit,r.dimension FROM invoice_lines il JOIN invoices i ON i.organization_id=il.organization_id AND i.project_id=il.project_id AND i.id=il.invoice_id JOIN finance_resources r ON r.organization_id=il.organization_id AND r.project_id=il.project_id AND r.id=il.resource_id WHERE il.organization_id=%s AND il.project_id=%s AND i.status IN ('confirmed','voided','corrected') AND i.invoice_date<=%s""",(scope.organization_id,scope.project_id,as_of));invoices=await cursor.fetchall()
             await cursor.execute("""SELECT DISTINCT ON (source_unit,target_unit,dimension) id,source_unit,target_unit,dimension,factor FROM unit_conversions WHERE organization_id=%s AND project_id=%s AND effective_from<=%s ORDER BY source_unit,target_unit,dimension,(scope_kind='project') DESC,effective_from DESC,version DESC,created_at DESC,id DESC""",(scope.organization_id,scope.project_id,as_of));conversions=await cursor.fetchall()
-            await cursor.execute("SELECT id progress_snapshot_ref_id,progress_snapshot_id,reporting_date FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s AND reporting_date<=%s AND snapshot_status='ready' ORDER BY reporting_date DESC,imported_at DESC LIMIT 1",(scope.organization_id,scope.project_id,as_of));snapshot=await cursor.fetchone()
+            await cursor.execute("SELECT id progress_snapshot_ref_id,progress_snapshot_id,host_snapshot_id,reporting_date FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s AND reporting_date<=%s AND snapshot_status='ready' ORDER BY reporting_date DESC,imported_at DESC LIMIT 1",(scope.organization_id,scope.project_id,as_of));snapshot=await cursor.fetchone()
         return {"settings_id":None if settings is None else settings["id"],"gross_area":None if settings is None else settings["gross_built_area"],"estimates":estimates,"invoices":invoices,"conversions":conversions,"snapshot":snapshot}
 
     async def monthly_actuals(self,scope,date_from,date_to):
@@ -29,7 +44,7 @@ class PsycopgLiveReportRepository:
 
     async def snapshot(self,scope,snapshot_id):
         async with self.db.cursor(row_factory=dict_row) as cursor:
-            await cursor.execute("SELECT id progress_snapshot_ref_id,progress_snapshot_id,reporting_date FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s AND progress_snapshot_id=%s AND snapshot_status='ready'",(scope.organization_id,scope.project_id,snapshot_id));return await cursor.fetchone()
+            await cursor.execute("SELECT id progress_snapshot_ref_id,progress_snapshot_id,host_snapshot_id,reporting_date FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s AND progress_snapshot_id=%s AND snapshot_status='ready'",(scope.organization_id,scope.project_id,snapshot_id));return await cursor.fetchone()
 
     async def issue(self,scope,value,payload,audit_id):
         async with self.db.transaction():

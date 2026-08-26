@@ -3,3 +3,9 @@ pydantic==2.13.4
 psycopg==3.3.4
 openpyxl==3.1.5
 python-multipart==0.0.31
+
+# Schema migrations. Alembic is the only migration mechanism; SQLAlchemy is here because
+# Alembic connects through it, not because anything in this project maps objects -- the
+# repositories stay raw parameterised SQL on psycopg and there are no ORM models.
+alembic==1.19.1
+SQLAlchemy==2.0.52

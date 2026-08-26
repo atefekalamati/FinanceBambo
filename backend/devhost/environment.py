@@ -68,16 +68,60 @@ def migration_url() -> str | None:
 
 
 def app_env() -> str:
-    return (setting("APP_ENV", "development") or "development").strip().lower()
+    """The environment name, defaulting to development when unset.
+
+    The default is for description -- log lines, the "seed DISABLED" notice -- not for
+    authorization. `seeding_allowed()` deliberately reads the raw setting instead, because a
+    default that means "development" would let an unconfigured environment authorize writes.
+    """
+    return (setting(APP_ENV_SETTING, "development") or "development").strip().lower()
+
+
+#: Environments where seeding is even conceivable. Staging is deliberately absent: it is a
+#: deployed environment, and demo rows in a deployed environment are indistinguishable from
+#: real ones to everyone looking at it.
+SEEDABLE_ENVIRONMENTS = ("development", "dev", "test")
+
+#: The positive authorization seeding now requires, on top of a seedable environment.
+SEED_OPT_IN = "FINANCE_ALLOW_SEED"
+
+#: Named once so `app_env()` and `seeding_allowed()` cannot end up reading different keys.
+#: They read the same setting for different purposes: one describes, the other authorizes.
+APP_ENV_SETTING = "APP_ENV"
+
+
+def seed_opt_in() -> bool:
+    """Whether someone has explicitly authorized fixture data in this environment."""
+    return (setting(SEED_OPT_IN, "") or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def seeding_allowed() -> bool:
-    """Development fixtures must never load into anything but a development database.
+    """Whether development fixtures may be loaded. Fails closed.
 
-    The guard is on the environment rather than the connection string, because a
+    Two explicit positive conditions, both required, neither with a default:
+
+      1. APP_ENV is **configured** and names a seedable environment, and
+      2. FINANCE_ALLOW_SEED explicitly says yes.
+
+    `app_env()` is deliberately not used here. It substitutes "development" when APP_ENV is
+    unset, which is a sensible default for describing an environment but a dangerous one for
+    authorizing writes: an environment that had simply never been configured would satisfy
+    condition 1 by accident, and with the opt-in set would seed. So this reads the raw
+    setting and treats absent or blank as a refusal.
+
+    That is the whole rule: **no default may authorize fixture insertion.** Production must
+    never receive demo data, and "never" cannot rest on a variable being remembered.
+
+    Staging is not a seedable environment. It is deployed, and demo invoices there look
+    exactly like real ones to anyone reviewing it.
+
+    The check is on the environment rather than the connection string on purpose: a
     production DSN in a misconfigured shell would otherwise be seeded silently.
     """
-    return app_env() in ("development", "dev", "test", "staging")
+    configured = (setting(APP_ENV_SETTING) or "").strip().lower()
+    if not configured:
+        return False
+    return configured in SEEDABLE_ENVIRONMENTS and seed_opt_in()
 
 
 def redacted(dsn: str) -> str:

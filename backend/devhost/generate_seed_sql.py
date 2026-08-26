@@ -160,12 +160,16 @@ def build() -> str:
         out.append(
             "INSERT INTO progress_snapshot_refs"
             "(id,organization_id,project_id,progress_snapshot_id,source_file_version_id,"
-            "source_file_name_safe,reporting_date,snapshot_status,imported_by,imported_at,created_at)"
+            "source_file_name_safe,reporting_date,snapshot_status,imported_by,imported_at,created_at,"
+            "host_snapshot_id,host_file_version_id)"
             f" VALUES({quote(snapshot['ref_id'])},{org},{project},"
             f"{quote(snapshot['progress_snapshot_id'])},{quote(snapshot['source_file_version_id'])},"
             f"{quote(snapshot['source_file_name_safe'])},{quote(snapshot['reporting_date'])},'ready',"
             f"{quote(seed.IMPORTER_ID)},{quote(snapshot['imported_at'].isoformat())},"
-            f"{quote(snapshot['imported_at'].isoformat())});")
+            f"{quote(snapshot['imported_at'].isoformat())},"
+            # Core-shaped bigint identifiers, so a reseeded local database matches what the
+            # adapter would have recorded rather than looking like a pre-integration row.
+            f"{snapshot['host_snapshot_id']},{snapshot['host_file_version_id']});")
 
     override = seed.PROGRESS_OVERRIDE
     out += ["", "-- Manual progress override recorded by the mock feed"]

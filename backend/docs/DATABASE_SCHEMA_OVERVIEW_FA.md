@@ -217,7 +217,21 @@ report_snapshots
 | imported_by | UUID | ممیزی | کاربر واردکننده |
 | imported_at | Timestamptz | ممیزی | زمان ورود Snapshot در سیستم میزبان |
 | created_at | Timestamptz | ممیزی | زمان ثبت ردیف مرجع در Finance |
+| host_snapshot_id | Bigint, Nullable | یکپارچه‌سازی | شناسه واقعی Snapshot در Core (`msp_snapshots.id`). **Core مالک این مقدار است؛ Finance فقط نگهش می‌دارد.** `NULL` یعنی این ردیف هرگز به Snapshotی در Core وصل نبوده — که درباره هر ردیف پیش از این یکپارچه‌سازی درست است. هیچ FK فیزیکی به Core ندارد؛ اعتبارسنجی در لایه Adapter انجام می‌شود |
+| host_file_version_id | Bigint, Nullable | یکپارچه‌سازی | شناسه واقعی نسخه فایل زمان‌بندی در Core (`msp_file_versions.id`) |
 | source_type | Text, Nullable | یکپارچه‌سازی | ابزار مبدأ زمان‌بندی: `microsoft_project`، `primavera`، `manual` یا `other`؛ با CHECK محدود شده که `NULL` را هم می‌پذیرد. در Migration 0005 اضافه شد، **بدون DEFAULT** — ردیف‌های پیش از آن `NULL` می‌مانند، و `NULL` یعنی «ثبت نشده»، نه «نامعلوم است پس حدس بزن». پسوند فایل شاهدِ ابزار نیست |
+
+> **مرجع Snapshot از کجا می‌آید؟** تا پیش از Revision 0006 هیچ مسیری جز Seed توسعه در این
+> جدول نمی‌نوشت، یعنی روی یک دیتابیس واقعی این جدول همیشه خالی می‌ماند و هر گزارش زنده ۴۰۴
+> می‌گرفت. حالا وقتی یک عملیات مالی باید به یک Snapshot مشخص Core گره بخورد — صدور گزارش،
+> ثبت اصلاح دستی — Finance از طریق Adapter مرجع را می‌سازد یا مرجع موجود را دوباره استفاده
+> می‌کند. **هیچ عملیات دستی کاربر لازم نیست**، و Index یکتای جزئی روی
+> `(organization_id, project_id, host_snapshot_id)` تضمین می‌کند یک Snapshot از Core هرگز
+> دو مرجع Finance نسازد.
+>
+> `progress_snapshot_id` همچنان شناسه عمومی خودِ Finance است (همان که در URL دیده می‌شود) و
+> شناسه Core در `host_snapshot_id` می‌نشیند. برای گرفتن Feed، Finance با شناسه **میزبان**
+> سؤال می‌کند، نه با UUID خودش — میزبان UUID فایننس را نمی‌شناسد.
 
 > **نسخه‌بندی Snapshot ستون ندارد و لازم هم ندارد.** جدول با Trigger فقط-افزودنی است، پس ترتیب ردیف‌ها خودش تاریخچه است: `version` و `isLatest` در پاسخ API از روی جایگاه ردیف در تاریخچه همان پروژه محاسبه می‌شوند. نسخه ۱ همیشه قدیمی‌ترین می‌ماند، چون هیچ ورود بعدی نمی‌تواند خودش را جلوتر درج کند.
 
@@ -552,15 +566,21 @@ DATABASE_URL=postgresql://RUNTIME_USER@DB_HOST:5432/DATABASE?sslmode=require
 
 ## ۲۱. Migrationها
 
-Migrationها Raw SQL هستند و به‌ترتیب زیر اجرا می‌شوند:
+Migrationها با **Alembic** مدیریت می‌شوند و Alembic تنها مرجع Schema است. بدنه هر Revision
+همان SQL خام بازبینی‌شده است — تبدیل، بازنویسی Schema نبود — و Alembic ترتیب و ثبت را بر عهده
+دارد. زنجیره، از پایه تا head:
 
 ```text
-0001_finance_core.up.sql
-0002_invoice_confirmation.up.sql
-0003_invoice_linked_documents.up.sql
-0004_report_snapshot_payload.up.sql
-0005_progress_snapshot_source_type.up.sql
+0001_finance_core
+  → 0002_invoice_confirmation
+    → 0003_invoice_linked_documents
+      → 0004_report_snapshot_payload
+        → 0005_progress_snapshot_source_type
+          → 0006_progress_snapshot_host_reference   (head)
 ```
+
+Revisionها در `backend/alembic/versions/` قرار دارند و از پوشه `backend/` با
+`alembic upgrade head` اجرا می‌شوند.
 
 کار هر Migration:
 
@@ -572,7 +592,12 @@ Migrationها Raw SQL هستند و به‌ترتیب زیر اجرا می‌ش�
 | `0004_report_snapshot_payload` | افزودن Payload کامل و شناسه نسخه‌های Pin‌شده گزارش |
 | `0005_progress_snapshot_source_type` | افزودن ستون `source_type` به `progress_snapshot_refs`؛ فقط تغییر Catalog، بدون DEFAULT و بدون بازنویسی هیچ ردیفی، تا تریگر تغییرناپذیری فعال نشود |
 
-برای هر Migration فایل Down متناظر وجود دارد. Down migration جایگزین Backup/Restore نیست.
+هر Revision هر دو جهت را دارد (`upgrade` و `downgrade`). **Down migration جایگزین
+Backup/Restore نیست** — Revision پایه تمام جدول‌های مالی را حذف می‌کند و داده‌شان با آن‌ها
+می‌رود؛ `docs/RECOVERY_RUNBOOK_FA.md` را ببینید.
+
+اتصال از `FINANCE_MIGRATION_DSN` (نقش Owner) خوانده می‌شود، نه از `FINANCE_DEV_DSN` که نقش
+برنامه است و عمداً اجازه DDL ندارد. `alembic.ini` هیچ رشته اتصالی ندارد.
 
 ## ۲۲. وضعیت سازگاری پس از آخرین بازبینی
 
@@ -590,10 +615,8 @@ Migrationها Raw SQL هستند و به‌ترتیب زیر اجرا می‌ش�
 
 ## ۲۳. فایل‌های مرجع
 
-- `backend/migrations/0001_finance_core.up.sql`
-- `backend/migrations/0002_invoice_confirmation.up.sql`
-- `backend/migrations/0003_invoice_linked_documents.up.sql`
-- `backend/migrations/0004_report_snapshot_payload.up.sql`
+- `backend/alembic/versions/` — هر پنج Revision
+- `backend/alembic/env.py` — اتصال Alembic و اینکه چرا DSN حدس زده نمی‌شود
 - `backend/app/finance/repositories/`
 - `backend/app/finance/domain/`
 - `backend/app/finance/schemas/`

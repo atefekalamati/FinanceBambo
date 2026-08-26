@@ -23,14 +23,18 @@ pg_restore --list bambo_finance_pre_migration.dump
 
 ## اجرای Migration
 
-هر فایل Up با توقف روی اولین خطا و به‌ترتیب اجرا شود:
+Alembic زنجیره را به‌ترتیب اجرا می‌کند و روی اولین خطا متوقف می‌شود؛ ترتیب دیگر دستی نیست.
+از پوشه `backend/`:
 
 ```powershell
-psql $env:BAMBO_DATABASE_URL -v ON_ERROR_STOP=1 -f backend/migrations/0001_finance_core.up.sql
-psql $env:BAMBO_DATABASE_URL -v ON_ERROR_STOP=1 -f backend/migrations/0002_invoice_confirmation.up.sql
-psql $env:BAMBO_DATABASE_URL -v ON_ERROR_STOP=1 -f backend/migrations/0003_invoice_linked_documents.up.sql
-psql $env:BAMBO_DATABASE_URL -v ON_ERROR_STOP=1 -f backend/migrations/0004_report_snapshot_payload.up.sql
+alembic current          # پیش از هر چیز: این دیتابیس الان کجاست؟
+alembic upgrade head
+alembic current          # پس از اجرا: باید 0005 باشد
 ```
+
+`FINANCE_MIGRATION_DSN` باید به همان دیتابیسی اشاره کند که از آن Backup گرفته‌اید. Alembic
+هیچ Fallbackی ندارد؛ اگر این متغیر تنظیم نشده باشد متوقف می‌شود، که عمدی است — یک رشته
+اتصال حدس‌زده‌شده همان چیزی است که Migration را روی دیتابیس اشتباه اجرا می‌کند.
 
 ## Restore در دیتابیس جداگانه
 
@@ -44,16 +48,21 @@ pg_restore --exit-on-error --clean --if-exists --no-owner --no-privileges --dbna
 
 ## Migration Rollback
 
-Down migration با Restore یکسان نیست. Down فقط تغییرات Schema را به‌ترتیب معکوس برمی‌گرداند و `0001_finance_core.down.sql` تمام جدول‌های مالی را حذف می‌کند؛ بنابراین اجرای Down کامل روی Production دارای داده روش بازیابی قابل قبول نیست.
+**Down migration با Restore یکسان نیست.** Down فقط تغییرات Schema را به‌ترتیب معکوس
+برمی‌گرداند؛ Revision پایه (`0001`) تمام جدول‌های مالی را حذف می‌کند و داده‌شان با آن‌ها
+می‌رود. بنابراین اجرای Down کامل روی Production دارای داده **روش بازیابی قابل قبول نیست**.
+راه بازیابی، Restore از Backup است — همان بخش بالا.
 
 برای تمرین روی دیتابیس disposable:
 
 ```powershell
-psql $env:BAMBO_RECOVERY_DATABASE_URL -v ON_ERROR_STOP=1 -f backend/migrations/0004_report_snapshot_payload.down.sql
-psql $env:BAMBO_RECOVERY_DATABASE_URL -v ON_ERROR_STOP=1 -f backend/migrations/0003_invoice_linked_documents.down.sql
-psql $env:BAMBO_RECOVERY_DATABASE_URL -v ON_ERROR_STOP=1 -f backend/migrations/0002_invoice_confirmation.down.sql
-psql $env:BAMBO_RECOVERY_DATABASE_URL -v ON_ERROR_STOP=1 -f backend/migrations/0001_finance_core.down.sql
+alembic downgrade -1        # یک قدم، قابل بازبینی
+alembic current             # تأیید اینکه کجا ایستاده‌ایم
+alembic downgrade base      # تمام Schema مالی را حذف می‌کند؛ فقط روی disposable
 ```
+
+`alembic downgrade -1` عمداً به‌جای پرش مستقیم پیشنهاد شده: هر قدم قابل بازبینی است و
+اشتباه در یک قدم کمتر از اشتباه در چهار قدم هزینه دارد.
 
 ## وضعیت Validation این محیط
 

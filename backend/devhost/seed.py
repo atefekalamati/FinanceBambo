@@ -197,6 +197,7 @@ PROGRESS_SNAPSHOTS = [
      "source_file_version_id": UUID("44444444-4444-4444-8444-444444444441"),
      "source_file_name_safe": "sample-progress-v1.mpp",
      "reporting_date": date(2026, 7, 31),
+     "host_snapshot_id": 9001, "host_file_version_id": 1001,
      "imported_at": datetime(2026, 8, 1, 8, 30, tzinfo=timezone.utc),
      "assignments": [_REBAR_ROW, _PERMIT_ROW]},
     {"ref_id": UUID("33333333-3333-4333-8333-3333333332ff"),
@@ -204,6 +205,7 @@ PROGRESS_SNAPSHOTS = [
      "source_file_version_id": UUID("44444444-4444-4444-8444-444444444442"),
      "source_file_name_safe": "sample-resource-loaded-v2.mpp",
      "reporting_date": date(2026, 8, 1),
+     "host_snapshot_id": 9002, "host_file_version_id": 1002,
      "imported_at": datetime(2026, 8, 2, 8, 30, tzinfo=timezone.utc),
      "assignments": [_REBAR_ROW, _PERMIT_ROW, _CRANE_ROW]},
     {"ref_id": UUID("33333333-3333-4333-8333-3333333333ff"),
@@ -211,6 +213,7 @@ PROGRESS_SNAPSHOTS = [
      "source_file_version_id": UUID("44444444-4444-4444-8444-444444444443"),
      "source_file_name_safe": "sample-progress-v3.mpp",
      "reporting_date": date(2026, 8, 2),
+     "host_snapshot_id": 9003, "host_file_version_id": 1003,
      "imported_at": datetime(2026, 8, 3, 8, 30, tzinfo=timezone.utc),
      "assignments": [_REBAR_ROW, _PERMIT_ROW, _CRANE_ROW, _FORMWORK_ROW]},
 ]

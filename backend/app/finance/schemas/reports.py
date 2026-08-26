@@ -123,7 +123,14 @@ class ProgressQuality(ApiModel):
 
 class LiveReportResponse(ApiModel):
     reporting_date:date
-    progress_snapshot_id:UUID
+    #: None when the Core snapshot behind this calculation has never been pinned. Reading a
+    #: report does not create a Finance reference -- viewing a page must not write -- so
+    #: until something is issued or overridden there is no Finance identifier to give. It
+    #: appears as soon as one exists. Clients must tolerate null and must not substitute
+    #: hostSnapshotId for it: one is a Finance UUID, the other a Core bigint.
+    progress_snapshot_id:UUID|None=None
+    #: Which Core snapshot was actually calculated from, pinned or not.
+    host_snapshot_id:int|None=None
     metrics:LiveMetrics
     breakdown:list[TypeBreakdown]
     top_price_variances:list[PriceVariance]
@@ -151,7 +158,12 @@ class OperationalOverviewResponse(ApiModel):
     """
 
     reporting_date:date
-    progress_snapshot_id:UUID
+    #: None until the Core snapshot behind this calculation has been pinned. This is a
+    #: read projection, and reading does not create a Finance reference.
+    progress_snapshot_id:UUID|None=None
+    #: Which Core snapshot was calculated from, pinned or not. A Core bigint -- never
+    #: interchangeable with the Finance UUID above.
+    host_snapshot_id:int|None=None
     metrics:LiveMetrics
     breakdown:list[TypeBreakdown]
     top_price_variances:list[PriceVariance]

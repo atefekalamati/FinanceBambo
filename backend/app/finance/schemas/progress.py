@@ -6,7 +6,17 @@ from pydantic import Field,field_serializer,field_validator
 from .base import ApiModel
 from .numeric import strict_decimal,strict_optional_decimal
 class ProgressSnapshotResponse(ApiModel):
- organization_id:UUID;project_id:str;progress_snapshot_id:UUID;source_file_version_id:UUID;source_file_name_safe:str;imported_at:datetime;imported_by:UUID;status:Literal["ready","superseded"];reporting_date:date
+ organization_id:UUID;project_id:str;progress_snapshot_id:UUID;source_file_name_safe:str;imported_at:datetime;imported_by:UUID;status:Literal["ready","superseded"];reporting_date:date
+ # Optional since revision 0006. A reference ingested from Core has no Finance-side file
+ # identifier to record, and inventing a UUID would look like a Host reference while being
+ # nothing of the kind. Rows that predate 0006 still carry theirs.
+ source_file_version_id:UUID|None=None
+ # The Core identity of this snapshot: msp_snapshots.id and msp_file_versions.id, which are
+ # bigint. These are CORE_REFERENCE values -- Finance stores them, Core owns them. None on
+ # a reference that was never linked to a Core snapshot, which is every row imported before
+ # this integration existed.
+ host_snapshot_id:int|None=None
+ host_file_version_id:int|None=None
  # Position in this project's own snapshot history, derived rather than stored: the table
  # is append-only, so row order is the history and version 1 stays version 1. Optional
  # because the feed's header comes from the host provider, which cannot know it.

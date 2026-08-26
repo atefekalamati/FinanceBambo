@@ -1,5 +1,33 @@
-BEGIN;
+"""finance core schema
 
+The 15 finance tables, their composite tenant foreign keys, the CHECK and UNIQUE
+constraints, the scope indexes, and the trigger function plus triggers that make the
+history tables append-only.
+
+Converted from migrations/0001_finance_core.up.sql and .down.sql, which Git history keeps.
+The SQL is embedded unchanged apart from the outer BEGIN/COMMIT: Alembic owns the
+transaction boundary, and opening a second one inside it is an error.
+
+The SQL travels as a `DDL` construct rather than a plain string. `op.execute` on a string
+parses it for `:name` bind parameters, which would misread PostgreSQL cast syntax and
+dollar-quoted function bodies; `DDL` skips that parsing and passes the whole batch through
+as it stood in the file. It also works in offline mode (`alembic upgrade head --sql`), where
+the mock connection has no `exec_driver_sql` to call.
+
+Revision ID: 0001
+Revises: (none, this is the base revision)
+"""
+
+from alembic import op
+from sqlalchemy import DDL
+
+revision = "0001"
+down_revision = None
+branch_labels = None
+depends_on = None
+
+
+UPGRADE_SQL = """\
 CREATE OR REPLACE FUNCTION finance_reject_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -400,5 +428,36 @@ DROP TRIGGER IF EXISTS estimate_original_fields_immutable ON estimate_lines;
 CREATE TRIGGER estimate_original_fields_immutable BEFORE UPDATE ON estimate_lines FOR EACH ROW EXECUTE FUNCTION finance_guard_estimate_original();
 DROP TRIGGER IF EXISTS confirmed_invoice_immutable ON invoices;
 CREATE TRIGGER confirmed_invoice_immutable BEFORE UPDATE OR DELETE ON invoices FOR EACH ROW EXECUTE FUNCTION finance_guard_confirmed_invoice();
+"""
 
-COMMIT;
+
+DOWNGRADE_SQL = """\
+DROP TABLE IF EXISTS finance_import_batches;
+
+DROP TABLE IF EXISTS finance_audit_events;
+DROP TABLE IF EXISTS report_snapshots;
+DROP TABLE IF EXISTS extraction_drafts;
+DROP TABLE IF EXISTS finance_attachments;
+DROP TABLE IF EXISTS invoice_lines;
+DROP TABLE IF EXISTS invoices;
+DROP TABLE IF EXISTS progress_overrides;
+DROP TABLE IF EXISTS progress_snapshot_refs;
+DROP TABLE IF EXISTS unit_conversions;
+DROP TABLE IF EXISTS price_versions;
+DROP TABLE IF EXISTS estimate_revisions;
+DROP TABLE IF EXISTS estimate_lines;
+DROP TABLE IF EXISTS finance_resources;
+DROP TABLE IF EXISTS finance_project_settings;
+
+DROP FUNCTION IF EXISTS finance_guard_confirmed_invoice();
+DROP FUNCTION IF EXISTS finance_guard_estimate_original();
+DROP FUNCTION IF EXISTS finance_reject_mutation();
+"""
+
+
+def upgrade() -> None:
+    op.execute(DDL(UPGRADE_SQL))
+
+
+def downgrade() -> None:
+    op.execute(DDL(DOWNGRADE_SQL))

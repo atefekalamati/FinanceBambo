@@ -50,6 +50,9 @@ class Reports:
         return {key:report[key] for key in OVERVIEW_KEYS}
     async def live(self,_scope,reporting_date,progress_snapshot_id=None):
         return {"reportingDate":reporting_date,"progressSnapshotId":progress_snapshot_id or SNAPSHOT,
+            # Which Core snapshot was calculated from. Present whether or not a Finance
+            # reference exists, because reading no longer creates one.
+            "hostSnapshotId":9001,
             "metrics":{"initialEstimateIrr":"100","actualCostIrr":"50","currentExecutedValueIrr":"40","remainingPhysicalCostIrr":"60","moneyRequiredToContinueIrr":"50","forecastFinalCostIrr":"100","actualCostPerSquareMeterIrr":"5","forecastPerSquareMeterIrr":"10"},
             "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":2,"excludedEstimateLineCount":3,
             "progressQuality":{"complete":False,"manualOverrideCount":1,"taskFallbackCount":0,"missingCount":1,
@@ -113,7 +116,7 @@ class ReportingPermissionApiTests(unittest.TestCase):
         self.assertEqual(OVERVIEW_KEYS,set(overview.json()))
 
     def test_operational_projection_exposes_the_agreed_fields_and_nothing_reporting_only(self):
-        self.assertEqual(("reporting_date","progress_snapshot_id","metrics","breakdown","top_price_variances",
+        self.assertEqual(("reporting_date","progress_snapshot_id","host_snapshot_id","metrics","breakdown","top_price_variances",
             "top_quantity_variances","warnings","calculation_status","incomplete_metric_keys",
             "missing_price_count","excluded_estimate_line_count","progress_quality"),
             FinanceLiveReportService.OVERVIEW_FIELDS)

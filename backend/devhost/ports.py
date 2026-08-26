@@ -110,13 +110,26 @@ class SeededProgressSnapshotProvider:
     def __init__(self, organization_id: UUID, project_id: str, snapshots, imported_by: UUID):
         self._organization_id, self._project_id = str(organization_id), project_id
         self._feeds = {}
+        self._order = []
+        self._aliases = {}
         for snapshot in snapshots:
             snapshot_id = str(snapshot["progress_snapshot_id"])
+            self._order.append(snapshot_id)
+            # Indexed by the host identifier as well, because that is what Finance asks
+            # with once a reference records one. A real host only ever knows its own id;
+            # the fixture answers to both so the seeded and ingested paths both work.
+            if snapshot.get("host_snapshot_id") is not None:
+                self._aliases[str(snapshot["host_snapshot_id"])] = snapshot_id
             self._feeds[snapshot_id] = {
                 "snapshot": {
                     "organizationId": self._organization_id,
                     "projectId": self._project_id,
                     "progressSnapshotId": snapshot_id,
+                    # Core identifies snapshots and schedule files with bigint, so the
+                    # fixture does too. A mock that hands back a UUID here would let
+                    # ingestion pass locally and fail against a real host.
+                    "hostSnapshotId": snapshot.get("host_snapshot_id"),
+                    "hostFileVersionId": snapshot.get("host_file_version_id"),
                     "sourceFileVersionId": str(snapshot["source_file_version_id"]),
                     "sourceFileNameSafe": snapshot["source_file_name_safe"],
                     "reportingDate": snapshot["reporting_date"].isoformat(),
@@ -127,8 +140,21 @@ class SeededProgressSnapshotProvider:
                 "assignments": snapshot["assignments"],
             }
 
+    async def current_snapshot(self, organization_id, project_id, as_of=None):
+        """The newest snapshot this fixture holds for the scope, or None.
+
+        Stands in for the host answering "which snapshot is current for this project". The
+        newest is the last one seeded, mirroring a host that publishes in order. A scope it
+        does not serve gets None, not an empty header -- see get_snapshot below for why.
+        """
+        if (str(organization_id) != self._organization_id or project_id != self._project_id
+                or not self._order):
+            return None
+        return await self.get_snapshot(organization_id, project_id, self._order[-1])
+
     async def get_snapshot(self, organization_id, project_id, snapshot_id):
-        feed = self._feeds.get(str(snapshot_id))
+        key = str(snapshot_id)
+        feed = self._feeds.get(self._aliases.get(key, key))
         if (feed is None
                 or str(organization_id) != self._organization_id
                 or project_id != self._project_id):
