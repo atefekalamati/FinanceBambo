@@ -2109,6 +2109,28 @@ a.finance-variance-card__link:hover {
   display: none;
 }
 
+/* The axis hit area reaches a little above and below its own number so it is
+   catchable, but it must not look like a band of the chart when it is caught. */
+.combo-chart__hit--axis {
+  cursor: help;
+}
+
+.combo-chart__hit--axis.combo-chart__hit--active {
+  fill: rgb(120 145 205 / 6%);
+}
+
+.combo-chart__tooltip-axis {
+  display: grid;
+  gap: .15rem;
+}
+
+.combo-chart__tooltip-exact {
+  color: var(--color-text-primary);
+  font-size: .78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .combo-chart__tooltip-title {
   display: block;
   margin-block-end: .35rem;
