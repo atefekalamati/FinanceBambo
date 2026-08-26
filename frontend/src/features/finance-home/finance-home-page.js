@@ -914,13 +914,20 @@ function createMonthlyTrendPanel({ trend, trendError }) {
     renderTooltip: trendTooltip,
     ariaLabel: "نمودار ستونی هزینه واقعی و خط برآورد ماهانه",
   });
-  chart.setData({ points: view.points, ticks: view.axisTicks, zeroMagnitude: view.zeroMagnitude });
+  chart.setData({ points: view.points, ticks: view.axisTicks });
   panel.append(chart.element);
 
   if (!view.hasEstimate) {
     panel.append(element("p", "inline-notice", "برآورد ماهانه در دسترس نیست و فقط هزینه واقعی ثبت‌شده رسم شده است."));
   } else if (view.estimatePartial) {
     panel.append(element("p", "inline-notice", "برای بخشی از ماه‌ها برآورد ثبت نشده و خط برآورد در آن بازه‌ها پیوسته نیست."));
+  }
+  // A bar that is simply absent is indistinguishable from a month with no
+  // documents at all, so the one case where that happens says so.
+  if (view.hasBelowBaseline) {
+    const belowNotice = element("p", "inline-notice", "در برخی ماه‌ها مجموع اسناد ابطالی از اسناد ثبت‌شده بیشتر است و ستونی رسم نشده؛ مقدار دقیق در جدول همین بخش آمده است.");
+    belowNotice.setAttribute("role", "status");
+    panel.append(belowNotice);
   }
   panel.append(trendTable(view));
   return {

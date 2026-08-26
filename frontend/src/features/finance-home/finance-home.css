@@ -1999,20 +1999,6 @@ a.finance-variance-card__link:hover {
   min-inline-size: 0;
 }
 
-/* A month that removed more cost than it added. It hangs below the zero line
-   and is drawn as a credit rather than as spending, so the two are never read
-   as the same thing at a glance. */
-.combo-chart__bar--negative {
-  fill: var(--dash-sev-low, #4f9d69);
-  opacity: .85;
-}
-
-/* Only drawn when zero is not the bottom of the plot. */
-.combo-chart__zero-line {
-  stroke: var(--color-border);
-  stroke-width: 1;
-}
-
 .monthly-trend-legend {
   margin: 0;
 }

@@ -107,17 +107,20 @@ function deviationPercentText(deviation, baseline) {
 }
 
 /**
- * A point on the value axis, from 0 at the floor to 100 at the ceiling.
+ * A point on the value axis, from 0 at the baseline to 100 at the ceiling.
  *
- * A month can be negative: a month whose reversals and corrections outweigh its
- * purchases removes more cost than it adds. Scaling on the absolute value would
- * draw that month exactly as tall as a month that spent the same amount, which
- * is the opposite of what happened. So the axis carries its own floor, and zero
- * sits wherever it falls between them.
+ * The baseline is zero and stays zero. A reversal is not a document of its own
+ * making — the service builds it from the invoice it cancels and gives it that
+ * invoice's own date — so the −X always lands in the same month as the +X it
+ * undoes, and a month cannot come out below zero from one.
+ *
+ * If a month ever does anyway, it gets no bar rather than one drawn downwards
+ * or one drawn from the size of a negative number. The figure itself is never
+ * touched: the tooltip and the table still say what it was.
  */
-function magnitude(value, floor, ceiling) {
-  const span = ceiling - floor;
-  return span === 0n ? 0 : Number(((value - floor) * 10000n) / span) / 100;
+function magnitude(value, ceiling) {
+  if (ceiling <= 0n || value <= 0n) return 0;
+  return Number((value * 10000n) / ceiling) / 100;
 }
 
 /**
@@ -180,46 +183,35 @@ export function buildMonthlyTrend({ months = [], mode = TREND_MODES.PERIODIC } =
     if (row.estimateIrr !== null) values.push(exactInteger(row.estimateIrr));
     return values;
   });
-  // Zero is always on the axis, so a chart of only positive months still starts
-  // at the baseline and a chart of only negative ones still ends at it.
   const ceiling = drawn.reduce((result, value) => (value > result ? value : result), 0n);
-  const floor = drawn.reduce((result, value) => (value < result ? value : result), 0n);
 
   const points = rows.map((row) => ({
     ...row,
-    actualMagnitude: magnitude(exactInteger(row.actualIrr), floor, ceiling),
-    estimateMagnitude: row.estimateIrr === null ? null : magnitude(exactInteger(row.estimateIrr), floor, ceiling),
+    belowBaseline: exactInteger(row.actualIrr) < 0n,
+    actualMagnitude: magnitude(exactInteger(row.actualIrr), ceiling),
+    estimateMagnitude: row.estimateIrr === null ? null : magnitude(exactInteger(row.estimateIrr), ceiling),
   }));
 
   return Object.freeze({
     mode: normalizedMode,
     points,
     maximumIrr: String(ceiling),
-    minimumIrr: String(floor),
-    // Where the value zero falls on the axis. The bars grow from here, up or
-    // down, and the axis draws its heavier line across it.
-    zeroMagnitude: magnitude(0n, floor, ceiling),
-    hasNegative: floor < 0n,
-    axisTicks: buildAxisTicks(ceiling, 4, floor),
+    // Not a claim that no month is negative — a note that one is, so the panel
+    // can say so instead of leaving an unexplained gap where a bar should be.
+    hasBelowBaseline: points.some((point) => point.belowBaseline),
+    axisTicks: buildAxisTicks(ceiling),
     hasEstimate: points.some((point) => point.estimateIrr !== null),
     estimatePartial: estimatePartial && points.length > 0,
     isEmpty: points.length === 0,
   });
 }
 
-/**
- * Gridlines at exact fractions of the axis, from its floor to its ceiling.
- *
- * The floor is zero unless some month went below it, so an all-positive chart
- * keeps the axis it always had.
- */
-export function buildAxisTicks(maximum, steps = 4, minimum = 0n) {
+/** Four gridlines plus the baseline, at exact fractions of the tallest value. */
+export function buildAxisTicks(maximum, steps = 4) {
   const top = typeof maximum === "bigint" ? maximum : exactInteger(maximum);
-  const bottom = typeof minimum === "bigint" ? minimum : exactInteger(minimum);
-  const span = top - bottom;
-  if (span <= 0n) return [{ magnitude: 0, valueIrr: String(bottom) }];
+  if (top <= 0n) return [{ magnitude: 0, valueIrr: "0" }];
   return Array.from({ length: steps + 1 }, (unused, index) => ({
     magnitude: (index * 100) / steps,
-    valueIrr: String(bottom + (span * BigInt(index)) / BigInt(steps)),
+    valueIrr: String((top * BigInt(index)) / BigInt(steps)),
   }));
 }

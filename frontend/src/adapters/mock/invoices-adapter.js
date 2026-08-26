@@ -36,12 +36,29 @@ function seedInvoiceDate(index) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/**
+ * A reversal is not a document of its own making.
+ *
+ * `InvoiceService.void` builds it from the invoice it cancels and gives it that
+ * invoice's own `invoice_date`, so the −X always lands in the same month as the
+ * +X it undoes and the two cancel where they happened. A seed that dated its
+ * reversals independently was subtracting money in months where nothing had
+ * been added, which is a state the service cannot produce.
+ *
+ * The statuses cycle draft, awaitingConfirmation, confirmed, voided, corrected,
+ * so the confirmed invoice a reversal belongs to is always the one before it.
+ */
+function reversalSourceIndex(index) {
+  return STATUSES[(index - 1) % STATUSES.length] === "voided" ? index - 1 : index;
+}
+
 function makeInvoice(index, context) {
   const number = String(index).padStart(3, "0");
-  const invoiceDate = seedInvoiceDate(index);
   const status = STATUSES[(index - 1) % STATUSES.length];
+  const sourceIndex = reversalSourceIndex(index);
+  const invoiceDate = seedInvoiceDate(sourceIndex);
   const source = SOURCES[(index - 1) % SOURCES.length];
-  const rawTotalIRR = String(120000000 + (index * 1750000));
+  const rawTotalIRR = String(120000000 + (sourceIndex * 1750000));
   return {
     invoiceId: `invoice-demo-${number}`,
     organizationId: context.organizationId,
@@ -57,11 +74,11 @@ function makeInvoice(index, context) {
     duplicateWarning: index % 17 === 0,
     duplicateOverrideReason: index % 17 === 0 ? "ادامه ثبت پس از بررسی سند مشابه توسط کارشناس مالی" : null,
     rawLinesTotalIRR: rawTotalIRR,
-    discountIRR: index % 4 === 0 ? "500000" : "0",
-    taxIRR: index % 3 === 0 ? "1200000" : "0",
-    shippingIRR: index % 5 === 0 ? "750000" : "0",
+    discountIRR: sourceIndex % 4 === 0 ? "500000" : "0",
+    taxIRR: sourceIndex % 3 === 0 ? "1200000" : "0",
+    shippingIRR: sourceIndex % 5 === 0 ? "750000" : "0",
     otherCostsIRR: "0",
-    finalAmountIRR: String(BigInt(rawTotalIRR) - BigInt(index % 4 === 0 ? "500000" : "0") + BigInt(index % 3 === 0 ? "1200000" : "0") + BigInt(index % 5 === 0 ? "750000" : "0")),
+    finalAmountIRR: String(BigInt(rawTotalIRR) - BigInt(sourceIndex % 4 === 0 ? "500000" : "0") + BigInt(sourceIndex % 3 === 0 ? "1200000" : "0") + BigInt(sourceIndex % 5 === 0 ? "750000" : "0")),
     submittedBy: context.userId,
     createdAt: `${invoiceDate}T08:30:00Z`,
     confirmedBy: status === "confirmed" || status === "voided" || status === "corrected" ? context.userId : null,
@@ -69,8 +86,10 @@ function makeInvoice(index, context) {
     // invoice date for anything later than it, and read as a document approved
     // before it existed.
     confirmedAt: status === "confirmed" || status === "voided" || status === "corrected" ? `${invoiceDate}T09:15:00Z` : null,
-    relatedInvoiceId: status === "voided" || status === "corrected" ? "invoice-demo-001" : null,
-    originalInvoiceId: status === "voided" || status === "corrected" ? "invoice-demo-001" : null,
+    // The document this one acts on: the confirmed invoice before it, not a
+    // single invoice that every reversal in the project claims to cancel.
+    relatedInvoiceId: status === "voided" || status === "corrected" ? `invoice-demo-${String(index - 1).padStart(3, "0")}` : null,
+    originalInvoiceId: status === "voided" || status === "corrected" ? `invoice-demo-${String(index - 1).padStart(3, "0")}` : null,
     financialEffectSign: status === "voided" ? -1 : 1,
     lines: [
       { invoiceLineId: `line-${number}-1`, targetType: "estimate_line", targetLabel: "میلگرد فونداسیون نمونه", quantity: "1250.0000", unit: "kg", unitPriceIRR: "80000", lineAmountIRR: "100000000", description: "تحویل مرحله اول" },
