@@ -1303,11 +1303,31 @@ a.finance-variance-card__link:hover {
   background: var(--dash-sev-high, #d8574f);
 }
 
+/* Deliberately not a scroll container. `overflow-x: auto` turns the other axis
+   into a scroll axis too, whatever it is set to, and the tooltip on a value
+   rises above its row — so a viewport that scrolled sideways would cut the top
+   off every one of them. The chart is built to fit instead: below 48rem its
+   columns collapse, and above it the widest template needs about 34rem in a
+   card that always has more. */
 .bullet-chart-viewport {
   max-inline-size: 100%;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-gutter: stable;
+}
+
+/* Three things stand between a tooltip and the page, and each one has to be
+   lifted or the tooltip's own z-index is capped inside it: the card, which is a
+   stacking context of its own; the row, so the rows after it stop painting over
+   it; and the value, which is what the tooltip is attached to. */
+.finance-breakdown:has(.bullet-chart__value:is(:hover, :focus-visible)) {
+  z-index: var(--z-calendar-popup);
+}
+
+.bullet-chart__row:has(.bullet-chart__value:is(:hover, :focus-visible)) {
+  position: relative;
+  z-index: 3;
+}
+
+.bullet-chart__value:is(:hover, :focus-visible) {
+  z-index: var(--z-calendar-popup);
 }
 
 .bullet-chart {
