@@ -22,6 +22,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from uuid import UUID
+
 from app.main import create_app
 from app.finance.repositories.attachments import PsycopgAttachmentRepository
 from app.finance.repositories.audit import PsycopgFinanceAuditRepository
@@ -46,9 +48,14 @@ from app.finance.services.reports import FinanceLiveReportService
 from app.finance.services.resources import FinanceResourcesService
 from app.finance.services.settings import FinanceSettingsService
 
+from coreint.activities import CoreProjectActivityProvider
+from coreint.progress import CoreProgressSnapshotProvider
+from coreint.security import (CoreAuthContextAssembler, CoreRbacPermissionAuthorizer,
+                              CoreScopeAuthorizer)
+
 from . import database, seed
 from .connection import ReconnectingConnection
-from .environment import app_env, migration_url, seeding_allowed
+from .environment import app_env, core_url, migration_url, seeding_allowed
 from .ports import (ContextPermissionAuthorizer, LocalFileStorage, SeededActivityProvider,
                     SeededProgressSnapshotProvider, SingleTenantScopeAuthorizer,
                     StaticAuthContextProvider, UnavailableExtractor)
@@ -57,35 +64,90 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 
 
-def host_context() -> dict:
-    """The object the BAMBO shell normally injects before the finance module boots."""
+def host_context(context=None) -> dict:
+    """The object the BAMBO shell normally injects before the finance module boots.
+
+    `permissionCodes` comes from the same `AuthContext` the API gates on, whenever one can
+    be assembled. That matters more than it looks: the reports page hides the issue button
+    unless the context claims `finance_report.issue`, and Core has no such permission. With
+    a hardcoded list the browser would offer the button and the API would then refuse it --
+    the UI promising something the server has already decided against, which is the worst
+    of both answers.
+
+    The static list is the fallback for a host with no Core database wired, which is the
+    configuration those permissions were written for.
+    """
+    fallback = StaticAuthContextProvider(
+        seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.ACTOR_ID).context
+    context = context or fallback
     return {
-        "userId": str(seed.ACTOR_ID),
-        "organizationId": str(seed.ORGANIZATION_ID),
+        "userId": str(context.user_id),
+        "organizationId": str(context.organization_id),
         "organizationName": "گروه ساختمانی بامبو",
-        "projectId": seed.PROJECT_ID,
+        "projectId": context.project_id,
         "projectName": "پروژه مسکونی نمونه",
         "projectCode": "BMB-1405-01",
         "grossBuiltArea": str(seed.GROSS_BUILT_AREA),
-        "permissionCodes": list(StaticAuthContextProvider(
-            seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.ACTOR_ID).context.permission_codes),
+        "permissionCodes": list(context.permission_codes),
+        "organizationRole": context.organization_role,
         "locale": "fa-IR",
         "timezone": "Asia/Tehran",
     }
 
 
-def wire(application: FastAPI, connection, storage_root: Path) -> None:
-    """Populate application.state exactly as INTEGRATION_GUIDE_FA.md requires."""
-    auth = StaticAuthContextProvider(seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.ACTOR_ID)
-    application.state.auth_context_provider = auth
-    application.state.scope_authorizer = SingleTenantScopeAuthorizer(
-        seed.ORGANIZATION_ID, seed.PROJECT_ID)
-    application.state.permission_authorizer = ContextPermissionAuthorizer()
+#: Which demo user the browser is acting as. DEVELOPMENT HOST ONLY.
+#:
+#: The dev host has never authenticated anybody -- it has always trusted a static context --
+#: so this changes nothing about its security posture. What it adds is the ability to show
+#: the Core authorization rules working: switch to the restricted user and watch a role
+#: grant lose to a personal denial, or to the outsider and watch an `org_chief` role in
+#: another organization grant nothing here.
+#:
+#: A real host reads identity from its session and would never accept it from a header.
+DEMO_USER_HEADER = "X-Demo-User"
+
+
+def core_identity(default_user, organization_id, project_id):
+    """The seam where the host says *who* is calling. See CoreAuthContextAssembler.
+
+    Everything about that identity -- membership, roles, permissions -- is read from Core.
+    This only answers the one question Core cannot: which person the request belongs to.
+    """
+    async def identity(request):
+        header = (request.headers.get(DEMO_USER_HEADER) or "").strip() if request else ""
+        try:
+            user_id = UUID(header) if header else default_user
+        except ValueError:
+            user_id = default_user
+        return user_id, organization_id, project_id
+    return identity
+
+
+def wire(application: FastAPI, connection, storage_root: Path, core=None) -> None:
+    """Populate application.state exactly as INTEGRATION_GUIDE_FA.md requires.
+
+    With `core` set, the three security ports and the two schedule ports are backed by the
+    real Core tables instead of fixtures. The eleven finance services below are unchanged
+    either way -- which is the point of the port boundary, and worth seeing in one function.
+    """
+    if core is None:
+        auth = StaticAuthContextProvider(seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.ACTOR_ID)
+        application.state.auth_context_provider = auth
+        application.state.scope_authorizer = SingleTenantScopeAuthorizer(
+            seed.ORGANIZATION_ID, seed.PROJECT_ID)
+        application.state.permission_authorizer = ContextPermissionAuthorizer()
+        progress_provider = SeededProgressSnapshotProvider(
+            seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.PROGRESS_SNAPSHOTS, seed.IMPORTER_ID)
+        activity_provider = SeededActivityProvider(seed.ACTIVITIES)
+    else:
+        application.state.auth_context_provider = CoreAuthContextAssembler(
+            core, core_identity(seed.ACTOR_ID, seed.ORGANIZATION_ID, seed.PROJECT_ID))
+        application.state.scope_authorizer = CoreScopeAuthorizer(core)
+        application.state.permission_authorizer = CoreRbacPermissionAuthorizer(core)
+        progress_provider = CoreProgressSnapshotProvider(core)
+        activity_provider = CoreProjectActivityProvider(core)
 
     storage = LocalFileStorage(storage_root)
-    progress_provider = SeededProgressSnapshotProvider(
-        seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.PROGRESS_SNAPSHOTS, seed.IMPORTER_ID)
-    activity_provider = SeededActivityProvider(seed.ACTIVITIES)
 
     invoice_service = FinanceInvoiceService(PsycopgInvoiceRepository(connection))
     application.state.finance_settings_service = FinanceSettingsService(
@@ -147,11 +209,23 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
         # reopen itself when the development database restarts underneath the process.
         connection = ReconnectingConnection(dsn)
         await connection.live()
-        wire(application, connection, storage_root)
+
+        # A second handle, because Core may be a different database entirely. In the
+        # integration demo it is the same one, and opening it separately keeps that a
+        # deployment detail rather than an assumption baked into the wiring.
+        core_dsn = core_url()
+        core = ReconnectingConnection(core_dsn) if core_dsn else None
+        if core is not None:
+            await core.live()
+            print("core integration ENABLED: membership, roles and permissions come from Core")
+
+        wire(application, connection, storage_root, core)
         try:
             yield
         finally:
             await connection.close()
+            if core is not None:
+                await core.close()
 
     application = create_app()
     application.router.lifespan_context = lifespan
@@ -172,11 +246,18 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
 
     @application.get("/", response_class=HTMLResponse)
     @application.get("/index.html", response_class=HTMLResponse)
-    async def index() -> HTMLResponse:
+    async def index(request: Request) -> HTMLResponse:
         html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+        # Ask the wired provider rather than assuming. A failure here must not stop the
+        # page loading -- the API is still the authority on every request -- so the static
+        # context stands in and the browser simply sees the development defaults.
+        try:
+            context = await application.state.auth_context_provider.current(request)
+        except Exception:
+            context = None
         injection = (
             "<script>window.__BAMBO_FINANCE_CONTEXT__="
-            f"{json.dumps(host_context(), ensure_ascii=False)};</script>"
+            f"{json.dumps(host_context(context), ensure_ascii=False)};</script>"
         )
         # Must land before bootstrap.js, which reads the global while it is still loading.
         html = re.sub(r'(<script type="module")', injection + r"\n  \1", html, count=1)

@@ -27,8 +27,16 @@ class ProgressService:
  async def feed(self,s,snapshot_id):
   ref=await self.repo.get_snapshot(s,snapshot_id)
   if ref is None:raise FinanceRecordNotFound("progress snapshot not found")
-  feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(snapshot_id))
-  snapshot_metadata(feed,s.organization_id,s.project_id,snapshot_id)
+  # Ask the host with the identifier the host issued. `snapshot_id` is Finance's own UUID,
+  # which a real provider has never seen: it mints nothing and only recognises its own
+  # bigint. The reference row was just loaded and already carries that id, so use it. The
+  # fourth site of the same mistake -- `_calculate` and `override` had it too -- and the
+  # last one, because every provider call now goes through a reference that knows both.
+  lookup=ref.get("host_snapshot_id") or snapshot_id
+  feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(lookup))
+  snapshot_metadata(feed,s.organization_id,s.project_id,lookup)
+  # Overrides stay keyed by the Finance UUID: they are Finance's records about the host's
+  # snapshot, not the host's records, so they are named the way Finance names things.
   overrides=await self.repo.latest_overrides(s,ref["id"])
   assignments=[]
   for row in apply_progress_overrides(snapshot_assignments(feed),overrides,snapshot_id):
