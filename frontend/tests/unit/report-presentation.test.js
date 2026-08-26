@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildBulletPresentation, buildOverviewComparisons } from "../../src/features/finance-home/report-presentation.js";
+import { buildBulletPresentation, buildOverviewComparisons } from "../../src/shared/reports/report-presentation.js";
 
 test("builds exact overview comparisons without binary financial arithmetic", () => {
   const result = buildOverviewComparisons({

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createApiReportsAdapter } from "../../src/adapters/api/reports-api-adapter.js";
-import { buildMonthlyTrend, TREND_MODES } from "../../src/features/finance-home/monthly-trend.js";
+import { buildMonthlyTrend, TREND_MODES } from "../../src/shared/reports/monthly-trend.js";
 
 const context = { organizationId: "org-1", projectId: "project-1" };
 

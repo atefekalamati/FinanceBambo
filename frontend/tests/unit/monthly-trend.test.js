@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aggregateConfirmedInvoicesByMonth, buildAxisTicks, buildMonthlyTrend, fillMonthGaps, monthKey, TREND_MODES } from "../../src/features/finance-home/monthly-trend.js";
+import { aggregateConfirmedInvoicesByMonth, buildAxisTicks, buildMonthlyTrend, fillMonthGaps, monthKey, TREND_MODES } from "../../src/shared/reports/monthly-trend.js";
 import { createMockReportsAdapter } from "../../src/adapters/mock/reports-adapter.js";
 
 const context = { userId: "user-1", organizationId: "org-1", projectId: "project_01" };

@@ -31,6 +31,7 @@ import { createAiReviewPage } from "../features/ai-review/ai-review-page.js";
 import { createSettingsPage } from "../features/settings/settings-page.js";
 import { createReportsPage } from "../features/reports/reports-page.js";
 import { createPeriodReportPage } from "../features/period-report/period-report-page.js";
+import { createReportBuilderPage } from "../features/report-builder/report-builder-page.js";
 import { createAuditPage } from "../features/audit/audit-page.js";
 import { DISPLAY_CURRENCY_CHANGED_EVENT } from "../shared/preferences/currency-preference.js";
 
@@ -125,6 +126,16 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
       auditAdapter: adapters.audit,
       invoicesAdapter: adapters.invoices,
       progressAdapter: adapters.progress,
+    }));
+  }
+  if (route.key === "report-builder") {
+    root.append(createReportBuilderPage({
+      context,
+      adapters,
+      // The chosen reports travel in the address, so a produced document can
+      // be reopened and handed on rather than rebuilt from memory.
+      selection: (routeQuery.get("sections") ?? "").split(",").filter(Boolean),
+      period: { from: routeQuery.get("from") ?? "", to: routeQuery.get("to") ?? "" },
     }));
   }
   if (route.key === "audit") root.append(createAuditPage({ adapter: adapters.audit }));

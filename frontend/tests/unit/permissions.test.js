@@ -37,6 +37,9 @@ const ROUTE_PERMISSIONS = Object.freeze({
   settings: "finance.view",
   "report-home": "finance.view",
   "report-prices": "finance.view",
+  // The builder composes reports, so it asks for the reporting permission its
+  // own contents already ask for.
+  "report-builder": "finance_report.view",
   "report-items": "finance.view",
   // The reader-only settings view shows a currency choice held in this browser
   // and a read-back of the permissions the host granted. Its one request is
@@ -130,6 +133,7 @@ test("the split moved pages between surfaces without dropping any", () => {
     "invoices",
     "report-prices",
     "report-items",
+    "report-builder",
     "report-settings",
   ]);
   assert.deepEqual(routesForSurface(SURFACES.OPERATIONS).map((route) => route.key), [

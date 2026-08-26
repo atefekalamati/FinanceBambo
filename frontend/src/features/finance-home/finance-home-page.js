@@ -7,12 +7,13 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { reportWarningText } from "../../shared/warnings/finance-warning-labels.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { createCombinationChart } from "../../shared/components/combination-chart.js";
-import { buildMonthlyTrend, TREND_MODES } from "./monthly-trend.js";
+import { buildMonthlyTrend, TREND_MODES } from "../../shared/reports/monthly-trend.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
-import { buildBulletPresentation, buildOverviewComparisons } from "./report-presentation.js";
+import { buildBulletPresentation, buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
 import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
 import { canAccessSurface } from "../../core/auth/permissions.js";
 import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/variances/variance-rollup.js";
+import { createReportBuilderSection } from "../report-builder/report-builder-section.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -803,6 +804,17 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   );
   insights.append(breakdown, riskStack);
 
+  const builder = createReportBuilderSection({
+    onBuild: ({ selection, period }) => {
+      const query = new URLSearchParams({ sections: selection.join(",") });
+      if (period?.from && period?.to) {
+        query.set("from", period.from);
+        query.set("to", period.to);
+      }
+      window.location.hash = `#/report-builder?${query.toString()}`;
+    },
+  });
+
   const areasHeader = document.createElement("div");
   areasHeader.className = "section-heading";
   const areasHeading = document.createElement("div");
@@ -813,8 +825,8 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   areas.setAttribute("aria-label", "بخش‌های گزارش مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  if (provenance) fragment.append(pageHeader, provenance, overviewPanel, insights, areasHeader, areas);
-  else fragment.append(pageHeader, overviewPanel, insights, areasHeader, areas);
+  if (provenance) fragment.append(pageHeader, provenance, overviewPanel, insights, builder, areasHeader, areas);
+  else fragment.append(pageHeader, overviewPanel, insights, builder, areasHeader, areas);
   return fragment;
 }
 
