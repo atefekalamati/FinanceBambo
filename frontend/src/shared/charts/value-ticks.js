@@ -61,27 +61,57 @@ export function chooseTickStep(maximum, intervals = 4, maximumLines = 6) {
 }
 
 /**
- * Lines from zero upwards, never above the tallest bar.
+ * The round number an axis ends on: the largest value carried up to the next
+ * whole step.
  *
- * The axis deliberately does not round its top up past the data: the bars are
- * already drawn as a share of the largest value, and lifting the ceiling would
- * shorten every one of them. So the highest line sits at or below the tallest
- * bar, and the bars keep the heights they had.
+ * Only for a chart whose bars are drawn against the axis. A chart whose bars are
+ * already a share of the largest value must not use this — lifting the ceiling
+ * there would shorten every bar it was added to.
  */
-export function buildValueTicks(maximum, { intervals = 4, includeZero = true, maximumLines = 6 } = {}) {
+export function chooseAxisCeiling(maximum, { intervals = 4, maximumLines = 6 } = {}) {
+  const top = typeof maximum === "bigint" ? maximum : exactInteger(maximum);
+  if (top === null || top <= 0n) return null;
+
+  let step = chooseTickStep(top, intervals, maximumLines);
+  if (step === null) return null;
+
+  // Rounding up can add one line beyond what the step was chosen for, so the
+  // count is checked against the ceiling rather than against the data.
+  const ceilingFor = (size) => ((top + size - 1n) / size) * size;
+  const LADDER = [1n, 2n, 5n, 10n];
+  for (let guard = 0; ceilingFor(step) / step >= BigInt(maximumLines) && guard < 24; guard += 1) {
+    const decade = decadeOf(step);
+    const rung = LADDER.indexOf(step / decade);
+    step = rung === -1 || rung === LADDER.length - 1 ? step * 2n : LADDER[rung + 1] * decade;
+  }
+  return { ceiling: ceilingFor(step), step };
+}
+
+/**
+ * Lines from zero upwards.
+ *
+ * By default the axis does not round its top up past the data, because the
+ * caller's bars are already drawn as a share of the largest value and lifting
+ * the ceiling would shorten every one of them. `roundUp` is for the other kind
+ * of chart — one whose bars are measured against the axis — where the last line
+ * should sit at the end of the track on a round number.
+ */
+export function buildValueTicks(maximum, { intervals = 4, includeZero = true, maximumLines = 6, roundUp = false } = {}) {
   const top = typeof maximum === "bigint" ? maximum : exactInteger(maximum);
   if (top === null || top <= 0n) return [];
 
-  const step = chooseTickStep(top, intervals, maximumLines);
-  if (step === null) return [];
+  const axis = roundUp ? chooseAxisCeiling(top, { intervals, maximumLines }) : null;
+  const step = roundUp ? axis?.step : chooseTickStep(top, intervals, maximumLines);
+  if (!step) return [];
+  const limit = roundUp ? axis.ceiling : top;
 
   const ticks = [];
-  for (let value = includeZero ? 0n : step; value <= top; value += step) {
+  for (let value = includeZero ? 0n : step; value <= limit; value += step) {
     ticks.push({
       valueIrr: value.toString(),
-      // Share of the plot height, to the same hundredth of a percent the bars
-      // are positioned with, so a line and a bar of equal value coincide.
-      magnitude: Number((value * 10000n) / top) / 100,
+      // Share of the plot, to the same hundredth of a percent the bars are
+      // positioned with, so a line and a bar of equal value coincide.
+      magnitude: Number((value * 10000n) / limit) / 100,
     });
     if (ticks.length > 64) break; // a guard, not a limit any real axis reaches
   }
