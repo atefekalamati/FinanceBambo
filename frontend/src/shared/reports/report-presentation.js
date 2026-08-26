@@ -1,4 +1,4 @@
-import { buildValueTicks, chooseAxisCeiling } from "../../shared/charts/value-ticks.js";
+import { buildValueTicks, chooseAxisCeiling } from "../charts/value-ticks.js";
 
 const TYPE_LABELS = Object.freeze({
   material: "مصالح",

@@ -10,6 +10,7 @@ const routes = [
   "finance-report",
   "report-prices",
   "report-items",
+  "report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines",
   "report-settings",
   "financial-items",
   "prices",

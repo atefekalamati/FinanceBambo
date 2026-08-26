@@ -1,0 +1,625 @@
+/* --------------------------------------------------------------------------
+   Report builder — the section on the overview
+   -------------------------------------------------------------------------- */
+
+.report-builder-section {
+  display: grid;
+  gap: .7rem;
+  margin-block: 0;
+  padding: .95rem 1.1rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.report-builder-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.report-builder-section__title,
+.report-builder-panel__title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+/* The star is the mark the project puts on its own builder. It carries no
+   meaning of its own, so it is hidden from anything that reads the page aloud. */
+.report-builder-panel__star {
+  color: var(--brand-teal);
+  font-size: .9em;
+}
+
+/* On the green button the brand colour disappears into the background, so the
+   star takes the button's own text colour there. */
+.button .report-builder-panel__star {
+  color: currentColor;
+}
+
+.report-builder-panel__info {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.35rem;
+  block-size: 1.35rem;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  font-weight: 800;
+  cursor: help;
+}
+
+.report-builder-section__lead,
+.report-builder-panel__lead {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+}
+
+.report-builder-section__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.report-builder-chip {
+  display: grid;
+  gap: .3rem;
+  justify-items: center;
+  padding: .7rem .5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  background: rgb(4 13 32 / 30%);
+  font-family: inherit;
+  font-size: .72rem;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.report-builder-chip:hover,
+.report-builder-chip:focus-visible {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+  background: var(--color-btn-action);
+}
+
+.report-builder-chip__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  border-radius: var(--radius-sm);
+  color: var(--brand-teal);
+  background: color-mix(in srgb, var(--brand-teal) 14%, transparent);
+  font-size: .78rem;
+}
+
+.report-builder-section__cta,
+.report-builder-panel__build {
+  inline-size: 100%;
+  min-block-size: 2.75rem;
+  font-size: .86rem;
+  font-weight: 800;
+}
+
+/* --------------------------------------------------------------------------
+   Report builder — the chooser
+   -------------------------------------------------------------------------- */
+
+.report-builder-dialog {
+  inline-size: min(46rem, 94vw);
+  max-block-size: 92vh;
+  padding: 0;
+  overflow: hidden;
+}
+
+.report-builder-dialog__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: .85rem 1.1rem;
+  border-block-end: 1px solid var(--color-border);
+}
+
+.report-builder-dialog__bar h2 {
+  margin: 0;
+  font-size: .95rem;
+  font-weight: 800;
+}
+
+/* The dialog moves focus to its heading so the name is announced on opening.
+   That is a programmatic focus, not a keyboard one, and drawing a focus ring
+   around a title nobody tabbed to reads as an error. */
+.report-builder-dialog__bar h2:focus {
+  outline: none;
+}
+
+.report-builder-dialog__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  color: var(--color-text-secondary);
+  background: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.report-builder-dialog__close:hover,
+.report-builder-dialog__close:focus-visible {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.report-builder-dialog__body {
+  padding: 1.1rem;
+  overflow-y: auto;
+  max-block-size: calc(92vh - 4rem);
+}
+
+.report-builder-panel {
+  display: grid;
+  gap: .75rem;
+  padding: 1rem 1.1rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+}
+
+.report-builder-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.report-builder-groups {
+  display: grid;
+  gap: .45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-builder-group {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgb(4 13 32 / 26%);
+}
+
+.report-builder-group__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: .7rem .85rem;
+  color: var(--color-text-primary);
+  font-size: .82rem;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.report-builder-group__summary::-webkit-details-marker {
+  display: none;
+}
+
+.report-builder-group__summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.report-builder-group__title {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.report-builder-group__meta {
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* `hidden` has to win over the display the badge is given, or a category with
+   nothing chosen still shows an empty disc. */
+.report-builder-group__badge[hidden] {
+  display: none;
+}
+
+.report-builder-group__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.3rem;
+  block-size: 1.3rem;
+  padding-inline: .3rem;
+  border-radius: var(--radius-pill);
+  color: var(--color-surface-canvas);
+  background: var(--brand-teal);
+  font-size: .66rem;
+  font-weight: 800;
+}
+
+/* Points at the row while it is closed and turns down when it opens, so the
+   control says which way it is about to move. */
+.report-builder-group__chevron {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: .9rem;
+  line-height: 1;
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.report-builder-group[open] .report-builder-group__chevron {
+  transform: rotate(-90deg);
+}
+
+.report-builder-group__body {
+  display: grid;
+  gap: .45rem;
+  padding: 0 .85rem .8rem;
+}
+
+.report-builder-group__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  line-height: 1.7;
+}
+
+.report-builder-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: .55rem;
+  padding: .55rem .6rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.report-builder-option:hover {
+  border-color: var(--color-border);
+  background: rgb(255 255 255 / 3%);
+}
+
+.report-builder-option__copy {
+  display: grid;
+  gap: .15rem;
+  min-inline-size: 0;
+}
+
+.report-builder-option__copy strong {
+  color: var(--color-text-primary);
+  font-size: .76rem;
+  font-weight: 700;
+}
+
+.report-builder-option__copy small {
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  line-height: 1.65;
+}
+
+/* A report that cannot be produced yet still shows, with the reason where its
+   summary would be. Hiding it would leave the reader to wonder. */
+.report-builder-option--unavailable {
+  cursor: not-allowed;
+  opacity: .62;
+}
+
+.report-builder-option--unavailable .report-builder-option__copy small {
+  color: var(--dash-sev-med);
+}
+
+.report-builder-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+
+.report-builder-presets .button.is-active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-btn-action);
+}
+
+.report-builder-panel__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: .7rem;
+  text-align: end;
+}
+
+/* --------------------------------------------------------------------------
+   The produced document
+   -------------------------------------------------------------------------- */
+
+.report-builder-page {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.report-doc {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.report-doc__cover {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: 1.2rem 1.4rem;
+  border-radius: var(--radius-md);
+  color: #fff;
+  background: linear-gradient(-100deg, #0f3d2e 0%, #10233f 55%, #101d33 100%);
+}
+
+.report-doc__brand {
+  display: grid;
+  gap: .1rem;
+  justify-items: start;
+  padding-inline-start: 1rem;
+  border-inline-start: 1px solid rgb(255 255 255 / 22%);
+}
+
+.report-doc__brand strong {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.report-doc__brand small {
+  color: rgb(255 255 255 / 72%);
+  font-size: .64rem;
+}
+
+.report-doc__cover-copy h1 {
+  margin: 0 0 .5rem;
+  font-size: clamp(1.15rem, 2.4vw, 1.5rem);
+}
+
+.report-doc__cover-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem .9rem;
+  margin: 0;
+  font-size: .7rem;
+}
+
+.report-doc__cover-facts > div {
+  display: flex;
+  align-items: baseline;
+  gap: .3em;
+}
+
+.report-doc__cover-facts dt {
+  color: rgb(255 255 255 / 68%);
+}
+
+.report-doc__cover-facts dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.report-doc__section {
+  display: grid;
+  gap: .7rem;
+  padding: 1rem 1.1rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+}
+
+.report-doc__section-title {
+  margin: 0;
+  padding-block-end: .5rem;
+  border-block-end: 2px solid var(--brand-teal);
+  color: var(--color-text-primary);
+  font-size: .95rem;
+  font-weight: 800;
+}
+
+.report-doc__section-number {
+  color: var(--brand-teal);
+}
+
+.report-doc__section-note,
+.report-doc__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: .72rem;
+  line-height: 1.75;
+}
+
+.report-doc__figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: .55rem;
+}
+
+.report-doc__figure {
+  display: grid;
+  gap: .15rem;
+  padding: .7rem .8rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgb(4 13 32 / 26%);
+}
+
+.report-doc__figure-value {
+  color: var(--color-text-primary);
+  font-size: .92rem;
+  font-weight: 800;
+}
+
+.report-doc__figure-label {
+  color: var(--color-text-secondary);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.report-doc__figure-note {
+  color: var(--color-text-muted);
+  font-size: .64rem;
+}
+
+.report-doc__chart {
+  display: grid;
+  gap: .5rem;
+}
+
+.report-doc__chart-row {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr) 8rem;
+  align-items: center;
+  gap: .6rem;
+}
+
+.report-doc__chart-row h3 {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.report-doc__chart-bars {
+  display: grid;
+  gap: .18rem;
+}
+
+.report-doc__chart-track {
+  position: relative;
+  block-size: .34rem;
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 4%);
+}
+
+.report-doc__chart-bar {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: var(--bar-width);
+  min-inline-size: .2rem;
+  border-radius: var(--radius-pill);
+}
+
+.report-doc__chart-bar--plan {
+  background: var(--dash-plan);
+}
+
+.report-doc__chart-bar--actual {
+  background: var(--dash-actual);
+}
+
+.report-doc__chart-value {
+  color: var(--color-text-primary);
+  font-size: .7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.report-doc__table-wrapper {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.report-doc__table-empty {
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.report-doc__footer {
+  padding-block: .6rem;
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  text-align: center;
+}
+
+@media (max-width: 48rem) {
+  .report-builder-section__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-builder-chip {
+    font-size: .66rem;
+  }
+
+  .report-doc__cover {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    padding: .9rem 1rem;
+  }
+
+  .report-doc__brand {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
+
+  .report-doc__chart-row {
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    gap: .4rem;
+  }
+
+  .report-doc__chart-value {
+    grid-column: 1 / -1;
+    font-size: .64rem;
+    text-align: start;
+  }
+}
+
+@media (max-width: 30rem) {
+  .report-builder-section__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media print {
+  /* Each chosen report is its own document in every other context, so on paper
+     they start on their own pages rather than running together. */
+  .report-doc__section {
+    break-before: page;
+    break-inside: avoid;
+  }
+
+  .report-doc__cover + .report-doc__section {
+    break-before: auto;
+  }
+
+  .report-doc__cover {
+    color: #000;
+    background: none;
+    border: 1px solid #999;
+  }
+
+  .report-doc__cover-facts dt,
+  .report-doc__brand small {
+    color: #444;
+  }
+
+  .report-builder-page__header,
+  .report-builder-section {
+    display: none;
+  }
+}

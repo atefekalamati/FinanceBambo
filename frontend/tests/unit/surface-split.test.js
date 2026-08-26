@@ -37,15 +37,14 @@ test("the operations home shows no money, and the report home shows no operation
   const reportPaths = routesForSurface(SURFACES.REPORT).map((route) => route.path.slice(1));
   linked(operations).forEach((path) => assert.ok(operationsPaths.includes(path), `امور مالی links to ${path}, which is not its own`));
   linked(report).forEach((path) => assert.ok(reportPaths.includes(path), `گزارش مالی links to ${path}, which is not its own`));
-  // Every destination of a surface, apart from its home, is offered by it.
-  assert.deepEqual(
-    linked(operations).sort(),
-    operationsPaths.filter((path) => path !== homeRouteFor(SURFACES.OPERATIONS).path.slice(1)).sort(),
-  );
-  assert.deepEqual(
-    linked(report).sort(),
-    reportPaths.filter((path) => path !== homeRouteFor(SURFACES.REPORT).path.slice(1)).sort(),
-  );
+  // Every destination of a surface, apart from its home, is offered by it. The
+  // report builder is the exception: it is not somewhere to go from a card, it
+  // is what its own section on the page produces.
+  const offered = (surface, home) => routesForSurface(surface)
+    .map((route) => route.path.slice(1))
+    .filter((path) => path !== home && path !== "report-builder");
+  assert.deepEqual(linked(operations).sort(), offered(SURFACES.OPERATIONS, homeRouteFor(SURFACES.OPERATIONS).path.slice(1)).sort());
+  assert.deepEqual(linked(report).sort(), offered(SURFACES.REPORT, homeRouteFor(SURFACES.REPORT).path.slice(1)).sort());
 });
 
 test("the reader-only settings view offers nothing that changes a number", () => {

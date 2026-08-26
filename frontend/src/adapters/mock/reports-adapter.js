@@ -1,5 +1,5 @@
 import { ApiError } from "../../core/api/api-error.js";
-import { aggregateConfirmedInvoicesByMonth } from "../../features/finance-home/monthly-trend.js";
+import { aggregateConfirmedInvoicesByMonth } from "../../shared/reports/monthly-trend.js";
 import { buildSeedInvoices } from "./invoices-adapter.js";
 
 /**

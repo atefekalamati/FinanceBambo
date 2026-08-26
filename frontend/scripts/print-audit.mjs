@@ -84,6 +84,15 @@ function countPdfPages(base64) {
 const documents = [
   { key: "financial-report", route: "reports", prepare: null },
   {
+    // Everything the builder can produce, in one document. Each chosen report
+    // starts its own page, so the count is the guard against a section that
+    // silently grew or one that stopped rendering at all.
+    key: "custom-report",
+    route: "report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines",
+    prepare: null,
+    maxPages: 24,
+  },
+  {
     // The period report only exists once it is built, so the audit builds one
     // the same way a reader would before checking what comes off the printer.
     key: "period-report",
