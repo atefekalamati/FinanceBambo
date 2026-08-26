@@ -67,6 +67,37 @@ def migration_url() -> str | None:
     return setting("FINANCE_MIGRATION_DSN")
 
 
+#: The port the finance development host listens on.
+#:
+#: 8010, not 8000. Another BAMBO project -- the Pilot host -- already listens on 8000 on
+#: this machine, and two servers cannot share a port: whichever starts second fails, or
+#: worse, the browser opens the wrong application and every explanation of the demo is
+#: about somebody else's software.
+#:
+#: The two are otherwise unrelated. They share no database, no code and no configuration;
+#: this is only about which socket each one binds.
+DEFAULT_DEMO_PORT = 8010
+
+#: Reserved by the Pilot host. Refused by name rather than merely not chosen, so a stale
+#: script or a copied command line fails with an explanation instead of a port collision.
+RESERVED_PORTS = {8000: "the BAMBO Pilot host"}
+
+DEMO_PORT_SETTING = "FINANCE_DEMO_PORT"
+
+
+def demo_port() -> int:
+    """The port to serve on: FINANCE_DEMO_PORT if set, otherwise 8010.
+
+    Defined here so the entry point and the demo script cannot disagree about it. A value
+    that is not a number is ignored rather than fatal -- the default is always usable, and
+    refusing to start over a typo in an optional setting helps nobody.
+    """
+    configured = (setting(DEMO_PORT_SETTING) or "").strip()
+    if configured.isdigit() and 0 < int(configured) < 65536:
+        return int(configured)
+    return DEFAULT_DEMO_PORT
+
+
 def core_url() -> str | None:
     """The database holding the BAMBO Core tables, if the Core adapters are to be used.
 

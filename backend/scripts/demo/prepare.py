@@ -46,6 +46,7 @@ if str(BACKEND_ROOT) not in sys.path:
 import psycopg                                                          # noqa: E402
 from psycopg.rows import dict_row                                       # noqa: E402
 
+from devhost.environment import demo_port                               # noqa: E402
 from scripts.demo import seed_core_mirror                               # noqa: E402
 from scripts.demo.target import (DEMO_DATABASE, DEMO_HOST, DEMO_PORT,   # noqa: E402
                                  MAINTENANCE_DATABASE, UnsafeTarget,
@@ -169,7 +170,9 @@ def main(argv=None) -> int:
                         help="drop the demo database before rebuilding it")
     parser.add_argument("--serve", action="store_true",
                         help="start the development host against the demo database")
-    parser.add_argument("--port", type=int, default=8000)
+    # The default lives in devhost.environment so the script and the host it starts
+    # cannot disagree about which port the demo is on.
+    parser.add_argument("--port", type=int, default=demo_port())
     arguments = parser.parse_args(argv)
 
     dsn = demo_dsn()
@@ -207,6 +210,8 @@ def serve(dsn: str, port: int) -> None:
     """
     environment = dict(os.environ, FINANCE_DEV_DSN=dsn, FINANCE_CORE_DSN=dsn)
     environment.pop("FINANCE_MIGRATION_DSN", None)
+    # The host checks the port again before binding, and refuses port 8000 outright --
+    # see devhost.__main__.check_port. Nothing here duplicates that decision.
     print(f"  starting the development host on http://127.0.0.1:{port}")
     print("  the browser uses the real API against this database, not mock adapters.\n")
     subprocess.run([sys.executable, "-m", "devhost", "--port", str(port)],
