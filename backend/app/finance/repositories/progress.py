@@ -1,11 +1,61 @@
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+
+#: Columns a reference row is read back with. Listed once so the two callers below cannot
+#: return different shapes for the same row.
+REFERENCE_COLUMNS = ("id,organization_id,project_id,progress_snapshot_id,source_file_version_id,"
+                     "source_file_name_safe,reporting_date,snapshot_status,imported_by,"
+                     "imported_at,source_type,host_snapshot_id,host_file_version_id")
+
+
+async def ensure_progress_reference(db, scope, value):
+    """Return the Finance reference for a Core snapshot, creating it only if absent.
+
+    Idempotent by lookup **and** by constraint. The lookup handles the ordinary repeat; the
+    ON CONFLICT handles two requests racing, which is not exotic -- two people opening the
+    report page at once is enough. `ux_progress_snapshot_refs_host_snapshot` is what makes
+    the second one a no-op rather than a duplicate reference, and the row is read back
+    afterwards so both callers get the reference that actually won.
+
+    The table rejects UPDATE by trigger, so there is deliberately no upsert-and-modify path:
+    an existing reference is returned untouched. That is the point of a pinned reference --
+    if it could change, nothing pinned to it would be reproducible.
+    """
+    async with db.cursor(row_factory=dict_row) as cursor:
+        await cursor.execute(
+            "SELECT %s FROM progress_snapshot_refs WHERE organization_id=%%s AND project_id=%%s "
+            "AND host_snapshot_id=%%s" % REFERENCE_COLUMNS,
+            (scope.organization_id, scope.project_id, value.host_snapshot_id))
+        existing = await cursor.fetchone()
+        if existing is not None:
+            return existing
+        await cursor.execute(
+            "INSERT INTO progress_snapshot_refs(id,organization_id,project_id,progress_snapshot_id,"
+            "source_file_version_id,source_file_name_safe,reporting_date,snapshot_status,"
+            "imported_by,imported_at,source_type,host_snapshot_id,host_file_version_id) "
+            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+            "ON CONFLICT (organization_id,project_id,host_snapshot_id) "
+            "WHERE host_snapshot_id IS NOT NULL DO NOTHING",
+            (value.id, value.organization_id, value.project_id, value.progress_snapshot_id,
+             value.source_file_version_id, value.source_file_name_safe, value.reporting_date,
+             value.snapshot_status, value.imported_by, value.imported_at, value.source_type,
+             value.host_snapshot_id, value.host_file_version_id))
+        await cursor.execute(
+            "SELECT %s FROM progress_snapshot_refs WHERE organization_id=%%s AND project_id=%%s "
+            "AND host_snapshot_id=%%s" % REFERENCE_COLUMNS,
+            (scope.organization_id, scope.project_id, value.host_snapshot_id))
+        return await cursor.fetchone()
+
+
 class PsycopgProgressRepository:
  def __init__(self,db):self.db=db
  async def list_snapshots(self,s):
-  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT organization_id,project_id,progress_snapshot_id,source_file_version_id,source_file_name_safe,imported_at,imported_by,snapshot_status status,reporting_date,source_type FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s ORDER BY reporting_date DESC,imported_at DESC",(s.organization_id,s.project_id));return await c.fetchall()
+  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT organization_id,project_id,progress_snapshot_id,source_file_version_id,source_file_name_safe,imported_at,imported_by,snapshot_status status,reporting_date,source_type,host_snapshot_id,host_file_version_id FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s ORDER BY reporting_date DESC,imported_at DESC",(s.organization_id,s.project_id));return await c.fetchall()
  async def get_snapshot(self,s,sid):
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT * FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s AND progress_snapshot_id=%s",(s.organization_id,s.project_id,sid));return await c.fetchone()
+ async def ensure_reference(self,s,value):
+  """Record the Core snapshot this operation pins to, or reuse the existing record."""
+  return await ensure_progress_reference(self.db,s,value)
  async def get_line_mapping(self,s,line_id):
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT id,activity_external_id,assignment_external_id FROM estimate_lines WHERE organization_id=%s AND project_id=%s AND id=%s AND deleted_at IS NULL",(s.organization_id,s.project_id,line_id));return await c.fetchone()
  async def latest_overrides(self,s,ref_id):

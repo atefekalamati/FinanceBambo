@@ -11,7 +11,9 @@ from openpyxl.styles import Font
 from ..domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT,monthly_report
 from ..domain.persian_calendar import persian_month_window
 from ..domain.reports import calculate_live_report
-from ..domain.progress import apply_progress_overrides,snapshot_assignments,snapshot_metadata
+from ..domain.progress import (apply_progress_overrides,reference_from_header,
+ snapshot_assignments,snapshot_metadata)
+from ..adapters.ports import supports_current_snapshot
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
 
@@ -62,23 +64,109 @@ class FinanceLiveReportService:
     def __init__(self,repository,progress_provider,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):
         self.repo,self.provider,self.ids,self.clock=repository,progress_provider,id_factory,clock
 
-    async def _calculate(self,scope,reporting_date,progress_snapshot_id):
+    async def _current_reference_value(self,scope,reporting_date):
+        """The host's current snapshot as a Finance reference value, unsaved.
+
+        None whenever there is nothing to pin to -- a host that does not implement
+        `current_snapshot`, one with no snapshot for this project, a header describing
+        another tenant, or one carrying no Core identifier. Every one of those means "no
+        progress", which the report states through its warnings rather than inventing one.
+        """
+        if not supports_current_snapshot(self.provider):return None
+        feed=await self.provider.current_snapshot(str(scope.organization_id),scope.project_id,reporting_date)
+        metadata=feed.get("snapshot") if isinstance(feed,dict) else None
+        return reference_from_header(metadata,scope,self.ids,self.clock,reporting_date)
+
+    @staticmethod
+    def _descriptor(row):
+        """The shape repo.load and repo.snapshot return, from a stored reference row.
+
+        `host_snapshot_id` belongs in it: without that field the caller falls back to the
+        Finance UUID when asking the host for the feed, and the host has never heard of that
+        value. A second request hid the bug, because it reads the row back from the database.
+        """
+        return {"progress_snapshot_ref_id":row["id"],
+                "progress_snapshot_id":row["progress_snapshot_id"],
+                "host_snapshot_id":row["host_snapshot_id"],
+                "reporting_date":row["reporting_date"]}
+
+    async def _read_current_snapshot(self,scope,reporting_date):
+        """The host's current snapshot, **without writing anything**.
+
+        `GET /reports/live` and `GET /overview` reach this. Viewing a page must not insert a
+        row, and `/overview` is gated only by `finance.view` -- a read permission that must
+        not imply a write.
+
+        If a Finance reference already exists for this exact Core snapshot it is read and
+        returned, so a pinned project keeps showing its stable Finance identifier. If none
+        exists, the descriptor carries the Core identifier and no Finance UUID, because none
+        exists yet. Minting one per request would hand clients an identifier that changes on
+        every refresh and resolves to nothing.
+        """
+        value=await self._current_reference_value(scope,reporting_date)
+        if value is None:return None
+        existing=getattr(self.repo,"progress_reference_for_host",None)
+        if existing is not None:
+            row=await existing(scope,value.host_snapshot_id)
+            if row is not None:return self._descriptor(row)
+        return {"progress_snapshot_ref_id":None,
+                "progress_snapshot_id":None,
+                "host_snapshot_id":value.host_snapshot_id,
+                "reporting_date":value.reporting_date}
+
+    async def _pin_current_snapshot(self,scope,reporting_date):
+        """Record a reference to the host's current snapshot, creating it only if absent.
+
+        Reached only from operations that are themselves writing something immutable -- an
+        issued report, an override -- where the exact Core snapshot has to stay reproducible
+        long after the host has moved on.
+        """
+        value=await self._current_reference_value(scope,reporting_date)
+        if value is None:return None
+        row=await self.repo.ensure_progress_reference(scope,value)
+        return None if row is None else self._descriptor(row)
+
+    async def _calculate(self,scope,reporting_date,progress_snapshot_id,pin=False):
+        """Calculate the report. `pin` decides whether a missing reference may be created.
+
+        Reads pass pin=False and never write. Operations that persist something immutable
+        pass pin=True, because an issued report or an override has to name the exact Core
+        snapshot it used, forever.
+        """
         data=await self.repo.load(scope,reporting_date)
         snapshot=data["snapshot"] if progress_snapshot_id is None else await self.repo.snapshot(scope,progress_snapshot_id)
+        if snapshot is None and progress_snapshot_id is None:
+            # Nothing recorded for this date. Ask the host what its current snapshot is,
+            # rather than answering 404 for a project whose progress exists but has never
+            # been referenced -- which, before this, was every real project.
+            snapshot=await (self._pin_current_snapshot if pin else self._read_current_snapshot)(
+                scope,reporting_date)
         if snapshot is None or snapshot["reporting_date"]>reporting_date:raise FinanceRecordNotFound("progress snapshot not found for reporting date")
-        feed=await self.provider.get_snapshot(str(scope.organization_id),scope.project_id,str(snapshot["progress_snapshot_id"]))
-        snapshot_metadata(feed,scope.organization_id,scope.project_id,snapshot["progress_snapshot_id"])
+        # Ask the host by the host's own identifier when there is one. Finance mints
+        # `progress_snapshot_id` itself for a reference ingested from Core, and the host has
+        # never heard of that value -- looking the feed up by it would 404 a snapshot that
+        # exists. References that predate the Core integration have no host identifier and
+        # are still looked up the way they always were.
+        lookup=snapshot.get("host_snapshot_id") or snapshot["progress_snapshot_id"]
+        feed=await self.provider.get_snapshot(str(scope.organization_id),scope.project_id,str(lookup))
+        snapshot_metadata(feed,scope.organization_id,scope.project_id,lookup)
         for row in data["estimates"]:row["progress_snapshot_id"]=snapshot["progress_snapshot_id"]
-        overrides=await self.repo.latest_overrides(scope,snapshot["progress_snapshot_ref_id"]) if hasattr(self.repo,"latest_overrides") else []
+        # No Finance reference means no stored overrides can exist -- an override carries a
+        # foreign key to one. That is zero *overrides*, not zero progress: the feed is read
+        # and calculated exactly as always, and a line the feed cannot answer for stays
+        # missing with its warning rather than becoming a measured zero.
+        overrides=(await self.repo.latest_overrides(scope,snapshot["progress_snapshot_ref_id"])
+                   if hasattr(self.repo,"latest_overrides")
+                   and snapshot.get("progress_snapshot_ref_id") is not None else [])
         effective_feed={**feed,"assignments":apply_progress_overrides(snapshot_assignments(feed),overrides,snapshot["progress_snapshot_id"])}
         report=calculate_live_report(data["estimates"],data["invoices"],effective_feed.get("assignments",[]),data["conversions"],data["gross_area"])
         return report,data,snapshot,effective_feed
 
     async def live(self,scope,reporting_date:date,progress_snapshot_id=None):
         report,_data,snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
-        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality}
+        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"host_snapshot_id":snapshot.get("host_snapshot_id"),"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality}
 
-    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","excluded_estimate_line_count","progress_quality")
+    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","host_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","excluded_estimate_line_count","progress_quality")
 
     async def overview(self,scope,reporting_date:date,progress_snapshot_id=None):
         """Project the live report down to the operational fields finance.view may read."""
@@ -125,7 +213,11 @@ class FinanceLiveReportService:
         return {"items":items[start:end],"page":page,"page_size":page_size,"total_items":total,"total_pages":0 if total==0 else ((total-1)//page_size)+1}
 
     async def issue(self,scope,reporting_date,progress_snapshot_id=None):
-        report,data,snapshot,feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
+        # pin=True: an issued report is immutable and must stay reproducible against the
+        # exact Core snapshot it used, so the reference is created here if it does not
+        # already exist. A direct POST works on a fresh project -- nobody has to open the
+        # live report first to bring a reference into being.
+        report,data,snapshot,feed=await self._calculate(scope,reporting_date,progress_snapshot_id,pin=True)
         resource_ids=sorted({str(row["resource_id"]) for row in data["estimates"]})
         price_ids=sorted({str(row["price_version_id"]) for row in data["estimates"] if row.get("price_version_id")})
         if data["settings_id"] is None or not resource_ids or not price_ids:

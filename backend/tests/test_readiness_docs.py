@@ -84,9 +84,16 @@ class DeclaredDependencyTests(unittest.TestCase):
 
 class ReadinessDocumentationTests(unittest.TestCase):
     def test_review_package_lists_every_migration(self):
+        """Every revision that can run must be described in the review package.
+
+        Reads the revisions directory rather than a written list, so adding a migration
+        without documenting it fails here instead of shipping undocumented.
+        """
         review=(ROOT/"docs"/"PRODUCTION_MIGRATION_REVIEW_FA.md").read_text(encoding="utf-8")
-        for migration in sorted((ROOT/"migrations").glob("*.up.sql")):
-            self.assertIn(migration.name,review)
+        revisions=sorted(path.stem for path in (ROOT/"alembic"/"versions").glob("*.py"))
+        self.assertTrue(revisions,"no Alembic revisions found")
+        for revision in revisions:
+            self.assertIn(revision,review)
 
     def test_recovery_runbook_separates_restore_and_destructive_down(self):
         runbook=(ROOT/"docs"/"RECOVERY_RUNBOOK_FA.md").read_text(encoding="utf-8")

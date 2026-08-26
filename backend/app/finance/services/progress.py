@@ -1,8 +1,9 @@
 from datetime import datetime,timezone
 from uuid import uuid4
-from ..domain.progress import (ProgressOverride,ProgressPairing,apply_progress_overrides,
- assignment_keys,consumed_quantity,line_keys,resolve_progress_quantity,snapshot_assignments,
- snapshot_metadata)
+from ..domain.progress import (ProgressOverride,ProgressPairing,ProgressReference,
+ apply_progress_overrides,assignment_keys,consumed_quantity,line_keys,
+ reference_from_header,resolve_progress_quantity,snapshot_assignments,snapshot_metadata)
+from ..adapters.ports import supports_current_snapshot
 from ..domain.schedule import derive_snapshot_versions
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
@@ -53,6 +54,32 @@ class ProgressService:
     row["warnings"]=[{"code":"PROGRESS_MISSING","message":"No valid progress quantity is available for this assignment."}]
    assignments.append(row)
   return {**feed,"assignments":assignments}
+ async def current_reference(self,s,as_of):
+  """The Finance reference for the host's current snapshot, created only if absent.
+
+  This is the answer to a gap that made Finance unusable in production: nothing except the
+  development seed ever wrote a `progress_snapshot_refs` row, so a real database had none
+  and every live report answered 404. A financial operation that must stay reproducible --
+  issuing a report, recording an override -- needs a stable reference to the exact Core
+  snapshot it used, and asking a person to create one by hand would be asking them to
+  transcribe a Core identifier.
+
+  Returns None rather than raising when the host cannot answer. A host without
+  `current_snapshot`, or one with no snapshot for this project yet, is not an error: it
+  means there is no progress to pin to, and the report says so through its existing
+  warnings instead of inventing a reference.
+  """
+  if not supports_current_snapshot(self.provider):return None
+  feed=await self.provider.current_snapshot(str(s.organization_id),s.project_id,as_of)
+  return await self.record_reference(s,feed,as_of)
+
+ async def record_reference(self,s,feed,fallback_reporting_date=None):
+  """Turn a host feed header into a stored Finance reference, idempotently."""
+  metadata=feed.get("snapshot") if isinstance(feed,dict) else None
+  value=reference_from_header(metadata,s,self.ids,self.clock,fallback_reporting_date)
+  if value is None:return None
+  return await self.repo.ensure_reference(s,value)
+
  async def override_history(self,s,line_id):
   """List one line's overrides; the line is resolved in-scope first so another tenant's id reveals nothing."""
   if await self.repo.get_line_mapping(s,line_id) is None:raise FinanceRecordNotFound("estimate line not found")
@@ -60,11 +87,22 @@ class ProgressService:
  async def override(self,s,line_id,c):
   if s.actor_user_id is None:raise PermissionError("authenticated actor is required")
   ref=await self.repo.get_snapshot(s,c.progress_snapshot_id)
+  if ref is None:
+   # Nothing recorded for this project yet. An override is a financial correction that has
+   # to name the snapshot it corrects, so pin the host's current snapshot and look again --
+   # rather than requiring someone to have opened the live report first, which is an
+   # ordering dependency nobody would guess.
+   await self.current_reference(s,None)
+   ref=await self.repo.get_snapshot(s,c.progress_snapshot_id)
   if ref is None:raise FinanceRecordNotFound("progress snapshot not found")
   line=await self.repo.get_line_mapping(s,line_id)
   if line is None:raise FinanceRecordNotFound("estimate line not found")
-  feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(c.progress_snapshot_id))
-  snapshot_metadata(feed,s.organization_id,s.project_id,c.progress_snapshot_id)
+  # Ask the host by the host's own identifier, exactly as the live report does. Finance
+  # mints progress_snapshot_id itself for an ingested reference and the host cannot resolve
+  # it; references predating the Core integration have no host id and are looked up as before.
+  lookup=ref.get("host_snapshot_id") or c.progress_snapshot_id
+  feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(lookup))
+  snapshot_metadata(feed,s.organization_id,s.project_id,lookup)
   assignment=ProgressPairing(snapshot_assignments(feed),assignment_keys).match(*line_keys(line))
   if assignment is None:raise ProgressMappingError("estimate line is not mapped to the selected progress snapshot")
   try:computed,_source=consumed_quantity({**assignment,"manualOverride":None})

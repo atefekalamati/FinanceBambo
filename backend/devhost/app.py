@@ -116,18 +116,29 @@ def wire(application: FastAPI, connection, storage_root: Path) -> None:
 def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        # Schema work runs as the owner role and finishes before the service starts, the
-        # same split a release uses. The runtime role that follows cannot issue DDL.
+        # Startup does NOT migrate. Launching a process is not consent to alter a schema,
+        # and a configured FINANCE_MIGRATION_DSN is a credential, not an instruction. Apply
+        # migrations deliberately instead:
+        #
+        #     cd backend && alembic upgrade head
+        #
+        # If the schema is absent, is_seeded below says so plainly rather than repairing it.
         admin_dsn = migration_url()
-        if admin_dsn:
+        if admin_dsn and not seeding_allowed():
+            # A deployed environment never gets the demo project, and there is nothing else
+            # for the owner role to do here, so it is not connected at all.
+            print(f"development seed DISABLED (APP_ENV={app_env()})")
+        elif admin_dsn:
             admin = ReconnectingConnection(admin_dsn)
             try:
-                await database.apply_migrations(admin)
-                if not seeding_allowed():
-                    # A deployed environment gets its schema, never the demo project.
-                    print(f"development seed DISABLED (APP_ENV={app_env()})")
-                elif reseed or not await database.is_seeded(admin):
+                # The query is skipped when reseeding, because the answer cannot change what
+                # happens next.
+                already_seeded = False if reseed else await database.is_seeded(admin)
+                reset_first, load = database.seed_plan(
+                    allowed=True, reseed=reseed, already_seeded=already_seeded)
+                if reset_first:
                     await database.reset(admin)
+                if load:
                     await database.load_seed(admin)
             finally:
                 await admin.close()

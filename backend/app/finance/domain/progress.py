@@ -32,7 +32,7 @@ number is something it is not.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -196,6 +196,153 @@ class ProgressPairing:
   paired=self._by_assignment.get(assignment_external_id)
   if paired is not None:return paired
   return self._by_activity.get(activity_external_id)
+
+
+#: Keys a host feed header uses for the Core identifiers. Named here so the adapter, the
+#: repository and the tests cannot disagree about the spelling.
+HOST_SNAPSHOT_KEY = "hostSnapshotId"
+HOST_FILE_VERSION_KEY = "hostFileVersionId"
+
+
+class HostReferenceInvalid(ValueError):
+    """The host named a Core snapshot in a form Finance cannot record."""
+
+
+def _host_identifier(value, label):
+    """A Core bigint identifier, or None when the host did not supply one.
+
+    Accepts the integer a host would naturally send and the string a JSON boundary tends to
+    produce, and refuses everything else. A bool is refused explicitly because it is an int
+    subclass and True would otherwise become snapshot 1.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise HostReferenceInvalid("%s must be a Core identifier, not a boolean" % label)
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, str) and value.strip():
+        try:
+            number = int(value.strip())
+        except ValueError:
+            raise HostReferenceInvalid("%s is not a Core identifier: %r" % (label, value)) from None
+    else:
+        raise HostReferenceInvalid("%s is not a Core identifier: %r" % (label, value))
+    if number <= 0:
+        # Core sequences start at 1, so zero or negative is a mistake, not a value.
+        raise HostReferenceInvalid("%s must be positive, got %d" % (label, number))
+    return number
+
+
+def host_reference(metadata):
+    """The Core snapshot and file-version identifiers a feed header carries.
+
+    Returns `(host_snapshot_id, host_file_version_id)`, either of which may be None: a host
+    that does not publish Core identifiers is not an error, it simply cannot be pinned to.
+    Absent is absent -- never guessed, never zero.
+    """
+    if not isinstance(metadata, Mapping):
+        return None, None
+    return (_host_identifier(metadata.get(HOST_SNAPSHOT_KEY), HOST_SNAPSHOT_KEY),
+            _host_identifier(metadata.get(HOST_FILE_VERSION_KEY), HOST_FILE_VERSION_KEY))
+
+
+@dataclass(frozen=True)
+class ProgressReference:
+    """One immutable Finance-side reference to a Core progress snapshot.
+
+    Finance owns `id` and `progress_snapshot_id`: the first is the row, the second is the
+    opaque identifier that appears in URLs and in issued report payloads. Neither is a Core
+    value. `host_snapshot_id` and `host_file_version_id` are the Core identity, and they are
+    what makes the reference reusable -- the same Core snapshot must never produce a second
+    Finance reference.
+
+    `source_file_version_id` stays None for a reference ingested from Core. There is no
+    Finance-side file identifier to record, and inventing a UUID would look like a Host
+    reference while being nothing of the kind.
+    """
+
+    id: UUID
+    organization_id: UUID
+    project_id: str
+    progress_snapshot_id: UUID
+    host_snapshot_id: int
+    host_file_version_id: int | None
+    source_file_name_safe: str
+    reporting_date: object
+    snapshot_status: str
+    imported_by: UUID | None
+    imported_at: datetime
+    source_type: str | None = None
+    source_file_version_id: UUID | None = None
+
+def reference_reporting_date(value, fallback=None):
+    """The reporting date a header claims, as a date.
+
+    A host crossing a JSON boundary sends "2026-08-02", not a date object. Storing the
+    string unparsed put a str into a column the report then compares against a date, which
+    raised TypeError and surfaced as a 500 -- a host sending a perfectly valid date could
+    break the report. Parsed here, once, for every caller.
+
+    Returns None when the value is neither a date nor an ISO date string and no fallback is
+    given. A reference whose reporting date is unknown cannot be selected by the date-based
+    query that finds it, so it is better not to record one than to record one that can
+    never be found.
+    """
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return date.fromisoformat(value.strip()[:10])
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def reference_from_header(metadata, scope, new_id, now, fallback_reporting_date=None):
+    """Build the Finance reference a host header describes, or None.
+
+    One conversion for both callers -- the live report pinning the current snapshot, and the
+    progress service recording one. Two copies of this drifted apart once already in this
+    codebase's history, on the very similar assignment-matching rule.
+
+    None is returned, rather than an exception raised, for every reason a header may be
+    unusable: wrong tenant, no Core identifier, no usable reporting date. Each means "there
+    is nothing here to pin to", which is a legitimate state the caller reports honestly.
+    """
+    if not isinstance(metadata, Mapping):
+        return None
+    if (str(metadata.get("organizationId")) != str(scope.organization_id)
+            or metadata.get("projectId") != scope.project_id):
+        return None
+    host_snapshot_id, host_file_version_id = host_reference(metadata)
+    # Without a Core identifier there is nothing to be idempotent about, and a reference
+    # that cannot name what it refers to is worse than no reference at all.
+    if host_snapshot_id is None:
+        return None
+    reporting_date = reference_reporting_date(metadata.get("reportingDate"),
+                                              fallback_reporting_date)
+    if reporting_date is None:
+        return None
+    # progress_snapshot_refs.imported_by is NOT NULL. Through the router an actor is always
+    # present -- AuthContext.user_id is a required UUID and the scope is built from it -- so
+    # this only fires for a caller outside that path. Refusing here turns what would be a
+    # NOT NULL violation at the database boundary into the same honest "nothing to pin to"
+    # answer every other unusable header gets. A user id is never invented to fill it.
+    imported_by = metadata.get("importedBy") or getattr(scope, "actor_user_id", None)
+    if imported_by is None:
+        return None
+    return ProgressReference(
+        id=new_id(), organization_id=scope.organization_id, project_id=scope.project_id,
+        progress_snapshot_id=new_id(), host_snapshot_id=host_snapshot_id,
+        host_file_version_id=host_file_version_id,
+        source_file_name_safe=metadata.get("sourceFileNameSafe") or "",
+        reporting_date=reporting_date,
+        snapshot_status=metadata.get("status") or "ready",
+        imported_by=imported_by,
+        imported_at=metadata.get("importedAt") or now(),
+        source_type=metadata.get("sourceType"))
+
 
 def _override_payload(row,snapshot_id):
  return {"previousCalculatedValue":str(row["computed_value"]),"newValue":str(row["override_value"]),"reason":row["reason"],"userId":str(row["created_by"]),"occurredAt":row["created_at"].isoformat(),"source":"manual_override","progressSnapshotId":str(snapshot_id)}

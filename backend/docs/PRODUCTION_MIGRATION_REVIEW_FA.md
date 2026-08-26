@@ -9,13 +9,30 @@
 
 ## ترتیب اجرا
 
-1. `0001_finance_core.up.sql`
-2. `0002_invoice_confirmation.up.sql`
-3. `0003_invoice_linked_documents.up.sql`
-4. `0004_report_snapshot_payload.up.sql`
-5. `0005_progress_snapshot_source_type.up.sql`
+ترتیب دیگر دستی نیست: Alembic زنجیره را نگه می‌دارد و اجرا می‌کند.
 
-هر فایل transaction مستقل دارد و باید با `ON_ERROR_STOP=1` اجرا شود. Upها از نظر ساختاری rerunnable طراحی شده‌اند.
+1. `0001_finance_core`
+2. `0002_invoice_confirmation`
+3. `0003_invoice_linked_documents`
+4. `0004_report_snapshot_payload`
+5. `0005_progress_snapshot_source_type`
+6. `0006_progress_snapshot_host_reference` (head)
+
+```powershell
+alembic current      # این دیتابیس کجاست
+alembic upgrade head
+alembic current      # باید 0005 باشد
+```
+
+هر Revision داخل transaction خودش اجرا می‌شود (`env.py` آن را باز می‌کند) و اجرا روی اولین
+خطا متوقف می‌شود. بدنه‌ها از نظر ساختاری rerunnable طراحی شده‌اند: `IF NOT EXISTS` روی جدول‌ها
+و Indexها، `DROP TRIGGER IF EXISTS` پیش از هر `CREATE TRIGGER`، و برای 0005 یک بررسی صریح
+`pg_constraint` که `ADD CONSTRAINT` نمی‌تواند بیان کند.
+
+**نکته مهم برای دیتابیسی که Schema دارد ولی جدول `alembic_version` ندارد:** چون هر پنج
+Revision rerunnable هستند، `alembic upgrade head` روی چنین دیتابیسی بدون خطا اجرا می‌شود و
+در پایان `0005` را ثبت می‌کند. `alembic stamp` لازم نیست — و `stamp` روی دیتابیسی که وضعیت
+واقعی‌اش تأیید نشده، خطرناک‌تر است، چون بدون اجرای چیزی ادعا می‌کند Migration انجام شده.
 
 ## نتیجه Validation
 
@@ -55,6 +72,29 @@
 نشده است؛ `NULL` یعنی «ثبت نشده» که درست است، و `'other'` یعنی «ثبت شد که ابزاری
 بیرون از فهرست بوده» که ادعایی بدون پشتوانه است.
 
+## 0006 — مرجع Snapshot در Core
+
+**مشکلی که حل می‌کند:** تا پیش از این، تنها چیزی که در `progress_snapshot_refs` می‌نوشت
+Seed توسعه بود. روی یک دیتابیس واقعی — که Seed در آن ممنوع است — این جدول همیشه خالی
+می‌ماند، هر گزارش زنده ۴۰۴ می‌گرفت و هیچ گزارشی هرگز صادر نمی‌شد.
+
+**راه‌حل:** وقتی یک عملیات مالی باید به یک Snapshot مشخص Core گره بخورد، Finance از طریق
+Adapter مرجع می‌سازد یا مرجع موجود را دوباره استفاده می‌کند. بدون هیچ عملیات دستی کاربر.
+
+| موضوع | تصمیم |
+|---|---|
+| نوع شناسه Core | `bigint` — مطابق `msp_snapshots.id` و `msp_file_versions.id` |
+| FK فیزیکی به Core | **ندارد.** Core با حذف پروژه، Snapshotها را CASCADE می‌کند؛ کلید RESTRICT حذف پروژه را در Core مسدود می‌کرد و CASCADE تاریخچه مالی را از بین می‌برد. اعتبارسنجی در Adapter انجام می‌شود |
+| Idempotency | Index یکتای جزئی؛ یک Snapshot از Core هرگز دو مرجع Finance نمی‌سازد |
+| ستون‌های قدیمی UUID | حذف **نشدند** و بازنویسی نشدند. `progress_snapshot_id` حالا شناسه عمومی خودِ Finance است؛ حذفش هر Route و هر گزارش صادرشده تغییرناپذیر را می‌شکست |
+| Backfill | ندارد. `NULL` یعنی «به Snapshotی در Core وصل نبوده» که درباره هر ردیف قدیمی درست است |
+| تریگر تغییرناپذیری | فعال نمی‌شود: `ADD COLUMN` بدون DEFAULT فقط تغییر Catalog است و `DROP NOT NULL` هم DDL است، نه UPDATE ردیف |
+
+> **جدول نسخه Migration:** Alembic از `finance_alembic_version` استفاده می‌کند، نه
+> `alembic_version` عمومی. Finance فقط مالک زنجیره Migration خودش است، نه مالک Migration
+> کل دیتابیس مشترک BAMBO؛ اگر Core بعداً Alembic بگیرد، دو ماژول روی یک ردیف `version_num`
+> برخورد نمی‌کنند.
+
 ## Expected Schema Diff
 
 ### جدول‌های جدید در Migration پایه
@@ -82,11 +122,18 @@
 - `invoices.confirmation_idempotency_key`
 - `report_snapshots.snapshot_payload`
 - `report_snapshots.resource_version_ids`
+- `progress_snapshot_refs.source_type`
+- `progress_snapshot_refs.host_snapshot_id` — `bigint`, Nullable, بدون DEFAULT
+- `progress_snapshot_refs.host_file_version_id` — `bigint`, Nullable, بدون DEFAULT
+- `progress_snapshot_refs.source_file_version_id` — `NOT NULL` برداشته شد (ستون حذف نشد)
 
 ### Indexهای افزوده‌شده پس از Migration پایه
 
 - `ux_invoices_confirmation_idempotency_scope`
 - `ux_invoices_one_reversal_per_original`
+- `ux_progress_snapshot_refs_host_snapshot` — یکتای **جزئی** روی
+  `(organization_id, project_id, host_snapshot_id) WHERE host_snapshot_id IS NOT NULL`
+- `ix_progress_snapshot_refs_host_file_version`
 
 ### Constraint و حفاظت تاریخچه
 

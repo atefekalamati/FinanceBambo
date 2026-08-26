@@ -63,6 +63,16 @@ class FakeConnector:
         return created
 
 
+def _revision(stem):
+    """Import an Alembic revision by path; the filenames start with a digit."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "devhost_test_revision_" + stem, BACKEND_ROOT / "alembic" / "versions" / (stem + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class ReconnectingConnectionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.connector = FakeConnector()
@@ -144,15 +154,117 @@ class SeedGuardTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original)
 
-    def test_seeding_is_allowed_only_outside_production(self):
+    @staticmethod
+    def _unconfigured():
+        """Detach the .env file so an absent variable is genuinely absent.
+
+        `setting()` reads os.environ first and then falls back to the committed .env, which
+        defines APP_ENV=development on a developer machine. Popping the variable alone
+        therefore does not produce an unconfigured environment -- the file still supplies
+        one, and a test claiming to cover "APP_ENV missing" would be covering "APP_ENV set
+        by file" instead, and passing for the wrong reason.
+        """
+        import devhost.environment as env
+        original = env.ENV_FILE
+        env.ENV_FILE = Path("does-not-exist.env")
+        return env, original
+
+    def test_the_seed_authorization_matrix(self):
+        """Every combination that decides whether fixture data may be written.
+
+        Two explicit positive conditions are required and neither has a default. The second
+        row is the one that matters most: it is the case where an unconfigured environment
+        plus an opt-in used to authorize seeding, because app_env() substitutes
+        "development" when APP_ENV is unset.
+        """
+        from devhost.environment import seeding_allowed
+        env, original = self._unconfigured()
+        try:
+            for app_env_value, opt_in, expected, why in (
+                    (None, None, False, "nothing configured at all"),
+                    (None, "true", False, "an opt-in cannot substitute for an environment"),
+                    ("", "true", False, "blank is not a configured environment"),
+                    ("   ", "true", False, "whitespace is not a configured environment"),
+                    ("production", "true", False, "production is never seedable"),
+                    ("PRODUCTION", "true", False, "case does not create an exception"),
+                    ("prod", "true", False, "nor does an abbreviation"),
+                    ("staging", "true", False, "staging is deployed; demo data would look real"),
+                    ("development", None, False, "a seedable environment is not enough"),
+                    ("development", "false", False, "an explicit no is a no"),
+                    ("development", "true", True, "both conditions met"),
+                    ("dev", "true", True, "both conditions met"),
+                    ("test", "true", True, "both conditions met"),
+                    ("  Development  ", "true", True, "normalised before comparison"),
+            ):
+                with self.subTest(app_env=app_env_value, opt_in=opt_in, expect=expected):
+                    for name, value in (("APP_ENV", app_env_value),
+                                        ("FINANCE_ALLOW_SEED", opt_in)):
+                        if value is None:
+                            os.environ.pop(name, None)
+                        else:
+                            os.environ[name] = value
+                    self.assertEqual(expected, seeding_allowed(), why)
+        finally:
+            env.ENV_FILE = original
+
+    def test_an_unconfigured_environment_refuses_even_with_the_opt_in(self):
+        """The bug this guard was written for, stated on its own.
+
+        Kept separate from the matrix so it cannot be lost in a table edit. APP_ENV unset
+        plus FINANCE_ALLOW_SEED=true must be a refusal, and it was not: seeding_allowed()
+        went through app_env(), which returns "development" for an unset variable, so an
+        environment nobody had configured satisfied the environment condition by accident.
+        """
         from devhost.environment import app_env, seeding_allowed
-        for value, expected in (("development", True), ("dev", True), ("test", True),
-                                ("staging", True), ("production", False), ("PRODUCTION", False),
-                                ("prod", False)):
-            with self.subTest(app_env=value):
-                os.environ["APP_ENV"] = value
+        env, original = self._unconfigured()
+        try:
+            os.environ.pop("APP_ENV", None)
+            os.environ["FINANCE_ALLOW_SEED"] = "true"
+            self.assertEqual("development", app_env(),
+                             "app_env keeps its descriptive default, which is not the bug")
+            self.assertFalse(seeding_allowed(),
+                             "no default may authorize fixture insertion")
+        finally:
+            env.ENV_FILE = original
+
+    def test_a_configured_environment_from_the_env_file_still_counts(self):
+        """Configured in .env is configured. The rule is about absence, not about os.environ."""
+        from devhost.environment import seeding_allowed
+        import devhost.environment as env
+        original = env.ENV_FILE
+        configured = Path(self.temporary_env())
+        env.ENV_FILE = configured
+        try:
+            os.environ.pop("APP_ENV", None)
+            os.environ["FINANCE_ALLOW_SEED"] = "true"
+            self.assertTrue(seeding_allowed())
+        finally:
+            env.ENV_FILE = original
+            configured.unlink(missing_ok=True)
+
+    def temporary_env(self):
+        import tempfile
+        handle = tempfile.NamedTemporaryFile("w", suffix=".env", delete=False, encoding="utf-8")
+        handle.write("APP_ENV=development\n")
+        handle.close()
+        return handle.name
+
+    def test_the_opt_in_accepts_the_obvious_affirmatives_and_nothing_else(self):
+        from devhost.environment import seeding_allowed
+        os.environ["APP_ENV"] = "development"
+        for value, expected in (("true", True), ("TRUE", True), ("1", True), ("yes", True),
+                                ("on", True), ("false", False), ("0", False), ("no", False),
+                                ("", False), ("maybe", False), (" true ", True)):
+            with self.subTest(value=repr(value)):
+                os.environ["FINANCE_ALLOW_SEED"] = value
                 self.assertEqual(expected, seeding_allowed())
-                self.assertEqual(value.strip().lower(), app_env())
+
+    def test_the_environment_name_is_still_normalised(self):
+        from devhost.environment import app_env
+        for value in ("development", "DEVELOPMENT", " Development "):
+            with self.subTest(value=repr(value)):
+                os.environ["APP_ENV"] = value
+                self.assertEqual("development", app_env())
 
     def test_the_connection_string_is_never_echoed_with_its_password(self):
         from devhost.environment import redacted
@@ -231,7 +343,9 @@ class FixtureIdentityTests(unittest.TestCase):
     def test_every_declared_source_is_one_the_schema_admits(self):
         import re
         from devhost import seed
-        ddl = (BACKEND_ROOT / "migrations" / "0001_finance_core.up.sql").read_text(encoding="utf-8")
+        # The schema is defined by the base Alembic revision; the SQL it will execute is
+        # what the seed has to satisfy.
+        ddl = _revision("0001_finance_core").UPGRADE_SQL
         clause = re.search(r"source text NOT NULL CHECK \(source IN \(([^)]*)\)\)", ddl)
         self.assertIsNotNone(clause, "the estimate_lines source CHECK moved")
         allowed = set(re.findall(r"'([a-z_]+)'", clause.group(1)))
@@ -303,3 +417,140 @@ class SeededProgressProviderTests(unittest.IsolatedAsyncioTestCase):
         feed["assignments"][0]["assignmentExternalId"] = "changed"
         again = await self.provider().get_snapshot(str(self.ORG), "sample_site_01", str(self.SNAPSHOT))
         self.assertEqual("AS1", again["assignments"][0]["assignmentExternalId"])
+class SeedPlanTests(unittest.TestCase):
+    """What startup does about fixture data, decided in one place and tested exhaustively."""
+
+    def plan(self, **kwargs):
+        from devhost.database import seed_plan
+        return seed_plan(**kwargs)
+
+    def test_a_first_seed_loads_without_resetting(self):
+        """The correction. Startup used to reset before the first load as well.
+
+        `reset()` exists to discard a developer's working data. Running it against a
+        database that has none is harmless in effect and wrong in intent -- it should only
+        happen when a developer asks for it.
+        """
+        self.assertEqual((False, True),
+                         self.plan(allowed=True, reseed=False, already_seeded=False))
+
+    def test_an_explicit_reseed_resets_then_loads(self):
+        self.assertEqual((True, True),
+                         self.plan(allowed=True, reseed=True, already_seeded=False))
+        self.assertEqual((True, True),
+                         self.plan(allowed=True, reseed=True, already_seeded=True))
+
+    def test_an_already_seeded_database_is_left_alone(self):
+        self.assertEqual((False, False),
+                         self.plan(allowed=True, reseed=False, already_seeded=True))
+
+    def test_nothing_happens_when_seeding_is_not_allowed(self):
+        # Including when a reseed was requested: the environment decides first, and an
+        # explicit --reseed is not an override for it.
+        for reseed in (False, True):
+            for already_seeded in (False, True):
+                with self.subTest(reseed=reseed, already_seeded=already_seeded):
+                    self.assertEqual((False, False), self.plan(
+                        allowed=False, reseed=reseed, already_seeded=already_seeded))
+
+    def test_reset_is_reachable_only_through_the_reseed_path(self):
+        # FINANCE_ALLOW_SEED=true alone must never be enough to destroy working data.
+        resets = [self.plan(allowed=allowed, reseed=reseed, already_seeded=seeded)[0]
+                  for allowed in (True, False) for reseed in (True, False)
+                  for seeded in (True, False)]
+        self.assertEqual(2, sum(resets), "only the two allowed+reseed combinations reset")
+
+
+class StartupSafetyTests(unittest.TestCase):
+    """Source-level guarantees about what starting the host can do.
+
+    Asserted against the source because the alternative is starting a real host against a
+    real database, which is exactly what these rules exist to prevent.
+    """
+
+    @staticmethod
+    def _code(text):
+        """The source with comment lines removed.
+
+        The startup block deliberately tells the developer to run `alembic upgrade head`.
+        An assertion searching for "upgrade" finds that instruction and reports the opposite
+        of the truth, so these checks look at code rather than at prose.
+        """
+        return chr(10).join(line for line in text.splitlines()
+                            if not line.strip().startswith("#"))
+
+    APP = (BACKEND_ROOT / "devhost" / "app.py").read_text(encoding="utf-8")
+    DATABASE = (BACKEND_ROOT / "devhost" / "database.py").read_text(encoding="utf-8")
+
+    def test_startup_never_calls_the_migration_helper(self):
+        self.assertNotIn("upgrade_to_head", self._code(self.APP))
+
+    def test_no_startup_path_runs_alembic_at_all(self):
+        code = self._code(self.APP)
+        for forbidden in ("command.upgrade", "command.downgrade", "command.stamp",
+                          "alembic.command", "from alembic"):
+            with self.subTest(forbidden):
+                self.assertNotIn(forbidden, code)
+
+    def test_a_configured_migration_dsn_does_not_authorize_ddl(self):
+        """Having the owner credential is not the same as being told to use it.
+
+        The DSN is still read -- the seed needs the owner role -- but the only thing it
+        gates now is fixture data, and that has its own two-condition guard.
+        """
+        self.assertIn("migration_url()", self.APP)
+        startup = self._code(self.APP.split("def build(")[1].split("connection = ")[0])
+        self.assertNotIn("upgrade", startup)
+
+    def test_the_seed_block_is_gated_on_seeding_allowed(self):
+        startup = self.APP.split("def build(")[1]
+        self.assertIn("seeding_allowed()", startup)
+        self.assertIn("database.seed_plan(", startup)
+
+    def test_the_owner_role_is_not_connected_when_seeding_is_disabled(self):
+        # Nothing for it to do, so it is not opened at all.
+        startup = self.APP.split("def build(")[1].split("connection = ")[0]
+        disabled = startup.split("elif admin_dsn:")[0]
+        self.assertNotIn("ReconnectingConnection", disabled)
+
+    def test_the_migration_helper_documents_that_startup_must_not_call_it(self):
+        self.assertIn("Not called at startup", self.DATABASE)
+
+    def test_a_missing_schema_is_reported_rather_than_repaired(self):
+        """Failing clearly beats hidden DDL."""
+        self.assertIn("class SchemaNotMigrated", self.DATABASE)
+        self.assertIn("alembic upgrade head", self.DATABASE)
+        self.assertIn("UndefinedTable", self.DATABASE)
+        self.assertNotIn("CREATE TABLE", self.DATABASE)
+
+
+class SchemaDiagnosticTests(unittest.IsolatedAsyncioTestCase):
+    """The message a developer gets when they start the host before migrating."""
+
+    class MissingSchema:
+        """A connection whose finance tables do not exist."""
+
+        def cursor(self, *args, **kwargs):
+            import psycopg
+            outer = self
+
+            class Cursor:
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, *exc):
+                    return False
+
+                async def execute(self, *args, **kwargs):
+                    raise psycopg.errors.UndefinedTable(
+                        'relation "finance_project_settings" does not exist')
+
+            return Cursor()
+
+    async def test_it_names_the_command_to_run(self):
+        from devhost.database import SchemaNotMigrated, is_seeded
+        with self.assertRaises(SchemaNotMigrated) as caught:
+            await is_seeded(self.MissingSchema())
+        message = str(caught.exception)
+        self.assertIn("alembic upgrade head", message)
+        self.assertIn("does not migrate", message)
