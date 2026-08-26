@@ -104,11 +104,34 @@ test("the chooser refuses to build nothing", () => {
 
 test("the document carries the same chrome the project's other reports do", () => {
   const doc = read("../../src/features/report-builder/report-document.js");
-  ["reportCover", "reportSection", "reportFooter", "reportTable", "reportFigures"].forEach((name) => {
+  ["reportSection", "reportFooter", "reportTable", "reportFigures"].forEach((name) => {
     assert.ok(doc.includes(`export function ${name}(`), `${name} is missing`);
   });
   // Numbered chapters and a footer that says when it was made, as the control
   // documents have.
   assert.match(doc, /report-doc__section-number/);
   assert.match(doc, /بامبو — گزارش مالی پروژه · تولیدشده در/);
+  // The letterhead itself is not this feature's: every printed document in the
+  // module wears the same one.
+  assert.match(read("../../src/features/report-builder/report-builder-page.js"), /createReportHeader/);
+});
+
+test("every printed document in the module goes out under one letterhead", () => {
+  // A financial report handed over next to a control report has to look like it
+  // came from the same place, so the band is written once and worn by all four.
+  [
+    "../../src/features/report-builder/report-builder-page.js",
+    "../../src/features/period-report/period-report-page.js",
+    "../../src/features/reports/reports-page.js",
+    "../../src/features/invoices/invoices-page.js",
+  ].forEach((path) => {
+    const source = read(path);
+    assert.match(source, /shared\/reports\/report-header\.js/, `${path} builds its own letterhead`);
+    assert.match(source, /createReportHeader\(/, `${path} does not use it`);
+  });
+  // The two working screens carry it for print only: a dialog does not become a
+  // letterhead just because what it prints is one.
+  ["../../src/features/reports/reports-page.js", "../../src/features/invoices/invoices-page.js"].forEach((path) => {
+    assert.match(read(path), /report-header--print-only/, `${path} shows the band on screen`);
+  });
 });

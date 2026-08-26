@@ -6,7 +6,8 @@ import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { buildPeriodPresets, validatePeriod } from "../../shared/dates/reporting-periods.js";
 import { datasetsFor, findReport, normalizeSelection, selectionUsesPeriod } from "./report-catalog.js";
 import { REPORT_SECTIONS } from "./report-sections.js";
-import { reportCover, reportFooter, reportSection } from "./report-document.js";
+import { reportFooter, reportSection } from "./report-document.js";
+import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 
 /**
  * The document a chosen set of reports produces.
@@ -114,12 +115,15 @@ export function createReportBuilderPage({ context, adapters, selection = [], per
 
   function renderContent(data) {
     const document_ = element("article", "report-doc");
-    document_.append(reportCover({
+    document_.append(createReportHeader({
       title: "گزارش اختصاصی مالی",
-      project: { name: context.projectName, code: context.projectCode },
-      snapshot: { label: data.snapshot?.sourceFileNameSafe ?? null },
-      reportingDate: data.snapshot?.reportingDate ?? null,
-      period: selectionUsesPeriod(chosen) ? data.period : null,
+      facts: projectFacts({
+        project: { name: context.projectName, code: context.projectCode },
+        snapshot: data.snapshot?.sourceFileNameSafe ?? null,
+        reportingDate: data.snapshot?.reportingDate ?? null,
+        // Only claimed when something in the document actually uses it.
+        period: selectionUsesPeriod(chosen) ? data.period : null,
+      }),
     }));
 
     chosen.forEach((key, index) => {
