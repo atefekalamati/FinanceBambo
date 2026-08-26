@@ -2,6 +2,7 @@ import { createRequestState, REQUEST_STATUS } from "../../core/state/request-sta
 import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
+import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
@@ -116,23 +117,15 @@ function changeCell(changeIrr, direction) {
 
 function renderHeader({ context, period, generatedAt, dayCount }) {
   const header = element("section", "period-report-header");
-  const title = element("div", "period-report-header__title");
-  title.append(
-    element("span", "period-report-header__eyebrow", "گزارش دوره‌ای مالی"),
-    element("h1", "", context.projectName ?? "پروژه"),
-  );
-  const facts = element("dl", "period-report-header__facts");
-  [
-    ["بازه گزارش", `${formatBusinessDate(period.from)} تا ${formatBusinessDate(period.to)}`],
-    ["طول دوره", `${formatDisplayNumber(String(dayCount))} روز`],
-    ["مبنای ابتدای دوره", formatBusinessDate(period.opening)],
-    ["زمان ساخت", formatSystemDateTime(generatedAt)],
-  ].forEach(([label, value]) => {
-    const group = element("div");
-    group.append(element("dt", "", label), element("dd", "", value));
-    facts.append(group);
-  });
-  header.append(title, facts);
+  header.append(createReportHeader({
+    title: "گزارش دوره‌ای مالی",
+    facts: [
+      ...projectFacts({ project: { name: context.projectName, code: context.projectCode }, period }),
+      ["طول دوره", `${formatDisplayNumber(String(dayCount))} روز`],
+      ["مبنای ابتدای دوره", formatBusinessDate(period.opening)],
+      ["زمان ساخت", formatSystemDateTime(generatedAt)],
+    ],
+  }));
   header.append(element("p", "period-report-header__note", "این گزارش زنده است و از داده‌های فعلی پروژه ساخته می‌شود؛ برای نسخه قفل‌شده و تغییرناپذیر، از «ثبت گزارش دوره‌ای» در صفحه گزارش مالی استفاده کنید."));
   return header;
 }

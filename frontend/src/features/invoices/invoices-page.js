@@ -9,6 +9,7 @@ import { getDialogOpener, showAccessibleDialog } from "../../shared/components/a
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 
@@ -295,10 +296,18 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
   return dialog;
 }
 
-function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm, onVoid, onCorrective }) {
+function renderDetail(invoice, { canEdit, currentUserId, project, onSubmit, onConfirm, onVoid, onCorrective }) {
   const dialog = document.createElement("dialog");
   dialog.className = "confirm-dialog invoice-detail-dialog";
   dialog.setAttribute("aria-labelledby", "invoice-detail-title");
+  // On screen this is a dialog. Printed, it is a document leaving the company,
+  // so it goes out under the same band as every other one.
+  const letterhead = createReportHeader({
+    title: `فاکتور ${invoice.invoiceNumber ?? ""}`.trim(),
+    facts: projectFacts({ project, reportingDate: invoice.invoiceDate }),
+  });
+  letterhead.classList.add("report-header--print-only");
+  dialog.append(letterhead);
   const head = element("header", "invoice-detail-dialog__head");
   const heading = element("div");
   const title = element("h2", "", `جزئیات فاکتور ${invoice.invoiceNumber}`);
@@ -572,6 +581,7 @@ export function createInvoicesPage({ context, adapter }) {
       const invoice = await adapter.getInvoice(invoiceId);
       const dialog = renderDetail(invoice, {
         canEdit: canCreate,
+        project: { name: context.projectName, code: context.projectCode },
         currentUserId: context.userId,
         onSubmit: (draft, detailDialog) => {
           const opener = getDialogOpener(detailDialog);

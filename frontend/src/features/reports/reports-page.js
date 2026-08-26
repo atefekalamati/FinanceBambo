@@ -1,4 +1,5 @@
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
@@ -317,6 +318,19 @@ export function createReportsPage({ context, adapter }) {
 
   function renderContent(report) {
     const fragment = document.createDocumentFragment();
+    // On screen this is a working page with a date picker and buttons. What
+    // comes out of the printer is a document, and it arrives under the same
+    // band as every other document this module issues.
+    const letterhead = createReportHeader({
+      title: "گزارش وضعیت مالی پروژه",
+      facts: projectFacts({
+        project: { name: context.projectName, code: context.projectCode },
+        snapshot: report?.progressSnapshotId ?? null,
+        reportingDate,
+      }),
+    });
+    letterhead.classList.add("report-header--print-only");
+    fragment.append(letterhead);
     const toolbar = element("section", "report-toolbar");
     const heading = element("div");
     heading.append(element("h1", "", "گزارش وضعیت مالی"), element("p", "", "گزارش به‌روز پروژه بر پایه داده‌های قطعی مالی و نسخه پیشرفت پروژه"));

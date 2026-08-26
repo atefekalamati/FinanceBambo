@@ -1,5 +1,5 @@
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
-import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
+import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 
 /**
  * The shape of a produced report, copied from the control-project documents the
@@ -10,31 +10,6 @@ import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from ".
  * work out that they are the same kind of document. Only the contents differ —
  * these are about money.
  */
-
-export function reportCover({ title, project, snapshot, reportingDate, period }) {
-  const cover = element("header", "report-doc__cover");
-  const brand = element("div", "report-doc__brand");
-  brand.append(element("strong", "", "بامبو"), element("small", "", "گزارش مالی پروژه"));
-
-  const copy = element("div", "report-doc__cover-copy");
-  copy.append(element("h1", "", title));
-  const facts = element("dl", "report-doc__cover-facts");
-  const add = (label, value) => {
-    if (!value) return;
-    const item = element("div");
-    item.append(element("dt", "", label), element("dd", "", value));
-    facts.append(item);
-  };
-  add("پروژه", project?.name ?? null);
-  add("کد", project?.code ?? null);
-  add("نسخه پیشرفت", snapshot?.label ?? null);
-  add("تاریخ گزارش", reportingDate ? formatBusinessDate(reportingDate) : null);
-  add("بازه", period ? `${formatBusinessDate(period.from)} تا ${formatBusinessDate(period.to)}` : null);
-  copy.append(facts);
-
-  cover.append(copy, brand);
-  return cover;
-}
 
 /**
  * A numbered section, exactly as the documents number theirs. The number is the
