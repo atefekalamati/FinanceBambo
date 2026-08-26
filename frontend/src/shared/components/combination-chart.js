@@ -26,22 +26,41 @@ function svg(tag, attributes = {}) {
   return node;
 }
 
-function geometry(width, height, isNarrow, isCompact) {
+/**
+ * The lane the value axis lives in, measured rather than guessed.
+ *
+ * It used to be a flat 44px, which fit the amounts this project happens to have
+ * and nothing larger: a project an order of magnitude up writes «۱٬۲۳۴٫۵۶»
+ * there and runs it into the chart, or off the edge. `axisWidth` is the widest
+ * label as the browser actually renders it, and the lane is that plus a gap on
+ * each side — one to keep the numbers off the plot, one to keep them off the
+ * edge — so the boundary holds whatever the numbers turn out to be.
+ */
+function geometry(width, height, isNarrow, isCompact, axisWidth) {
   const barWidthRatio = isCompact ? 0.52 : 0.44;
   // A short box spends a punishing share of itself on padding, so trim the top
   // (which only holds air) and keep the bottom, which carries the month labels.
   const isShort = height < 200;
+  const gap = isCompact ? 9 : 13;
+  const edge = isCompact ? 4 : 7;
+  // A floor so a chart of single digits does not jump about, and a ceiling so a
+  // very long amount on a very narrow chart cannot squeeze the plot away.
+  const lane = Math.min(
+    Math.max(Math.ceil(axisWidth) + gap + edge, isCompact ? 30 : 40),
+    Math.max(Math.round(width * 0.32), 40),
+  );
   return {
     width,
     height,
     padding: {
       // Inline-start of an RTL chart is the right edge, where the value axis
-      // sits. Labels are short numbers on one shared scale, so this is enough.
-      value: isCompact ? 34 : 44,
+      // sits.
+      value: lane,
       top: isShort ? 8 : 16,
       bottom: 30,
       far: isCompact ? 10 : 16,
     },
+    axisGap: gap,
     barWidthRatio,
     fontSize: isCompact ? 9 : isNarrow ? 10 : 11,
   };
@@ -61,7 +80,33 @@ export function createCombinationChart({
   const tooltip = element("div", "combo-chart__tooltip");
   tooltip.setAttribute("role", "status");
   tooltip.hidden = true;
-  surface.append(tooltip);
+  // A text node kept out of the picture purely to be measured. It carries the
+  // axis label's own class so the browser answers with the width that class
+  // actually produces, rather than a width estimated from a character count.
+  const ruler = svg("svg", { class: "combo-chart__ruler", "aria-hidden": "true", focusable: "false" });
+  const rulerText = svg("text", { class: "combo-chart__axis-label" });
+  ruler.append(rulerText);
+  surface.append(tooltip, ruler);
+
+  /** The widest tick label at this font size, in CSS pixels. */
+  function measureAxisWidth(fontSize) {
+    rulerText.setAttribute("font-size", fontSize);
+    let widest = 0;
+    ticks.forEach((tick) => {
+      const text = formatValue(tick.valueIrr) ?? "";
+      rulerText.textContent = text;
+      let width = 0;
+      try {
+        width = rulerText.getComputedTextLength();
+      } catch {
+        // Some engines refuse to measure a node they have not laid out. Half a
+        // font size per character is close enough to keep the lane sane.
+        width = text.length * fontSize * 0.62;
+      }
+      if (width > widest) widest = width;
+    });
+    return widest;
+  }
   container.append(surface);
 
   let points = [];
@@ -110,7 +155,8 @@ export function createCombinationChart({
     // category row past the clip. The floor applies to the fallback alone, for a
     // panel that is still hidden and has no height of its own yet.
     const height = available > 0 ? available : Math.max(fallback, MIN_HEIGHT);
-    const box = geometry(width, height, isNarrow, isCompact);
+    const fontSize = isCompact ? 9 : isNarrow ? 10 : 11;
+    const box = geometry(width, height, isNarrow, isCompact, measureAxisWidth(fontSize));
     const plotWidth = Math.max(box.width - box.padding.value - box.padding.far, 40);
     const plotHeight = Math.max(box.height - box.padding.top - box.padding.bottom, 40);
     const plotTop = box.padding.top;
@@ -133,7 +179,7 @@ export function createCombinationChart({
       root.append(svg("line", { class: "combo-chart__gridline", x1: plotRight - plotWidth, x2: plotRight, y1: y, y2: y }));
       const label = svg("text", {
         class: "combo-chart__axis-label",
-        x: plotRight + 8,
+        x: plotRight + box.axisGap,
         y: y + box.fontSize / 3,
         "font-size": box.fontSize,
         "text-anchor": "start",
@@ -211,7 +257,9 @@ export function createCombinationChart({
       root.append(hit);
     });
 
-    surface.replaceChildren(root, tooltip);
+    // The ruler is put back with the rest: it has to stay in the document to be
+    // measurable on the next draw.
+    surface.replaceChildren(root, tooltip, ruler);
     if (activeIndex >= 0 && points[activeIndex]) {
       const hit = root.querySelector(`.combo-chart__hit[data-index="${activeIndex}"]`);
       if (hit) showTooltip(activeIndex, hit);
