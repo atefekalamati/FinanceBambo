@@ -67,6 +67,23 @@ def migration_url() -> str | None:
     return setting("FINANCE_MIGRATION_DSN")
 
 
+def core_url() -> str | None:
+    """The database holding the BAMBO Core tables, if the Core adapters are to be used.
+
+    Absent by default, and that default is the previous behaviour exactly: the host wires
+    its static fixtures and grants one operator every finance permission.
+
+    When it is set, membership, roles and permissions come from Core's own tables instead,
+    and the difference is immediately visible -- `finance_report.issue` does not exist in
+    Core's catalogue, so issuing a report is refused.
+
+    A separate setting from FINANCE_DEV_DSN even though the demo points both at one
+    database. Core and Finance are separate schemas owned by separate teams and may well be
+    separate databases; a single variable would quietly assume otherwise.
+    """
+    return setting("FINANCE_CORE_DSN")
+
+
 def app_env() -> str:
     """The environment name, defaulting to development when unset.
 

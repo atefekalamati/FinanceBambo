@@ -175,3 +175,39 @@ class FeedMeasurementTests(unittest.IsolatedAsyncioTestCase):
   # assignment. A feed row IS an assignment, so neither can be true of it.
   for row in (await self.service().feed(SCOPE,SNAPSHOT))["assignments"]:
    self.assertNotIn("unmapped",row["progressStatus"])
+class HostIdentifierLookupTests(unittest.IsolatedAsyncioTestCase):
+ """`feed()` must ask the host with the host's own identifier.
+
+ The fourth place this mistake lived. `_calculate` and `override` were fixed earlier;
+ `feed()` still loaded the reference row -- which carries `host_snapshot_id` -- and then
+ asked the provider with Finance's UUID, which a real host has never issued and cannot
+ recognise. It passed every test because the development fixture answers to both.
+ """
+
+ class HostOnlyProvider:
+  """A provider that behaves like a real one: it knows its own ids and nothing else."""
+  def __init__(self):self.asked=[]
+  async def get_snapshot(self,organization_id,project_id,snapshot_id):
+   self.asked.append(snapshot_id)
+   if snapshot_id!="9003":return None
+   return {"snapshot":{"organizationId":organization_id,"projectId":project_id,"progressSnapshotId":"9003"},
+           "assignments":[{"assignmentExternalId":None,"plannedQuantity":"20","actualQuantity":"7","manualOverride":None,"task":{"activityCode":"A1"}}]}
+
+ class HostRefRepo(Repo):
+  async def get_snapshot(self,scope,snapshot_id):
+   return {"id":REF,"progress_snapshot_id":SNAPSHOT,"host_snapshot_id":9003}
+
+ async def test_the_feed_is_requested_by_the_host_snapshot_id(self):
+  provider=self.HostOnlyProvider()
+  service=ProgressService(self.HostRefRepo(),provider,id_factory=lambda:UUID(int=4),clock=lambda:AT)
+  result=await service.feed(SCOPE,SNAPSHOT)
+  self.assertEqual(["9003"],provider.asked,"asked with the Core id, not Finance's UUID")
+  self.assertEqual(1,len(result["assignments"]))
+  self.assertEqual("7",result["assignments"][0]["effectiveExecutedQuantity"])
+
+ async def test_finance_uuid_is_still_used_when_no_host_id_was_recorded(self):
+  """References created before 0006 have no host id, and must keep working."""
+  provider=self.HostOnlyProvider()
+  service=ProgressService(Repo(),provider,id_factory=lambda:UUID(int=4),clock=lambda:AT)
+  with self.assertRaises(FinanceRecordNotFound):await service.feed(SCOPE,SNAPSHOT)
+  self.assertEqual([str(SNAPSHOT)],provider.asked)

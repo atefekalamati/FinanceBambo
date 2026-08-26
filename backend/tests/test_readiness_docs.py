@@ -62,7 +62,14 @@ class DeclaredDependencyTests(unittest.TestCase):
         """
         import ast
         declared = {self._package(entry) for entry in self._declared()}
-        first_party = {"app", "devhost", "persian_calendar_golden"}
+        # Discovered rather than listed. A hardcoded set has to be edited every time a
+        # package is added, and the edit is only prompted by this test failing -- which
+        # reads as "the guard is in the way" rather than "the guard did its job". Any
+        # importable package sitting in backend/ is ours by construction.
+        first_party = {path.name for path in ROOT.iterdir()
+                       if (path / "__init__.py").is_file()}
+        first_party.add("persian_calendar_golden")   # a test helper module, not a package
+        self.assertLessEqual({"app", "devhost", "coreint", "scripts"}, first_party)
         undeclared = set()
         for path in sorted((ROOT / "tests").glob("*.py")):
             tree = ast.parse(path.read_text(encoding="utf-8"))
