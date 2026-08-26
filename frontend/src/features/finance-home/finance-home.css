@@ -2005,18 +2005,28 @@ a.finance-variance-card__link:hover {
   min-inline-size: 0;
 }
 
-/* Present so it can be measured, and nowhere near the picture. `visibility`
-   rather than `display: none`, because a node that was never laid out cannot
-   answer how wide its text is. */
-.combo-chart__ruler {
-  position: absolute;
-  inset-block-start: 0;
+/* A number's tooltip rises above the plot, and the card around it is a stacking
+   context, so the card is lifted while one is open — the same arrangement the
+   cost breakdown needs for the same reason. */
+.finance-analysis-card:has(.combo-chart__axis-value:is(:hover, :focus-visible)) {
+  z-index: var(--z-calendar-popup);
+}
+
+.combo-chart__axis-value:is(:hover, :focus-visible) {
+  z-index: var(--z-calendar-popup);
+}
+
+/* The numbers sit against the outer edge of the card, so a tooltip centred on
+   one would hang half outside it. These open inward instead: the panel's
+   inline-start edge meets the number's, and it grows across the plot, which is
+   the only direction with room. */
+.combo-chart__axis-value.compact-money::after {
   inset-inline-start: 0;
-  inline-size: 0;
-  block-size: 0;
-  overflow: visible;
-  visibility: hidden;
-  pointer-events: none;
+  transform: translateX(0) translateY(.2rem);
+}
+
+.combo-chart__axis-value.compact-money:is(:hover, :focus-visible)::after {
+  transform: translateX(0) translateY(0);
 }
 
 .monthly-trend-legend {
@@ -2060,10 +2070,30 @@ a.finance-variance-card__link:hover {
   stroke-width: 1;
 }
 
-.combo-chart__axis-label,
 .combo-chart__category {
   fill: var(--color-text-muted);
   font-family: inherit;
+}
+
+/* The value axis, in HTML over the plot. Each number sits on its own gridline
+   and carries the same ::after tooltip as every other compacted amount in the
+   project, which SVG text could never have. */
+.combo-chart__axis {
+  position: absolute;
+  inset: 0;
+  /* The layer must not intercept anything: the columns' own hit areas are
+     underneath it, and only the numbers themselves are interactive. */
+  pointer-events: none;
+}
+
+.combo-chart__axis-value,
+.combo-chart__axis-value.compact-money {
+  position: absolute;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  line-height: 1;
+  pointer-events: auto;
+  white-space: nowrap;
 }
 
 .combo-chart__bar {
@@ -2107,28 +2137,6 @@ a.finance-variance-card__link:hover {
 
 .combo-chart__tooltip[hidden] {
   display: none;
-}
-
-/* The axis hit area reaches a little above and below its own number so it is
-   catchable, but it must not look like a band of the chart when it is caught. */
-.combo-chart__hit--axis {
-  cursor: help;
-}
-
-.combo-chart__hit--axis.combo-chart__hit--active {
-  fill: rgb(120 145 205 / 6%);
-}
-
-.combo-chart__tooltip-axis {
-  display: grid;
-  gap: .15rem;
-}
-
-.combo-chart__tooltip-exact {
-  color: var(--color-text-primary);
-  font-size: .78rem;
-  font-weight: 800;
-  white-space: nowrap;
 }
 
 .combo-chart__tooltip-title {
