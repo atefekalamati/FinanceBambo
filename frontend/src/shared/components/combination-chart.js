@@ -72,6 +72,8 @@ export function createCombinationChart({
   barSeries,
   lineSeries,
   formatValue = (value) => String(value),
+  /** The unrounded figure behind an axis number. Without it the axis is inert. */
+  formatExactValue,
   renderTooltip,
   ariaLabel = "نمودار ترکیبی",
 } = {}) {
@@ -122,14 +124,7 @@ export function createCombinationChart({
     surface.querySelectorAll(".combo-chart__hit--active").forEach((node) => node.classList.remove("combo-chart__hit--active"));
   }
 
-  function showTooltip(index, hit) {
-    if (!renderTooltip || !points[index]) return;
-    activeIndex = index;
-    tooltip.replaceChildren(renderTooltip(points[index]));
-    tooltip.hidden = false;
-    surface.querySelectorAll(".combo-chart__hit--active").forEach((node) => node.classList.remove("combo-chart__hit--active"));
-    hit.classList.add("combo-chart__hit--active");
-
+  function placeTooltip(hit) {
     // Keep the panel inside the surface on both edges rather than letting it
     // push the page sideways.
     const surfaceWidth = surface.clientWidth;
@@ -139,6 +134,55 @@ export function createCombinationChart({
     const panelWidth = tooltip.offsetWidth;
     const left = Math.min(Math.max(bandCentre - panelWidth / 2, 4), Math.max(surfaceWidth - panelWidth - 4, 4));
     tooltip.style.left = `${left}px`;
+
+    // A bar is read from the top of the chart; a gridline is read where it is,
+    // so its panel comes to it rather than making the eye travel.
+    const anchor = hit.getAttribute("data-anchor-y");
+    if (anchor === null) {
+      tooltip.style.top = "";
+      return;
+    }
+    const surfaceHeight = surface.clientHeight;
+    const panelHeight = tooltip.offsetHeight;
+    const top = Math.min(Math.max(Number(anchor) - panelHeight / 2, 0), Math.max(surfaceHeight - panelHeight, 0));
+    tooltip.style.top = `${top}px`;
+  }
+
+  function markActive(hit) {
+    surface.querySelectorAll(".combo-chart__hit--active").forEach((node) => node.classList.remove("combo-chart__hit--active"));
+    hit.classList.add("combo-chart__hit--active");
+  }
+
+  function showTooltip(index, hit) {
+    if (!renderTooltip || !points[index]) return;
+    activeIndex = index;
+    tooltip.replaceChildren(renderTooltip(points[index]));
+    tooltip.hidden = false;
+    markActive(hit);
+    placeTooltip(hit);
+  }
+
+  /**
+   * The exact amount behind a gridline's number.
+   *
+   * The axis is compacted so it stays readable — «۱۸٫۲۷» stands for a figure
+   * seven digits long — and a reader who wants the figure had nowhere to get it
+   * but the alternative table. It is the same panel the columns use, so there is
+   * one tooltip on this chart rather than two that behave differently.
+   */
+  function showAxisTooltip(hit) {
+    const exact = hit.getAttribute("data-exact");
+    if (!exact) return;
+    activeIndex = -1;
+    const panel = element("div", "combo-chart__tooltip-axis");
+    panel.append(
+      element("span", "combo-chart__tooltip-title", hit.getAttribute("data-label") ?? ""),
+      element("strong", "combo-chart__tooltip-exact numeric", exact),
+    );
+    tooltip.replaceChildren(panel);
+    tooltip.hidden = false;
+    markActive(hit);
+    placeTooltip(hit);
   }
 
   function draw() {
@@ -174,9 +218,11 @@ export function createCombinationChart({
       focusable: "false",
     });
 
+    const axisHits = [];
     ticks.forEach((tick) => {
       const y = plotBottom - (plotHeight * tick.magnitude) / 100;
       root.append(svg("line", { class: "combo-chart__gridline", x1: plotRight - plotWidth, x2: plotRight, y1: y, y2: y }));
+      const shown = formatValue(tick.valueIrr);
       const label = svg("text", {
         class: "combo-chart__axis-label",
         x: plotRight + box.axisGap,
@@ -184,8 +230,24 @@ export function createCombinationChart({
         "font-size": box.fontSize,
         "text-anchor": "start",
       });
-      label.textContent = formatValue(tick.valueIrr);
+      label.textContent = shown;
       root.append(label);
+      const exact = formatExactValue?.(tick.valueIrr);
+      if (!exact) return;
+      // Collected and appended after the columns, so the number's own hit area
+      // is on top of the band that reaches under it.
+      const reach = Math.max(box.fontSize, 9);
+      axisHits.push(svg("rect", {
+        class: "combo-chart__hit combo-chart__hit--axis",
+        x: plotRight,
+        y: y - reach,
+        width: Math.max(box.width - plotRight, 1),
+        height: reach * 2,
+        "data-centre": plotRight,
+        "data-anchor-y": y,
+        "data-exact": exact,
+        "data-label": shown,
+      }));
     });
 
     const barWidth = bandWidth * box.barWidthRatio;
@@ -256,6 +318,7 @@ export function createCombinationChart({
       });
       root.append(hit);
     });
+    axisHits.forEach((hit) => root.append(hit));
 
     // The ruler is put back with the rest: it has to stay in the document to be
     // measurable on the next draw.
@@ -273,7 +336,8 @@ export function createCombinationChart({
       if (event.type === "pointerdown") hideTooltip();
       return;
     }
-    showTooltip(Number(hit.getAttribute("data-index")), hit);
+    if (hit.classList.contains("combo-chart__hit--axis")) showAxisTooltip(hit);
+    else showTooltip(Number(hit.getAttribute("data-index")), hit);
   }
 
   surface.addEventListener("pointermove", onPointer);

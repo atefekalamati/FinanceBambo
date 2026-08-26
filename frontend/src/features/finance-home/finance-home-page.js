@@ -911,6 +911,9 @@ function createMonthlyTrendPanel({ trend, trendError }) {
     barSeries: { magnitudeKey: "actualMagnitude" },
     lineSeries: { magnitudeKey: "estimateMagnitude" },
     formatValue: (value) => axisScale?.format(value) ?? "",
+    // The axis is compacted to stay readable, so the figure behind each of its
+    // numbers is only a hover away rather than only in the table.
+    formatExactValue: (value) => formatTomanFromIrr(value),
     renderTooltip: trendTooltip,
     ariaLabel: "نمودار ستونی هزینه واقعی و خط برآورد ماهانه",
   });
