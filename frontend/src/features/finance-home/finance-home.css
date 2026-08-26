@@ -1299,6 +1299,10 @@ a.finance-variance-card__link:hover {
 }
 
 .breakdown-chart {
+  /* The one size the responsive rules change. Everything else about the mark —
+     the pill shape, the glow, the track it sits on — is the same at every
+     width, so the chart reads as one design rather than two. */
+  --breakdown-track-size: .34rem;
   display: grid;
   gap: .8rem;
   min-inline-size: 38rem;
@@ -1355,18 +1359,21 @@ a.finance-variance-card__link:hover {
 
 .breakdown-chart__track {
   position: relative;
-  block-size: 1.15rem;
-  border-radius: .2rem;
+  block-size: var(--breakdown-track-size);
+  border-radius: var(--radius-pill);
   background: rgb(255 255 255 / 3%);
-  overflow: hidden;
+  /* The glow is the mark, not decoration around it. Clipping the bar to the
+     track would cut it off at the exact edge the light comes from. */
+  overflow: visible;
 }
+
 .breakdown-chart__bar {
   position: absolute;
   inset-block: 0;
   inset-inline-start: 0;
   inline-size: var(--bar-width);
   min-inline-size: .2rem;
-  border-radius: .2rem;
+  border-radius: var(--radius-pill);
   transition:
     opacity var(--duration-fast) var(--ease-standard),
     filter var(--duration-fast) var(--ease-standard);
@@ -1377,14 +1384,20 @@ a.finance-variance-card__link:hover {
   filter: brightness(1.12);
 }
 
+/* Two layers: a tight one that gives the line its edge, and a wide soft one
+   that carries the colour past it. One layer alone reads as a blur. */
 .breakdown-chart__bar--initial {
   background: linear-gradient(90deg, var(--dash-plan), color-mix(in srgb, var(--dash-plan) 78%, white));
-  box-shadow: 0 0 .7rem color-mix(in srgb, var(--dash-plan) 24%, transparent);
+  box-shadow:
+    0 0 .22rem color-mix(in srgb, var(--dash-plan) 85%, transparent),
+    0 0 .65rem color-mix(in srgb, var(--dash-plan) 55%, transparent);
 }
 
 .breakdown-chart__bar--actual {
   background: linear-gradient(90deg, var(--dash-actual), color-mix(in srgb, var(--dash-actual) 78%, white));
-  box-shadow: 0 0 .7rem color-mix(in srgb, var(--dash-actual) 24%, transparent);
+  box-shadow:
+    0 0 .22rem color-mix(in srgb, var(--dash-actual) 85%, transparent),
+    0 0 .65rem color-mix(in srgb, var(--dash-actual) 55%, transparent);
 }
 
 .breakdown-chart__value {
@@ -1589,6 +1602,7 @@ a.finance-variance-card__link:hover {
   }
 
   .breakdown-chart {
+    --breakdown-track-size: .28rem;
     gap: .42rem;
     min-inline-size: 0;
     padding: .35rem .25rem;
@@ -1611,29 +1625,6 @@ a.finance-variance-card__link:hover {
 
   .breakdown-chart__bars {
     gap: .18rem;
-  }
-
-  .breakdown-chart__track {
-    block-size: .28rem;
-    border-radius: var(--radius-pill);
-    background: rgb(255 255 255 / 2%);
-    overflow: visible;
-  }
-
-  .breakdown-chart__bar {
-    border-radius: var(--radius-pill);
-  }
-
-  .breakdown-chart__bar--initial {
-    box-shadow:
-      0 0 .22rem color-mix(in srgb, var(--dash-plan) 85%, transparent),
-      0 0 .65rem color-mix(in srgb, var(--dash-plan) 55%, transparent);
-  }
-
-  .breakdown-chart__bar--actual {
-    box-shadow:
-      0 0 .22rem color-mix(in srgb, var(--dash-actual) 85%, transparent),
-      0 0 .65rem color-mix(in srgb, var(--dash-actual) 55%, transparent);
   }
 
   .breakdown-chart__value {
