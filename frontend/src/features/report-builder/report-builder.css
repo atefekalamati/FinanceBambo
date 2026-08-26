@@ -36,8 +36,10 @@
 }
 
 /* On the green button the brand colour disappears into the background, so the
-   star takes the button's own text colour there. */
+   star takes the button's own text colour there — and keeps its own gap rather
+   than relying on a space that collapses once the type gets small. */
 .button .report-builder-panel__star {
+  margin-inline-end: .25em;
   color: currentColor;
 }
 
@@ -564,6 +566,7 @@
 
   .report-builder-chip {
     font-size: .66rem;
+    overflow-wrap: anywhere;
   }
 
   .report-doc__cover {
@@ -589,9 +592,32 @@
   }
 }
 
+/* Two columns all the way down. A single full-width chip reads as a menu row
+   rather than as one of a set of things to pick from, and the set is the point.
+   What gives way at this width is the type and the padding, not the shape. */
 @media (max-width: 30rem) {
+  .report-builder-section {
+    padding: .8rem .7rem .9rem;
+  }
+
   .report-builder-section__grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .4rem;
+  }
+
+  .report-builder-chip {
+    padding: .55rem .35rem;
+    font-size: .6rem;
+    line-height: 1.45;
+    /* The titles are long and some of their words are longer than half a phone
+       is wide, so a word breaks rather than pushing the column out. */
+    overflow-wrap: anywhere;
+  }
+
+  .report-builder-chip__icon {
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+    font-size: .68rem;
   }
 }
 
