@@ -51,12 +51,10 @@
     -webkit-print-color-adjust: exact;
   }
 
-  /* On screen the mark is a thin glowing line, and the glow is half of what
-     makes it visible. Print drops every shadow, so the line alone would come
-     out as a hairline that a printer may not lay down at all. On paper it goes
-     back to a solid bar. */
-  .breakdown-chart {
-    --breakdown-track-size: .5rem;
+  /* On screen the bar is thin and half of what makes it visible is its glow.
+     Print drops every shadow, so it goes back to a solid bar on paper. */
+  .bullet-chart {
+    --bullet-track-size: .55rem;
   }
 
   #finance-module-root :is(h1, h2, h3, h4, dt, dd, th, td, p, li, span, strong, small, bdi, caption) {

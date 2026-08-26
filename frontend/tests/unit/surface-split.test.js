@@ -29,7 +29,7 @@ test("the operations home shows no money, and the report home shows no operation
   const report = read("../../src/features/finance-home/finance-home-page.js");
   // Two screens quoting the same total is how two screens start disagreeing:
   // the figures live on the report, and the operations home links to them.
-  assert.doesNotMatch(operations, /summary-card|managerial-combo-chart|breakdown-chart/, "the operations home must not draw the figures");
+  assert.doesNotMatch(operations, /summary-card|managerial-combo-chart|bullet-chart/, "the operations home must not draw the figures");
   assert.match(operations, /work-area-card/);
   // Neither home offers the other surface's destinations.
   const linked = (source) => [...source.matchAll(/href: "#\/([a-z-]+)"/g)].map((match) => match[1]);

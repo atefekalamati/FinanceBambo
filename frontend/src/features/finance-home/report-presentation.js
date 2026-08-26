@@ -52,27 +52,6 @@ export function buildOverviewComparisons(metrics = {}) {
   });
 }
 
-export function buildBreakdownPresentation(rows = []) {
-  const normalized = rows.map((row) => ({
-    resourceType: row.resourceType,
-    label: TYPE_LABELS[row.resourceType] ?? "نوع تعریف‌نشده",
-    initialEstimateIrr: String(row.initialEstimateIrr ?? "0"),
-    revisedEstimateIrr: row.revisedEstimateIrr == null ? null : String(row.revisedEstimateIrr),
-    actualCostIrr: String(row.actualCostIrr ?? "0"),
-    remainingPhysicalCostIrr: row.remainingPhysicalCostIrr == null ? null : String(row.remainingPhysicalCostIrr),
-    forecastFinalIrr: String(row.forecastFinalIrr ?? "0"),
-  }));
-  const values = normalized.flatMap((row) => [row.initialEstimateIrr, row.actualCostIrr]).map((value) => absolute(exactInteger(value)));
-  const maximum = values.reduce((result, value) => value > result ? value : result, 0n);
-  return normalized.map((row) => ({
-    ...row,
-    bars: {
-      initial: maximum === 0n ? 0 : Number((absolute(exactInteger(row.initialEstimateIrr)) * 10000n) / maximum) / 100,
-      actual: maximum === 0n ? 0 : Number((absolute(exactInteger(row.actualCostIrr)) * 10000n) / maximum) / 100,
-    },
-  }));
-}
-
 
 /**
  * The bullet form of the same comparison.
