@@ -1426,6 +1426,231 @@ a.finance-variance-card__link:hover {
   inset-block-end: auto;
 }
 
+/* --------------------------------------------------------------------------
+   Bullet form of the cost breakdown
+   -------------------------------------------------------------------------- */
+
+.breakdown-form-switch {
+  flex: 0 0 auto;
+}
+
+.breakdown-form-switch .button.is-active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-btn-action);
+}
+
+.breakdown-legend--bullet li[data-series="target"]::before {
+  /* The estimate is a marker on the track, not a filled bar, so its key is a
+     stroke rather than a block. */
+  inline-size: .18rem;
+  block-size: .7rem;
+  border-radius: .1rem;
+  background: var(--dash-plan);
+  box-shadow: 0 0 .3rem color-mix(in srgb, var(--dash-plan) 70%, transparent);
+}
+
+.breakdown-legend--bullet li[data-series="over"]::before {
+  background: var(--dash-sev-high, #d8574f);
+}
+
+.bullet-chart-viewport {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.bullet-chart {
+  --bullet-track-size: .95rem;
+  display: grid;
+  gap: .55rem;
+  min-inline-size: 30rem;
+  padding: .8rem .75rem .2rem;
+}
+
+.bullet-chart__row {
+  display: grid;
+  grid-template-columns: 7rem minmax(12rem, 1fr) 6.5rem 6.5rem;
+  align-items: center;
+  gap: .7rem;
+  min-inline-size: 0;
+}
+
+.bullet-chart__row h3 {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 800;
+  text-align: start;
+}
+
+.bullet-chart__track {
+  position: relative;
+  block-size: var(--bullet-track-size);
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 4%);
+}
+
+/* The lines the amounts are read against. They live inside each track rather
+   than in one layer over the chart, so they cannot drift out of step with the
+   bars they are there to measure. */
+.bullet-chart__grid {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.bullet-chart__gridline {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--at);
+  inline-size: 1px;
+  background: var(--color-border-subtle);
+}
+
+.bullet-chart__fill {
+  position: absolute;
+  inset-block: .18rem;
+  inset-inline-start: 0;
+  inline-size: var(--fill);
+  min-inline-size: .2rem;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--dash-actual), color-mix(in srgb, var(--dash-actual) 78%, white));
+  box-shadow:
+    0 0 .22rem color-mix(in srgb, var(--dash-actual) 85%, transparent),
+    0 0 .65rem color-mix(in srgb, var(--dash-actual) 55%, transparent);
+}
+
+/* Passing the estimate is the one thing this chart exists to show, so the bar
+   that did it stops looking like the ones that did not. */
+.bullet-chart__fill--over {
+  background: linear-gradient(90deg, var(--dash-sev-high, #d8574f), color-mix(in srgb, var(--dash-sev-high, #d8574f) 78%, white));
+  box-shadow:
+    0 0 .22rem color-mix(in srgb, var(--dash-sev-high, #d8574f) 85%, transparent),
+    0 0 .7rem color-mix(in srgb, var(--dash-sev-high, #d8574f) 55%, transparent);
+}
+
+/* The estimate. It crosses the whole track and stands slightly proud of it, so
+   it reads as a target the bar is measured against rather than as part of it. */
+.bullet-chart__target {
+  position: absolute;
+  inset-block: -.18rem;
+  inset-inline-start: var(--at);
+  inline-size: .18rem;
+  margin-inline-start: -.09rem;
+  border-radius: .1rem;
+  background: var(--dash-plan);
+  /* A dark ring first, then the glow. Without the ring the marker disappears
+     into a bar that has already passed it — which is the one row where seeing
+     exactly where the estimate was matters most. */
+  box-shadow:
+    0 0 0 1px var(--app-card-navy),
+    0 0 .35rem color-mix(in srgb, var(--dash-plan) 80%, transparent);
+}
+
+.bullet-chart__value {
+  color: var(--color-text-primary);
+  font-size: .72rem;
+  font-weight: 800;
+  text-align: start;
+  white-space: nowrap;
+}
+
+.bullet-chart__ratio {
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bullet-chart__ratio--over {
+  color: var(--dash-sev-high, #d8574f);
+}
+
+/* «برآورد ثبت نشده» is not a quiet aside — it is why the row has no marker. */
+.bullet-chart__ratio--unknown {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-style: italic;
+}
+
+.bullet-chart__scale {
+  display: grid;
+  grid-template-columns: 7rem minmax(12rem, 1fr) 6.5rem 6.5rem;
+  align-items: center;
+  gap: .7rem;
+  margin-block-start: .1rem;
+}
+
+.bullet-chart__scale-label {
+  color: var(--color-text-muted);
+  font-size: .62rem;
+  font-weight: 700;
+  text-align: start;
+}
+
+.bullet-chart__scale-track {
+  position: relative;
+  block-size: 1.1rem;
+}
+
+.bullet-chart__scale-mark {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: var(--at);
+  transform: translateX(50%);
+  color: var(--color-text-muted);
+  font-size: .62rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* The first and last labels would otherwise hang off the ends of the track. */
+.bullet-chart__scale-mark:first-child {
+  transform: translateX(20%);
+}
+
+.bullet-chart__scale-mark:last-child {
+  transform: translateX(80%);
+}
+
+@media (max-width: 48rem) {
+  .bullet-chart {
+    --bullet-track-size: .7rem;
+    min-inline-size: 0;
+    gap: .4rem;
+    padding: .45rem .3rem .1rem;
+  }
+
+  .bullet-chart__row,
+  .bullet-chart__scale {
+    grid-template-columns: 5.25rem minmax(0, 1fr) 4.6rem;
+    gap: .4rem;
+  }
+
+  /* At this width the row is already three columns of small type; a fourth
+     would break the line. The percentage is the one the reader came for, so the
+     amount steps out and stays available on the row's own label. */
+  .bullet-chart__value {
+    display: none;
+  }
+
+  .bullet-chart__row h3 {
+    font-size: .66rem;
+    line-height: 1.3;
+  }
+
+  .bullet-chart__ratio {
+    font-size: .62rem;
+  }
+
+  .bullet-chart__scale-mark {
+    font-size: .56rem;
+  }
+}
+
 .breakdown-table-wrapper {
   margin-block-start: .75rem;
   border: 1px solid var(--color-border-subtle);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildBreakdownPresentation, buildOverviewComparisons } from "../../src/features/finance-home/report-presentation.js";
+import { buildBreakdownPresentation, buildBulletPresentation, buildOverviewComparisons } from "../../src/features/finance-home/report-presentation.js";
 
 test("builds breakdown bars with one exact shared scale", () => {
   const rows = buildBreakdownPresentation([
@@ -69,4 +69,65 @@ test("an uncomputable metric stays null instead of becoming a zero bar", () => {
 test("a metric that is not an exact integer is treated as uncomputable", () => {
   const [initial] = buildOverviewComparisons({ initialEstimateIrr: "12.5" }).management;
   assert.equal(initial.value, null, "money is exact integer IRR or it is nothing");
+});
+
+test("the bullet form measures each category against its own estimate", () => {
+  const view = buildBulletPresentation([
+    { resourceType: "material", initialEstimateIrr: "1000000000", actualCostIrr: "400000000", forecastFinalIrr: "0" },
+    { resourceType: "equipment", initialEstimateIrr: "275000000", actualCostIrr: "299256198", forecastFinalIrr: "0" },
+  ]);
+  const [material, equipment] = view.rows;
+  assert.equal(material.consumedPercent, 40);
+  assert.equal(material.overBudget, false);
+  // The whole point of the form: passing the estimate is a state, not a length
+  // the reader has to compare for themselves.
+  assert.equal(equipment.overBudget, true);
+  assert.equal(equipment.overspendIrr, "24256198");
+  assert.equal(Math.round(equipment.consumedPercent), 109);
+});
+
+test("the bullet axis ends on a round number above every value", () => {
+  const view = buildBulletPresentation([
+    { resourceType: "material", initialEstimateIrr: "1106981359", actualCostIrr: "0", forecastFinalIrr: "0" },
+  ]);
+  assert.equal(view.ceilingIrr, "1500000000");
+  assert.deepEqual(view.ticks.map((tick) => tick.valueIrr), ["0", "500000000", "1000000000", "1500000000"]);
+  // The last line sits at the end of the track, and a bar of the ceiling's own
+  // value would fill it exactly.
+  assert.equal(view.ticks.at(-1).magnitude, 100);
+  // Nothing may reach the end of the track unless it is the ceiling itself.
+  view.rows.forEach((row) => assert.ok(row.estimateMagnitude <= 100));
+});
+
+test("a category with no estimate is not a category budgeted at nothing", () => {
+  // Its estimate lines carry no estimate price, so the service returns zero and
+  // «۰٪ مصرف شده» would be an answer to a question nobody could answer.
+  const [row] = buildBulletPresentation([
+    { resourceType: "material", initialEstimateIrr: "0", actualCostIrr: "1106981359", forecastFinalIrr: "0" },
+  ]).rows;
+  assert.equal(row.hasEstimate, false);
+  assert.equal(row.consumedPercent, null);
+  assert.equal(row.estimateMagnitude, null, "no estimate, no marker");
+  assert.equal(row.overBudget, false, "nothing to be over");
+  assert.ok(row.actualMagnitude > 0, "the money that was spent is still drawn");
+});
+
+test("a category whose reversals outweigh its documents gets no bar", () => {
+  const [row] = buildBulletPresentation([
+    { resourceType: "general_cost", initialEstimateIrr: "100", actualCostIrr: "-50", forecastFinalIrr: "0" },
+  ]).rows;
+  assert.equal(row.actualBelowZero, true);
+  assert.equal(row.actualMagnitude, 0, "a negative amount must not be drawn from its size");
+  assert.equal(row.actualCostIrr, "-50", "the figure itself is untouched");
+});
+
+test("the percentage stays exact at magnitudes a float would round", () => {
+  const [row] = buildBulletPresentation([
+    { resourceType: "material", initialEstimateIrr: "100000000000000000", actualCostIrr: "33333333333333333", forecastFinalIrr: "0" },
+  ]).rows;
+  assert.equal(row.consumedPercent, 33.3);
+  const empty = buildBulletPresentation([]);
+  assert.equal(empty.ceilingIrr, "0");
+  assert.deepEqual(empty.ticks, []);
+  assert.deepEqual(empty.rows, []);
 });
