@@ -22,7 +22,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.main import create_app
 from app.finance.repositories.attachments import PsycopgAttachmentRepository
@@ -55,10 +55,16 @@ from coreint.security import (CoreAuthContextAssembler, CoreRbacPermissionAuthor
 
 from . import database, seed
 from .connection import ReconnectingConnection
-from .environment import app_env, core_url, migration_url, seeding_allowed
+from .environment import (app_env, core_progress_enabled, core_url, migration_url,
+                          seeding_allowed)
 from .ports import (ContextPermissionAuthorizer, LocalFileStorage, SeededActivityProvider,
                     SeededProgressSnapshotProvider, SingleTenantScopeAuthorizer,
                     StaticAuthContextProvider, UnavailableExtractor)
+
+#: Unique per process, so a page load after a restart cannot reuse a cached entry
+#: point. Not a content hash: the point is to differ from whatever came before,
+#: including a different application that used this same path.
+BUILD_TOKEN = uuid4().hex[:12]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = REPO_ROOT / "frontend"
@@ -144,7 +150,14 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
             core, core_identity(seed.ACTOR_ID, seed.ORGANIZATION_ID, seed.PROJECT_ID))
         application.state.scope_authorizer = CoreScopeAuthorizer(core)
         application.state.permission_authorizer = CoreRbacPermissionAuthorizer(core)
-        progress_provider = CoreProgressSnapshotProvider(core)
+        # Progress is the one port Core cannot fill on its own -- see
+        # `environment.core_progress_enabled` and `coreint/progress.py`. The seeded feed
+        # stands in for the host's progress module, which is where assignment-level
+        # quantities actually come from in production.
+        progress_provider = (
+            CoreProgressSnapshotProvider(core) if core_progress_enabled()
+            else SeededProgressSnapshotProvider(seed.ORGANIZATION_ID, seed.PROJECT_ID,
+                                                seed.PROGRESS_SNAPSHOTS, seed.IMPORTER_ID))
         activity_provider = CoreProjectActivityProvider(core)
 
     storage = LocalFileStorage(storage_root)
@@ -237,6 +250,20 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
     async def one_request_at_a_time(request: Request, call_next):
         async with gate:
             response = await call_next(request)
+        # Nothing this host serves may be cached by the browser.
+        #
+        # StaticFiles sends an ETag and Last-Modified, so a browser revalidates and, on a
+        # 304, re-runs whatever copy it already had. That is right for a CDN and wrong for
+        # source files that change every time someone edits them.
+        #
+        # The failure it produces is a bad one to debug: the server sends the correct bytes,
+        # the browser never asks for them, and the page renders from a stale module whose
+        # imports no longer exist. Nothing in the server log says anything is wrong except a
+        # 304 and a scatter of 404s for files this repository has never contained.
+        #
+        # `no-store` rather than `no-cache`: no-cache still stores the response and
+        # revalidates, which is the behaviour that produces the 304 in the first place.
+        response.headers["Cache-Control"] = "no-store"
         if request.url.path.startswith("/api/"):
             # So a developer can tell a real answer from a mock one in the network panel.
             # Development host only; the deployed module sets no such header.
@@ -261,6 +288,19 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
         )
         # Must land before bootstrap.js, which reads the global while it is still loading.
         html = re.sub(r'(<script type="module")', injection + r"\n  \1", html, count=1)
+        # Give the entry point a URL unique to this process.
+        #
+        # `no-store` stops the browser caching what we serve from now on, but it cannot undo
+        # what is already stored: StaticFiles sends Last-Modified and no max-age, so a
+        # browser is free to reuse an existing copy for a heuristic fraction of its age
+        # without asking us at all. A stale entry point therefore survives the header fix and
+        # keeps running until the cache expires on its own.
+        #
+        # A per-process query defeats that: nothing is stored under a URL never seen before.
+        # Only the entry point needs it -- once the right bootstrap runs, every module it
+        # imports is fetched under this same fresh page load.
+        html = html.replace('src="./src/app/bootstrap.js"',
+                            f'src="./src/app/bootstrap.js?build={BUILD_TOKEN}"')
         return HTMLResponse(html)
 
     application.mount("/src", StaticFiles(directory=FRONTEND_ROOT / "src"), name="src")

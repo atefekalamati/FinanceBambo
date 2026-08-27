@@ -1,13 +1,24 @@
-"""Regenerate `seed.sql` from the rules the frontend's mock adapters use.
+"""Regenerate `seed.sql` from the scenario defined in `devhost/seed.py`.
 
-Run this whenever the mock data changes:
+Run this whenever the scenario changes:
 
     python -m devhost.generate_seed_sql
 
-The output is committed, so the seed itself is plain, reviewable SQL. This script exists
-only to keep the 53 procedurally generated invoices in step with
-`frontend/src/adapters/mock/invoices-adapter.js`, which builds them from an index rather
-than listing them.
+The output is committed, so the seed itself stays plain, reviewable SQL. This script exists
+because the invoices are the one part of the fixture that is easier to state as a plan --
+"eight rebar deliveries of fifty tonnes" -- than as fifty-three hand-written rows.
+
+WHAT THE INVOICE PLAN HAS TO GET RIGHT
+The live report counts invoice lines whose invoice is `confirmed`, `voided` or `corrected`,
+multiplied by the invoice's financial sign. So:
+
+  * the confirmed batches carry the whole actual cost, and their material quantities are
+    also the stock figure that reduces the money still required;
+  * each reversal pair is one voided document and one corrected replacement at the same
+    amount, so the pair contributes exactly nothing -- which is what a correct reversal
+    should do, and is worth showing;
+  * drafts and awaiting-confirmation invoices contribute nothing at all. They exist so the
+    invoice list has something to page through.
 """
 
 from pathlib import Path
@@ -17,12 +28,8 @@ from . import seed
 
 OUT = Path(__file__).resolve().parent / "seed.sql"
 
-# frontend/src/adapters/mock/invoices-adapter.js
-STATUSES = ["draft", "awaitingConfirmation", "confirmed", "voided", "corrected"]
 SOURCES = ["manual", "image", "voice"]
-INVOICE_COUNT = 53
 FIRST_INVOICE_INDEX = 1
-REBAR_LINE_AMOUNT = 100_000_000
 
 
 def quote(value) -> str:
@@ -40,45 +47,56 @@ def invoice_uuid(index: int) -> UUID:
     return UUID(f"40000000-0000-4000-8000-{index:012d}")
 
 
-def mock_invoice(index: int) -> dict:
-    """Reproduce makeInvoice(index, context) from the mock adapter."""
-    status = STATUSES[(index - 1) % len(STATUSES)]
-    source = SOURCES[(index - 1) % len(SOURCES)]
-    raw_total = 120_000_000 + index * 1_750_000
-    day = ((index - 1) % 28) + 1
-    if index % 3 == 0:
-        vendor = "تأمین تجهیزات سازه نمونه"
-    elif index % 2 == 0:
-        vendor = "شرکت مصالح پایدار نمونه"
-    else:
-        vendor = "فروشگاه ساختمانی بامبو نمونه"
-    discount = 500_000 if index % 4 == 0 else 0
-    tax = 1_200_000 if index % 3 == 0 else 0
-    shipping = 750_000 if index % 5 == 0 else 0
-    reversed_status = status in ("voided", "corrected")
-    return {
-        "id": invoice_uuid(index),
-        "number": f"ف-{index:03d}",
-        "date": f"2026-07-{day:02d}",
-        "vendor": vendor,
-        "description": ("خرید و تأمین اقلام موردنیاز عملیات اجرایی طبق صورت‌جلسه کارگاه"
-                        if index % 4 == 0 else "فاکتور نمایشی برای توسعه رابط کاربری"),
-        "source": source,
-        "status": status,
-        "version": 1 if status == "draft" else 2 if status == "awaitingConfirmation" else 3,
-        "idempotency_key": f"seed-invoice-{index:03d}",
-        "discount": discount,
-        "tax": tax,
-        "shipping": shipping,
-        "other": 0,
-        "raw_total": raw_total,
-        "final": raw_total - discount + tax + shipping,
-        "sign": -1 if status == "voided" else 1,
-        "original": invoice_uuid(FIRST_INVOICE_INDEX) if reversed_status else None,
-        "confirmed": status in ("confirmed", "voided", "corrected"),
-        "created_at": f"2026-07-{day:02d}T08:30:00Z",
-        "general_amount": raw_total - REBAR_LINE_AMOUNT,
-    }
+def invoice_plan() -> list[dict]:
+    """Every invoice to write, in order, as plain data.
+
+    Amounts are toman in `seed.py` and rial here: one place converts, so a batch cannot be
+    written in one unit and totalled in the other.
+    """
+    plan: list[dict] = []
+    index = FIRST_INVOICE_INDEX
+
+    def add(**fields):
+        nonlocal index
+        day = ((index - 1) % 28) + 1
+        month = 5 + ((index - 1) // 28)
+        fields.setdefault("date", f"2026-{month:02d}-{day:02d}")
+        fields["index"] = index
+        fields["id"] = invoice_uuid(index)
+        fields["number"] = f"ف-{index:03d}"
+        fields["source"] = SOURCES[(index - 1) % len(SOURCES)]
+        fields["idempotency_key"] = f"seed-invoice-{index:03d}"
+        plan.append(fields)
+        index += 1
+
+    for resource, line, count, quantity, unit, amount, vendor, note in seed.INVOICE_BATCHES:
+        for _ in range(count):
+            add(status="confirmed", sign=1, vendor=vendor, description=note,
+                lines=[(line, resource, quantity, unit, int(seed.T(amount)), note)])
+
+    # A reversal and the corrected document that replaced it, at equal amounts. Each pair
+    # nets to zero; the first confirmed invoice stands in as the original both refer to.
+    original = invoice_uuid(FIRST_INVOICE_INDEX)
+    reversal = int(seed.T(seed.REVERSAL_AMOUNT))
+    for _ in range(seed.REVERSAL_PAIRS):
+        add(status="voided", sign=-1, vendor="فولاد گستر نمونه", original=original,
+            description="ابطال فاکتور اشتباه ثبت‌شده",
+            lines=[(seed.LINE[1], seed.REBAR, seed.REVERSAL_QUANTITY, "kg", reversal,
+                    "ابطال تحویل ثبت‌شده")])
+        add(status="corrected", sign=1, vendor="فولاد گستر نمونه", original=original,
+            description="فاکتور اصلاحی جایگزین",
+            lines=[(seed.LINE[1], seed.REBAR, seed.REVERSAL_QUANTITY, "kg", reversal,
+                    "تحویل اصلاح‌شده")])
+
+    pending = int(seed.T(seed.PENDING_AMOUNT))
+    for status, count in (("draft", seed.DRAFT_COUNT),
+                          ("awaitingConfirmation", seed.AWAITING_COUNT)):
+        for _ in range(count):
+            add(status=status, sign=1, vendor="شرکت مصالح پایدار نمونه",
+                description="فاکتور در انتظار بررسی",
+                lines=[(seed.LINE[1], seed.REBAR, seed.PENDING_QUANTITY, "kg", pending,
+                        "تحویل ثبت‌نشده")])
+    return plan
 
 
 def allocate(total: int, weights: list[int]) -> list[int]:
@@ -182,55 +200,55 @@ def build() -> str:
         f"{quote(override['override_value'])},{quote(override['reason'])},"
         f"{quote(override['created_by'])},{quote(override['created_at'].isoformat())});")
 
-    out += ["", f"-- {INVOICE_COUNT} invoices, reproducing makeInvoice() from the mock adapter."]
-    rebar_line, permit_line = seed.ESTIMATE_LINES[0][0], seed.ESTIMATE_LINES[4][0]
-    for index in range(FIRST_INVOICE_INDEX, INVOICE_COUNT + 1):
-        invoice = mock_invoice(index)
+    plan = invoice_plan()
+    counted = sum(line[4] * entry["sign"] for entry in plan
+                  if entry["status"] in ("confirmed", "voided", "corrected")
+                  for line in entry["lines"])
+    out += ["", f"-- {len(plan)} invoices. Only confirmed, voided and corrected ones reach",
+            f"-- the actual-cost figure: {counted // 10:,} toman.".replace(",", ",")]
+    for entry in plan:
+        confirmed = entry["status"] in ("confirmed", "voided", "corrected")
+        version = {"draft": 1, "awaitingConfirmation": 2}.get(entry["status"], 3)
+        # Discount, tax and shipping are left at zero. The line amounts here are the final
+        # ones, and adding allocations that had to be unwound again to reach the same total
+        # would obscure the plan without demonstrating anything the invoice tests do not
+        # already cover.
+        total = sum(line[4] for line in entry["lines"])
         out.append(
             "INSERT INTO invoices"
             "(id,organization_id,project_id,invoice_number,invoice_date,vendor_name,description,source,"
             "status,discount_irr,tax_irr,shipping_irr,other_costs_irr,final_amount_irr,"
             "financial_effect_sign,idempotency_key,original_invoice_id,version,submitted_by,"
             "confirmed_by,confirmed_at,created_at,updated_at)"
-            f" VALUES({quote(invoice['id'])},{org},{project},{quote(invoice['number'])},"
-            f"{quote(invoice['date'])},{quote(invoice['vendor'])},{quote(invoice['description'])},"
-            f"{quote(invoice['source'])},{quote(invoice['status'])},{invoice['discount']},"
-            f"{invoice['tax']},{invoice['shipping']},{invoice['other']},{invoice['final']},"
-            f"{invoice['sign']},{quote(invoice['idempotency_key'])},{quote(invoice['original'])},"
-            f"{invoice['version']},{actor},"
-            f"{actor if invoice['confirmed'] else 'NULL'},"
-            f"{quote('2026-08-01T09:15:00Z') if invoice['confirmed'] else 'NULL'},"
-            f"{quote(invoice['created_at'])},{quote(invoice['created_at'])});")
+            f" VALUES({quote(entry['id'])},{org},{project},{quote(entry['number'])},"
+            f"{quote(entry['date'])},{quote(entry['vendor'])},{quote(entry['description'])},"
+            f"{quote(entry['source'])},{quote(entry['status'])},0,0,0,0,{total},"
+            f"{entry['sign']},{quote(entry['idempotency_key'])},{quote(entry.get('original'))},"
+            f"{version},{actor},"
+            f"{actor if confirmed else 'NULL'},"
+            f"{quote(entry['date'] + 'T09:15:00Z') if confirmed else 'NULL'},"
+            f"{quote(entry['date'] + 'T08:30:00Z')},{quote(entry['date'] + 'T08:30:00Z')});")
 
-        weights = [REBAR_LINE_AMOUNT, invoice["general_amount"]]
-        discounts = allocate(invoice["discount"], weights)
-        taxes = allocate(invoice["tax"], weights)
-        shippings = allocate(invoice["shipping"], weights)
-        others = allocate(invoice["other"], weights)
-        lines = [
-            (rebar_line, seed.REBAR, "1250.0000", "kg", 80000, REBAR_LINE_AMOUNT, "تحویل مرحله اول"),
-            (permit_line, seed.PERMIT, None, None, None, invoice["general_amount"], "هزینه عمومی مرتبط"),
-        ]
-        for position, (estimate_line, resource, quantity, unit, unit_price, raw, note) in enumerate(lines):
-            final_line = raw - discounts[position] + taxes[position] + shippings[position] + others[position]
-            line_id = UUID(f"41000000-0000-4000-8000-{index * 10 + position:012d}")
+        for position, (estimate_line, resource, quantity, unit, amount, note) in enumerate(entry["lines"]):
+            unit_price = None if quantity is None else int(amount / float(quantity))
+            line_id = UUID(f"41000000-0000-4000-8000-{entry['index'] * 10 + position:012d}")
             out.append(
                 "INSERT INTO invoice_lines"
                 "(id,organization_id,project_id,invoice_id,estimate_line_id,resource_id,quantity,unit,"
                 "unit_price_snapshot_irr,raw_amount_irr,allocated_discount_irr,allocated_tax_irr,"
                 "allocated_shipping_irr,allocated_other_costs_irr,final_line_amount_irr,description,created_at)"
-                f" VALUES({quote(line_id)},{org},{project},{quote(invoice['id'])},{quote(estimate_line)},"
-                f"{quote(resource)},{quote(quantity)},{quote(unit)},{quote(unit_price)},{raw},"
-                f"{discounts[position]},{taxes[position]},{shippings[position]},{others[position]},"
-                f"{final_line},{quote(note)},{quote(invoice['created_at'])});")
+                f" VALUES({quote(line_id)},{org},{project},{quote(entry['id'])},{quote(estimate_line)},"
+                f"{quote(resource)},{quote(quantity)},{quote(unit)},{quote(unit_price)},{amount},"
+                f"0,0,0,0,{amount},{quote(note)},{quote(entry['date'] + 'T08:30:00Z')});")
 
     out += ["", "-- Audit trail for the events the seed represents"]
     audit = [
         ("finance_settings.revised", "finance_project_settings", seed.SETTINGS_ID, seed.SETTINGS_REASON),
-        ("price_version.created", "price_versions", seed.PRICE_VERSIONS[1][0], "به‌روزرسانی قیمت پروژه"),
+        ("estimate_line.revised", "estimate_revisions", seed.LINE[1], seed.ESTIMATE_REVISIONS[0][4]),
+        ("price_version.created", "price_versions", seed.PRICE_VERSIONS[2][0], "ثبت قیمت پروژه‌ای میلگرد"),
         ("progress_override.created", "progress_overrides", override["id"], override["reason"]),
-        ("invoice.confirmed", "invoices", invoice_uuid(3), None),
-        ("invoice.confirmed", "invoices", invoice_uuid(8), None),
+        ("invoice.confirmed", "invoices", invoice_uuid(1), None),
+        ("invoice.confirmed", "invoices", invoice_uuid(9), None),
     ]
     for index, (action, entity_type, entity_id, reason) in enumerate(audit, 1):
         out.append(

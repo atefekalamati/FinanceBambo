@@ -210,8 +210,8 @@ def serve(dsn: str, port: int) -> None:
     """
     environment = dict(os.environ, FINANCE_DEV_DSN=dsn, FINANCE_CORE_DSN=dsn)
     environment.pop("FINANCE_MIGRATION_DSN", None)
-    # The host checks the port again before binding, and refuses port 8000 outright --
-    # see devhost.__main__.check_port. Nothing here duplicates that decision.
+    # The host checks the port itself before binding -- see devhost.__main__.check_port.
+    # Nothing here duplicates that decision.
     print(f"  starting the development host on http://127.0.0.1:{port}")
     print("  the browser uses the real API against this database, not mock adapters.\n")
     subprocess.run([sys.executable, "-m", "devhost", "--port", str(port)],

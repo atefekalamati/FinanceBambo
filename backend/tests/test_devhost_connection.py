@@ -305,25 +305,27 @@ class FixtureIdentityTests(unittest.TestCase):
                          "report them as user activity")
 
     def test_every_seeded_line_declares_the_source_its_own_data_implies(self):
-        """`source` says how a line entered the system, so each value is pinned per line.
+        """`source` says how a line entered the system, so it has to match the line's shape.
 
-        The old assertion only checked that both values appeared somewhere in the list,
-        which would have passed with every source swapped. It also could not notice the
-        real defect this replaced: a value corrected here while the seeded database row
-        kept the old one. `devhost.inspect --drift` is what compares the two.
+        Derived from the data rather than listed by id. The previous version pinned five
+        specific line ids, which meant re-scaling the demo scenario broke a test about
+        provenance -- and a listed expectation is only ever as right as the last person to
+        edit it. The rule itself is simple enough to state:
+
+          * a quantified line comes from the schedule feed, which is what supplies the
+            quantity and the assignment it is measured against;
+          * an amount with no quantity is something a person typed, with an activity link
+            only because they chose one.
         """
         from devhost import seed
-        by_id = {str(line[0]): line[6] for line in seed.ESTIMATE_LINES}
-        self.assertEqual({
-            # Quantified lines linked to a schedule assignment: the progress feed's rows.
-            "30000000-0000-4000-8000-000000000001": "progress_feed",
-            "30000000-0000-4000-8000-000000000002": "progress_feed",
-            "30000000-0000-4000-8000-000000000003": "progress_feed",
-            "30000000-0000-4000-8000-000000000004": "progress_feed",
-            # The permit is an amount a person entered, not a measured quantity the
-            # schedule reported. It carries an activity link because the user chose one.
-            "30000000-0000-4000-8000-000000000005": "manual_entry",
-        }, by_id)
+        for line in seed.ESTIMATE_LINES:
+            line_id, quantity, source = str(line[0]), line[4], line[6]
+            expected = "progress_feed" if quantity is not None else "manual_entry"
+            with self.subTest(line=line_id):
+                self.assertEqual(expected, source)
+        # And the rule is not vacuous: the fixture exercises both origins.
+        self.assertEqual({"progress_feed", "manual_entry"},
+                         {line[6] for line in seed.ESTIMATE_LINES})
 
     def test_the_seed_sql_agrees_with_the_seed_module_on_every_source(self):
         """seed.sql is generated from seed.py, so a stale copy would ship a wrong origin."""

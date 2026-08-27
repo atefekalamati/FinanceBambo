@@ -81,31 +81,42 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     const report = {
       reportingDate,
       progressSnapshotId,
+      // The same figures the API produces from the seeded database, in rial. They are
+      // copied rather than derived on purpose: the mock exists so the interface can be
+      // developed without a backend, and a mock that did its own arithmetic would be a
+      // second implementation of the report to keep in step. Backend and database remain
+      // the source of financial truth.
       metrics: {
-        initialEstimateIrr: "18650000000",
-        actualCostIrr: "6240000000",
-        currentExecutedValueIrr: "7150000000",
-        remainingPhysicalCostIrr: "12840000000",
-        moneyRequiredToContinueIrr: "11610000000",
-        forecastFinalCostIrr: "17850000000",
-        actualCostPerSquareMeterIrr: "1468235",
-        forecastPerSquareMeterIrr: "4200000",
+        initialEstimateIrr: "680000000000",
+        actualCostIrr: "229815320000",
+        currentExecutedValueIrr: "219604880000",
+        remainingPhysicalCostIrr: "509202120000",
+        moneyRequiredToContinueIrr: "485116720000",
+        forecastFinalCostIrr: "714932040000",
+        actualCostPerSquareMeterIrr: "54074190",
+        forecastPerSquareMeterIrr: "168219300",
       },
       breakdown: [
-        { resourceType: "material", initialEstimateIrr: "9800000000", revisedEstimateIrr: "10200000000", actualCostIrr: "3920000000", remainingPhysicalCostIrr: "5440000000", forecastFinalIrr: "9360000000" },
-        { resourceType: "labor", initialEstimateIrr: "4100000000", revisedEstimateIrr: "4250000000", actualCostIrr: "1380000000", remainingPhysicalCostIrr: "2600000000", forecastFinalIrr: "3980000000" },
-        { resourceType: "equipment", initialEstimateIrr: "2750000000", revisedEstimateIrr: "2680000000", actualCostIrr: "610000000", remainingPhysicalCostIrr: "1930000000", forecastFinalIrr: "2540000000" },
-        { resourceType: "general_cost", initialEstimateIrr: "2000000000", revisedEstimateIrr: "2050000000", actualCostIrr: "330000000", remainingPhysicalCostIrr: "1640000000", forecastFinalIrr: "1970000000" },
+        { resourceType: "material", initialEstimateIrr: "360000000000", revisedEstimateIrr: "384980000000", actualCostIrr: "131815320000", remainingPhysicalCostIrr: "341528860000", forecastFinalIrr: "380758780000" },
+        { resourceType: "labor", initialEstimateIrr: "150000000000", revisedEstimateIrr: "158000000000", actualCostIrr: "48000000000", remainingPhysicalCostIrr: "108021800000", forecastFinalIrr: "156021800000" },
+        { resourceType: "equipment", initialEstimateIrr: "80000000000", revisedEstimateIrr: "84000000000", actualCostIrr: "23000000000", remainingPhysicalCostIrr: "59651460000", forecastFinalIrr: "82651460000" },
+        { resourceType: "general_cost", initialEstimateIrr: "90000000000", revisedEstimateIrr: "95500000000", actualCostIrr: "27000000000", remainingPhysicalCostIrr: "68500000000", forecastFinalIrr: "95500000000" },
       ],
       topPriceVariances: [
-        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", varianceIrr: "460000000" },
-        { resourceId: "20000000-0000-4000-8000-000000000003", estimateLineId: "30000000-0000-4000-8000-000000000004", resourceCode: "EQ-CRANE", resourceTitle: "جرثقیل", resourceType: "equipment", varianceIrr: "185000000" },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد آجدار A3", resourceType: "material", varianceIrr: "27509400000" },
+        { resourceId: "20000000-0000-4000-8000-000000000005", estimateLineId: "30000000-0000-4000-8000-000000000005", resourceCode: "LAB-FORM", resourceTitle: "اکیپ قالب‌بندی", resourceType: "labor", varianceIrr: "11642400000" },
+        { resourceId: "20000000-0000-4000-8000-000000000007", estimateLineId: "30000000-0000-4000-8000-000000000007", resourceCode: "EQ-CRANE", resourceTitle: "جرثقیل برجی", resourceType: "equipment", varianceIrr: "8662500000" },
       ],
       topQuantityVariances: [
-        { resourceId: "20000000-0000-4000-8000-000000000002", estimateLineId: "30000000-0000-4000-8000-000000000003", resourceCode: "LAB-FORM", resourceTitle: "اکیپ قالب‌بندی", resourceType: "labor", varianceQuantity: "125.75" },
-        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000002", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", varianceQuantity: "42.5" },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد آجدار A3", resourceType: "material", varianceQuantity: "45000.0000" },
+        { resourceId: "20000000-0000-4000-8000-000000000003", estimateLineId: "30000000-0000-4000-8000-000000000003", resourceCode: "MAT-BLOCK", resourceTitle: "بلوک سفالی دیوارچینی", resourceType: "material", varianceQuantity: "10000.0000" },
       ],
-      warnings: [{ code: "CURRENT_PRICE_MISSING", message: "Current price is missing.", estimateLineId: null }],
+      // No warnings: every line has a current price and a measured progress quantity, which
+      // is what the seeded database actually produces. The previous fixture carried a
+      // CURRENT_PRICE_MISSING warning beside calculationStatus "complete" -- a combination
+      // the real report cannot emit, since a missing price is exactly what makes it
+      // incomplete.
+      warnings: [],
       calculationStatus: "complete",
       incompleteMetricKeys: [],
       missingPriceCount: 0,

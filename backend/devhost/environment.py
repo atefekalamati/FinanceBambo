@@ -69,18 +69,11 @@ def migration_url() -> str | None:
 
 #: The port the finance development host listens on.
 #:
-#: 8010, not 8000. Another BAMBO project -- the Pilot host -- already listens on 8000 on
-#: this machine, and two servers cannot share a port: whichever starts second fails, or
-#: worse, the browser opens the wrong application and every explanation of the demo is
-#: about somebody else's software.
-#:
-#: The two are otherwise unrelated. They share no database, no code and no configuration;
-#: this is only about which socket each one binds.
+#: Deliberately not 8000. That is the default half the tooling on a developer machine
+#: reaches for first, so a host that took it would be the one competing for it. Choosing a
+#: less contested number costs nothing and removes a whole class of "why am I looking at
+#: something else" confusion.
 DEFAULT_DEMO_PORT = 8010
-
-#: Reserved by the Pilot host. Refused by name rather than merely not chosen, so a stale
-#: script or a copied command line fails with an explanation instead of a port collision.
-RESERVED_PORTS = {8000: "the BAMBO Pilot host"}
 
 DEMO_PORT_SETTING = "FINANCE_DEMO_PORT"
 
@@ -113,6 +106,26 @@ def core_url() -> str | None:
     separate databases; a single variable would quietly assume otherwise.
     """
     return setting("FINANCE_CORE_DSN")
+
+
+def core_progress_enabled() -> bool:
+    """Whether progress should be read from Core's MSP tables rather than the host feed.
+
+    Off by default, and the default is the honest production shape rather than a
+    convenience. Core stores parsed schedules -- `msp_tasks` has percentages and no resource
+    or quantity columns at all -- so the Core adapter can report that a task is 30% done and
+    nothing about how much rebar that represents. Finance then marks every line
+    `unavailable` with a warning, which is correct and shows almost nothing on a dashboard.
+
+    Assignment-level quantities come from whatever publishes them: the host's progress
+    module. `devhost` stands in for that with a seeded feed, so the demo shows the numbers a
+    wired host would supply.
+
+    Turn this on to see the other half of the truth -- what Core alone can and cannot
+    answer. It is the same code path a production host would use if it had no progress
+    module, and the warnings it produces are the point.
+    """
+    return (setting("FINANCE_CORE_PROGRESS", "") or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def app_env() -> str:

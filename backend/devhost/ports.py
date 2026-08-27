@@ -164,7 +164,13 @@ class SeededProgressSnapshotProvider:
             # rejects both shapes now, but a development host should not model the wrong
             # one for a production provider to copy.
             return None
-        return {"snapshot": dict(feed["snapshot"]),
+        # Echo back the identifier the caller asked with. Finance verifies the header
+        # against what it sent, and it sends the Core bigint whenever the reference row
+        # records one -- so answering with the Finance UUID makes a valid request look like
+        # a snapshot that does not exist. A real provider only ever knows its own id and
+        # therefore cannot make this mistake; the fixture has to imitate that rather than
+        # quietly being more forgiving than production.
+        return {"snapshot": {**feed["snapshot"], "progressSnapshotId": key},
                 "assignments": [dict(row) for row in feed["assignments"]]}
 
 
