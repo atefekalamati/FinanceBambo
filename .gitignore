@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 .venv/
+.venv*/
 
 # Frontend dependencies and generated output
 node_modules/
@@ -25,3 +26,8 @@ __pycache__/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Release-validation artefacts: database dumps taken during rehearsal.
+# A backup is the whole finance dataset in one file. It never belongs in version control,
+# and the rehearsal that produces it is meant to be repeatable, not archived.
+backend/.release-validation/

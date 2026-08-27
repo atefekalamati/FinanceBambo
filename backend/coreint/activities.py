@@ -27,7 +27,8 @@ say the same thing less clearly and invite someone to "finish" it later.
 
 from psycopg.rows import dict_row
 
-from .progress import PROGRESS_SNAPSHOT_TYPES, activity_code, task_external_id
+from .progress import (ACTIVITY_CODE_FIELDS, PROGRESS_SNAPSHOT_TYPES, activity_code,
+                       task_external_id)
 
 #: The snapshot activities are read from: the newest one that carries progress. `TARGET`
 #: baselines are excluded for the same reason as in the progress adapter -- see there.
@@ -53,9 +54,13 @@ TASKS = """
 class CoreProjectActivityProvider:
     """`ProjectActivityProvider` over the newest MSP snapshot's tasks. Read-only."""
 
-    def __init__(self, connection, *, progress_types=PROGRESS_SNAPSHOT_TYPES):
+    def __init__(self, connection, *, progress_types=PROGRESS_SNAPSHOT_TYPES,
+                 activity_code_fields=ACTIVITY_CODE_FIELDS):
         self._connection = connection
         self._progress_types = tuple(progress_types)
+        # Must match whatever the progress adapter was given, or an estimate line would be
+        # offered an activity it can never pair with.
+        self._activity_code_fields = tuple(activity_code_fields)
 
     async def _rows(self, sql, params):
         async with self._connection.cursor(row_factory=dict_row) as cursor:
@@ -76,7 +81,7 @@ class CoreProjectActivityProvider:
             return {}
         activities = {}
         for task in await self._rows(TASKS, {"snapshot_id": snapshot[0]["id"]}):
-            code = activity_code(task)
+            code = activity_code(task, self._activity_code_fields)
             if code is None or code in activities:
                 continue
             activities[code] = {

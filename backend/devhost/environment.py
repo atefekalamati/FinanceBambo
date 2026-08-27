@@ -10,6 +10,7 @@ deployed module would have to carry.
 """
 
 import os
+import socket
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -89,6 +90,37 @@ def demo_port() -> int:
     if configured.isdigit() and 0 < int(configured) < 65536:
         return int(configured)
     return DEFAULT_DEMO_PORT
+
+
+#: Whether a port is ours to take. Lives here rather than in the entry point so the
+#: port policy is in one module, and so reading it does not drag in a web server:
+#: importing `devhost.__main__` for this one function pulled uvicorn into every
+#: caller, which is how the test suite acquired a dependency nobody had declared.
+def check_port(host: str, port: int) -> None:
+    """Stop before binding if the port is already answering.
+
+    Two things this deliberately does not do:
+
+      * it does not move to another port. A host that silently relocates is one nobody can
+        write instructions for, and the browser ends up somewhere the reader was not told
+        about;
+      * it does not stop whatever is listening. This process did not start it and has no
+        idea what it is, so it is reported and left alone.
+
+    Binding without checking would fail anyway, but with an OSError from inside the server
+    rather than a sentence saying what to do about it.
+    """
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.settimeout(1)
+        occupied = probe.connect_ex((host, port)) == 0
+    finally:
+        probe.close()
+    if occupied:
+        raise SystemExit(
+            f"Port {port} is already in use on {host}.\n"
+            "Free it, or choose another port with --port or FINANCE_DEMO_PORT."
+        )
 
 
 def core_url() -> str | None:

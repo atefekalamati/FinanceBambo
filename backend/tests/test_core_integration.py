@@ -394,6 +394,31 @@ class ProgressRowTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(expected=expected):
                 self.assertEqual(expected, core_progress.activity_code(task))
 
+    async def test_the_activity_code_field_order_is_the_host_s_to_choose(self):
+        """Which MSP field carries the activity code is a planning convention.
+
+        The default chain is a guess documented as a guess. A host that knows what its
+        planners actually use says so at construction -- no port changes, because the
+        constructor is the host's side of the boundary. Both adapters take it, and they must
+        be given the same order or an estimate line would be offered an activity code the
+        progress feed never emits.
+        """
+        task = {**TASK_ROW, "text1": "ACT-102", "outline_number": "1.2", "wbs": "1.2"}
+        default = core_progress.CoreProgressSnapshotProvider(progress_connection(tasks=(task,)))
+        feed = await default.get_snapshot(str(ORG), PROJECT, "9003")
+        self.assertEqual("ACT-102", feed["assignments"][0]["task"]["activityCode"])
+
+        by_wbs = core_progress.CoreProgressSnapshotProvider(
+            progress_connection(tasks=(task,)), activity_code_fields=("wbs",))
+        feed = await by_wbs.get_snapshot(str(ORG), PROJECT, "9003")
+        self.assertEqual("1.2", feed["assignments"][0]["task"]["activityCode"])
+
+        def answer(sql, _p):
+            return [dict(task)] if "FROM msp_tasks" in sql else [{"id": 9003}]
+        activities = core_activities.CoreProjectActivityProvider(
+            FakeConnection(answer), activity_code_fields=("wbs",))
+        rows, _total = await activities.list_activities(str(ORG), PROJECT)
+        self.assertEqual("1.2", rows[0]["activityExternalId"])
     def test_task_identity_never_comes_from_the_name(self):
         """A name changes when somebody fixes a typo. That is not identity."""
         self.assertEqual("task-foundation", core_progress.task_external_id(TASK_ROW))
