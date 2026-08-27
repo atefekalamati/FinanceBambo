@@ -58,6 +58,17 @@ OUTSIDER = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa9")           # org_chief so
 OTHER_ORGANIZATION = UUID("22222222-2222-4222-8222-222222222222")
 OTHER_PROJECT = "other_site_99"
 
+#: A second project inside the *same* organization that nobody in the fixture belongs to.
+#: Without it, "cross-project denial" can only be tested across organizations -- and the
+#: organization gate would refuse first, so the project gate would never be the thing doing
+#: the refusing and a fault in it would pass unnoticed.
+SIBLING_PROJECT = "annex_site_02"
+
+#: Core permits exactly these three. All of them appear so the progress adapter's exclusion
+#: of TARGET is exercised rather than assumed: a baseline states the plan, not what
+#: happened, and reading one as progress would report planned work as done.
+SNAPSHOT_TYPES = ("TARGET", "ACTUAL", "RESCHEDULED")
+
 #: The permission catalogue as the real Core has it today. `finance_report.issue` is absent
 #: from both, and that is the whole point of mirroring it faithfully.
 PERMISSIONS = (
@@ -172,6 +183,11 @@ def statements():
         VALUES (%s, %s, %s, %s, 'active', %s)
     """, (OTHER_PROJECT, str(OTHER_ORGANIZATION), "پروژه سازمان دیگر نمونه", "OTH-1405-99",
           str(OUTSIDER))))
+    plan.append(("""
+        INSERT INTO projects (id, organization_id, name, code, status, created_by)
+        VALUES (%s, %s, %s, %s, 'active', %s)
+    """, (SIBLING_PROJECT, str(seed.ORGANIZATION_ID), "پروژه الحاقی نمونه",
+          "BMB-1405-02", str(FINANCE_EXPERT))))
 
     for code, name, category in ROLES:
         plan.append(("""
@@ -236,8 +252,14 @@ def statements():
         VALUES (%s, %s, 'project_admin')
     """, (OTHER_PROJECT, str(OUTSIDER))))
 
+    # One type per snapshot, positionally. Said out loud so that adding a fourth snapshot to
+    # the fixture fails here with a reason rather than an IndexError three frames down.
+    if len(seed.PROGRESS_SNAPSHOTS) != len(SNAPSHOT_TYPES):
+        raise ValueError(f"the fixture has {len(seed.PROGRESS_SNAPSHOTS)} progress snapshots "
+                         f"but SNAPSHOT_TYPES names {len(SNAPSHOT_TYPES)}; decide which type "
+                         "the new snapshot carries before mirroring it")
     previous = None
-    for snapshot in seed.PROGRESS_SNAPSHOTS:
+    for index, snapshot in enumerate(seed.PROGRESS_SNAPSHOTS):
         tasks = _tasks_for(snapshot)
         plan.append(("""
             INSERT INTO msp_file_versions (id, project_id, version_number, original_filename,
@@ -263,8 +285,9 @@ def statements():
                                        source_version_number, display_label, task_count,
                                        parser_engine, status_date_jalali, created_by,
                                        created_at, updated_at)
-            VALUES (%s, %s, %s, 'ACTUAL', %s, %s, %s, %s, %s, 'demo-fixture', %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'demo-fixture', %s, %s, %s, %s)
         """, (snapshot["host_snapshot_id"], seed.PROJECT_ID, snapshot["host_file_version_id"],
+              SNAPSHOT_TYPES[index],
               previous, snapshot["source_file_name_safe"],
               snapshot["host_file_version_id"] - 1000,
               f'وضعیت {jalali(snapshot["reporting_date"])}', len(tasks),
