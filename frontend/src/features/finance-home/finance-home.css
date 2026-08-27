@@ -16,6 +16,85 @@
   min-inline-size: 0;
 }
 
+/* The one link between the two surfaces. It sits opposite the page title, and
+   is never allowed to shrink into two lines — it is three words. */
+.finance-surface-link {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   امور مالی — the state of the inputs
+   -------------------------------------------------------------------------- */
+
+/* The operations home answers one question before anything else: what is the
+   calculation currently resting on. Unlike the provenance strip on the report,
+   this one is allowed to wrap — it carries no picker to collide with. */
+.operations-input-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: clamp(.35rem, 1vw, .85rem);
+  min-inline-size: 0;
+  padding: .55rem clamp(.5rem, 1.2vw, 1rem);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgb(4 13 32 / 22%);
+  font-size: clamp(.68rem, 1.6vw, .82rem);
+  line-height: 1.6;
+}
+
+.operations-input-state__lead {
+  flex: 0 0 auto;
+  color: var(--brand-teal);
+  font-weight: 700;
+}
+
+.operations-input-state__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: clamp(.35rem, 1vw, .85rem);
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  margin: 0;
+}
+
+.operations-input-state__facts > div {
+  display: flex;
+  align-items: baseline;
+  gap: .3em;
+  min-inline-size: 0;
+}
+
+/* A hairline rather than a bullet, so a fact that is absent leaves no orphaned
+   separator behind. */
+.operations-input-state__facts > div + div {
+  padding-inline-start: clamp(.35rem, 1vw, .85rem);
+  border-inline-start: 1px solid var(--color-border-subtle);
+}
+
+.operations-input-state__facts dt {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.operations-input-state__facts dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* When there is no snapshot at all the notice takes the whole row rather than
+   competing with the facts for it. */
+.operations-input-state .inline-notice {
+  flex: 1 0 100%;
+  margin: 0;
+}
+
 /* Groups the report caption with the settings link so the heading keeps two
    children and lands at the two ends of the row. */
 .section-heading__trailing {
@@ -197,14 +276,20 @@
 }
 
 /* Each tier gives up the fact that says least, in order. */
-@media (max-width: 64rem) {
+@media (max-width: 70rem) {
   .finance-snapshot-provenance__fact--imported {
     display: none;
   }
 }
 
-@media (max-width: 48rem) {
+@media (max-width: 64rem) {
   .finance-snapshot-provenance__fact--status {
+    display: none;
+  }
+}
+
+@media (max-width: 36rem) {
+  .finance-snapshot-provenance__fact--source {
     display: none;
   }
 }
@@ -753,7 +838,12 @@
   --managerial-columns: repeat(4, minmax(0, 1fr));
   --managerial-gap: clamp(.3rem, 1vw, .75rem);
   --managerial-reference-gutter: clamp(3.9rem, 7vw, 4.9rem);
-  --managerial-scale-gutter: clamp(3rem, 5vw, 3.8rem);
+  /* The strip the amount guide sits in, and how much of it is clear air between
+     the numbers and the nearest column. The numbers keep the width they had;
+     the gap is what grew, so the guide reads as its own thing beside the chart
+     rather than as a label attached to the first bar. */
+  --managerial-scale-gutter: clamp(3.55rem, 5.9vw, 4.5rem);
+  --managerial-scale-gap: .8rem;
   --managerial-label-lines: 3;
   --managerial-label-size: .76rem;
   --managerial-label-leading: 1.45;
@@ -795,10 +885,12 @@
   position: relative;
   z-index: 2;
   container-type: inline-size;
-  /* A hard guarantee: whatever a column is asked to show, it cannot widen the
-     document. The bands are sized for their content, so this only ever bites
-     when a value is longer than any width the type scale planned for. */
-  overflow: hidden;
+  /* Deliberately not clipped. The money above each bar carries the exact figure
+     in a tooltip drawn as an ::after that sits above the value and wider than
+     it, so a cell that clips silently swallows it. The horizontal overflow this
+     once guarded against had a different cause — a unit that could not shrink,
+     and a chart viewport that was told not to scroll — and both are fixed at
+     the source. */
   display: grid;
   align-items: end;
   justify-items: center;
@@ -824,6 +916,21 @@
   line-height: 1.25;
   text-align: center;
   white-space: normal;
+}
+
+/* The exact figure hangs below the value here, not above it.
+   The shared tooltip opens upward, but these values sit along the top edge of a
+   card whose height is fixed and which therefore clips — so upward meant
+   invisible. Below, it opens over the bars, which is empty space inside the
+   same card. */
+.managerial-combo-chart__value.compact-money::after {
+  inset-block-end: auto;
+  inset-block-start: calc(100% + .35rem);
+  transform: translateX(50%) translateY(-.2rem);
+}
+
+.managerial-combo-chart__value.compact-money:is(:hover, :focus-visible)::after {
+  transform: translateX(50%) translateY(0);
 }
 
 .managerial-combo-chart__value .money-display__amount {
@@ -904,7 +1011,7 @@
   position: absolute;
   inset-block-start: 0;
   inset-inline-end: 0;
-  inline-size: calc(var(--managerial-scale-gutter) - .25rem);
+  inline-size: calc(var(--managerial-scale-gutter) - var(--managerial-scale-gap));
   color: var(--color-text-muted);
   font-size: .58rem;
   font-weight: 700;
@@ -937,7 +1044,7 @@
 .managerial-combo-chart__scale-value {
   position: absolute;
   inset-inline-end: 0;
-  inline-size: calc(var(--managerial-scale-gutter) - .25rem);
+  inline-size: calc(var(--managerial-scale-gutter) - var(--managerial-scale-gap));
   color: var(--color-text-muted);
   font-size: .62rem;
   font-variant-numeric: tabular-nums;
@@ -987,15 +1094,6 @@
   }
 
   .managerial-combo-chart__label {
-    font-weight: 900;
-  }
-
-  .breakdown-chart__group h3 {
-    font-size: .9rem;
-  }
-
-  .breakdown-chart__value {
-    font-size: .78rem;
     font-weight: 900;
   }
 }
@@ -1091,7 +1189,9 @@
     background-color var(--duration-fast) var(--ease-standard);
 }
 
-.finance-variance-card__link:hover {
+/* A deviation row is a link only for an account that can act on it. For a
+   reader it is a row of figures, and must not light up as though it were. */
+a.finance-variance-card__link:hover {
   color: var(--color-accent);
   background: var(--color-btn-action);
 }
@@ -1194,34 +1294,64 @@
   background: var(--dash-actual);
 }
 
-.breakdown-chart {
-  display: grid;
-  gap: .8rem;
-  min-inline-size: 38rem;
-  padding: .9rem .75rem;
-  border: 0;
-  background: none;
+.breakdown-legend--bullet li[data-series="target"]::before {
+  /* The estimate is a marker on the track, not a filled bar, so its key is a
+     stroke rather than a block. */
+  inline-size: .18rem;
+  block-size: .7rem;
+  border-radius: .1rem;
+  background: var(--dash-plan);
+  box-shadow: 0 0 .3rem color-mix(in srgb, var(--dash-plan) 70%, transparent);
 }
 
-.finance-breakdown:has(.breakdown-chart__value:is(:hover, :focus-visible)) {
+.breakdown-legend--bullet li[data-series="over"]::before {
+  background: var(--dash-sev-high, #d8574f);
+}
+
+/* Deliberately not a scroll container. `overflow-x: auto` turns the other axis
+   into a scroll axis too, whatever it is set to, and the tooltip on a value
+   rises above its row — so a viewport that scrolled sideways would cut the top
+   off every one of them. The chart is built to fit instead: below 48rem its
+   columns collapse, and above it the widest template needs about 34rem in a
+   card that always has more. */
+.bullet-chart-viewport {
+  max-inline-size: 100%;
+}
+
+/* Three things stand between a tooltip and the page, and each one has to be
+   lifted or the tooltip's own z-index is capped inside it: the card, which is a
+   stacking context of its own; the row, so the rows after it stop painting over
+   it; and the value, which is what the tooltip is attached to. */
+.finance-breakdown:has(.bullet-chart__value:is(:hover, :focus-visible)) {
   z-index: var(--z-calendar-popup);
 }
 
-.breakdown-chart__group {
+.bullet-chart__row:has(.bullet-chart__value:is(:hover, :focus-visible)) {
   position: relative;
-  z-index: 0;
+  z-index: 3;
+}
+
+.bullet-chart__value:is(:hover, :focus-visible) {
+  z-index: var(--z-calendar-popup);
+}
+
+.bullet-chart {
+  --bullet-track-size: .95rem;
   display: grid;
-  grid-template-columns: 7rem minmax(24rem, 1fr);
+  gap: .55rem;
+  min-inline-size: 30rem;
+  padding: .8rem .75rem .2rem;
+}
+
+.bullet-chart__row {
+  display: grid;
+  grid-template-columns: 7rem minmax(12rem, 1fr) 6.5rem 6.5rem;
   align-items: center;
-  gap: .75rem;
+  gap: .7rem;
   min-inline-size: 0;
 }
 
-.breakdown-chart__group:has(.breakdown-chart__value:is(:hover, :focus-visible)) {
-  z-index: 2;
-}
-
-.breakdown-chart__group h3 {
+.bullet-chart__row h3 {
   margin: 0;
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
@@ -1229,84 +1359,170 @@
   text-align: start;
 }
 
-.breakdown-chart__bars {
-  display: grid;
-  gap: .3rem;
-  min-inline-size: 0;
-  block-size: auto;
-}
-
-.breakdown-chart__series {
+.bullet-chart__track {
   position: relative;
-  z-index: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 8.5rem;
-  align-items: center;
-  gap: .55rem;
+  block-size: var(--bullet-track-size);
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 4%);
 }
 
-.breakdown-chart__series:has(.breakdown-chart__value:is(:hover, :focus-visible)) {
-  z-index: 3;
-}
-
-.breakdown-chart__track {
-  position: relative;
-  block-size: 1.15rem;
-  border-radius: .2rem;
-  background: rgb(255 255 255 / 3%);
+/* The lines the amounts are read against. They live inside each track rather
+   than in one layer over the chart, so they cannot drift out of step with the
+   bars they are there to measure. */
+.bullet-chart__grid {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   overflow: hidden;
 }
-.breakdown-chart__bar {
+
+.bullet-chart__gridline {
   position: absolute;
   inset-block: 0;
+  inset-inline-start: var(--at);
+  inline-size: 1px;
+  background: var(--color-border-subtle);
+}
+
+.bullet-chart__fill {
+  position: absolute;
+  inset-block: .18rem;
   inset-inline-start: 0;
-  inline-size: var(--bar-width);
+  inline-size: var(--fill);
   min-inline-size: .2rem;
-  border-radius: .2rem;
-  transition:
-    opacity var(--duration-fast) var(--ease-standard),
-    filter var(--duration-fast) var(--ease-standard);
-}
-
-.breakdown-chart__bar:hover {
-  opacity: .86;
-  filter: brightness(1.12);
-}
-
-.breakdown-chart__bar--initial {
-  background: linear-gradient(90deg, var(--dash-plan), color-mix(in srgb, var(--dash-plan) 78%, white));
-  box-shadow: 0 0 .7rem color-mix(in srgb, var(--dash-plan) 24%, transparent);
-}
-
-.breakdown-chart__bar--actual {
+  border-radius: var(--radius-pill);
   background: linear-gradient(90deg, var(--dash-actual), color-mix(in srgb, var(--dash-actual) 78%, white));
-  box-shadow: 0 0 .7rem color-mix(in srgb, var(--dash-actual) 24%, transparent);
+  box-shadow:
+    0 0 .22rem color-mix(in srgb, var(--dash-actual) 85%, transparent),
+    0 0 .65rem color-mix(in srgb, var(--dash-actual) 55%, transparent);
 }
 
-.breakdown-chart__value {
-  position: relative;
-  z-index: 0;
-  color: var(--color-text-secondary);
+/* Passing the estimate is the one thing this chart exists to show, so the bar
+   that did it stops looking like the ones that did not. */
+.bullet-chart__fill--over {
+  background: linear-gradient(90deg, var(--dash-sev-high, #d8574f), color-mix(in srgb, var(--dash-sev-high, #d8574f) 78%, white));
+  box-shadow:
+    0 0 .22rem color-mix(in srgb, var(--dash-sev-high, #d8574f) 85%, transparent),
+    0 0 .7rem color-mix(in srgb, var(--dash-sev-high, #d8574f) 55%, transparent);
+}
+
+/* The estimate. It crosses the whole track and stands slightly proud of it, so
+   it reads as a target the bar is measured against rather than as part of it. */
+.bullet-chart__target {
+  position: absolute;
+  inset-block: -.18rem;
+  inset-inline-start: var(--at);
+  inline-size: .18rem;
+  margin-inline-start: -.09rem;
+  border-radius: .1rem;
+  background: var(--dash-plan);
+  /* A dark ring first, then the glow. Without the ring the marker disappears
+     into a bar that has already passed it — which is the one row where seeing
+     exactly where the estimate was matters most. */
+  box-shadow:
+    0 0 0 1px var(--app-card-navy),
+    0 0 .35rem color-mix(in srgb, var(--dash-plan) 80%, transparent);
+}
+
+.bullet-chart__value {
+  color: var(--color-text-primary);
   font-size: .72rem;
   font-weight: 800;
+  text-align: start;
   white-space: nowrap;
 }
 
-.breakdown-chart__value:is(:hover, :focus-visible) {
-  z-index: var(--z-calendar-popup);
+.bullet-chart__ratio {
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
-.breakdown-chart__value.compact-money::after {
-  z-index: calc(var(--z-calendar-popup) + 1);
+.bullet-chart__ratio--over {
+  color: var(--dash-sev-high, #d8574f);
 }
 
-/* The first value has no room above the scroll viewport, so its tooltip opens
-   downward to avoid being clipped by the viewport boundary. */
-.breakdown-chart__group:first-child
-  .breakdown-chart__series:first-child
-  .breakdown-chart__value.compact-money::after {
-  inset-block-start: calc(100% + .4rem);
-  inset-block-end: auto;
+/* «برآورد ثبت نشده» is not a quiet aside — it is why the row has no marker. */
+.bullet-chart__ratio--unknown {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-style: italic;
+}
+
+.bullet-chart__scale {
+  display: grid;
+  grid-template-columns: 7rem minmax(12rem, 1fr) 6.5rem 6.5rem;
+  align-items: center;
+  gap: .7rem;
+  margin-block-start: .1rem;
+}
+
+.bullet-chart__scale-label {
+  color: var(--color-text-muted);
+  font-size: .62rem;
+  font-weight: 700;
+  text-align: start;
+}
+
+.bullet-chart__scale-track {
+  position: relative;
+  block-size: 1.1rem;
+}
+
+.bullet-chart__scale-mark {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: var(--at);
+  transform: translateX(50%);
+  color: var(--color-text-muted);
+  font-size: .62rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* The first and last labels would otherwise hang off the ends of the track. */
+.bullet-chart__scale-mark:first-child {
+  transform: translateX(20%);
+}
+
+.bullet-chart__scale-mark:last-child {
+  transform: translateX(80%);
+}
+
+@media (max-width: 48rem) {
+  .bullet-chart {
+    --bullet-track-size: .7rem;
+    min-inline-size: 0;
+    gap: .4rem;
+    padding: .45rem .3rem .1rem;
+  }
+
+  .bullet-chart__row,
+  .bullet-chart__scale {
+    grid-template-columns: 5.25rem minmax(0, 1fr) 4.6rem;
+    gap: .4rem;
+  }
+
+  /* At this width the row is already three columns of small type; a fourth
+     would break the line. The percentage is the one the reader came for, so the
+     amount steps out and stays available on the row's own label. */
+  .bullet-chart__value {
+    display: none;
+  }
+
+  .bullet-chart__row h3 {
+    font-size: .66rem;
+    line-height: 1.3;
+  }
+
+  .bullet-chart__ratio {
+    font-size: .62rem;
+  }
+
+  .bullet-chart__scale-mark {
+    font-size: .56rem;
+  }
 }
 
 .breakdown-table-wrapper {
@@ -1328,13 +1544,6 @@
   z-index: 1;
   inset-block-start: 0;
   background: var(--color-surface-canvas);
-}
-
-.breakdown-chart-viewport {
-  max-inline-size: 100%;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-gutter: stable;
 }
 
 .breakdown-table {
@@ -1475,66 +1684,12 @@
     overflow: visible;
   }
 
-
   .breakdown-table-wrapper {
     max-inline-size: 100%;
     margin-block-start: .4rem;
     overflow-x: auto;
     overflow-y: visible;
     scrollbar-gutter: stable;
-  }
-
-  .breakdown-chart {
-    gap: .42rem;
-    min-inline-size: 0;
-    padding: .35rem .25rem;
-  }
-
-  .breakdown-chart__group {
-    grid-template-columns: 5.25rem minmax(0, 1fr);
-    gap: .45rem;
-  }
-
-  .breakdown-chart__group h3 {
-    font-size: .66rem;
-    line-height: 1.3;
-  }
-
-  .breakdown-chart__series {
-    grid-template-columns: minmax(0, 1fr) 5.8rem;
-    gap: .35rem;
-  }
-
-  .breakdown-chart__bars {
-    gap: .18rem;
-  }
-
-  .breakdown-chart__track {
-    block-size: .28rem;
-    border-radius: var(--radius-pill);
-    background: rgb(255 255 255 / 2%);
-    overflow: visible;
-  }
-
-  .breakdown-chart__bar {
-    border-radius: var(--radius-pill);
-  }
-
-  .breakdown-chart__bar--initial {
-    box-shadow:
-      0 0 .22rem color-mix(in srgb, var(--dash-plan) 85%, transparent),
-      0 0 .65rem color-mix(in srgb, var(--dash-plan) 55%, transparent);
-  }
-
-  .breakdown-chart__bar--actual {
-    box-shadow:
-      0 0 .22rem color-mix(in srgb, var(--dash-actual) 85%, transparent),
-      0 0 .65rem color-mix(in srgb, var(--dash-actual) 55%, transparent);
-  }
-
-  .breakdown-chart__value {
-    font-size: .62rem;
-    line-height: 1.25;
   }
 
   /* No reserved minimum here either: the columns decide the width, so a
@@ -1616,19 +1771,6 @@
   .finance-risk-stack .finance-warnings {
     overflow-y: auto;
   }
-
-
-  .breakdown-chart {
-    min-inline-size: 0;
-  }
-
-  .breakdown-chart__group {
-    grid-template-columns: 6rem minmax(0, 1fr);
-  }
-
-  .breakdown-chart__series {
-    grid-template-columns: minmax(0, 1fr) 7rem;
-  }
 }
 
 @media (max-width: 30rem) {
@@ -1637,7 +1779,8 @@
     flex-direction: column;
   }
 
-  .finance-project-settings-link {
+  .finance-project-settings-link,
+  .finance-surface-link {
     align-self: flex-end;
     inline-size: fit-content;
     max-inline-size: 100%;
@@ -1671,7 +1814,8 @@
     /* The reference chip is dropped at this width and gives its strip back to
        the columns. The value guide keeps its own, narrowed to the numbers. */
     --managerial-reference-gutter: 0rem;
-    --managerial-scale-gutter: 2.4rem;
+    --managerial-scale-gutter: 2.9rem;
+    --managerial-scale-gap: .5rem;
     --managerial-label-lines: 3;
     --managerial-label-size: .58rem;
     --managerial-label-leading: 1.35;
@@ -1680,6 +1824,14 @@
   .managerial-combo-chart__cell,
   .managerial-combo-chart__label {
     padding-inline: .1rem;
+  }
+
+  /* Centred on a column this narrow, the outermost tooltip reached past the
+     card and was clipped by it. Smaller type and tighter padding bring it back
+     inside rather than moving it off centre. */
+  .managerial-combo-chart__value.compact-money::after {
+    padding: .25rem .4rem;
+    font-size: .62rem;
   }
 
   .managerial-combo-chart__scale-value {
@@ -1719,33 +1871,6 @@
   .breakdown-legend {
     display: flex;
     gap: .2rem .55rem;
-  }
-
-  .breakdown-chart {
-    min-inline-size: 0;
-    padding-inline: .15rem;
-  }
-
-  .breakdown-chart__group {
-    grid-template-columns: 4.25rem minmax(0, 1fr);
-    gap: .3rem;
-  }
-
-  .breakdown-chart__group h3 {
-    font-size: .58rem;
-  }
-
-  .breakdown-chart__series {
-    grid-template-columns: minmax(0, 1fr) 4.7rem;
-    gap: .25rem;
-  }
-
-  .breakdown-chart__value {
-    font-size: .54rem;
-  }
-
-  .breakdown-chart__bars {
-    block-size: auto;
   }
 
   .finance-home-page .summary-card {
@@ -1880,18 +2005,28 @@
   min-inline-size: 0;
 }
 
-/* TEMPORARY: remove with monthly-trend-preview.js. */
-.monthly-trend-preview-notice {
-  flex: 0 0 auto;
-  padding: .35rem .6rem;
-  border-inline-start-color: var(--dash-sev-med);
-  background: color-mix(in srgb, var(--dash-sev-med) 12%, transparent);
-  font-size: .68rem;
-  line-height: 1.5;
+/* A number's tooltip rises above the plot, and the card around it is a stacking
+   context, so the card is lifted while one is open — the same arrangement the
+   cost breakdown needs for the same reason. */
+.finance-analysis-card:has(.combo-chart__axis-value:is(:hover, :focus-visible)) {
+  z-index: var(--z-calendar-popup);
 }
 
-.monthly-trend-preview-notice strong {
-  color: var(--dash-sev-med);
+.combo-chart__axis-value:is(:hover, :focus-visible) {
+  z-index: var(--z-calendar-popup);
+}
+
+/* The numbers sit against the outer edge of the card, so a tooltip centred on
+   one would hang half outside it. These open inward instead: the panel's
+   inline-start edge meets the number's, and it grows across the plot, which is
+   the only direction with room. */
+.combo-chart__axis-value.compact-money::after {
+  inset-inline-start: 0;
+  transform: translateX(0) translateY(.2rem);
+}
+
+.combo-chart__axis-value.compact-money:is(:hover, :focus-visible)::after {
+  transform: translateX(0) translateY(0);
 }
 
 .monthly-trend-legend {
@@ -1935,10 +2070,30 @@
   stroke-width: 1;
 }
 
-.combo-chart__axis-label,
 .combo-chart__category {
   fill: var(--color-text-muted);
   font-family: inherit;
+}
+
+/* The value axis, in HTML over the plot. Each number sits on its own gridline
+   and carries the same ::after tooltip as every other compacted amount in the
+   project, which SVG text could never have. */
+.combo-chart__axis {
+  position: absolute;
+  inset: 0;
+  /* The layer must not intercept anything: the columns' own hit areas are
+     underneath it, and only the numbers themselves are interactive. */
+  pointer-events: none;
+}
+
+.combo-chart__axis-value,
+.combo-chart__axis-value.compact-money {
+  position: absolute;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  line-height: 1;
+  pointer-events: auto;
+  white-space: nowrap;
 }
 
 .combo-chart__bar {

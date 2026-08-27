@@ -1,5 +1,5 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -150,7 +150,7 @@ function renderFiles(files, { adapter, canUpload, onChanged }) {
 
 export function createInvoiceFilesPage({ context, adapter }) {
   const root = element("div", "invoice-files-page");
-  const canUpload = hasPermission(context, "finance.edit");
+  const canUpload = capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
 
   async function load() {

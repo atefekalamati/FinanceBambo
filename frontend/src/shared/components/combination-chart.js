@@ -26,22 +26,41 @@ function svg(tag, attributes = {}) {
   return node;
 }
 
-function geometry(width, height, isNarrow, isCompact) {
+/**
+ * The lane the value axis lives in, measured rather than guessed.
+ *
+ * It used to be a flat 44px, which fit the amounts this project happens to have
+ * and nothing larger: a project an order of magnitude up writes «۱٬۲۳۴٫۵۶»
+ * there and runs it into the chart, or off the edge. `axisWidth` is the widest
+ * label as the browser actually renders it, and the lane is that plus a gap on
+ * each side — one to keep the numbers off the plot, one to keep them off the
+ * edge — so the boundary holds whatever the numbers turn out to be.
+ */
+function geometry(width, height, isNarrow, isCompact, axisWidth) {
   const barWidthRatio = isCompact ? 0.52 : 0.44;
   // A short box spends a punishing share of itself on padding, so trim the top
   // (which only holds air) and keep the bottom, which carries the month labels.
   const isShort = height < 200;
+  const gap = isCompact ? 9 : 13;
+  const edge = isCompact ? 4 : 7;
+  // A floor so a chart of single digits does not jump about, and a ceiling so a
+  // very long amount on a very narrow chart cannot squeeze the plot away.
+  const lane = Math.min(
+    Math.max(Math.ceil(axisWidth) + gap + edge, isCompact ? 30 : 40),
+    Math.max(Math.round(width * 0.32), 40),
+  );
   return {
     width,
     height,
     padding: {
       // Inline-start of an RTL chart is the right edge, where the value axis
-      // sits. Labels are short numbers on one shared scale, so this is enough.
-      value: isCompact ? 34 : 44,
+      // sits.
+      value: lane,
       top: isShort ? 8 : 16,
       bottom: 30,
       far: isCompact ? 10 : 16,
     },
+    axisGap: gap,
     barWidthRatio,
     fontSize: isCompact ? 9 : isNarrow ? 10 : 11,
   };
@@ -53,6 +72,8 @@ export function createCombinationChart({
   barSeries,
   lineSeries,
   formatValue = (value) => String(value),
+  /** The unrounded figure behind an axis number. Without it the axis is inert. */
+  formatExactValue,
   renderTooltip,
   ariaLabel = "نمودار ترکیبی",
 } = {}) {
@@ -61,7 +82,34 @@ export function createCombinationChart({
   const tooltip = element("div", "combo-chart__tooltip");
   tooltip.setAttribute("role", "status");
   tooltip.hidden = true;
-  surface.append(tooltip);
+  // The axis numbers are HTML over the plot rather than text inside it. SVG text
+  // cannot carry generated content, so a number drawn in the picture could never
+  // have the ::after tooltip every other compacted amount in this project has —
+  // and a chart with a tooltip of its own is a chart that has to be learned
+  // separately. Being HTML also means the widest one can simply be asked its
+  // width instead of measured through a hidden stand-in.
+  const axisLayer = element("div", "combo-chart__axis");
+  surface.append(tooltip, axisLayer);
+
+  /** Renders the axis numbers and answers how wide the widest of them is. */
+  function layoutAxis(fontSize) {
+    const nodes = ticks.map((tick) => {
+      const shown = formatValue(tick.valueIrr) ?? "";
+      const exact = formatExactValue?.(tick.valueIrr);
+      const node = element("span", `combo-chart__axis-value numeric${exact ? " compact-money" : ""}`, shown);
+      node.style.fontSize = `${fontSize}px`;
+      if (exact) {
+        node.dataset.exact = exact;
+        node.setAttribute("aria-label", exact);
+        node.tabIndex = 0;
+      }
+      return node;
+    });
+    axisLayer.replaceChildren(...nodes);
+    // Zero while the panel holding the chart is still hidden, which is the same
+    // moment every other measurement here reads zero; the reveal redraws.
+    return { nodes, widest: nodes.reduce((result, node) => Math.max(result, node.offsetWidth), 0) };
+  }
   container.append(surface);
 
   let points = [];
@@ -110,7 +158,9 @@ export function createCombinationChart({
     // category row past the clip. The floor applies to the fallback alone, for a
     // panel that is still hidden and has no height of its own yet.
     const height = available > 0 ? available : Math.max(fallback, MIN_HEIGHT);
-    const box = geometry(width, height, isNarrow, isCompact);
+    const fontSize = isCompact ? 9 : isNarrow ? 10 : 11;
+    const axis = layoutAxis(fontSize);
+    const box = geometry(width, height, isNarrow, isCompact, axis.widest);
     const plotWidth = Math.max(box.width - box.padding.value - box.padding.far, 40);
     const plotHeight = Math.max(box.height - box.padding.top - box.padding.bottom, 40);
     const plotTop = box.padding.top;
@@ -128,18 +178,14 @@ export function createCombinationChart({
       focusable: "false",
     });
 
-    ticks.forEach((tick) => {
+    // The SVG is stretched to the surface, so a tick's y is the same number of
+    // CSS pixels down from its top and the numbers land on their own lines.
+    ticks.forEach((tick, index) => {
       const y = plotBottom - (plotHeight * tick.magnitude) / 100;
       root.append(svg("line", { class: "combo-chart__gridline", x1: plotRight - plotWidth, x2: plotRight, y1: y, y2: y }));
-      const label = svg("text", {
-        class: "combo-chart__axis-label",
-        x: plotRight + 8,
-        y: y + box.fontSize / 3,
-        "font-size": box.fontSize,
-        "text-anchor": "start",
-      });
-      label.textContent = formatValue(tick.valueIrr);
-      root.append(label);
+      const node = axis.nodes[index];
+      node.style.left = `${plotRight + box.axisGap}px`;
+      node.style.top = `${y}px`;
     });
 
     const barWidth = bandWidth * box.barWidthRatio;
@@ -147,6 +193,8 @@ export function createCombinationChart({
 
     points.forEach((point, index) => {
       const centre = centreOf(index);
+      // The baseline is the bottom of the plot and stays there. A magnitude is
+      // never negative, so a bar never grows downward out of it.
       const barHeight = (plotHeight * point[barSeries.magnitudeKey]) / 100;
       if (barHeight > 0) {
         root.append(svg("rect", {
@@ -209,7 +257,9 @@ export function createCombinationChart({
       root.append(hit);
     });
 
-    surface.replaceChildren(root, tooltip);
+    // The axis layer goes back with the rest: it has to stay in the document to
+    // be measurable on the next draw.
+    surface.replaceChildren(root, tooltip, axisLayer);
     if (activeIndex >= 0 && points[activeIndex]) {
       const hit = root.querySelector(`.combo-chart__hit[data-index="${activeIndex}"]`);
       if (hit) showTooltip(activeIndex, hit);
@@ -219,8 +269,11 @@ export function createCombinationChart({
 
   function onPointer(event) {
     const hit = event.target.closest?.(".combo-chart__hit");
+    // Anywhere inside the surface that is not a column closes the panel. The
+    // axis numbers sit over the plot with their own tooltip, and leaving the
+    // column's open underneath would put two on the screen at once.
     if (!hit) {
-      if (event.type === "pointerdown") hideTooltip();
+      hideTooltip();
       return;
     }
     showTooltip(Number(hit.getAttribute("data-index")), hit);

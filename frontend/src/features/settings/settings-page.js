@@ -1,4 +1,5 @@
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor, describeAccess } from "../../core/auth/capabilities.js";
+import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -76,8 +77,21 @@ function createRevisionHistory(data) {
   return wrapper;
 }
 
-export function createSettingsPage({ context, adapter, pricesAdapter, onSettingsUpdated = () => {} }) {
-  const root = element("div", "settings-page");
+/**
+ * One page, two surfaces.
+ *
+ * On امور مالی it is the whole thing: the gross built area every per-square-metre
+ * figure divides by, the working unit conversions, and the append-only trail of
+ * both — settings that change what the project's numbers come out as.
+ *
+ * On گزارش مالی it is only what changes nothing: which currency to read amounts
+ * in, and what this account is allowed to do. That is a choice about what is
+ * worth offering, not a permission check — the Backend still refuses a PATCH
+ * from an account without `finance.edit`, whichever surface asked.
+ */
+export function createSettingsPage({ context, adapter, pricesAdapter, surface = SURFACES.OPERATIONS, onSettingsUpdated = () => {} }) {
+  const readerOnly = surface === SURFACES.REPORT;
+  const root = element("div", `settings-page${readerOnly ? " settings-page--reader" : ""}`);
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let settings = null;
   let conversionWorkspace = null;
@@ -85,6 +99,19 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
   let conversionEditorOpen = false;
 
   async function load() {
+    // The reader-only view is built entirely from the currency preference held
+    // in this browser and the permissions the host already granted. It asks the
+    // service for nothing, so nothing the service answers can stop it — not a
+    // project whose gross built area was never recorded, and not a 403 on a
+    // settings record it does not read.
+    if (readerOnly) {
+      settings = null;
+      conversionWorkspace = null;
+      conversionError = null;
+      state = createRequestState(REQUEST_STATUS.SUCCESS, null);
+      paint();
+      return;
+    }
     state = createRequestState(REQUEST_STATUS.LOADING);
     paint();
     try {
@@ -110,16 +137,19 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
 
   function renderHeader() {
     const header = element("header", "feature-header");
-    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    const home = homeRouteFor(surface);
+    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[surface] ?? "امور مالی"}`);
     back.classList.add("finance-back-link");
-    back.href = "#/finance";
+    back.href = `#${home?.path ?? "/finance"}`;
     const navigation = element("div", "feature-header__navigation");
     const otherActions = element("div", "feature-header__other-actions");
     navigation.append(otherActions, back);
     const copy = element("div", "feature-header__copy");
-    const eyebrow = element("span", "feature-header__eyebrow", "پیکربندی پروژه جاری");
-    const title = element("h1", "", "تنظیمات مالی پروژه");
-    copy.append(eyebrow, title, element("p", "", "قواعد پایه محاسبات مالی، نحوه نمایش پول، زیربنا و تبدیل واحدهای پروژه را از یک محل مدیریت کنید."));
+    const eyebrow = element("span", "feature-header__eyebrow", readerOnly ? "نمایش گزارش مالی" : "پیکربندی پروژه جاری");
+    const title = element("h1", "", readerOnly ? "تنظیمات نمایش" : "تنظیمات مالی پروژه");
+    copy.append(eyebrow, title, element("p", "", readerOnly
+      ? "واحدی که مبالغ با آن نمایش داده می‌شوند را انتخاب کنید و ببینید این حساب چه دسترسی‌های مالی دارد. این تنظیمات هیچ عددی از پروژه را تغییر نمی‌دهند."
+      : "قواعد پایه محاسبات مالی، نحوه نمایش پول، زیربنا و تبدیل واحدهای پروژه را از یک محل مدیریت کنید."));
     header.append(copy, navigation);
     return header;
   }
@@ -174,13 +204,10 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
       element("p", "", "این بخش فقط وضعیت دسترسی‌های دریافتی از سیستم اصلی BAMBO را نمایش می‌دهد."),
     );
     const list = element("ul", "settings-access__list");
-    [
-      ["finance.view", "مشاهده اطلاعات مالی"],
-      ["finance.edit", "ویرایش اطلاعات و تنظیمات مالی"],
-      ["finance_report.view", "مشاهده گزارش‌های مالی"],
-      ["finance_report.export", "دریافت خروجی گزارش‌ها"],
-    ].forEach(([code, label]) => {
-      const allowed = hasPermission(context, code);
+    // Read back from the one place the host's codes are named, so a code the
+    // module starts honouring cannot be missing from the list that claims to
+    // show this account everything it may do.
+    describeAccess(context).forEach(({ label, allowed }) => {
       const item = element("li", `settings-access__item settings-access__item--${allowed ? "allowed" : "denied"}`);
       item.append(element("span", "", label), element("strong", "", allowed ? "فعال" : "غیرفعال"));
       list.append(item);
@@ -200,7 +227,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     );
     head.append(element("div", "settings-card__icon", "↔"), copy);
     const editorHost = element("div", "settings-conversions__editor-host");
-    if (hasPermission(context, "finance.edit")) {
+    if (capabilitiesFor(context).writeFinance) {
       const add = element("button", "button button--primary", "تعریف تبدیل کاری");
       add.type = "button";
       add.addEventListener("click", () => {
@@ -357,7 +384,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
    * still decides.
    */
   function mayReviseArea(data) {
-    return data?.canEdit ?? hasPermission(context, "finance.edit");
+    return data?.canEdit ?? capabilitiesFor(context).writeFinance;
   }
 
   function renderRevisionDenied(current) {
@@ -377,6 +404,14 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
 
   function renderContent(data) {
     const fragment = document.createDocumentFragment();
+    // Nothing below this point is reachable without a settings record, and the
+    // reader-only view does not have one.
+    if (readerOnly) {
+      const readerGrid = element("div", "settings-primary-grid");
+      readerGrid.append(renderCurrencyPolicy(), renderAccessSummary());
+      fragment.append(readerGrid);
+      return fragment;
+    }
     const overview = element("section", "settings-overview");
     const areaCard = element("article", "settings-overview__item");
     areaCard.append(element("span", "", "زیربنای کل فعلی"), element("strong", "numeric", formatArea(data.grossBuiltArea)), element("small", "", `بازنگری ${data.revision}`));
@@ -410,7 +445,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, onSettings
     // finance.view and asks for the edit permission only on PATCH, so reading
     // is gated on reading. Whether the form is offered is a separate question,
     // and `canEdit` answers it.
-    const contentState = hasPermission(context, "finance.view") ? state : createRequestState(REQUEST_STATUS.DENIED);
+    const contentState = capabilitiesFor(context).viewFinance ? state : createRequestState(REQUEST_STATUS.DENIED);
     root.replaceChildren(renderHeader(), renderPageState(contentState, { renderContent, renderEmpty, onRetry: load }));
   }
 

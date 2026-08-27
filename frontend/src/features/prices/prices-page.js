@@ -1,4 +1,7 @@
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
+import { downloadCsvFile } from "../../shared/exports/csv.js";
+import { buildPricesCsv, pricesFileName } from "./prices-csv.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -614,9 +617,20 @@ export function renderConversionHistory(history) {
   return wrapper;
 }
 
-export function createPricesPage({ context, adapter, focusResourceId = "" }) {
+/**
+ * The price list, on both surfaces.
+ *
+ * On امور مالی it is the working page: new versions, bulk entry, the conversion
+ * rules. On گزارش مالی it is the same table with nothing to press — and that is
+ * decided by which route opened it, not only by what the account may do. An
+ * administrator reading the report gets the read-only table too; if they want to
+ * change a price they go to the page that is for changing prices. One mode per
+ * route is a thing you can reason about; one mode per account is not.
+ */
+export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIONS, focusResourceId = "" }) {
   const root = element("div", "prices-page");
-  const canEdit = hasPermission(context, "finance.edit");
+  const readOnly = surface === SURFACES.REPORT;
+  const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let listFilters = { query: "", scope: "all" };
 
@@ -635,10 +649,16 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
   function renderHeader() {
     const header = element("header", "feature-header");
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "قیمت روز و تاریخچه قیمت"), element("h1", "", "قیمت روز"), element("p", "", "قیمت پایه سازمان و قیمت اختصاصی پروژه را بدون بازنویسی نسخه‌های قبلی مدیریت کنید."));
-    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    copy.append(
+      element("span", "feature-header__eyebrow", readOnly ? "جدول قیمت‌های پروژه" : "قیمت روز و تاریخچه قیمت"),
+      element("h1", "", readOnly ? "جدول قیمت‌ها" : "قیمت روز"),
+      element("p", "", readOnly
+        ? "قیمت پایه سازمان، قیمت اختصاصی پروژه و قیمت روز هر قلم. این صفحه فقط‌خواندنی است و می‌توانید از آن خروجی اکسل بگیرید."
+        : "قیمت پایه سازمان و قیمت اختصاصی پروژه را بدون بازنویسی نسخه‌های قبلی مدیریت کنید."),
+    );
+    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[surface]}`);
     back.classList.add("finance-back-link");
-    back.href = "#/finance";
+    back.href = `#${homeRouteFor(surface)?.path ?? "/finance"}`;
     const navigation = element("div", "feature-header__navigation");
     const otherActions = element("div", "feature-header__other-actions");
     navigation.append(otherActions, back);
@@ -671,6 +691,17 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
     const fragment = document.createDocumentFragment();
     const toolbar = element("div", "prices-toolbar");
     toolbar.append(element("p", "", "قیمت روز، آخرین قیمت معتبر است و قیمت اختصاصی پروژه بر قیمت پایه سازمان اولویت دارد."));
+    // Taking away a copy of a table you are already reading is not a privilege,
+    // so the export is offered to every account that can see the page.
+    const toolbarActions = element("div", "prices-toolbar__actions");
+    const exportCsv = element("button", "button button--ghost", "خروجی اکسل");
+    exportCsv.type = "button";
+    exportCsv.addEventListener("click", () => {
+      // What leaves is what is on screen: the filters are already applied.
+      downloadCsvFile(buildPricesCsv(filteredPrices), pricesFileName({ projectCode: context.projectCode, asOfDate: workspace.asOfDate }));
+    });
+    toolbarActions.append(exportCsv);
+    toolbar.append(toolbarActions);
     if (canEdit) {
       const importPrices = element("button", "button button--ghost", "ورود گروهی قیمت");
       importPrices.type = "button";
@@ -687,9 +718,7 @@ export function createPricesPage({ context, adapter, focusResourceId = "" }) {
       add.addEventListener("click", () => openEditor(workspace));
       const conversions = element("a", "button button--ghost", "مدیریت تبدیل واحد");
       conversions.href = "#/settings";
-      const toolbarActions = element("div", "prices-toolbar__actions");
       toolbarActions.append(conversions, importPrices, add);
-      toolbar.append(toolbarActions);
     }
     const normalizedQuery = listFilters.query.toLocaleLowerCase("fa-IR");
     const filteredPrices = workspace.currentPrices.filter((item) => {

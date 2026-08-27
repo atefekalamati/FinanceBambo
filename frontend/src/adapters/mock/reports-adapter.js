@@ -1,5 +1,5 @@
 import { ApiError } from "../../core/api/api-error.js";
-import { aggregateConfirmedInvoicesByMonth } from "../../features/finance-home/monthly-trend.js";
+import { aggregateConfirmedInvoicesByMonth } from "../../shared/reports/monthly-trend.js";
 import { buildSeedInvoices } from "./invoices-adapter.js";
 
 /**
@@ -11,11 +11,6 @@ import { buildSeedInvoices } from "./invoices-adapter.js";
  * is designed. The API adapter deliberately reports the series as unavailable
  * rather than deriving a lookalike, so nothing here can reach a real project.
  */
-const SEED_MONTHLY_ESTIMATE_IRR = Object.freeze([
-  "1180000000", "1240000000", "1310000000", "1400000000",
-  "1350000000", "1290000000", "1420000000", "1360000000",
-]);
-
 function wait(duration = 320) {
   return new Promise((resolve) => setTimeout(resolve, duration));
 }
@@ -94,16 +89,26 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
       breakdown: [
         { resourceType: "material", initialEstimateIrr: "9800000000", revisedEstimateIrr: "10200000000", actualCostIrr: "3920000000", remainingPhysicalCostIrr: "5440000000", forecastFinalIrr: "9360000000" },
         { resourceType: "labor", initialEstimateIrr: "4100000000", revisedEstimateIrr: "4250000000", actualCostIrr: "1380000000", remainingPhysicalCostIrr: "2600000000", forecastFinalIrr: "3980000000" },
-        { resourceType: "equipment", initialEstimateIrr: "2750000000", revisedEstimateIrr: "2680000000", actualCostIrr: "610000000", remainingPhysicalCostIrr: "1930000000", forecastFinalIrr: "2540000000" },
+        // Deliberately over its estimate. A reference dataset in which nothing
+        // ever exceeds its budget cannot show the one state the comparison
+        // exists to reveal.
+        { resourceType: "equipment", initialEstimateIrr: "2750000000", revisedEstimateIrr: "2680000000", actualCostIrr: "3400000000", remainingPhysicalCostIrr: "1930000000", forecastFinalIrr: "4100000000" },
         { resourceType: "general_cost", initialEstimateIrr: "2000000000", revisedEstimateIrr: "2050000000", actualCostIrr: "330000000", remainingPhysicalCostIrr: "1640000000", forecastFinalIrr: "1970000000" },
       ],
+      // One row per estimate line, the way the service answers: میلگرد is used on
+      // two activities and arrives twice, and a line whose quantity was never
+      // revised arrives with a deviation of zero. Both are what the presentation
+      // has to fold away, so the mock has to contain them.
       topPriceVariances: [
-        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", varianceIrr: "460000000" },
-        { resourceId: "20000000-0000-4000-8000-000000000003", estimateLineId: "30000000-0000-4000-8000-000000000004", resourceCode: "EQ-CRANE", resourceTitle: "جرثقیل", resourceType: "equipment", varianceIrr: "185000000" },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", activityExternalId: "ACT-102", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", baseUnit: "kg", varianceIrr: "460000000", priceAvailable: true },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000002", activityExternalId: "ACT-201", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", baseUnit: "kg", varianceIrr: "312000000", priceAvailable: true },
+        { resourceId: "20000000-0000-4000-8000-000000000003", estimateLineId: "30000000-0000-4000-8000-000000000004", activityExternalId: "ACT-201", resourceCode: "EQ-CRANE", resourceTitle: "جرثقیل", resourceType: "equipment", baseUnit: "hour", varianceIrr: "185000000", priceAvailable: true },
       ],
       topQuantityVariances: [
-        { resourceId: "20000000-0000-4000-8000-000000000002", estimateLineId: "30000000-0000-4000-8000-000000000003", resourceCode: "LAB-FORM", resourceTitle: "اکیپ قالب‌بندی", resourceType: "labor", varianceQuantity: "125.75" },
-        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000002", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", varianceQuantity: "42.5" },
+        { resourceId: "20000000-0000-4000-8000-000000000002", estimateLineId: "30000000-0000-4000-8000-000000000003", activityExternalId: "ACT-202", resourceCode: "LAB-FORM", resourceTitle: "اکیپ قالب‌بندی", resourceType: "labor", baseUnit: "person_hour", initialQuantity: "900.0000", revisedQuantity: "1025.7500", varianceQuantity: "125.7500" },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", activityExternalId: "ACT-102", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", baseUnit: "kg", initialQuantity: "10000.0000", revisedQuantity: "10042.5000", varianceQuantity: "42.5000" },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000002", activityExternalId: "ACT-201", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", baseUnit: "kg", initialQuantity: "8500.0000", revisedQuantity: "8500.0000", varianceQuantity: "0.0000" },
+        { resourceId: "20000000-0000-4000-8000-000000000003", estimateLineId: "30000000-0000-4000-8000-000000000004", activityExternalId: "ACT-201", resourceCode: "EQ-CRANE", resourceTitle: "جرثقیل", resourceType: "equipment", baseUnit: "hour", initialQuantity: "160.0000", revisedQuantity: "160.0000", varianceQuantity: "0.0000" },
       ],
       warnings: [{ code: "CURRENT_PRICE_MISSING", message: "Current price is missing.", estimateLineId: null }],
       calculationStatus: "complete",
@@ -189,13 +194,18 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
   async function getMonthlyTrend() {
     await wait(280);
     if (initialState === "error") throw new ApiError({ status: 503, code: "MONTHLY_TREND_UNAVAILABLE", message: "دریافت روند ماهانه هزینه انجام نشد.", requestId: "mock-monthly-trend-001" });
-    if (initialState === "empty") return { months: [], estimateSource: "mock_seed" };
-    const actualMonths = aggregateConfirmedInvoicesByMonth(buildSeedInvoices(context));
+    if (initialState === "empty") return { months: [], estimateSource: "unavailable" };
+    // No estimate line carries a planned date, so the service has no monthly
+    // baseline to report and answers null on every point. The mock seeded one
+    // while the endpoint did not exist; keeping it now would make standalone
+    // draw a comparison the real product cannot, which is the one thing a
+    // reference dataset must never do.
     return {
-      estimateSource: "mock_seed",
-      months: actualMonths.map((month, index) => ({
+      estimateSource: "unavailable",
+      actualSource: "confirmed_financial_documents",
+      months: aggregateConfirmedInvoicesByMonth(buildSeedInvoices(context)).map((month) => ({
         ...month,
-        estimateIrr: SEED_MONTHLY_ESTIMATE_IRR[index] ?? null,
+        estimateIrr: null,
       })),
     };
   }

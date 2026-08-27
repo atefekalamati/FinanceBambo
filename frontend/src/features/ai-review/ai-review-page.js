@@ -1,5 +1,5 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
@@ -191,7 +191,7 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
 
 export function createAiReviewPage({ context, adapter }) {
   const root = element("div", "ai-review-page");
-  const canEdit = hasPermission(context, "finance.edit");
+  const canEdit = capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
 
   async function load() {
