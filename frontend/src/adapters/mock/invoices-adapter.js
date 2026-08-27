@@ -12,25 +12,53 @@ function wait(duration = 320) {
 }
 
 /**
- * The seed spans eight Gregorian months so the monthly trend on the overview
- * has a real shape. Amounts and statuses are untouched; only the calendar
- * position of each invoice moves.
+ * The seed spans twelve Gregorian months so the monthly trend has a real shape.
+ * Amounts and statuses are untouched; only the calendar position of each
+ * invoice moves.
+ *
+ * The window ends on the month the rest of the dataset lives in rather than
+ * running past it. A future-dated invoice is excluded by every report — they
+ * are all built as of a reporting date — so it would be money that exists in
+ * the list and nowhere else, and the month it sits in would draw as empty.
+ *
+ * Twelve is also what the monthly report asks the service for by default, so
+ * every column the chart draws has something behind it.
  */
-const SEED_MONTH_SPAN = 8;
-const SEED_FIRST_MONTH = 4; // 2026-04, which falls in فروردین ۱۴۰۵
+const SEED_MONTH_SPAN = 12;
+const SEED_FIRST_YEAR = 2025;
+const SEED_FIRST_MONTH = 9; // 2025-09 through 2026-08, ending in مرداد ۱۴۰۵
 
 function seedInvoiceDate(index) {
-  const month = SEED_FIRST_MONTH + ((index - 1) % SEED_MONTH_SPAN);
+  const offset = SEED_FIRST_MONTH - 1 + ((index - 1) % SEED_MONTH_SPAN);
+  const year = SEED_FIRST_YEAR + Math.floor(offset / 12);
+  const month = (offset % 12) + 1;
   const day = ((index * 7) % 27) + 1;
-  return `2026-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * A reversal is not a document of its own making.
+ *
+ * `InvoiceService.void` builds it from the invoice it cancels and gives it that
+ * invoice's own `invoice_date`, so the −X always lands in the same month as the
+ * +X it undoes and the two cancel where they happened. A seed that dated its
+ * reversals independently was subtracting money in months where nothing had
+ * been added, which is a state the service cannot produce.
+ *
+ * The statuses cycle draft, awaitingConfirmation, confirmed, voided, corrected,
+ * so the confirmed invoice a reversal belongs to is always the one before it.
+ */
+function reversalSourceIndex(index) {
+  return STATUSES[(index - 1) % STATUSES.length] === "voided" ? index - 1 : index;
 }
 
 function makeInvoice(index, context) {
   const number = String(index).padStart(3, "0");
-  const invoiceDate = seedInvoiceDate(index);
   const status = STATUSES[(index - 1) % STATUSES.length];
+  const sourceIndex = reversalSourceIndex(index);
+  const invoiceDate = seedInvoiceDate(sourceIndex);
   const source = SOURCES[(index - 1) % SOURCES.length];
-  const rawTotalIRR = String(120000000 + (index * 1750000));
+  const rawTotalIRR = String(120000000 + (sourceIndex * 1750000));
   return {
     invoiceId: `invoice-demo-${number}`,
     organizationId: context.organizationId,
@@ -46,17 +74,22 @@ function makeInvoice(index, context) {
     duplicateWarning: index % 17 === 0,
     duplicateOverrideReason: index % 17 === 0 ? "ادامه ثبت پس از بررسی سند مشابه توسط کارشناس مالی" : null,
     rawLinesTotalIRR: rawTotalIRR,
-    discountIRR: index % 4 === 0 ? "500000" : "0",
-    taxIRR: index % 3 === 0 ? "1200000" : "0",
-    shippingIRR: index % 5 === 0 ? "750000" : "0",
+    discountIRR: sourceIndex % 4 === 0 ? "500000" : "0",
+    taxIRR: sourceIndex % 3 === 0 ? "1200000" : "0",
+    shippingIRR: sourceIndex % 5 === 0 ? "750000" : "0",
     otherCostsIRR: "0",
-    finalAmountIRR: String(BigInt(rawTotalIRR) - BigInt(index % 4 === 0 ? "500000" : "0") + BigInt(index % 3 === 0 ? "1200000" : "0") + BigInt(index % 5 === 0 ? "750000" : "0")),
+    finalAmountIRR: String(BigInt(rawTotalIRR) - BigInt(sourceIndex % 4 === 0 ? "500000" : "0") + BigInt(sourceIndex % 3 === 0 ? "1200000" : "0") + BigInt(sourceIndex % 5 === 0 ? "750000" : "0")),
     submittedBy: context.userId,
     createdAt: `${invoiceDate}T08:30:00Z`,
     confirmedBy: status === "confirmed" || status === "voided" || status === "corrected" ? context.userId : null,
-    confirmedAt: status === "confirmed" || status === "voided" || status === "corrected" ? "2026-08-01T09:15:00Z" : null,
-    relatedInvoiceId: status === "voided" || status === "corrected" ? "invoice-demo-001" : null,
-    originalInvoiceId: status === "voided" || status === "corrected" ? "invoice-demo-001" : null,
+    // Confirmed on the day it is dated. A fixed timestamp would sit before the
+    // invoice date for anything later than it, and read as a document approved
+    // before it existed.
+    confirmedAt: status === "confirmed" || status === "voided" || status === "corrected" ? `${invoiceDate}T09:15:00Z` : null,
+    // The document this one acts on: the confirmed invoice before it, not a
+    // single invoice that every reversal in the project claims to cancel.
+    relatedInvoiceId: status === "voided" || status === "corrected" ? `invoice-demo-${String(index - 1).padStart(3, "0")}` : null,
+    originalInvoiceId: status === "voided" || status === "corrected" ? `invoice-demo-${String(index - 1).padStart(3, "0")}` : null,
     financialEffectSign: status === "voided" ? -1 : 1,
     lines: [
       { invoiceLineId: `line-${number}-1`, targetType: "estimate_line", targetLabel: "میلگرد فونداسیون نمونه", quantity: "1250.0000", unit: "kg", unitPriceIRR: "80000", lineAmountIRR: "100000000", description: "تحویل مرحله اول" },
