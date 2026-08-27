@@ -59,7 +59,7 @@ class DemoPortTests(unittest.TestCase):
             listener.bind(("127.0.0.1", 0))
             listener.listen(1)
             port = listener.getsockname()[1]
-            from devhost.__main__ import check_port
+            from devhost.environment import check_port
             with self.assertRaises(SystemExit) as caught:
                 check_port("127.0.0.1", port)
             message = str(caught.exception)
@@ -73,7 +73,7 @@ class DemoPortTests(unittest.TestCase):
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
         probe.close()
-        from devhost.__main__ import check_port
+        from devhost.environment import check_port
         check_port("127.0.0.1", port)
 
     def test_the_host_never_stops_whatever_is_listening(self):
@@ -83,7 +83,8 @@ class DemoPortTests(unittest.TestCase):
         to leave something running and see whether it survives -- and a test that kills the
         wrong process on a developer machine is a worse outcome than the bug.
         """
-        source = (BACKEND_ROOT / "devhost" / "__main__.py").read_text(encoding="utf-8")
+        source = "".join((BACKEND_ROOT / "devhost" / name).read_text(encoding="utf-8")
+                         for name in ("__main__.py", "environment.py"))
         for weapon in ("kill", "terminate", "taskkill", "Stop-Process", "SIGKILL",
                        "SIGTERM", "pg_terminate_backend"):
             with self.subTest(weapon=weapon):

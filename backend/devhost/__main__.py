@@ -4,14 +4,14 @@ import argparse
 import asyncio
 import os
 import selectors
-import socket
 import sys
 from pathlib import Path
 
 import uvicorn
 
 from .app import build
-from .environment import MissingConfiguration, database_url, demo_port, redacted
+from .environment import (MissingConfiguration, check_port, database_url, demo_port,
+                          redacted)
 
 
 def loop_factory():
@@ -19,33 +19,6 @@ def loop_factory():
     if sys.platform == "win32":
         return asyncio.SelectorEventLoop(selectors.SelectSelector())
     return asyncio.new_event_loop()
-
-
-def check_port(host: str, port: int) -> None:
-    """Stop before binding if the port is already answering.
-
-    Two things this deliberately does not do:
-
-      * it does not move to another port. A host that silently relocates is one nobody can
-        write instructions for, and the browser ends up somewhere the reader was not told
-        about;
-      * it does not stop whatever is listening. This process did not start it and has no
-        idea what it is, so it is reported and left alone.
-
-    Binding without checking would fail anyway, but with an OSError from inside the server
-    rather than a sentence saying what to do about it.
-    """
-    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        probe.settimeout(1)
-        occupied = probe.connect_ex((host, port)) == 0
-    finally:
-        probe.close()
-    if occupied:
-        raise SystemExit(
-            f"Port {port} is already in use on {host}.\n"
-            "Free it, or choose another port with --port or FINANCE_DEMO_PORT."
-        )
 
 
 def main() -> None:

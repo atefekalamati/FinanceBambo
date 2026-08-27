@@ -139,9 +139,9 @@ def reporting_date(row) -> date:
     return row["created_at"].date()
 
 
-def activity_code(task):
-    """The first field in `ACTIVITY_CODE_FIELDS` this task actually fills."""
-    for field in ACTIVITY_CODE_FIELDS:
+def activity_code(task, fields=ACTIVITY_CODE_FIELDS):
+    """The first of `fields` this task actually fills."""
+    for field in fields:
         value = (task.get(field) or "").strip()
         if value:
             return value
@@ -167,7 +167,7 @@ def _percent(value):
     return None if value is None else format(value, "f")
 
 
-def task_row(task):
+def task_row(task, activity_code_fields=ACTIVITY_CODE_FIELDS):
     """One task as a progress-feed row.
 
     Every resource and quantity field is null, because Core states none of them. See the
@@ -198,7 +198,7 @@ def task_row(task):
             "taskExternalId": task_external_id(task),
             "taskName": task["name"],
             "wbsCode": task["wbs"],
-            "activityCode": activity_code(task),
+            "activityCode": activity_code(task, activity_code_fields),
             "parentTaskExternalId": None,
             "taskProgressPercent": _percent(progress),
             "taskStart": task["start"],
@@ -221,9 +221,15 @@ class CoreProgressSnapshotProvider:
     record what to ask with next time.
     """
 
-    def __init__(self, connection, *, progress_types=PROGRESS_SNAPSHOT_TYPES):
+    def __init__(self, connection, *, progress_types=PROGRESS_SNAPSHOT_TYPES,
+                 activity_code_fields=ACTIVITY_CODE_FIELDS):
         self._connection = connection
         self._progress_types = tuple(progress_types)
+        # Which MSP field carries the activity code is a planning convention, not a schema
+        # fact -- see ACTIVITY_CODE_FIELDS. A host that knows its planners' convention says
+        # so here instead of relying on the default order, and does it without any change to
+        # the port: the constructor is the host's side of the boundary.
+        self._activity_code_fields = tuple(activity_code_fields)
 
     async def _rows(self, sql, params):
         async with self._connection.cursor(row_factory=dict_row) as cursor:
@@ -303,5 +309,5 @@ class CoreProgressSnapshotProvider:
                 "importedBy": str(row["created_by"]) if row["created_by"] else None,
                 "importedAt": row["created_at"].isoformat(),
             },
-            "assignments": [task_row(task) for task in tasks],
+            "assignments": [task_row(task, self._activity_code_fields) for task in tasks],
         }
