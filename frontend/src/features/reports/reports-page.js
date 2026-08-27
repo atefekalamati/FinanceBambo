@@ -1,4 +1,6 @@
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
+import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -99,7 +101,7 @@ function renderPriceVariances(rows = []) {
   chart.setAttribute("aria-label", "نمودار بیشترین اثر تغییر قیمت بر پروژه");
   presentation.forEach((row) => {
     const link = element("a", `price-impact-chart__row price-impact-chart__row--${row.direction}`);
-    link.href = varianceLink("#/prices", row);
+    link.href = varianceLink("#/report-prices", row);
     const identity = element("span", "price-impact-chart__identity");
     identity.append(element("strong", "", row.resourceTitle || "قلم بدون عنوان"), element("small", "numeric", row.resourceCode || "بدون کد"));
     const track = element("span", "price-impact-chart__track");
@@ -126,7 +128,7 @@ function renderPriceVariances(rows = []) {
     const identity = document.createElement("td");
     identity.append(element("strong", "", row.resourceTitle || "قلم بدون عنوان"), element("small", "table-subtext numeric", row.resourceCode || "بدون کد"));
     const detail = element("a", "table-action", "مشاهده قیمت");
-    detail.href = varianceLink("#/prices", row);
+    detail.href = varianceLink("#/report-prices", row);
     record.append(identity, element("td", "", row.resourceTypeLabel), element("td", "numeric", formatTomanFromIrr(row.varianceIrr)), element("td", `variance-direction variance-direction--${row.direction}`, row.directionLabel), element("td", "", ""));
     record.lastElementChild.append(detail);
     body.append(record);
@@ -161,7 +163,7 @@ function renderQuantityVariances(rows = []) {
     const identity = document.createElement("td");
     identity.append(element("strong", "", row.resourceTitle || "قلم بدون عنوان"), element("small", "table-subtext numeric", row.resourceCode || "بدون کد"));
     const detail = element("a", "table-action", "مشاهده ردیف");
-    detail.href = varianceLink("#/financial-items", row);
+    detail.href = varianceLink("#/report-items", row);
     record.append(identity, element("td", "", row.resourceTypeLabel), element("td", "numeric", formatDisplayNumber(row.varianceQuantity)), element("td", "", ""));
     record.lastElementChild.append(detail);
     body.append(record);
@@ -316,9 +318,22 @@ export function createReportsPage({ context, adapter }) {
 
   function renderContent(report) {
     const fragment = document.createDocumentFragment();
+    // On screen this is a working page with a date picker and buttons. What
+    // comes out of the printer is a document, and it arrives under the same
+    // band as every other document this module issues.
+    const letterhead = createReportHeader({
+      title: "گزارش وضعیت مالی پروژه",
+      facts: projectFacts({
+        project: { name: context.projectName, code: context.projectCode },
+        snapshot: report?.progressSnapshotId ?? null,
+        reportingDate,
+      }),
+    });
+    letterhead.classList.add("report-header--print-only");
+    fragment.append(letterhead);
     const toolbar = element("section", "report-toolbar");
     const heading = element("div");
-    heading.append(element("h1", "", "گزارش مالی"), element("p", "", "گزارش به‌روز پروژه بر پایه داده‌های قطعی مالی و نسخه پیشرفت پروژه"));
+    heading.append(element("h1", "", "گزارش وضعیت مالی"), element("p", "", "گزارش به‌روز پروژه بر پایه داده‌های قطعی مالی و نسخه پیشرفت پروژه"));
     const controls = element("div", "report-toolbar__controls");
     const picker = createPersianDatePicker({ id: "reportingDate", label: "تاریخ گزارش", value: reportingDate, hint: "تاریخ در رابط کاربری جلالی و در API به‌صورت استاندارد ارسال می‌شود." });
     const refresh = element("button", "button button--ghost", "به‌روزرسانی گزارش");
@@ -328,8 +343,10 @@ export function createReportsPage({ context, adapter }) {
       snapshot = null;
       load();
     });
-    controls.append(picker.field, refresh);
-    if (hasPermission(context, "finance_report.issue")) {
+    const back = element("a", "button button--ghost finance-back-link", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
+    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
+    controls.append(picker.field, refresh, back);
+    if (capabilitiesFor(context).issueReport) {
       const issueButton = element("button", "button button--primary", "ثبت گزارش دوره‌ای");
       issueButton.type = "button";
       issueButton.addEventListener("click", openIssueDialog);
@@ -341,7 +358,7 @@ export function createReportsPage({ context, adapter }) {
     analysis.append(renderPriceVariances(report.topPriceVariances), renderQuantityVariances(report.topQuantityVariances));
     fragment.append(toolbar, renderMetrics(report.metrics), renderBreakdown(report.breakdown), analysis, renderReportWarnings(report.warnings, report));
     if (actionError) fragment.append(element("p", "inline-notice state-card--danger", actionError));
-    if (snapshot) fragment.append(renderSnapshot(snapshot, { canExport: hasPermission(context, "finance_report.export"), onDownload: downloadCsv }));
+    if (snapshot) fragment.append(renderSnapshot(snapshot, { canExport: capabilitiesFor(context).exportReport, onDownload: downloadCsv }));
     return fragment;
   }
 

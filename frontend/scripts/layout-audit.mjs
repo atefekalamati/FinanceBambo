@@ -7,6 +7,11 @@ const chromePath = process.env.CHROME_PATH ?? "C:\\Program Files\\Google\\Chrome
 const baseUrl = process.env.BAMBO_AUDIT_URL ?? "http://127.0.0.1:43127";
 const routes = [
   "finance",
+  "finance-report",
+  "report-prices",
+  "report-items",
+  "report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines",
+  "report-settings",
   "financial-items",
   "prices",
   "progress",
@@ -103,7 +108,7 @@ const measurementExpression = `(() => {
     .filter((element) => {
       const rect = element.getBoundingClientRect();
       if (rect.width < 1 || rect.height < 1) return false;
-      if (element.closest('.table-scroll, .breakdown-chart-viewport, .breakdown-table-wrapper')) return false;
+      if (element.closest('.table-scroll, .breakdown-table-wrapper')) return false;
       const style = getComputedStyle(element);
       if (style.position === 'fixed') return false;
       return rect.right > viewportWidth + 2 || rect.left < -2;

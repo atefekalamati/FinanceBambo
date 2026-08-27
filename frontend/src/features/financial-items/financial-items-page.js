@@ -1,4 +1,7 @@
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
+import { downloadCsvFile } from "../../shared/exports/csv.js";
+import { buildEstimateLinesCsv, estimateLinesFileName } from "./financial-items-csv.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -706,9 +709,19 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
   return wrapper;
 }
 
-export function createFinancialItemsPage({ context, adapter, focusResourceId = "", focusEstimateLineId = "" }) {
+/**
+ * Items and the estimate, on both surfaces.
+ *
+ * On امور مالی it is the working page: new items, new metre lines, bulk entry,
+ * quantity revisions. On گزارش مالی it is the same table with nothing to press,
+ * and that follows from the route rather than from the account — an
+ * administrator reading the report gets the read-only table too. One mode per
+ * route is a thing you can reason about; one mode per account is not.
+ */
+export function createFinancialItemsPage({ context, adapter, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
   const root = element("div", "financial-items-page");
-  const canEdit = hasPermission(context, "finance.edit");
+  const readOnly = surface === SURFACES.REPORT;
+  const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
   // The resource list starts collapsed, as the <details> it replaced did, and keeps
   // whatever the reader chose across repaints.
@@ -728,14 +741,20 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
 
   function renderHeader() {
     const header = element("header", "feature-header");
-    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[surface]}`);
     back.classList.add("finance-back-link");
-    back.href = "#/finance";
+    back.href = `#${homeRouteFor(surface)?.path ?? "/finance"}`;
     const navigation = element("div", "feature-header__navigation");
     const otherActions = element("div", "feature-header__other-actions");
     navigation.append(otherActions, back);
     const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "اقلام پروژه و ریز برآورد"), element("h1", "", "اقلام و برآورد"), element("p", "", "هر اتصال فعالیت و قلم هزینه یک ردیف مستقل برآورد است؛ مقدار اولیه حفظ و آخرین مقدار برآورد جداگانه نمایش داده می‌شود."));
+    copy.append(
+      element("span", "feature-header__eyebrow", readOnly ? "جدول اقلام و ریز برآورد" : "اقلام پروژه و ریز برآورد"),
+      element("h1", "", readOnly ? "جدول اقلام و برآورد" : "اقلام و برآورد"),
+      element("p", "", readOnly
+        ? "هر ردیف، مقدار برآوردشده یک قلم هزینه برای یک فعالیت است. این صفحه فقط‌خواندنی است و می‌توانید از آن خروجی اکسل بگیرید."
+        : "هر اتصال فعالیت و قلم هزینه یک ردیف مستقل برآورد است؛ مقدار اولیه حفظ و آخرین مقدار برآورد جداگانه نمایش داده می‌شود."),
+    );
     header.append(copy, navigation);
     return header;
   }
@@ -772,6 +791,17 @@ export function createFinancialItemsPage({ context, adapter, focusResourceId = "
     });
 
     const lineActions = element("div", "items-section__actions");
+    // Reading the estimate and taking a copy of it are the same act; only
+    // changing it is privileged.
+    const exportCsv = element("button", "button button--ghost", "خروجی اکسل");
+    exportCsv.type = "button";
+    exportCsv.addEventListener("click", () => {
+      downloadCsvFile(
+        buildEstimateLinesCsv({ lines: workspace.estimateLines, resources: workspace.resources }),
+        estimateLinesFileName({ projectCode: context.projectCode }),
+      );
+    });
+    lineActions.append(exportCsv);
     if (canEdit) {
       const addLine = element("button", "button button--primary", "خط متره جدید");
       addLine.type = "button";

@@ -1,6 +1,8 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
+import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
+import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
@@ -115,23 +117,15 @@ function changeCell(changeIrr, direction) {
 
 function renderHeader({ context, period, generatedAt, dayCount }) {
   const header = element("section", "period-report-header");
-  const title = element("div", "period-report-header__title");
-  title.append(
-    element("span", "period-report-header__eyebrow", "گزارش دوره‌ای مالی"),
-    element("h1", "", context.projectName ?? "پروژه"),
-  );
-  const facts = element("dl", "period-report-header__facts");
-  [
-    ["بازه گزارش", `${formatBusinessDate(period.from)} تا ${formatBusinessDate(period.to)}`],
-    ["طول دوره", `${formatDisplayNumber(String(dayCount))} روز`],
-    ["مبنای ابتدای دوره", formatBusinessDate(period.opening)],
-    ["زمان ساخت", formatSystemDateTime(generatedAt)],
-  ].forEach(([label, value]) => {
-    const group = element("div");
-    group.append(element("dt", "", label), element("dd", "", value));
-    facts.append(group);
-  });
-  header.append(title, facts);
+  header.append(createReportHeader({
+    title: "گزارش دوره‌ای مالی",
+    facts: [
+      ...projectFacts({ project: { name: context.projectName, code: context.projectCode }, period }),
+      ["طول دوره", `${formatDisplayNumber(String(dayCount))} روز`],
+      ["مبنای ابتدای دوره", formatBusinessDate(period.opening)],
+      ["زمان ساخت", formatSystemDateTime(generatedAt)],
+    ],
+  }));
   header.append(element("p", "period-report-header__note", "این گزارش زنده است و از داده‌های فعلی پروژه ساخته می‌شود؛ برای نسخه قفل‌شده و تغییرناپذیر، از «ثبت گزارش دوره‌ای» در صفحه گزارش مالی استفاده کنید."));
   return header;
 }
@@ -633,7 +627,11 @@ export function createPeriodReportPage({ context, reportsAdapter, auditAdapter, 
 
   function paint() {
     const header = element("div", "finance-page-header period-report-topbar");
-    header.append(element("h1", "", "گزارش دوره‌ای"), element("p", "", "وضعیت مالی پروژه بین دو تاریخ، از داده‌های واقعی همین پروژه"));
+    const heading = element("div");
+    heading.append(element("h1", "", "گزارش دوره‌ای"), element("p", "", "وضعیت مالی پروژه بین دو تاریخ، از داده‌های واقعی همین پروژه"));
+    const back = element("a", "button button--ghost finance-back-link", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
+    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
+    header.append(heading, back);
     const body = state.status === REQUEST_STATUS.IDLE
       ? renderIdle()
       : renderPageState(state, { renderContent, renderEmpty, onRetry: build });

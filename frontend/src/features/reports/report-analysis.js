@@ -1,3 +1,5 @@
+import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/variances/variance-rollup.js";
+
 const TYPE_LABELS = Object.freeze({
   material: "مصالح",
   labor: "نیروی انسانی",
@@ -13,7 +15,10 @@ function absolute(value) {
   return value < 0n ? -value : value;
 }
 
-export function buildPriceVariancePresentation(rows = []) {
+export function buildPriceVariancePresentation(sourceRows = []) {
+  // Folded onto the item first, so the bars are scaled against the totals that
+  // are actually drawn rather than against a single line of one of them.
+  const rows = rollupPriceVariances(sourceRows);
   const maximum = rows.reduce((result, row) => {
     const value = absolute(exactInteger(row.varianceIrr));
     return value > result ? value : result;
@@ -32,8 +37,8 @@ export function buildPriceVariancePresentation(rows = []) {
   });
 }
 
-export function buildQuantityVariancePresentation(rows = []) {
-  return rows.map((row) => Object.freeze({
+export function buildQuantityVariancePresentation(sourceRows = []) {
+  return rollupQuantityVariances(sourceRows).map((row) => Object.freeze({
     ...row,
     resourceTypeLabel: TYPE_LABELS[row.resourceType] ?? "نوع تعریف‌نشده",
     varianceQuantity: String(row.varianceQuantity ?? "0"),

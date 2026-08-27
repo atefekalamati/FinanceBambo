@@ -1,5 +1,4 @@
 import { financeBase } from "./api-utils.js";
-import { buildMonthlyTrendPreview, isMonthlyTrendPreviewEnabled } from "./monthly-trend-preview.js";
 
 export function createApiReportsAdapter(context, client) {
   const base = financeBase(context);
@@ -58,24 +57,38 @@ export function createApiReportsAdapter(context, client) {
   }
 
   /**
-   * No route returns a monthly series. LiveMetrics and TypeBreakdown have no
-   * time dimension, EstimateLine has no dates, and the only date-bearing money
-   * is the invoice list — which would give actual cost but never an estimate
-   * baseline, and only by paging the whole project.
+   * The service aggregates the series itself, by Persian month.
    *
-   * Reporting the series as unavailable is the honest answer: half a chart
-   * labelled as a comparison would read as "no overspend" when it is really
-   * "no baseline". Replace this once the Backend exposes the monthly report.
+   * The window is an anchor date plus a month count rather than a from/to pair,
+   * because Persian months do not line up with Gregorian dates: an arbitrary
+   * range would open and close on half a month, and the chart would draw those
+   * two stubs as real dips.
+   *
+   * `estimateIrr` comes back null on every point and stays null. No estimate
+   * line carries a planned date, so there is no monthly baseline to report, and
+   * the service says so in a MONTHLY_ESTIMATE_UNAVAILABLE warning rather than
+   * sending zero — zero would assert that nothing was budgeted for that month.
+   * Coercing it here would put a floor on the chart and turn every month into an
+   * overrun.
    */
-  async function getMonthlyTrend({ reportingDate } = {}) {
-    // TEMPORARY: opt-in preview data so the chart can be reviewed before the
-    // Backend has a monthly report. See monthly-trend-preview.js for how to
-    // remove it. Off unless a developer asks for it.
-    if (isMonthlyTrendPreviewEnabled()) return buildMonthlyTrendPreview({ reportingDate });
+  async function getMonthlyTrend({ reportingDate, monthCount = 12 } = {}) {
+    const query = new URLSearchParams({ reportingDate, monthCount: String(monthCount) });
+    const payload = await client.request(`${base}/reports/monthly?${query.toString()}`);
     return {
-      months: [],
-      estimateSource: "unavailable",
-      unavailableReason: "سرویس گزارش مالی هنوز سری زمانی ماهانه ارائه نمی‌دهد.",
+      months: (payload.months ?? []).map((month) => ({
+        persianYear: month.persianYear,
+        persianMonth: month.persianMonth,
+        actualCostIrr: String(month.actualCostIrr ?? "0"),
+        estimateIrr: month.estimateIrr == null ? null : String(month.estimateIrr),
+        invoiceCount: month.invoiceCount ?? 0,
+        reversalCount: month.reversalCount ?? 0,
+        breakdown: month.breakdown ?? null,
+      })),
+      estimateSource: payload.estimateSource ?? "unavailable",
+      actualSource: payload.actualSource ?? "confirmed_financial_documents",
+      windowStart: payload.windowStart ?? null,
+      windowEnd: payload.windowEnd ?? null,
+      warnings: payload.warnings ?? [],
     };
   }
 

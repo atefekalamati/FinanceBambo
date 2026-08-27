@@ -1,0 +1,132 @@
+/* --------------------------------------------------------------------------
+   The letterhead every printed document in this module carries
+   -------------------------------------------------------------------------- */
+
+.report-header {
+  display: flex;
+  align-items: center;
+  gap: clamp(.9rem, 3vw, 2rem);
+  padding: clamp(.9rem, 2.4vw, 1.5rem) clamp(1rem, 3vw, 2rem);
+  border-radius: var(--radius-md);
+  /* Deep green into navy, left to right, with the brand's own green as a rule
+     along the bottom — the band the project's control reports are issued on. */
+  border-block-end: 4px solid #21c07a;
+  color: #fff;
+  background: linear-gradient(90deg, #0c4a34 0%, #10405a 42%, #16233f 100%);
+  /* The band is the document's identity, not decoration, so it is asked to
+     print rather than being dropped with the rest of the backgrounds. */
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.report-header__brand {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: .55rem;
+  padding-inline-end: clamp(.9rem, 3vw, 2rem);
+  border-inline-end: 1px solid rgb(255 255 255 / 25%);
+}
+
+.report-header__mark {
+  inline-size: clamp(2.1rem, 5vw, 3.1rem);
+  block-size: auto;
+  color: #23c07d;
+}
+
+.report-header__wordmark {
+  display: grid;
+  gap: .05rem;
+  justify-items: end;
+  text-align: end;
+}
+
+.report-header__wordmark strong {
+  color: #23c07d;
+  font-size: clamp(.9rem, 2.2vw, 1.15rem);
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+
+.report-header__wordmark small {
+  color: #7fd7b0;
+  font-size: clamp(.44rem, 1.1vw, .56rem);
+  letter-spacing: .04em;
+  line-height: 1.35;
+}
+
+.report-header__copy {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.report-header__title {
+  margin: 0 0 .55rem;
+  color: #fff;
+  font-size: clamp(1.05rem, 2.8vw, 1.5rem);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.report-header__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem clamp(.7rem, 2vw, 1.6rem);
+  margin: 0;
+  font-size: clamp(.6rem, 1.5vw, .74rem);
+}
+
+.report-header__facts > div {
+  display: flex;
+  align-items: baseline;
+  gap: .3em;
+  min-inline-size: 0;
+}
+
+.report-header__facts dt {
+  color: rgb(255 255 255 / 72%);
+  font-weight: 700;
+}
+
+.report-header__facts dd {
+  margin: 0;
+  color: #fff;
+  font-weight: 800;
+}
+
+/* A letterhead that only belongs on paper. The invoice detail and the issued
+   financial report are working screens; the document they produce still has to
+   arrive under the same band as everything else. */
+.report-header--print-only {
+  display: none;
+}
+
+@media (max-width: 36rem) {
+  .report-header {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: .7rem;
+  }
+
+  .report-header__brand {
+    justify-content: flex-start;
+    padding-inline-end: 0;
+    padding-block-start: .6rem;
+    border-inline-end: 0;
+    border-block-start: 1px solid rgb(255 255 255 / 25%);
+  }
+}
+
+@media print {
+  .report-header {
+    /* Paper has its own margins; the band sits inside them rather than trying
+       to bleed, and never breaks across two pages. */
+    break-inside: avoid;
+    break-after: avoid;
+    border-radius: 0;
+  }
+
+  .report-header--print-only {
+    display: flex;
+  }
+}
