@@ -17,6 +17,7 @@ Two things a fake cannot prove, so they are covered another way:
     clause, and that particular omission is a cross-tenant leak.
 """
 
+import os
 import re
 import sys
 import unittest
@@ -619,10 +620,34 @@ class DevelopmentHostWiringTests(unittest.TestCase):
         self.assertIsInstance(state.scope_authorizer, core_security.CoreScopeAuthorizer)
         self.assertIsInstance(state.permission_authorizer,
                               core_security.CoreRbacPermissionAuthorizer)
-        self.assertIsInstance(state.progress_service.provider,
-                              core_progress.CoreProgressSnapshotProvider)
         self.assertIsInstance(state.finance_resources_service._activity_provider,
                               core_activities.CoreProjectActivityProvider)
+
+    def test_progress_comes_from_the_host_feed_unless_core_progress_is_requested(self):
+        """Core cannot fill this port on its own, so it is not wired to by default.
+
+        `msp_tasks` has percentages and no resource or quantity columns, so the Core adapter
+        can say a task is 30% done and nothing about how much rebar that represents. In
+        production the assignment-level quantities come from the host's progress module; the
+        seeded feed stands in for it. Asking for the Core adapter explicitly is how the other
+        half of the truth gets shown -- and what it shows is warnings.
+        """
+        from devhost import environment
+        from devhost.ports import SeededProgressSnapshotProvider
+        previous = os.environ.get("FINANCE_CORE_PROGRESS")
+        try:
+            os.environ.pop("FINANCE_CORE_PROGRESS", None)
+            self.assertFalse(environment.core_progress_enabled())
+            self.assertIsInstance(self.wired(FakeConnection(answering())).progress_service.provider,
+                                  SeededProgressSnapshotProvider)
+            os.environ["FINANCE_CORE_PROGRESS"] = "on"
+            self.assertTrue(environment.core_progress_enabled())
+            self.assertIsInstance(self.wired(FakeConnection(answering())).progress_service.provider,
+                                  core_progress.CoreProgressSnapshotProvider)
+        finally:
+            os.environ.pop("FINANCE_CORE_PROGRESS", None)
+            if previous is not None:
+                os.environ["FINANCE_CORE_PROGRESS"] = previous
 
     def test_the_eleven_finance_services_are_the_same_either_way(self):
         """The point of the port boundary: swapping the host changes no finance service."""

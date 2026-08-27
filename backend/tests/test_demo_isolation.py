@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-"""The finance demo stays on its own port and inside its own repository.
+"""The demo host stays on its own port and inside its own repository.
 
-Another BAMBO application -- the Pilot host -- listens on port 8000 on a developer machine.
-Two servers cannot share a port, and the failure is nastier than a crash: whichever binds
-first wins, so a browser pointed at 8000 can open the wrong application entirely while every
-instruction in the demo guide still reads correctly.
+Two independent properties, both easy to lose by accident and both invisible until a demo:
 
-These tests fix both halves of that: the port the demo takes, and the absence of any
-reference from this repository into another project.
+  * **Which socket it binds.** One place decides the port, both entry points read it, and a
+    port that is already answering stops the host rather than moving it or clearing it.
+  * **What it reaches for.** Nothing here may depend on a path outside this repository, and
+    the browser may only talk to the origin that served it.
 """
 
 import ast
@@ -19,6 +18,7 @@ import unittest
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_ROOT.parent
 sys.path.insert(0, str(BACKEND_ROOT))
 
 BACKSLASH = chr(92)
@@ -48,26 +48,11 @@ class DemoPortTests(unittest.TestCase):
             if previous is not None:
                 os.environ[environment.DEMO_PORT_SETTING] = previous
 
-    def test_port_8000_is_refused_by_name(self):
-        """Refused explicitly rather than merely not chosen.
-
-        A stale command line or a copied instruction naming 8000 then fails with an
-        explanation, instead of colliding with whatever is already there.
-        """
-        from devhost.__main__ import check_port
-        with self.assertRaises(SystemExit) as caught:
-            check_port("127.0.0.1", 8000)
-        message = str(caught.exception)
-        for expected in ("8000", "Pilot", "8010"):
-            with self.subTest(expected=expected):
-                self.assertIn(expected, message)
-
     def test_an_occupied_port_stops_the_host_rather_than_moving_it(self):
-        """Two refusals to keep separate: reserved, and simply busy.
+        """A host that silently relocates is one nobody can write instructions for.
 
-        Neither is handled by silently picking another port -- a demo that moves is a demo
-        nobody can write instructions for -- and the process already listening belongs to
-        somebody, so it is reported and never stopped.
+        The message has to name the port and say what to do, because the alternative is an
+        OSError raised from inside the server after startup has already begun.
         """
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -77,7 +62,9 @@ class DemoPortTests(unittest.TestCase):
             from devhost.__main__ import check_port
             with self.assertRaises(SystemExit) as caught:
                 check_port("127.0.0.1", port)
-            self.assertIn("already in use", str(caught.exception))
+            message = str(caught.exception)
+            self.assertIn(f"Port {port} is already in use", message)
+            self.assertIn("--port", message)
         finally:
             listener.close()
 
@@ -89,46 +76,48 @@ class DemoPortTests(unittest.TestCase):
         from devhost.__main__ import check_port
         check_port("127.0.0.1", port)
 
-    def test_neither_entry_point_still_defaults_to_8000(self):
-        """A grep for "8000" would be useless: the fixture UUIDs are full of `-4000-8000-`.
+    def test_the_host_never_stops_whatever_is_listening(self):
+        """It did not start that process and has no idea what it is.
 
-        So this asserts on the argparse default expression instead, and on both entry
-        points reading the same shared function rather than repeating a number.
+        Asserted against the source, because the only way to test the behaviour directly is
+        to leave something running and see whether it survives -- and a test that kills the
+        wrong process on a developer machine is a worse outcome than the bug.
         """
-        for relative in ("devhost/__main__.py", "scripts/demo/prepare.py"):
-            with self.subTest(relative=relative):
-                text = (BACKEND_ROOT / relative).read_text(encoding="utf-8")
-                self.assertNotIn('"--port", type=int, default=8000', text)
-                self.assertIn("default=demo_port()", text)
+        source = (BACKEND_ROOT / "devhost" / "__main__.py").read_text(encoding="utf-8")
+        for weapon in ("kill", "terminate", "taskkill", "Stop-Process", "SIGKILL",
+                       "SIGTERM", "pg_terminate_backend"):
+            with self.subTest(weapon=weapon):
+                self.assertNotIn(weapon, source)
 
-    def test_the_port_number_appears_in_no_executable_line(self):
-        """Both entry points call `demo_port()`; neither hardcodes the number.
+    def test_neither_entry_point_hardcodes_the_port_number(self):
+        """A grep for the number would be useless: the fixture UUIDs are full of digits.
 
-        Docstrings and comments are stripped first. A usage line reading `[--port 8010]` is
-        documentation, and documentation that names the default is a good thing -- it is
-        duplicated *configuration* that drifts, not duplicated prose.
+        So this walks the syntax tree instead, and skips docstrings -- a usage line reading
+        `[--port 8010]` is documentation, and documentation that names the default is a good
+        thing. It is duplicated *configuration* that drifts.
         """
         from devhost import environment
         number = str(environment.DEFAULT_DEMO_PORT)
         for relative in ("devhost/__main__.py", "scripts/demo/prepare.py"):
             with self.subTest(relative=relative):
-                tree = ast.parse((BACKEND_ROOT / relative).read_text(encoding="utf-8"))
-                for node in ast.walk(tree):
+                text = (BACKEND_ROOT / relative).read_text(encoding="utf-8")
+                self.assertIn("default=demo_port()", text)
+                for node in ast.walk(ast.parse(text)):
                     if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
                         continue                       # a bare string expression: a docstring
                     if isinstance(node, ast.Constant) and str(node.value) == number:
                         self.fail(f"{relative} line {node.lineno} hardcodes {number}")
 
 
-class PilotIsolationTests(unittest.TestCase):
-    """Nothing here may reach into another BAMBO project.
+class RepositoryBoundaryTests(unittest.TestCase):
+    """Nothing here may depend on anything outside this repository.
 
-    Scanned rather than asserted once, so a future import is caught by a failing test
-    instead of by somebody noticing during a demo.
+    Scanned rather than asserted once, so the next stray absolute path is caught by a
+    failing test instead of by somebody noticing during a demo.
     """
 
     SOURCE_ROOTS = ("app", "coreint", "devhost", "scripts", "tests", "alembic")
-    FRONTEND = BACKEND_ROOT.parent / "frontend" / "src"
+    FRONTEND = REPO_ROOT / "frontend" / "src"
 
     def python_sources(self):
         for root in self.SOURCE_ROOTS:
@@ -136,60 +125,36 @@ class PilotIsolationTests(unittest.TestCase):
                 if "__pycache__" not in path.parts:
                     yield path
 
-    def all_sources(self):
-        yield from self.python_sources()
-        yield from self.FRONTEND.rglob("*.js")
-
-    def test_nothing_references_another_project_repository(self):
-        """This file is excluded from its own scan.
-
-        It has to spell the forbidden strings out in order to search for them, so scanning
-        itself would fail every time and say nothing about the code under test. Every other
-        file, including every other test, is scanned.
-        """
-        needles = ("bamboo/platform", "bamboo" + BACKSLASH + "platform",
-                   "e:" + BACKSLASH + "bamboo", "e:/bamboo")
-        scanned = 0
-        for path in self.all_sources():
-            if path.resolve() == Path(__file__).resolve():
-                continue
-            scanned += 1
-            text = path.read_text(encoding="utf-8").lower()
-            for needle in needles:
-                with self.subTest(path=path.name, needle=needle):
-                    self.assertNotIn(needle, text)
-        # Guards against the exclusion above silently becoming "scan nothing".
-        self.assertGreater(scanned, 100, "the sweep covered almost no files")
-
-    def test_nothing_imports_a_pilot_module(self):
-        for path in self.python_sources():
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    names = [alias.name for alias in node.names]
-                elif isinstance(node, ast.ImportFrom):
-                    names = [node.module or ""]
-                else:
-                    continue
-                for name in names:
-                    root = name.split(".")[0].lower()
-                    with self.subTest(path=path.name, name=name):
-                        self.assertNotIn(root, {"pilot", "pilot_app", "bamboo_pilot"})
-
     def test_the_deployable_library_reads_nothing_from_an_absolute_path(self):
         """`app/` and `coreint/` are the parts a host installs.
 
-        A hardcoded drive letter in either would tie a deployed module to one developer's
-        machine -- which is how a demo quietly starts depending on a directory nobody else
-        has.
+        A hardcoded drive letter or root path in either would tie a deployed module to one
+        developer's machine -- which is how something quietly starts depending on a
+        directory nobody else has.
         """
-        pattern = re.compile(r"[A-Za-z]:[/" + BACKSLASH + BACKSLASH + "]")
+        drive_letter = re.compile(r"[A-Za-z]:[/" + BACKSLASH + BACKSLASH + "]")
         for root in ("app", "coreint"):
             for path in (BACKEND_ROOT / root).rglob("*.py"):
                 if "__pycache__" in path.parts:
                     continue
+                text = path.read_text(encoding="utf-8")
                 with self.subTest(path=str(path.relative_to(BACKEND_ROOT))):
-                    self.assertIsNone(pattern.search(path.read_text(encoding="utf-8")))
+                    self.assertIsNone(drive_letter.search(text))
+                    self.assertNotIn('Path("/', text)
+
+    def test_no_module_walks_out_of_the_repository(self):
+        """`parents[n]` climbing past the repository root reaches a sibling checkout.
+
+        `backend/x.py` is two levels below the root, so `parents[2]` is already outside it.
+        Nested modules are deeper and get proportionally more room.
+        """
+        climb = re.compile(r"parents\[(\d+)\]")
+        for path in self.python_sources():
+            depth = len(path.relative_to(REPO_ROOT).parts) - 1     # directories above it
+            for level in (int(n) for n in climb.findall(path.read_text(encoding="utf-8"))):
+                with self.subTest(path=str(path.relative_to(REPO_ROOT)), level=level):
+                    self.assertLessEqual(level, depth,
+                                         "resolves to a directory outside the repository")
 
     def test_the_frontend_names_no_absolute_origin(self):
         """The client resolves every path against `window.location.origin` and refuses to
@@ -217,13 +182,16 @@ class PilotIsolationTests(unittest.TestCase):
         self.assertIn("MIRROR_SQL", prepare)
         self.assertTrue((BACKEND_ROOT / "scripts" / "demo" / "core_mirror.sql").is_file())
 
-    def test_the_development_seed_is_finance_data_and_depends_on_nothing_else(self):
+
+class DemoDataProvenanceTests(unittest.TestCase):
+    """Where the demo rows come from, and what they must never contain."""
+
+    def test_the_development_seed_depends_on_nothing_but_the_standard_library(self):
         """`devhost.seed` is the finance demo fixture, mirrored from the frontend's own
-        mock adapters. It imports three standard-library modules and nothing more, so it
-        cannot be carrying data in from another project.
+        mock adapters. Three standard-library imports and nothing else, so it cannot be
+        carrying data in from anywhere.
         """
-        source = (BACKEND_ROOT / "devhost" / "seed.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
+        tree = ast.parse((BACKEND_ROOT / "devhost" / "seed.py").read_text(encoding="utf-8"))
         imported = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -234,8 +202,8 @@ class PilotIsolationTests(unittest.TestCase):
 
         from devhost import seed
         self.assertEqual("sample_site_01", seed.PROJECT_ID)
-        # Every fixture id comes from one of the declared families, which is what separates
-        # a fixture row from a row created through the API.
+        # Every fixture id comes from a declared family, which is what separates a fixture
+        # row from a row created through the API.
         self.assertIn("30000000", seed.FIXTURE_ID_PREFIXES)
 
     def test_the_core_mirror_seed_takes_its_values_from_the_finance_fixture(self):
@@ -245,15 +213,15 @@ class PilotIsolationTests(unittest.TestCase):
         """
         from devhost import seed
         from scripts.demo import seed_core_mirror
-        self.assertIs(seed.ORGANIZATION_ID, seed_core_mirror.statements.__globals__["seed"].ORGANIZATION_ID)
         self.assertEqual(seed.ACTOR_ID, seed_core_mirror.FINANCE_EXPERT)
         self.assertEqual(seed.IMPORTER_ID, seed_core_mirror.PLANNER)
+        self.assertIs(seed, seed_core_mirror.statements.__globals__["seed"])
 
-    def test_no_demo_user_carries_contactable_personal_data(self):
-        """Synthetic people only, and deliberately not contactable.
+    def test_no_demo_person_is_contactable(self):
+        """Synthetic people only, and deliberately without contact details.
 
-        A table of plausible-looking names with real-looking emails and phone numbers is
-        the kind of thing that gets copied somewhere it should not be.
+        A table of plausible names carrying real-looking emails and phone numbers is the
+        kind of thing that gets copied somewhere it should not be.
         """
         from scripts.demo import seed_core_mirror
         source = (BACKEND_ROOT / "scripts" / "demo" / "seed_core_mirror.py").read_text(
@@ -265,7 +233,6 @@ class PilotIsolationTests(unittest.TestCase):
         self.assertIsNone(re.search(r"(\+?98|0)9" + r"\d{9}", source), "a phone-shaped value")
         self.assertIsNone(re.search(r"[a-z0-9_.]+@[a-z0-9-]+\.[a-z]{2,}", source),
                           "an email-shaped value")
-        # Five synthetic people, every id from the reserved fixture family.
         self.assertEqual(5, len(seed_core_mirror.USERS))
         for user_id, _name in seed_core_mirror.USERS:
             with self.subTest(user_id=str(user_id)):

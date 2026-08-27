@@ -11,8 +11,7 @@ from pathlib import Path
 import uvicorn
 
 from .app import build
-from .environment import (MissingConfiguration, RESERVED_PORTS, database_url,
-                          demo_port, redacted)
+from .environment import MissingConfiguration, database_url, demo_port, redacted
 
 
 def loop_factory():
@@ -23,24 +22,19 @@ def loop_factory():
 
 
 def check_port(host: str, port: int) -> None:
-    """Refuse to start unless this exact port is ours to take.
+    """Stop before binding if the port is already answering.
 
-    Two separate refusals, because they are different mistakes:
+    Two things this deliberately does not do:
 
-      * a reserved port is one another BAMBO application owns, and taking it would either
-        fail or -- worse -- serve the wrong application to a browser pointed at it;
-      * an occupied port is already answering, and whatever is answering is not ours.
+      * it does not move to another port. A host that silently relocates is one nobody can
+        write instructions for, and the browser ends up somewhere the reader was not told
+        about;
+      * it does not stop whatever is listening. This process did not start it and has no
+        idea what it is, so it is reported and left alone.
 
-    Neither is handled by picking a different port. A demo that silently moves is a demo
-    nobody can write instructions for, and the process already listening belongs to
-    somebody: it is reported, never stopped.
+    Binding without checking would fail anyway, but with an OSError from inside the server
+    rather than a sentence saying what to do about it.
     """
-    if port in RESERVED_PORTS:
-        raise SystemExit(
-            f"refusing to serve on port {port}: it is reserved for "
-            f"{RESERVED_PORTS[port]}.\n"
-            f"The finance demo uses {demo_port()}. Run without --port, or pass a free one."
-        )
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         probe.settimeout(1)
@@ -49,9 +43,8 @@ def check_port(host: str, port: int) -> None:
         probe.close()
     if occupied:
         raise SystemExit(
-            f"port {port} is already in use on {host}, and this host will not take it.\n"
-            "Whatever is listening there was not started by the finance demo, so it is\n"
-            "left alone. Stop it yourself, or choose another port with --port."
+            f"Port {port} is already in use on {host}.\n"
+            "Free it, or choose another port with --port or FINANCE_DEMO_PORT."
         )
 
 
