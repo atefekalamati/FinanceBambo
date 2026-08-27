@@ -106,8 +106,21 @@ function deviationPercentText(deviation, baseline) {
   return fraction === 0n ? String(whole) : `${whole}.${fraction}`;
 }
 
-function magnitude(value, maximum) {
-  return maximum === 0n ? 0 : Number((absolute(value) * 10000n) / maximum) / 100;
+/**
+ * A point on the value axis, from 0 at the baseline to 100 at the ceiling.
+ *
+ * The baseline is zero and stays zero. A reversal is not a document of its own
+ * making — the service builds it from the invoice it cancels and gives it that
+ * invoice's own date — so the −X always lands in the same month as the +X it
+ * undoes, and a month cannot come out below zero from one.
+ *
+ * If a month ever does anyway, it gets no bar rather than one drawn downwards
+ * or one drawn from the size of a negative number. The figure itself is never
+ * touched: the tooltip and the table still say what it was.
+ */
+function magnitude(value, ceiling) {
+  if (ceiling <= 0n || value <= 0n) return 0;
+  return Number((value * 10000n) / ceiling) / 100;
 }
 
 /**
@@ -165,23 +178,28 @@ export function buildMonthlyTrend({ months = [], mode = TREND_MODES.PERIODIC } =
     };
   });
 
-  const maximum = rows.reduce((result, row) => {
-    const candidates = [absolute(exactInteger(row.actualIrr))];
-    if (row.estimateIrr !== null) candidates.push(absolute(exactInteger(row.estimateIrr)));
-    return candidates.reduce((inner, value) => (value > inner ? value : inner), result);
-  }, 0n);
+  const drawn = rows.flatMap((row) => {
+    const values = [exactInteger(row.actualIrr)];
+    if (row.estimateIrr !== null) values.push(exactInteger(row.estimateIrr));
+    return values;
+  });
+  const ceiling = drawn.reduce((result, value) => (value > result ? value : result), 0n);
 
   const points = rows.map((row) => ({
     ...row,
-    actualMagnitude: magnitude(exactInteger(row.actualIrr), maximum),
-    estimateMagnitude: row.estimateIrr === null ? null : magnitude(exactInteger(row.estimateIrr), maximum),
+    belowBaseline: exactInteger(row.actualIrr) < 0n,
+    actualMagnitude: magnitude(exactInteger(row.actualIrr), ceiling),
+    estimateMagnitude: row.estimateIrr === null ? null : magnitude(exactInteger(row.estimateIrr), ceiling),
   }));
 
   return Object.freeze({
     mode: normalizedMode,
     points,
-    maximumIrr: String(maximum),
-    axisTicks: buildAxisTicks(maximum),
+    maximumIrr: String(ceiling),
+    // Not a claim that no month is negative — a note that one is, so the panel
+    // can say so instead of leaving an unexplained gap where a bar should be.
+    hasBelowBaseline: points.some((point) => point.belowBaseline),
+    axisTicks: buildAxisTicks(ceiling),
     hasEstimate: points.some((point) => point.estimateIrr !== null),
     estimatePartial: estimatePartial && points.length > 0,
     isEmpty: points.length === 0,

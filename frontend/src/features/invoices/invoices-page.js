@@ -1,4 +1,5 @@
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
+import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
@@ -7,7 +8,8 @@ import { createPersianDatePicker } from "../../shared/components/persian-date-pi
 import { getDialogOpener, showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
-import { hasPermission } from "../../core/auth/permissions.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 
@@ -294,10 +296,18 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
   return dialog;
 }
 
-function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm, onVoid, onCorrective }) {
+function renderDetail(invoice, { canEdit, currentUserId, project, onSubmit, onConfirm, onVoid, onCorrective }) {
   const dialog = document.createElement("dialog");
   dialog.className = "confirm-dialog invoice-detail-dialog";
   dialog.setAttribute("aria-labelledby", "invoice-detail-title");
+  // On screen this is a dialog. Printed, it is a document leaving the company,
+  // so it goes out under the same band as every other one.
+  const letterhead = createReportHeader({
+    title: `فاکتور ${invoice.invoiceNumber ?? ""}`.trim(),
+    facts: projectFacts({ project, reportingDate: invoice.invoiceDate }),
+  });
+  letterhead.classList.add("report-header--print-only");
+  dialog.append(letterhead);
   const head = element("header", "invoice-detail-dialog__head");
   const heading = element("div");
   const title = element("h2", "", `جزئیات فاکتور ${invoice.invoiceNumber}`);
@@ -362,34 +372,36 @@ function renderDetail(invoice, { canEdit, currentUserId, onSubmit, onConfirm, on
   const totals = element("dl", "invoice-totals");
   [["جمع خام خطوط", invoice.rawLinesTotalIRR], ["تخفیف", invoice.discountIRR], ["مالیات", invoice.taxIRR], ["حمل", invoice.shippingIRR], ["سایر هزینه‌ها", invoice.otherCostsIRR], ["مبلغ نهایی", invoice.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIrr(value))));
   dialog.append(wrapper, totals);
-  if (invoice.invoiceStatus === "draft") {
+  // The detail dialog is a record anyone who can read the invoice may open.
+  // What it offers to do with it is another matter.
+  if (canEdit && invoice.invoiceStatus === "draft") {
     const actions = element("div", "dialog-actions invoice-detail-actions");
-    const submit = element("button", "button button--primary", canEdit ? "ارسال برای تأیید" : "بدون مجوز ویرایش");
+    const submit = element("button", "button button--primary", "ارسال برای تأیید");
     submit.type = "button";
-    submit.disabled = !canEdit;
     submit.addEventListener("click", () => onSubmit(invoice, dialog));
     actions.append(submit);
     dialog.append(actions);
   }
-  if (invoice.invoiceStatus === "awaitingConfirmation") {
+  if (canEdit && invoice.invoiceStatus === "awaitingConfirmation") {
     const isSubmitter = invoice.submittedBy === currentUserId;
     const actions = element("div", "dialog-actions invoice-detail-actions");
-    const confirm = element("button", "button button--primary", !canEdit ? "بدون مجوز تأیید" : !isSubmitter ? "فقط ثبت‌کننده مجاز است" : "تأیید نهایی فاکتور");
+    // Being unable to confirm your own submission is a rule about this
+    // invoice, not about this account, so that one stays visible and disabled:
+    // the label is the explanation.
+    const confirm = element("button", "button button--primary", isSubmitter ? "تأیید نهایی فاکتور" : "فقط ثبت‌کننده مجاز است");
     confirm.type = "button";
-    confirm.disabled = !canEdit || !isSubmitter;
+    confirm.disabled = !isSubmitter;
     confirm.addEventListener("click", () => onConfirm(invoice, dialog));
     actions.append(confirm);
     dialog.append(actions);
   }
-  if (invoice.invoiceStatus === "confirmed") {
+  if (canEdit && invoice.invoiceStatus === "confirmed") {
     const actions = element("div", "dialog-actions invoice-detail-actions");
-    const corrective = element("button", "button button--ghost", canEdit ? "ثبت سند اصلاحی" : "بدون مجوز اصلاح");
+    const corrective = element("button", "button button--ghost", "ثبت سند اصلاحی");
     corrective.type = "button";
-    corrective.disabled = !canEdit;
     corrective.addEventListener("click", () => onCorrective(invoice, dialog));
-    const voidButton = element("button", "button button--danger", canEdit ? "ابطال با سند برگشت" : "بدون مجوز ابطال");
+    const voidButton = element("button", "button button--danger", "ابطال با سند برگشت");
     voidButton.type = "button";
-    voidButton.disabled = !canEdit;
     voidButton.addEventListener("click", () => onVoid(invoice, dialog));
     actions.append(corrective, voidButton);
     dialog.append(actions);
@@ -543,7 +555,7 @@ export function createInvoicesPage({ context, adapter }) {
   const root = element("div", "invoices-page");
   let state = createRequestState(REQUEST_STATUS.LOADING);
   const filters = { query: "", status: "", source: "", page: 1, pageSize: 50 };
-  const canCreate = hasPermission(context, "finance.edit");
+  const canCreate = capabilitiesFor(context).writeFinance;
   const detailMessage = element("div", "form-message invoice-detail-message");
   detailMessage.setAttribute("aria-live", "assertive");
 
@@ -569,6 +581,7 @@ export function createInvoicesPage({ context, adapter }) {
       const invoice = await adapter.getInvoice(invoiceId);
       const dialog = renderDetail(invoice, {
         canEdit: canCreate,
+        project: { name: context.projectName, code: context.projectCode },
         currentUserId: context.userId,
         onSubmit: (draft, detailDialog) => {
           const opener = getDialogOpener(detailDialog);
@@ -621,21 +634,25 @@ export function createInvoicesPage({ context, adapter }) {
     copy.append(element("span", "feature-header__eyebrow", "اسناد هزینه پروژه"), element("h1", "", "فاکتورها"), element("p", "", "فاکتورهای پروژه را براساس وضعیت، منبع و مشخصات سند جست‌وجو و جزئیات ثبت‌شده را مشاهده کنید."));
     const navigation = element("div", "feature-header__navigation");
     const actions = element("div", "feature-header__actions feature-header__other-actions");
-    const create = element("button", "button button--primary", canCreate ? "ثبت فاکتور دستی" : "بدون مجوز ثبت");
-    create.type = "button";
-    create.disabled = !canCreate;
-    create.addEventListener("click", () => {
-      const dialog = createInvoiceWizard({ adapter, onSaved: () => { filters.page = 1; load(); } });
-      root.append(dialog);
-      dialog.addEventListener("close", () => dialog.remove(), { once: true });
-      showAccessibleDialog(dialog);
-    });
-    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
+    if (canCreate) {
+      const create = element("button", "button button--primary", "ثبت فاکتور دستی");
+      create.type = "button";
+      create.addEventListener("click", () => {
+        const dialog = createInvoiceWizard({ adapter, onSaved: () => { filters.page = 1; load(); } });
+        root.append(dialog);
+        dialog.addEventListener("close", () => dialog.remove(), { once: true });
+        showAccessibleDialog(dialog);
+      });
+      // Reading an invoice happens on گزارش مالی; producing one from a file is
+      // work, and the page that does it is on امور مالی. Only an account that
+      // can do that work is sent there.
+      const upload = element("a", "button button--ghost", "ورود از تصویر یا صدا");
+      upload.href = "#/invoice-files";
+      actions.append(create, upload);
+    }
+    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
     back.classList.add("finance-back-link");
-    back.href = "#/finance";
-    const upload = element("a", "button button--ghost", "ورود از تصویر یا صدا");
-    upload.href = "#/invoice-files";
-    actions.append(create, upload);
+    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
     navigation.append(actions, back);
     header.append(copy, navigation);
     return header;
