@@ -270,3 +270,67 @@ class MonthlyReportResponse(ApiModel):
     actual_source:Literal["confirmed_financial_documents"]="confirmed_financial_documents"
     calculation_status:Literal["complete","incomplete"]="complete"
     warnings:list[ReportWarning]=Field(default_factory=list)
+
+
+class WbsNode(ApiModel):
+    """One WBS stage, with its whole subtree rolled into it.
+
+    `moneyRequiredIrr`, `remainingPhysicalCostIrr` and `forecastFinalIrr` are null when the
+    engine could not compute them for this node -- a missing current price, or a unit it
+    cannot convert. Null rather than "0", for the same reason executed quantity is null
+    rather than zero: an amount nobody could work out is not an amount of nothing.
+    `calculationStatus` says which of the two a null is.
+    """
+    wbs_code:str
+    title:str|None=None
+    parent_wbs_code:str|None=None
+    #: Activities at or below this node, counted the way the activity catalogue counts them:
+    #: distinct activity codes, so tasks sharing a code count once and a task carrying no
+    #: resolvable code counts not at all.
+    activity_count:int=0
+    child_count:int=0
+    estimate_line_count:int=0
+    initial_estimate_irr:Decimal
+    revised_estimate_irr:Decimal=Decimal(0)
+    actual_cost_irr:Decimal
+    remaining_physical_cost_irr:Decimal|None=None
+    money_required_irr:Decimal|None=None
+    forecast_final_irr:Decimal|None=None
+    calculation_status:Literal["complete","incomplete"]="complete"
+    #: Actual cost at this node split by resource type.
+    breakdown:dict[str,Decimal]=Field(default_factory=dict)
+
+    @field_serializer("initial_estimate_irr","revised_estimate_irr","actual_cost_irr",
+                      "remaining_physical_cost_irr","money_required_irr","forecast_final_irr")
+    def serialize_money(self,value):return None if value is None else format(value,"f")
+
+    @field_serializer("breakdown")
+    def serialize_breakdown(self,value):
+        return {kind:format(amount,"f") for kind,amount in value.items()}
+
+
+class WbsReportResponse(ApiModel):
+    """The live report rolled up to WBS stages.
+
+    The three actual-cost figures partition the project exactly:
+    `sum(items.actualCostIrr)` over the root level, plus `unattributedActualIrr`, plus
+    `unmappedWbsActualIrr`, equals `totals.actualCostIrr`. They are separate because they
+    are fixed by different people -- one is an invoice never tied to an estimate line, the
+    other an estimate line whose activity carries no stage.
+    """
+    reporting_date:date
+    progress_snapshot_id:UUID|None=None
+    host_snapshot_id:int|None=None
+    #: The level requested, or null when children of a specific parent were requested.
+    level:int|None=None
+    parent_wbs_code:str|None=None
+    items:list[WbsNode]
+    unattributed_actual_irr:Decimal=Decimal(0)
+    unmapped_wbs_actual_irr:Decimal=Decimal(0)
+    unmapped_estimate_line_count:int=0
+    totals:LiveMetrics
+    calculation_status:Literal["complete","incomplete"]="complete"
+    warnings:list[ReportWarning]=Field(default_factory=list)
+
+    @field_serializer("unattributed_actual_irr","unmapped_wbs_actual_irr")
+    def serialize_money(self,value):return format(value,"f")

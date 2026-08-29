@@ -8,6 +8,7 @@ from openpyxl import Workbook
 from openpyxl.chart import BarChart,Reference
 from openpyxl.styles import Font
 
+from ..domain import wbs as wbs_tree
 from ..domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT,monthly_report
 from ..domain.persian_calendar import persian_month_window
 from ..domain.reports import calculate_live_report
@@ -61,8 +62,18 @@ def _labels(locale):
 
 
 class FinanceLiveReportService:
-    def __init__(self,repository,progress_provider,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):
+    #: One page big enough to hold a project's whole activity catalogue. The WBS tree is
+    #: only a tree if every activity is in it -- reading it a page at a time would build a
+    #: different tree per page, and rolling money up a partial tree gives a wrong total
+    #: rather than a partial one.
+    ACTIVITY_PAGE_SIZE=10000
+
+    def __init__(self,repository,progress_provider,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc),
+                 activity_provider=None):
         self.repo,self.provider,self.ids,self.clock=repository,progress_provider,id_factory,clock
+        # Optional, like the resource service's: a deployment without an activity catalogue
+        # still serves every other report. `by_wbs` is the one caller that needs it.
+        self.activities=activity_provider
 
     async def _current_reference_value(self,scope,reporting_date):
         """The host's current snapshot as a Finance reference value, unsaved.
@@ -172,6 +183,96 @@ class FinanceLiveReportService:
         """Project the live report down to the operational fields finance.view may read."""
         report=await self.live(scope,reporting_date,progress_snapshot_id)
         return {key:report[key] for key in self.OVERVIEW_FIELDS}
+
+    async def _activity_catalogue(self,scope):
+        """The project's whole activity catalogue, keyed by activity code.
+
+        One call per report, not one per estimate line. The tree is only a tree if every
+        activity is in it, so this asks for all of them at once.
+        """
+        if self.activities is None:
+            return {}
+        value=await self.activities.list_activities(
+            str(scope.organization_id),scope.project_id,None,None,1,self.ACTIVITY_PAGE_SIZE)
+        rows=value[0] if isinstance(value,tuple) else value.get("items",[])
+        return {row["activityExternalId"]:row for row in rows if row.get("activityExternalId")}
+
+    async def by_wbs(self,scope,reporting_date:date,progress_snapshot_id=None,level=None,
+                     parent_wbs_code=None):
+        """The live report rolled up to WBS stages.
+
+        Each node's money is produced by `calculate_live_report` over that node's own rows.
+        Running the canonical engine once per node rather than summing its output is what
+        keeps a node's forecast a forecast: the formula is not distributive, and adding up
+        per-line results would quietly give a different answer from the project total.
+
+        A node's figures include its whole subtree, which is what a stage heading means.
+        Money that reaches no node is not hidden -- it comes back in `unattributedActualIrr`
+        and `unmappedWbsActualIrr`, and those two plus the roots reconcile to the project's
+        actual cost exactly.
+        """
+        report,data,snapshot,feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
+        catalogue=await self._activity_catalogue(scope)
+        nodes=wbs_tree.build_tree(catalogue.values())
+        placed,unplaced_line_ids=wbs_tree.line_nodes(data["estimates"],catalogue)
+        linked,unattributed,unplaced_invoices=wbs_tree.split_invoices(data["invoices"],placed)
+
+        estimates_by_code={}
+        for row in data["estimates"]:
+            code=placed.get(row["id"])
+            if code is not None:
+                estimates_by_code.setdefault(code,[]).append(row)
+
+        assignments=feed.get("assignments",[])
+        items=[]
+        for code in wbs_tree.select(nodes,level,parent_wbs_code):
+            covered=wbs_tree.subtree(nodes,code)
+            rows=[row for child in covered for row in estimates_by_code.get(child,[])]
+            invoices=[line for row in rows for line in linked.get(row["id"],[])]
+            # The same engine, the same arguments, a narrower set of rows. Gross area is
+            # passed through so a node's per-area warning matches the project's; the
+            # per-area metrics themselves are not part of a node's contract.
+            node_report=calculate_live_report(rows,invoices,assignments,data["conversions"],
+                                              data["gross_area"])
+            metrics=node_report.metrics
+            revised=sum((entry["revisedEstimateIrr"] for entry in node_report.breakdown),
+                        wbs_tree.ZERO)
+            node=nodes[code]
+            items.append({
+                "wbs_code":code,
+                "title":node["title"],
+                "parent_wbs_code":node["parentWbsCode"],
+                "activity_count":len(node["activityCodes"]),
+                "child_count":len(node["children"]),
+                "estimate_line_count":len(rows),
+                "initial_estimate_irr":metrics["initialEstimateIrr"],
+                "revised_estimate_irr":revised,
+                "actual_cost_irr":metrics["actualCostIrr"],
+                "remaining_physical_cost_irr":metrics["remainingPhysicalCostIrr"],
+                "money_required_irr":metrics["moneyRequiredToContinueIrr"],
+                "forecast_final_irr":metrics["forecastFinalCostIrr"],
+                "calculation_status":node_report.calculation_status,
+                "breakdown":{entry["resourceType"]:entry["actualCostIrr"]
+                             for entry in node_report.breakdown},
+            })
+        return {
+            "reporting_date":reporting_date,
+            "progress_snapshot_id":snapshot["progress_snapshot_id"],
+            "host_snapshot_id":snapshot.get("host_snapshot_id"),
+            "level":None if parent_wbs_code is not None else (1 if level is None else level),
+            "parent_wbs_code":wbs_tree.normalize(parent_wbs_code),
+            "items":items,
+            # Purchases with no estimate line at all. Requiring one on entry would make the
+            # tree tidy by making invoice capture refuse real documents, so they are counted
+            # here instead of being demanded away.
+            "unattributed_actual_irr":wbs_tree.actual_of(unattributed),
+            # Purchases that do have an estimate line, whose activity carries no WBS code.
+            "unmapped_wbs_actual_irr":wbs_tree.actual_of(unplaced_invoices),
+            "unmapped_estimate_line_count":len(unplaced_line_ids),
+            "totals":report.metrics,
+            "calculation_status":report.calculation_status,
+            "warnings":report.warnings,
+        }
 
     DEFAULT_MONTH_COUNT=DEFAULT_MONTH_COUNT
     MAX_MONTH_COUNT=MAX_MONTH_COUNT

@@ -88,6 +88,7 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/reports/live", "get"),
                 ("/api/projects/{projectId}/finance/reports/monthly", "get"),
                 ("/api/projects/{projectId}/finance/reports/live/variances", "get"),
+                ("/api/projects/{projectId}/finance/reports/live/by-wbs", "get"),
                 ("/api/projects/{projectId}/finance/report-snapshots", "get"),
                 ("/api/projects/{projectId}/finance/report-snapshots", "post"),
                 ("/api/projects/{projectId}/finance/report-snapshots/{reportId}", "get"),
