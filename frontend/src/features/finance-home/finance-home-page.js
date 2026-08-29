@@ -7,6 +7,8 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { reportWarningText } from "../../shared/warnings/finance-warning-labels.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { createCombinationChart } from "../../shared/components/combination-chart.js";
+import { createCostCurveChart } from "../../shared/components/cost-curve-chart.js";
+import { buildCostCurve } from "../../shared/charts/cost-curve.js";
 import { buildMonthlyTrend, TREND_MODES } from "../../shared/reports/monthly-trend.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildBulletPresentation, buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
@@ -284,6 +286,7 @@ function createBulletLegend() {
 const ANALYSIS_CHARTS = Object.freeze({
   managerial: { label: "تجمیعی", title: "تصویر مدیریتی هزینه پروژه", description: "مقایسه هزینه‌های پروژه با خط مرجع برآورد اولیه" },
   monthly: { label: "روند ماهانه", title: "روند ماهانه هزینه پروژه", description: "هزینه واقعی هر ماه در برابر برآورد همان ماه" },
+  cumulative: { label: "منحنی تجمعی", title: "روند تجمعی هزینه کل پروژه", description: "هزینه تجمعی ثبت‌شده در برابر برآورد تجمعی، دوره به دوره" },
 });
 
 /**
@@ -291,7 +294,7 @@ const ANALYSIS_CHARTS = Object.freeze({
  * comparison is the default; the monthly trend is revealed by the switch in
  * this card's heading.
  */
-function createManagerialComparisonPanel(metrics, entries, monthly = null, { activeChart = "managerial", onChartChange = () => {} } = {}) {
+function createManagerialComparisonPanel(metrics, entries, monthly = null, { activeChart = "managerial", onChartChange = () => {}, cumulative = null } = {}) {
   const section = document.createElement("section");
   section.className = "finance-analysis-card finance-managerial-comparison";
   const heading = document.createElement("div");
@@ -441,7 +444,8 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   if (!monthly) return section;
 
   section.append(monthly.panel);
-  const panels = { managerial: managerialPanel, monthly: monthly.panel };
+  if (cumulative) section.append(cumulative.panel);
+  const panels = { managerial: managerialPanel, monthly: monthly.panel, cumulative: cumulative?.panel };
   const buttons = {};
 
   function activate(key) {
@@ -457,12 +461,13 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
     // The monthly chart measures zero while its panel is hidden, so it is
     // redrawn once the panel actually has a width.
     if (key === "monthly") monthly.chart?.resize();
+    if (key === "cumulative") cumulative?.chart?.resize();
   }
 
   const switcher = element("div", "analysis-chart-switch");
   switcher.setAttribute("role", "group");
   switcher.setAttribute("aria-label", "انتخاب نمودار هزینه");
-  Object.entries(ANALYSIS_CHARTS).forEach(([key, meta]) => {
+  Object.entries(ANALYSIS_CHARTS).filter(([key]) => panels[key]).forEach(([key, meta]) => {
     const button = element("button", "button button--small button--ghost", meta.label);
     button.type = "button";
     button.dataset.chart = key;
@@ -725,7 +730,7 @@ function createSettingsLink() {
   return link;
 }
 
-function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null) {
+function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null, cumulative = null) {
   const fragment = document.createDocumentFragment();
   const pageHeader = document.createElement("header");
   pageHeader.className = "finance-page-header";
@@ -758,7 +763,7 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   const overviewLayout = document.createElement("div");
   overviewLayout.className = "finance-overview-layout";
   overviewLayout.append(
-    createManagerialComparisonPanel(data.metrics, comparisons.management, monthly, chartState),
+    createManagerialComparisonPanel(data.metrics, comparisons.management, monthly, { ...chartState, cumulative }),
     createSupplementarySummary(data.metrics),
   );
   overviewPanel.append(summaryHeader, overviewLayout);
@@ -885,6 +890,63 @@ function trendTable(view) {
 function trendLegend() {
   const legend = element("ul", "breakdown-legend monthly-trend-legend");
   [["actual", "هزینه واقعی ثبت‌شده"], ["initial", "برآورد ماهانه"]].forEach(([series, label]) => {
+    const item = element("li", "", label);
+    item.dataset.series = series;
+    legend.append(item);
+  });
+  return legend;
+}
+
+/**
+ * The cumulative curve: the money twin of the host platform's progress S-curve.
+ *
+ * Both series are running totals, so each period adds to the one before it and
+ * the curve only climbs. The plan comes from the per-period estimates the host's
+ * periodic files carry; until those arrive the panel draws the actual alone and
+ * says why rather than quietly showing one curve as if it were the comparison.
+ */
+function createCostCurvePanel({ trend, trendError }) {
+  const panel = element("div", "analysis-chart-panel finance-cost-curve");
+  panel.dataset.chart = "cumulative";
+
+  if (trendError) {
+    panel.append(element("p", "inline-notice", formatApiErrorMessage(trendError, "دریافت روند تجمعی هزینه انجام نشد.")));
+    return { panel, chart: null };
+  }
+
+  const trendView = buildMonthlyTrend({ months: trend?.months ?? [], mode: TREND_MODES.CUMULATIVE });
+  if (trendView.isEmpty) {
+    panel.append(element("p", "inline-notice", trend?.unavailableReason ?? "هنوز فاکتور تأییدشده‌ای برای ساخت روند تجمعی ثبت نشده است."));
+    return { panel, chart: null };
+  }
+
+  const view = buildCostCurve({ points: trendView.points });
+  const axisScale = compactMoneyScale(view.ceilingIrr);
+  panel.append(curveLegend());
+
+  const chart = createCostCurveChart({
+    formatValue: (value) => axisScale?.format(value) ?? "",
+    formatExactValue: (value) => formatTomanFromIrr(value),
+    // Exact, never compacted. The guide's numbers are rounded because they are
+    // a ruler; this one is a figure the reader takes away, and "۰٫۱۹ میلیارد"
+    // hides everything between ۱۸۵ and ۱۹۴ میلیون behind one rounded digit.
+    formatMarker: (value) => formatTomanFromIrr(value),
+    unitLabel: axisScale?.unit ?? "",
+    ariaLabel: "منحنی تجمعی هزینه واقعی در برابر برآورد تجمعی پروژه",
+  });
+  chart.setData(view);
+  panel.append(chart.element);
+
+  if (view.hasPlan && view.planPartial) {
+    panel.append(element("p", "inline-notice", "برای بخشی از دوره‌ها برآورد ثبت نشده و منحنی برنامه در آن بازه‌ها کامل نیست."));
+  }
+  return { panel, chart };
+}
+
+/** Green fill for what was spent, dashed blue for what was planned. */
+function curveLegend() {
+  const legend = element("ul", "breakdown-legend cost-curve-legend");
+  [["actual", "واقعی"], ["plan", "برنامه (هدف)"]].forEach(([series, label]) => {
     const item = element("li", "", label);
     item.dataset.series = series;
     legend.append(item);
@@ -1035,6 +1097,7 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
     disposeChart();
     const renderContent = (data) => {
       const built = createMonthlyTrendPanel({ trend, trendError });
+      const curve = createCostCurvePanel({ trend, trendError });
       chart = built.chart;
       const provenance = createSnapshotProvenance({
         snapshots,
@@ -1042,7 +1105,7 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
         report: data,
         onSelect: selectSnapshot,
       });
-      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance);
+      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance, curve);
     };
     root.replaceChildren(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }
