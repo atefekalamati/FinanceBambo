@@ -3,14 +3,44 @@ import { aggregateConfirmedInvoicesByMonth } from "../../shared/reports/monthly-
 import { buildSeedInvoices } from "./invoices-adapter.js";
 
 /**
- * Synthetic monthly estimate baseline.
+ * The per-period plan, for the reference dataset only.
  *
- * The Backend has no monthly estimate anywhere in its contract — LiveMetrics
- * and TypeBreakdown carry no time dimension and EstimateLine has no dates — so
- * this exists only to make the overview trend demonstrable while that contract
- * is designed. The API adapter deliberately reports the series as unavailable
- * rather than deriving a lookalike, so nothing here can reach a real project.
+ * The real figures come from the host platform's periodic files: each period
+ * carries its own estimated quantities, this module prices them, and the
+ * cumulative curve is the running sum. That pipe does not exist yet, so the
+ * reference dataset models its shape — a construction ramp, slow at the start,
+ * heaviest through the structural months, tapering at handover.
+ *
+ * The API adapter still reports the series as unavailable rather than deriving
+ * a lookalike, so none of this can reach a real project. It exists so the
+ * cumulative chart can be judged before the pipe is built, and it is labelled
+ * `demo_period_plan` at the boundary rather than dressed up as a real source.
  */
+const PLAN_SHAPE = Object.freeze([2, 3, 5, 8, 11, 13, 14, 13, 11, 8, 7, 5]);
+
+function planWeights(count) {
+  if (count <= 0) return [];
+  return Array.from({ length: count }, (unused, index) => PLAN_SHAPE[Math.floor((index * PLAN_SHAPE.length) / count)]);
+}
+
+/**
+ * Splits a total across periods without losing a rial: every period takes its
+ * whole share and the last one absorbs the remainder, so the periods always sum
+ * to exactly the figure they were divided from.
+ */
+function distributePlan(count, totalIrr) {
+  const total = BigInt(totalIrr);
+  const weights = planWeights(count);
+  const sum = BigInt(weights.reduce((result, weight) => result + weight, 0));
+  if (sum === 0n) return weights.map(() => "0");
+  let allocated = 0n;
+  return weights.map((weight, index) => {
+    if (index === weights.length - 1) return String(total - allocated);
+    const share = (total * BigInt(weight)) / sum;
+    allocated += share;
+    return String(share);
+  });
+}
 function wait(duration = 320) {
   return new Promise((resolve) => setTimeout(resolve, duration));
 }
@@ -195,17 +225,18 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     await wait(280);
     if (initialState === "error") throw new ApiError({ status: 503, code: "MONTHLY_TREND_UNAVAILABLE", message: "دریافت روند ماهانه هزینه انجام نشد.", requestId: "mock-monthly-trend-001" });
     if (initialState === "empty") return { months: [], estimateSource: "unavailable" };
-    // No estimate line carries a planned date, so the service has no monthly
-    // baseline to report and answers null on every point. The mock seeded one
-    // while the endpoint did not exist; keeping it now would make standalone
-    // draw a comparison the real product cannot, which is the one thing a
-    // reference dataset must never do.
+    // The periodic plan the cumulative curve compares against. The real one
+    // arrives with the host's period files; this is the reference dataset's
+    // stand-in, named as such at the boundary so nothing downstream mistakes it
+    // for a figure the service produced.
+    const actualMonths = aggregateConfirmedInvoicesByMonth(buildSeedInvoices(context));
+    const plan = distributePlan(actualMonths.length, "18650000000");
     return {
-      estimateSource: "unavailable",
+      estimateSource: "demo_period_plan",
       actualSource: "confirmed_financial_documents",
-      months: aggregateConfirmedInvoicesByMonth(buildSeedInvoices(context)).map((month) => ({
+      months: actualMonths.map((month, index) => ({
         ...month,
-        estimateIrr: null,
+        estimateIrr: plan[index] ?? null,
       })),
     };
   }

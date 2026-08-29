@@ -411,6 +411,11 @@
   min-block-size: 0;
 }
 
+.analysis-chart-panel > .cost-curve {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
 /* The alternative table is for assistive technology and print, per PRD 12. On
    screen the chart carries the meaning, and a table cannot share a fixed height
    with it without forcing a scrollbar, so it is hidden the same way every other
@@ -2252,4 +2257,187 @@ a.finance-variance-card__link:hover {
   .breakdown-table {
     min-inline-size: 0;
   }
+}
+
+/* --------------------------------------------------------------------------
+   Cumulative cost curve — the money twin of the host's progress S-curve.
+   Its shapes are deliberately the ones the reader already knows from the
+   progress report: dashed blue plan, filled green actual, a marker where the
+   actual stops.
+   -------------------------------------------------------------------------- */
+
+.cost-curve {
+  display: grid;
+  gap: .6rem;
+}
+
+.cost-curve__surface {
+  position: relative;
+  min-block-size: clamp(9rem, 26vw, 14rem);
+  inline-size: 100%;
+}
+
+.cost-curve__canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.cost-curve__gridline {
+  stroke: var(--chart-gridline, rgb(148 163 184 / 16%));
+  stroke-width: 1;
+}
+
+.cost-curve__baseline {
+  stroke: var(--chart-gridline-strong, rgb(148 163 184 / 34%));
+  stroke-width: 1;
+}
+
+/* The plan is a target, not a record: dashed, so it never reads as something
+   that already happened. */
+.cost-curve__plan {
+  fill: none;
+  stroke: var(--chart-plan, #4a90e2);
+  stroke-width: 2.5;
+  stroke-dasharray: 7 6;
+  stroke-linecap: round;
+}
+
+.cost-curve__actual {
+  fill: none;
+  stroke: var(--chart-actual, #21c07a);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cost-curve__area {
+  fill: var(--chart-actual, #21c07a);
+  opacity: .18;
+  stroke: none;
+}
+
+.cost-curve__marker-line {
+  stroke: var(--chart-actual, #21c07a);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+  opacity: .75;
+}
+
+.cost-curve__marker-dot {
+  fill: var(--chart-actual, #21c07a);
+  stroke: var(--surface-1, #0f1b2b);
+  stroke-width: 2;
+}
+
+/* The figure above the marker — the reader's "you are here". */
+.cost-curve__callout {
+  position: absolute;
+  color: var(--chart-actual, #21c07a);
+  font-weight: 800;
+  font-size: var(--font-size-sm, .8rem);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* --- the value guide -------------------------------------------------- */
+
+/* Physical `left`, not `inset-inline-start`: this layer labels an SVG, and SVG
+   has no writing direction. Mirroring it would put every number on the wrong
+   gridline. */
+.cost-curve__guide {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  inline-size: var(--lane, 3rem);
+  pointer-events: none;
+}
+
+/* Said once, above the top gridline. It is wider than the lane it heads, and
+   deliberately allowed to run past it into the empty top-left of the plot —
+   repeating "میلیارد تومان" on five gridlines would cost more room than the
+   chart has. */
+.cost-curve__guide-unit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs, .7rem);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cost-curve__guide-value {
+  position: absolute;
+  right: .4rem;
+  /* Sits on its own gridline: the lane runs from --plot-top downwards, and a
+     tick of 100 belongs at the top of it. */
+  inset-block-start: calc(var(--plot-top, 0px) + var(--plot-height, 0px) * (1 - var(--tick, 0) / 100));
+  transform: translateY(-50%);
+  color: var(--text-muted, #8298ad);
+  font-size: var(--font-size-xs, .7rem);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+/* The same exact-amount tooltip the other charts in this module use. */
+.cost-curve__guide-value[data-exact]:hover::after,
+.cost-curve__guide-value[data-exact]:focus-visible::after {
+  content: attr(data-exact);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + .35rem);
+  z-index: 40;
+  padding: .25rem .5rem;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-3, #1c2b3f);
+  color: var(--text-strong, #e8eef5);
+  font-size: var(--font-size-xs, .7rem);
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md, 0 6px 18px rgb(0 0 0 / 35%));
+}
+
+/* --- period labels ---------------------------------------------------- */
+
+.cost-curve__periods {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  block-size: var(--band, 24px);
+}
+
+.cost-curve__period {
+  position: absolute;
+  top: .2rem;
+  transform: translateX(-50%);
+  color: var(--text-muted, #8298ad);
+  font-size: var(--font-size-xs, .7rem);
+  white-space: nowrap;
+}
+
+.cost-curve__absent {
+  margin: 0;
+}
+
+@media (max-width: 48rem) {
+  .cost-curve__period {
+    font-size: var(--font-size-2xs, .62rem);
+  }
+}
+
+/* The curve's key, in the legend shape the rest of the module already uses:
+   a filled chip for the series that was recorded, a dashed rule for the one
+   that is only a target. */
+.cost-curve-legend li[data-series="actual"]::before {
+  background: var(--chart-actual, #21c07a);
+}
+
+.cost-curve-legend li[data-series="plan"]::before {
+  block-size: 0;
+  border-block-start: 2.5px dashed var(--chart-plan, #4a90e2);
+  border-radius: 0;
+  background: none;
+  inline-size: 1.1rem;
 }
