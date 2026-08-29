@@ -32,6 +32,7 @@ import { createSettingsPage } from "../features/settings/settings-page.js";
 import { createReportsPage } from "../features/reports/reports-page.js";
 import { createPeriodReportPage } from "../features/period-report/period-report-page.js";
 import { createReportBuilderPage } from "../features/report-builder/report-builder-page.js";
+import { createLevelOnePage } from "../features/level-one/level-one-page.js";
 import { createAuditPage } from "../features/audit/audit-page.js";
 import { DISPLAY_CURRENCY_CHANGED_EVENT } from "../shared/preferences/currency-preference.js";
 
@@ -126,6 +127,15 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
       auditAdapter: adapters.audit,
       invoicesAdapter: adapters.invoices,
       progressAdapter: adapters.progress,
+    }));
+  }
+  if (route.key === "level-one") {
+    root.append(createLevelOnePage({
+      context,
+      adapters,
+      // The phase being opened travels in the address, so it can be linked to
+      // and reopened rather than only reached by clicking through the list.
+      wbsCode: routeQuery.get("wbs") || null,
     }));
   }
   if (route.key === "report-builder") {

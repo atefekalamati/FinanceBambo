@@ -1,6 +1,7 @@
 import { ApiError } from "../../core/api/api-error.js";
 import { aggregateConfirmedInvoicesByMonth } from "../../shared/reports/monthly-trend.js";
 import { buildSeedInvoices } from "./invoices-adapter.js";
+import { buildWbsNodes, unattributedActualIrr } from "./wbs-fixture.js";
 
 /**
  * The per-period plan, for the reference dataset only.
@@ -241,5 +242,28 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     };
   }
 
-  return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv, getMonthlyTrend });
+  /**
+   * Cost rolled up the breakdown structure. The service has no such endpoint
+   * yet; this answers the shape it is specified to answer so the report can be
+   * built and reviewed before it ships.
+   */
+  async function getWbsRollup({ parentWbsCode = null } = {}) {
+    await wait(240);
+    if (initialState === "error") throw new ApiError({ status: 503, code: "WBS_ROLLUP_UNAVAILABLE", message: "دریافت گزارش سطح‌بندی هزینه انجام نشد.", requestId: "mock-wbs-001" });
+    if (initialState === "empty") return { available: true, nodes: [], unattributedActualIrr: null, source: "demo_wbs_rollup" };
+    const all = buildWbsNodes();
+    const nodes = parentWbsCode
+      ? all.filter((node) => node.parentWbsCode === parentWbsCode)
+      : all.filter((node) => node.parentWbsCode === null);
+    return {
+      available: true,
+      nodes,
+      // Only claimed at the top level: a phase's own children account for all of
+      // that phase, so an unattributed figure there would be double-counted.
+      unattributedActualIrr: parentWbsCode ? null : unattributedActualIrr(all),
+      source: "demo_wbs_rollup",
+    };
+  }
+
+  return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv, getMonthlyTrend, getWbsRollup });
 }

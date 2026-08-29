@@ -16,6 +16,7 @@ import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
 import { canAccessSurface } from "../../core/auth/permissions.js";
 import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/variances/variance-rollup.js";
 import { createReportBuilderSection } from "../report-builder/report-builder-section.js";
+import { createLevelOneSection } from "../level-one/level-one-section.js";
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -43,6 +44,7 @@ const SUPPLEMENTARY_SUMMARY_KEYS = new Set([
 const WORK_AREAS = Object.freeze([
   { key: "reports", title: "گزارش وضعیت مالی", description: "گزارش به‌روز پروژه، انحراف قیمت و مقدار، و ثبت گزارش تثبیت‌شده", meta: "گزارش به‌روز · انحرافات · چاپ", href: "#/reports" },
   { key: "period-report", title: "گزارش دوره‌ای", description: "ساخت گزارش برای یک بازه زمانی دلخواه با خروجی چاپ و CSV", meta: "بازه دلخواه · مقایسه · خروجی", href: "#/period-report" },
+  { key: "level-one", title: "گزارش مالی سطح ۱", description: "هزینه هر مرحله از ساختار پروژه در برابر برآورد آن، با جزئیات سطح ۲ و اقلام", meta: "مراحل · سطح ۲ · اقلام", href: "#/level-one" },
   { key: "invoices", title: "ثبت و مشاهده فاکتورها", description: "ثبت فاکتور و مشاهده فهرست، وضعیت، فروشنده، مبلغ و جزئیات خطوط", meta: "ثبت · فهرست · وضعیت", href: "#/invoices" },
   { key: "report-prices", title: "جدول قیمت‌ها", description: "قیمت پایه سازمان، قیمت اختصاصی پروژه و قیمت روز هر قلم، با خروجی اکسل", meta: "فقط‌خواندنی · خروجی اکسل", href: "#/report-prices" },
   { key: "report-items", title: "جدول اقلام و برآورد", description: "ریز برآورد هر فعالیت، مقدار اولیه و آخرین مقدار اصلاح‌شده، با خروجی اکسل", meta: "فقط‌خواندنی · خروجی اکسل", href: "#/report-items" },
@@ -730,7 +732,7 @@ function createSettingsLink() {
   return link;
 }
 
-function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null, cumulative = null) {
+function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null, cumulative = null, levelOne = null) {
   const fragment = document.createDocumentFragment();
   const pageHeader = document.createElement("header");
   pageHeader.className = "finance-page-header";
@@ -830,8 +832,12 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   areas.setAttribute("aria-label", "بخش‌های گزارش مالی");
   WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-  if (provenance) fragment.append(pageHeader, provenance, overviewPanel, insights, builder, areasHeader, areas);
-  else fragment.append(pageHeader, overviewPanel, insights, builder, areasHeader, areas);
+  // The phase report is its own section rather than a card: nineteen phases at
+  // two columns each is more than any card measure holds, so it takes the
+  // page's full width and scrolls inside itself.
+  const levelOneSection = createLevelOneSection(levelOne ?? {});
+  if (provenance) fragment.append(pageHeader, provenance, overviewPanel, insights, levelOneSection, builder, areasHeader, areas);
+  else fragment.append(pageHeader, overviewPanel, insights, levelOneSection, builder, areasHeader, areas);
   return fragment;
 }
 
@@ -1022,6 +1028,8 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let trend = null;
   let trendError = null;
+  let wbsRollup = null;
+  let wbsError = null;
   let activeChart = "managerial";
   let chart = null;
   let snapshots = [];
@@ -1049,14 +1057,21 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
         selectedSnapshotId = latest.progressSnapshotId;
         // The trend is independent of the overview: a failure there must not
         // take the eight headline metrics down with it.
-        const [report, monthly] = await Promise.all([
+        const [report, monthly, rollup] = await Promise.all([
           reportsAdapter.getOverview({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId }),
           reportsAdapter.getMonthlyTrend({ reportingDate: latest.reportingDate }).then(
             (value) => { trendError = null; return value; },
             (error) => { trendError = error; return null; },
           ),
+          // Independent too: the phase report is not built on the service yet,
+          // and its absence must not take the headline metrics down with it.
+          reportsAdapter.getWbsRollup({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId }).then(
+            (value) => { wbsError = null; return value; },
+            (error) => { wbsError = error; return null; },
+          ),
         ]);
         trend = monthly;
+        wbsRollup = rollup;
         state = report ? createRequestState(REQUEST_STATUS.SUCCESS, report) : createRequestState(REQUEST_STATUS.EMPTY);
       }
     } catch (error) {
@@ -1098,6 +1113,7 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
     const renderContent = (data) => {
       const built = createMonthlyTrendPanel({ trend, trendError });
       const curve = createCostCurvePanel({ trend, trendError });
+      const levelOne = { rollup: wbsRollup, error: wbsError };
       chart = built.chart;
       const provenance = createSnapshotProvenance({
         snapshots,
@@ -1105,7 +1121,7 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
         report: data,
         onSelect: selectSnapshot,
       });
-      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance, curve);
+      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance, curve, levelOne);
     };
     root.replaceChildren(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }

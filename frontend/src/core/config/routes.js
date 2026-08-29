@@ -57,6 +57,7 @@ export const ROUTES = Object.freeze([
   { key: "report-home", path: "/finance-report", label: "گزارش مالی", permission: "finance.view", surface: SURFACES.REPORT, home: true, enabled: true },
   { key: "reports", path: "/reports", label: "گزارش وضعیت مالی", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
   { key: "period-report", path: "/period-report", label: "گزارش دوره‌ای", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
+  { key: "level-one", path: "/level-one", label: "گزارش مالی سطح ۱", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
   { key: "invoices", path: "/invoices", label: "فاکتورها", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
   // The two tables a reader is sent to from the deviation cards. Same pages as
   // on امور مالی, opened in a mode that offers no way to change anything.
