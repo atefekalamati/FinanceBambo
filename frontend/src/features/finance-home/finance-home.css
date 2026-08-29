@@ -2441,3 +2441,395 @@ a.finance-variance-card__link:hover {
   background: none;
   inline-size: 1.1rem;
 }
+
+/* --------------------------------------------------------------------------
+   The report overview as one dashboard.
+
+   Every section on it shares a surface — the same background, border, radius,
+   padding and outer gap — so the page reads as one board rather than a stack of
+   unrelated components. The rows below only decide proportions; the surface is
+   `.overview-card`, and anything placed in a row wears it.
+   -------------------------------------------------------------------------- */
+
+.overview-card,
+.finance-grid > .finance-managerial-comparison,
+.finance-grid > .level-one-section,
+.finance-grid > .report-builder-panel,
+.finance-insight-cards > * {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.overview-card__head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.overview-card__title {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 700;
+}
+
+.overview-card__link {
+  color: var(--color-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.overview-card__link:hover,
+.overview-card__link:focus-visible {
+  text-decoration: underline;
+}
+
+/* --- rows -------------------------------------------------------------- */
+
+.finance-grid {
+  display: grid;
+  gap: var(--space-md);
+  align-items: stretch;
+  min-inline-size: 0;
+}
+
+.finance-grid--main { grid-template-columns: 6fr 2fr 2fr; }
+.finance-grid--pair { grid-template-columns: 1fr 1fr; }
+.finance-grid--insights { grid-template-columns: 3fr 2fr; }
+
+/* The three insight cards share one row inside their own column, so none of
+   them takes a different width because its text ran longer. */
+.finance-insight-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-md);
+  align-items: stretch;
+  min-inline-size: 0;
+}
+
+.finance-insight-cards > * {
+  block-size: 100%;
+}
+
+.finance-insight-cards .finance-warnings h2,
+.finance-insight-cards .finance-variance-panel h2 {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+/* --- row 0: the basis, full width, settings inside it ------------------- */
+
+.finance-basis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.finance-basis > .finance-snapshot-provenance {
+  flex: 1 1 22rem;
+  min-inline-size: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.finance-basis__meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-inline-start: auto;
+}
+
+.finance-page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* --- the cumulative curve card ----------------------------------------- */
+
+.finance-curve-card .analysis-chart-panel {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/* --- day prices, three rows -------------------------------------------- */
+
+.prices-summary__table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-xs);
+  table-layout: fixed;
+}
+
+.prices-summary__table th {
+  padding-block-end: .35rem;
+  border-block-end: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-weight: 700;
+  text-align: start;
+}
+
+.prices-summary__table td {
+  padding-block: .45rem;
+  border-block-end: 1px solid var(--color-border-subtle, rgb(148 163 184 / 12%));
+  vertical-align: middle;
+}
+
+.prices-summary__table tr:last-child td {
+  border-block-end: 0;
+}
+
+/* Long item names wrap rather than pushing the price out of the card. */
+.prices-summary__name {
+  inline-size: 44%;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.prices-summary__price {
+  inline-size: 32%;
+  font-weight: 700;
+  text-align: start;
+}
+
+.prices-summary__trend {
+  inline-size: 24%;
+}
+
+.trend-chip {
+  display: inline-block;
+  padding: .1rem .4rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-2xs, .62rem);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.trend-chip[data-direction="up"] { background: rgb(229 72 77 / 14%); color: var(--chart-over, #e5484d); }
+.trend-chip[data-direction="down"] { background: rgb(33 192 122 / 14%); color: var(--chart-actual, #21c07a); }
+.trend-chip[data-direction="flat"],
+.trend-chip[data-direction="none"] { background: rgb(148 163 184 / 14%); color: var(--color-text-muted); }
+
+/* --- cost mix, as a ring ------------------------------------------------ */
+
+a.breakdown-donut {
+  color: inherit;
+  text-decoration: none;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+a.breakdown-donut:hover,
+a.breakdown-donut:focus-visible {
+  border-color: var(--color-accent);
+  background: var(--color-surface-2, rgb(148 163 184 / 6%));
+}
+
+a.breakdown-donut:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.breakdown-donut__figure {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+/* No fixed width: the ring answers to the card it is in. */
+.breakdown-donut__ring {
+  position: relative;
+  flex: 0 1 auto;
+  inline-size: min(100%, 8.5rem);
+  aspect-ratio: 1;
+}
+
+.breakdown-donut__arc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ring, conic-gradient(var(--color-border) 0 100%));
+}
+
+/* The hole is cut out of the ring rather than covered with a disc: the card
+   behind it is a gradient, and a flat patch of one colour would sit on it as a
+   visible smudge. */
+.breakdown-donut__arc {
+  -webkit-mask: radial-gradient(circle, transparent 55%, #000 56%);
+  mask: radial-gradient(circle, transparent 55%, #000 56%);
+}
+
+.breakdown-donut__centre {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: .05rem;
+}
+
+.breakdown-donut__centre strong {
+  font-size: var(--font-size-sm);
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.breakdown-donut__centre span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-2xs, .62rem);
+}
+
+.breakdown-donut__legend {
+  display: grid;
+  flex: 1 1 8rem;
+  gap: .3rem;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+  list-style: none;
+}
+
+.breakdown-donut__legend li {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  min-inline-size: 0;
+  font-size: var(--font-size-xs);
+}
+
+.breakdown-donut__swatch {
+  flex: 0 0 auto;
+  inline-size: .55rem;
+  block-size: .55rem;
+  border-radius: .16rem;
+  background: var(--swatch);
+}
+
+.breakdown-donut__label {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakdown-donut__share {
+  margin-inline-start: auto;
+  font-weight: 700;
+}
+
+/* --- responsive --------------------------------------------------------
+   The order is reflow, then fewer columns, then tighter spacing. No row here
+   ever scrolls: the columns give way instead.
+   ------------------------------------------------------------------------ */
+
+/* Laptop: the chart keeps its lead, the two small cards stack beside it. */
+@media (max-width: 70rem) {
+  .finance-grid--main {
+    grid-template-columns: 6fr 4fr;
+    grid-template-rows: auto auto;
+  }
+
+  .finance-grid--main > :first-child {
+    grid-row: 1 / span 2;
+  }
+
+  .finance-grid--insights {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Tablet: two columns throughout. */
+@media (max-width: 64rem) {
+  .finance-grid--main {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .finance-grid--main > :first-child {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+
+  .finance-grid--pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 48rem) {
+  .finance-insight-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .finance-basis__meta {
+    margin-inline-start: 0;
+  }
+}
+
+/* One column, in the order the reader needs it. */
+@media (max-width: 36rem) {
+  .finance-grid--main {
+    grid-template-columns: 1fr;
+  }
+
+  .finance-grid {
+    gap: var(--space-sm);
+  }
+
+  .overview-card,
+  .finance-grid > .finance-managerial-comparison,
+  .finance-grid > .level-one-section,
+  .finance-grid > .report-builder-panel,
+  .finance-insight-cards > * {
+    padding: var(--space-sm);
+  }
+
+  .prices-summary__table {
+    font-size: var(--font-size-2xs, .62rem);
+  }
+}
+
+/* --- the key figures, across the page ----------------------------------- */
+
+.finance-supplementary-summary--strip {
+  block-size: auto;
+}
+
+.finance-supplementary-summary--strip .finance-supplementary-summary__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-sm);
+}
+
+.finance-supplementary-summary--strip .finance-supplementary-summary__list > .summary-card {
+  flex: 0 0 auto;
+}
+
+/* The three insight cards keep one column inside their own area. Three across
+   in a third of the page leaves each about 175px, which is narrower than the
+   item names and amounts they carry, and the two collide. Stacked they stay
+   equal in width, padding and header height — which is what was asked for —
+   and nothing overflows. */
+.finance-insight-cards {
+  grid-template-columns: minmax(0, 1fr);
+}

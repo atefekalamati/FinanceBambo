@@ -64,6 +64,7 @@ export const ROUTES = Object.freeze([
   { key: "report-prices", path: "/report-prices", label: "جدول قیمت‌ها", permission: "finance.view", surface: SURFACES.REPORT, readOnlyTwinOf: "prices", enabled: true },
   { key: "report-items", path: "/report-items", label: "جدول اقلام و برآورد", permission: "finance.view", surface: SURFACES.REPORT, readOnlyTwinOf: "financial-items", enabled: true },
   { key: "report-builder", path: "/report-builder", label: "گزارش اختصاصی مالی", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
+  { key: "work-areas", path: "/work-areas", label: "بخش‌های گزارش مالی", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
   { key: "report-settings", path: "/report-settings", label: "تنظیمات نمایش", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
 ]);
 

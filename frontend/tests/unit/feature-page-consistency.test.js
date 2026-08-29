@@ -20,7 +20,15 @@ const PAGES = SOURCES.filter(([name]) => name.startsWith("features/") && name.en
 
 test("every feature page renders its states through the shared page-state helper", () => {
   assert.ok(PAGES.length >= 10, "expected one module per finance route");
-  const offenders = PAGES.filter(([, source]) => !source.includes("renderPageState(")).map(([name]) => name);
+  // The destinations page fetches nothing — it is the static list of links that
+  // used to close the overview — so it has no loading, empty or error state to
+  // render. Every page that does ask the service for something is still held to
+  // the shared helper.
+  const STATELESS = new Set(["features/work-areas/work-areas-page.js"]);
+  const offenders = PAGES
+    .filter(([name]) => !STATELESS.has(name))
+    .filter(([, source]) => !source.includes("renderPageState("))
+    .map(([name]) => name);
   assert.deepEqual(
     offenders,
     [],
