@@ -27,7 +27,7 @@ from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoiceListR
 from .schemas.attachments import AttachmentListResponse,AttachmentResponse
 from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionListResponse,ExtractionReject,ExtractionRetry,ExtractionStart
 from .domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT
-from .schemas.reports import LiveReportResponse,MonthlyReportResponse,OperationalOverviewResponse,ReportSnapshotCreate,ReportSnapshotListResponse,ReportSnapshotReference,ReportVarianceListResponse
+from .schemas.reports import LiveReportResponse,MonthlyReportResponse,OperationalOverviewResponse,ReportSnapshotCreate,ReportSnapshotListResponse,ReportSnapshotReference,ReportVarianceListResponse,WbsReportResponse
 from .schemas.audit import AuditEventListResponse,AuditEventResponse
 from datetime import date
 
@@ -349,6 +349,13 @@ async def live_report(projectId:str,request:Request,reportingDate:date,progressS
 async def finance_overview(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None):
     scope=await _resource_scope(projectId,request,"finance.view")
     return await request.app.state.finance_live_report_service.overview(scope,reportingDate,progressSnapshotId)
+
+@router.get("/reports/live/by-wbs",response_model=WbsReportResponse,responses=FINANCE_ERROR_RESPONSES)
+async def live_report_by_wbs(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None,
+    level:int|None=Query(None,ge=1,le=10),parentWbsCode:str|None=Query(None,min_length=1,max_length=120,pattern=r"^[0-9A-Za-z._-]+$")):
+    """WBS stages with their rolled-up cost. `parentWbsCode` returns that node's direct children."""
+    scope=await _resource_scope(projectId,request,"finance_report.view")
+    return await request.app.state.finance_live_report_service.by_wbs(scope,reportingDate,progressSnapshotId,level,parentWbsCode)
 
 @router.get("/reports/live/variances",response_model=ReportVarianceListResponse)
 async def live_report_variances(projectId:str,request:Request,reportingDate:date,progressSnapshotId:UUID|None=None,

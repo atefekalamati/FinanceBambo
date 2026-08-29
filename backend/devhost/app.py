@@ -183,7 +183,10 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
         UnavailableExtractor("dev-image-extractor"), UnavailableExtractor("dev-voice-extractor"),
         invoice_service=invoice_service)
     application.state.finance_live_report_service = FinanceLiveReportService(
-        PsycopgLiveReportRepository(connection), progress_provider)
+        PsycopgLiveReportRepository(connection), progress_provider,
+        # The WBS rollup reads its stages from the activity catalogue. Same provider the
+        # resource service already holds, so both see one plan rather than two.
+        activity_provider=activity_provider)
     application.state.finance_audit_service = FinanceAuditService(
         PsycopgFinanceAuditRepository(connection))
 
