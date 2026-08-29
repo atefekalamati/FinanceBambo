@@ -92,5 +92,49 @@ export function createApiReportsAdapter(context, client) {
     };
   }
 
-  return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv, getMonthlyTrend });
+  /**
+   * Cost rolled up the project's breakdown structure.
+   *
+   * The endpoint is specified in docs/BACKEND_NEEDS_LEVEL1_REPORT_FA.md and is
+   * not built yet. A 404 is therefore not an error to show the reader — it is
+   * this project's answer to "is that report available", so it comes back as an
+   * empty result carrying `available: false` and the page says what is missing.
+   * Every other status still raises: a 500 here is a real fault and hiding it
+   * behind "not available yet" would keep it hidden after the endpoint lands.
+   */
+  async function getWbsRollup({ reportingDate, progressSnapshotId, parentWbsCode = null, level = 1 } = {}) {
+    const query = new URLSearchParams({ reportingDate });
+    if (progressSnapshotId) query.set("progressSnapshotId", progressSnapshotId);
+    if (parentWbsCode) query.set("parentWbsCode", parentWbsCode);
+    else query.set("level", String(level));
+    try {
+      const payload = await client.request(`${base}/reports/live/by-wbs?${query.toString()}`);
+      return {
+        available: true,
+        nodes: (payload.nodes ?? payload.items ?? []).map((node) => ({
+          wbsCode: node.wbsCode,
+          title: node.title ?? null,
+          parentWbsCode: node.parentWbsCode ?? null,
+          activityCount: node.activityCount ?? 0,
+          childCount: node.childCount ?? 0,
+          weight: node.weight == null ? null : String(node.weight),
+          progressPercent: node.progressPercent == null ? null : String(node.progressPercent),
+          initialEstimateIrr: node.initialEstimateIrr == null ? null : String(node.initialEstimateIrr),
+          revisedEstimateIrr: node.revisedEstimateIrr == null ? null : String(node.revisedEstimateIrr),
+          actualCostIrr: String(node.actualCostIrr ?? "0"),
+          remainingPhysicalCostIrr: node.remainingPhysicalCostIrr == null ? null : String(node.remainingPhysicalCostIrr),
+          moneyRequiredIrr: node.moneyRequiredIrr == null ? null : String(node.moneyRequiredIrr),
+          forecastFinalIrr: node.forecastFinalIrr == null ? null : String(node.forecastFinalIrr),
+          breakdown: node.breakdown ?? null,
+        })),
+        unattributedActualIrr: payload.unattributedActualIrr == null ? null : String(payload.unattributedActualIrr),
+        source: payload.source ?? "service",
+      };
+    } catch (error) {
+      if (error?.status === 404) return { available: false, nodes: [], unattributedActualIrr: null, source: "unavailable" };
+      throw error;
+    }
+  }
+
+  return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv, getMonthlyTrend, getWbsRollup });
 }
