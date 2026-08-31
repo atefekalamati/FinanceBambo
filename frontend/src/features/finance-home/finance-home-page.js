@@ -34,12 +34,6 @@ const SUMMARY_ITEMS = Object.freeze([
 
 const PRIMARY_SUMMARY_KEYS = new Set(["initialEstimateIrr", "actualCostIrr", "remainingPhysicalCostIrr", "forecastFinalCostIrr"]);
 const RELATED_SUMMARY_KEYS = new Set(["actualCostPerSquareMeterIrr", "forecastPerSquareMeterIrr"]);
-const SUPPLEMENTARY_SUMMARY_KEYS = new Set([
-  "actualCostPerSquareMeterIrr",
-  "currentExecutedValueIrr",
-  "forecastPerSquareMeterIrr",
-  "moneyRequiredToContinueIrr",
-]);
 
 /* The destinations of the گزارش مالی surface, in the order a reader wants them:
    the current report, the same report over a chosen period, the documents the
@@ -289,39 +283,20 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   return section;
 }
 
-function createSupplementarySummary(metrics) {
-  const section = document.createElement("aside");
-  section.className = "finance-supplementary-summary";
-  section.setAttribute("aria-label", "اطلاعات تکمیلی وضعیت مالی");
-  const heading = document.createElement("div");
-  heading.className = "finance-supplementary-summary__heading";
-  const eyebrow = document.createElement("span");
-  eyebrow.textContent = "شاخص‌های مکمل";
-  const title = document.createElement("h2");
-  title.textContent = "اطلاعات تکمیلی";
-  const description = document.createElement("p");
-  description.textContent = "جزئیات مؤثر برای تفسیر تصویر مالی پروژه";
-  heading.append(eyebrow, title, description);
-  const list = document.createElement("div");
-  list.className = "finance-supplementary-summary__list";
-  SUMMARY_ITEMS
-    .filter(([key]) => SUPPLEMENTARY_SUMMARY_KEYS.has(key))
-    .forEach(([key, label, detail]) => {
-      const item = createSummaryCard(key, label, detail, metrics);
-      item.classList.add("summary-card--compact");
-      list.append(item);
-    });
-  section.append(heading, list);
-  return section;
-}
-
 /**
  * The rows lead to this surface's own tables, which are read-only whoever opens
  * them. They used to lead into the price and item editors on امور مالی — a link
  * that worked for an administrator and was a way straight past the split for
  * everyone else.
  */
-function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
+/**
+ * The deepest few deviations, and a way to the table that holds them all.
+ *
+ * `limit` is how many the card has room for, not how many there are: the board
+ * gives each of its three insight cards a third of a row, and a five-row list
+ * does not fit in one. The link under it goes to the full table either way.
+ */
+function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref, limit = 5) {
   const section = document.createElement("section");
   section.className = "finance-analysis-card finance-variance-card";
   const heading = document.createElement("h2");
@@ -335,7 +310,7 @@ function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
     return section;
   }
   const list = document.createElement("ol");
-  rows.slice(0, 5).forEach((row) => {
+  rows.slice(0, limit).forEach((row) => {
     const item = document.createElement("li");
     const link = document.createElement(baseHref ? "a" : "div");
     link.className = "finance-variance-card__link";
@@ -534,7 +509,7 @@ function createSettingsLink() {
 }
 
 function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null, cumulative = null, levelOne = null, prices = null) {
-  const fragment = document.createDocumentFragment();
+  const board = element("div", "finance-board");
   const pageHeader = document.createElement("header");
   pageHeader.className = "finance-page-header";
   const pageTitle = document.createElement("h1");
@@ -587,7 +562,7 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   const curvePanel = element("section", "overview-card finance-curve-card");
   curvePanel.setAttribute("aria-label", "روند تجمعی هزینه پروژه");
   const curveHead = element("header", "overview-card__head");
-  curveHead.append(element("h2", "overview-card__title", "روند تجمعی هزینه کل پروژه"));
+  curveHead.append(element("h2", "overview-card__title", "روند تجمعی هزینه"));
   curvePanel.append(curveHead);
   if (cumulative?.panel) {
     cumulative.panel.hidden = false;
@@ -598,27 +573,13 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
     buildWarningsCard(data),
     // One row per item. The service answers with an estimate line each, and the
     // same item used on two activities would otherwise be listed twice.
-    createVariancePanel("بیشترین انحراف قیمت", rollupPriceVariances(data.topPriceVariances), "varianceIrr", formatCompactMoneyFromIrr, "#/report-prices"),
-    createVariancePanel("بیشترین انحراف مقدار", rollupQuantityVariances(data.topQuantityVariances), "varianceQuantity", formatDisplayNumber, "#/report-items"),
+    createVariancePanel("بیشترین انحراف قیمت", rollupPriceVariances(data.topPriceVariances), "varianceIrr", formatCompactMoneyFromIrr, "#/report-prices", 2),
+    createVariancePanel("بیشترین انحراف مقدار", rollupQuantityVariances(data.topQuantityVariances), "varianceQuantity", formatDisplayNumber, "#/report-items", 2),
   );
   rowThird.append(curvePanel, insightCards);
 
-  const summaryHeader = document.createElement("div");
-  summaryHeader.className = "section-heading";
-  const summaryHeading = document.createElement("div");
-  summaryHeading.append(
-    element("span", "", "وضعیت مالی پروژه"),
-    element("h2", "", "شاخص‌های اصلی در یک نگاه"),
-  );
-  summaryHeader.append(summaryHeading);
-  // The same component, laid out across the page instead of down a sidebar —
-  // its cards are built to fill their container, and a full-width column would
-  // squeeze four of them into slivers.
-  const keyFigures = createSupplementarySummary(data.metrics);
-  keyFigures.classList.add("finance-supplementary-summary--strip");
-
-  fragment.append(pageHeader, basis, summaryHeader, keyFigures, rowMain, rowSecond, rowThird);
-  return fragment;
+  board.append(pageHeader, basis, rowMain, rowSecond, rowThird);
+  return board;
 }
 
 /** هشدارهای کیفیت محاسبه, as one of the three equal insight cards. */

@@ -2454,7 +2454,7 @@ a.finance-variance-card__link:hover {
 .overview-card,
 .finance-grid > .finance-managerial-comparison,
 .finance-grid > .level-one-section,
-.finance-grid > .report-builder-panel,
+.finance-grid > .report-builder-section,
 .finance-insight-cards > * {
   display: flex;
   flex-direction: column;
@@ -2799,7 +2799,7 @@ a.breakdown-donut:focus-visible {
   .overview-card,
   .finance-grid > .finance-managerial-comparison,
   .finance-grid > .level-one-section,
-  .finance-grid > .report-builder-panel,
+  .finance-grid > .report-builder-section,
   .finance-insight-cards > * {
     padding: var(--space-sm);
   }
@@ -2832,4 +2832,642 @@ a.breakdown-donut:focus-visible {
    and nothing overflows. */
 .finance-insight-cards {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* --------------------------------------------------------------------------
+   The report overview as one screen.
+
+   Everything on it fits the viewport: the page never scrolls, and no card
+   scrolls in its place. The three content rows share whatever height is left
+   after the header and the basis bar, in equal parts, so the cards of a row are
+   always the same height as each other and as the row beside them.
+
+   The compression is spacing and type only — every figure, label and control is
+   still there, just smaller. Nothing is dropped to make room.
+   -------------------------------------------------------------------------- */
+
+.finance-board {
+  /* One gap everywhere: between rows, between cards, inside cards. */
+  --board-gap: .45rem;
+  --board-pad: .5rem;
+
+  /* A compact type ramp for this page only. The tokens are the site's own;
+     these are the values they take when a dashboard has to fit one screen. */
+  --font-size-lg: .92rem;
+  --font-size-md: .78rem;
+  --font-size-sm: .7rem;
+  --font-size-xs: .62rem;
+  --font-size-2xs: .56rem;
+  --space-xs: .2rem;
+  --space-sm: .3rem;
+  --space-md: var(--board-pad);
+  --space-lg: var(--board-pad);
+  --space-xl: .7rem;
+  --radius-lg: .55rem;
+  --radius-md: .45rem;
+  --level-one-plot-height: 100%;
+
+  display: grid;
+  /* Header, basis, then the three content rows. The cards of a row are always
+     the same height as each other; the rows themselves are not equal, because
+     the managerial chart carries a value guide and a four-column label band
+     that stop compressing at about 230px, and squeezing every row down to what
+     the shortest one needs would cost that chart its axis. */
+  grid-template-rows: auto auto minmax(0, 1fr) minmax(0, .72fr) minmax(0, 1.28fr);
+  gap: var(--board-gap);
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+/* The mount becomes the height the board measures itself against. The board is
+   not its direct child — the page root sits between them — so the height has to
+   be handed down through both, or `block-size: 100%` on the board resolves
+   against nothing and it grows to its content instead. */
+#finance-module-root:has(.finance-board) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  block-size: 100dvh;
+  min-block-size: 34rem;
+  padding: var(--board-gap, .55rem);
+  overflow: hidden;
+}
+
+#finance-module-root:has(.finance-board) > .finance-home-page {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+/* --- rows and cards ----------------------------------------------------- */
+
+.finance-board .finance-grid {
+  gap: var(--board-gap);
+  min-block-size: 0;
+}
+
+.finance-board .finance-insight-cards {
+  gap: var(--board-gap);
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  min-block-size: 0;
+}
+
+/* Every card on the board: one surface, one padding, and never taller than the
+   row it sits in. */
+.finance-board .overview-card,
+.finance-board .finance-grid > .finance-managerial-comparison,
+.finance-board .finance-grid > .level-one-section,
+.finance-board .finance-grid > .report-builder-section,
+.finance-board .finance-insight-cards > * {
+  gap: var(--board-gap);
+  min-block-size: 0;
+  block-size: 100%;
+  padding: var(--board-pad);
+  overflow: hidden;
+}
+
+.finance-board .finance-page-header {
+  margin: 0;
+  padding: 0;
+}
+
+.finance-board .finance-page-title {
+  font-size: 1rem;
+}
+
+.finance-board .finance-basis {
+  padding: .3rem var(--board-pad);
+}
+
+/* --- charts fill what is left of their card ----------------------------- */
+
+.finance-board .analysis-chart-panel,
+.finance-board .combo-chart,
+.finance-board .cost-curve,
+.finance-board .managerial-combo-chart,
+.finance-board .vbars,
+.finance-board .vbars__plot,
+.finance-board .breakdown-donut__figure {
+  min-block-size: 0;
+}
+
+.finance-board .analysis-chart-panel,
+.finance-board .cost-curve,
+.finance-board .managerial-combo-chart {
+  flex: 1 1 auto;
+}
+
+.finance-board .cost-curve__surface {
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+/* The phase chart is the card, not a card inside one. */
+.finance-board .level-one-section .vbars {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.finance-board .level-one-section .vbars__plot {
+  flex: 1 1 auto;
+}
+
+.finance-board .level-one-section .vgroup__bars {
+  block-size: auto;
+  min-block-size: 0;
+  flex: 1 1 auto;
+}
+
+.finance-board .level-one-section .vgroup {
+  grid-template-rows: minmax(0, 1fr) auto;
+  inline-size: clamp(3.6rem, 6vw, 5rem);
+}
+
+.finance-board .level-one-section .vbar {
+  inline-size: 1rem;
+}
+
+.finance-board .level-one-section .vgroup__name {
+  block-size: auto;
+  max-block-size: 2.1em;
+  line-height: 1.05;
+}
+
+.finance-board .level-one-section__note {
+  display: none;
+}
+
+/* The heading row of the phase card carries its link inline. */
+.finance-board .level-one-section > .section-heading {
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.finance-board .level-one-section > .section-heading h2 {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+.finance-board .level-one-section > .section-heading span {
+  display: none;
+}
+
+/* --- the report builder ------------------------------------------------- */
+
+.finance-board .report-builder-section__lead,
+.finance-board .report-builder-panel__info {
+  display: none;
+}
+
+.finance-board .report-builder-section__grid {
+  flex: 1 1 auto;
+  gap: var(--board-gap);
+  align-content: center;
+  min-block-size: 0;
+}
+
+.finance-board .report-builder-chip {
+  min-block-size: 0;
+  padding: .3rem .35rem;
+}
+
+/* --- the day prices ----------------------------------------------------- */
+
+.finance-board .prices-summary__table td {
+  padding-block: .28rem;
+}
+
+/* --- the insight cards -------------------------------------------------- */
+
+.finance-board .finance-warnings,
+.finance-board .finance-variance-panel {
+  gap: .25rem;
+}
+
+.finance-board .finance-warnings ul,
+.finance-board .finance-variance-panel ol,
+.finance-board .finance-variance-panel ul {
+  margin: 0;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+.finance-board .finance-warnings li,
+.finance-board .finance-variance-panel li {
+  line-height: 1.45;
+}
+
+/* --- the donut ---------------------------------------------------------- */
+
+.finance-board .breakdown-donut__ring {
+  inline-size: min(100%, 5.6rem);
+}
+
+.finance-board .breakdown-donut__legend {
+  gap: .18rem;
+}
+
+/* --- below the desktop board -------------------------------------------
+   One screen is a desktop promise. Under it the rows stop being fixed and the
+   page scrolls normally again, because a phone cannot hold nine sections at a
+   readable size and pretending otherwise costs the content.
+   ------------------------------------------------------------------------ */
+
+@media (max-width: 64rem) {
+  #finance-module-root:has(.finance-board) {
+    grid-template-rows: none;
+    block-size: auto;
+    min-block-size: 0;
+    padding: clamp(1rem, 3vw, 2.5rem);
+    overflow: visible;
+  }
+
+  #finance-module-root:has(.finance-board) > .finance-home-page {
+    grid-template-rows: none;
+    block-size: auto;
+  }
+
+  .finance-board {
+    grid-template-rows: none;
+    block-size: auto;
+    overflow: visible;
+  }
+
+  .finance-board .overview-card,
+  .finance-board .finance-grid > .finance-managerial-comparison,
+  .finance-board .finance-grid > .level-one-section,
+  .finance-board .finance-grid > .report-builder-section,
+  .finance-board .finance-insight-cards > * {
+    block-size: auto;
+    overflow: visible;
+  }
+
+  .finance-board .level-one-section .vgroup__bars {
+    block-size: clamp(7rem, 20vw, 10rem);
+    flex: 0 0 auto;
+  }
+
+  .finance-board .report-builder-section__lead {
+    display: block;
+  }
+
+  .finance-board .level-one-section__note {
+    display: block;
+  }
+}
+
+/* --- what has to give for a row to hold its chart ----------------------- */
+
+/* The chart's own strips are declared in rem, so they do not shrink with the
+   row. On the board they take a shorter label band and tighter gaps; the four
+   columns, the guide and every figure stay exactly as they are. */
+.finance-board .managerial-combo-chart {
+  margin-block-start: .25rem;
+  padding: .3rem .45rem .1rem;
+  overflow: hidden;
+}
+
+.finance-board .managerial-combo-chart__plot {
+  --managerial-gap: .22rem;
+  --managerial-label-lines: 2;
+  --managerial-label-size: .58rem;
+  --managerial-label-leading: 1.25;
+}
+
+.finance-board .managerial-deviation {
+  padding: .25rem .45rem;
+  font-size: var(--font-size-xs);
+}
+
+/* The card's title and its switch are the heading; the sentence under them
+   repeats what the switch already says. */
+.finance-board .finance-analysis-card__heading p {
+  display: none;
+}
+
+.finance-board .finance-analysis-card__heading {
+  align-items: center;
+  gap: var(--board-gap);
+}
+
+.finance-board .finance-analysis-card__heading h2 {
+  font-size: var(--font-size-md);
+}
+
+/* A phase name is one line with its full text on hover and on its own page, so
+   a second wrapped line that gets cut is worse than an ellipsis. */
+.finance-board .level-one-section .vgroup__name {
+  max-block-size: none;
+  overflow: hidden;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A short viewport cannot hold three rows of charts at a size anyone can read.
+   Rather than clip them, the board lets go of its fixed rows and the page
+   scrolls — the promise is one screen on a desktop screen, not at any height. */
+@media (max-height: 49rem) {
+  #finance-module-root:has(.finance-board) {
+    grid-template-rows: none;
+    block-size: auto;
+    min-block-size: 0;
+    overflow: visible;
+  }
+
+  #finance-module-root:has(.finance-board) > .finance-home-page,
+  .finance-board {
+    grid-template-rows: none;
+    block-size: auto;
+    overflow: visible;
+  }
+
+  .finance-board .overview-card,
+  .finance-board .finance-grid > .finance-managerial-comparison,
+  .finance-board .finance-grid > .level-one-section,
+  .finance-board .finance-grid > .report-builder-section,
+  .finance-board .finance-insight-cards > * {
+    block-size: auto;
+    min-block-size: 11rem;
+  }
+}
+
+/* The plot carries a 17rem floor from the wide-screen rules — it was written
+   when this chart had a page row to itself. On the board it takes the height
+   its row gives it; the guide, the four columns and the labels all still fit,
+   because what shrinks is the bars' own track and nothing else. */
+.finance-board .managerial-combo-chart__plot {
+  min-block-size: 0;
+}
+
+/* Each figure above a column is an amount and its unit on two lines. */
+.finance-board .managerial-combo-chart__band--values {
+  min-block-size: 2.1em;
+}
+
+.finance-board .managerial-combo-chart__band--bars {
+  min-block-size: 4.5rem;
+}
+
+/* The deviation cards carry a ranked list and a link per row. On the board the
+   rows lose their padding and their leading, not their entries — the list is
+   already a top-N with the full table one click away, and dropping a row here
+   would make the card disagree with the table it points at. */
+.finance-board .finance-variance-card {
+  gap: .2rem;
+}
+
+.finance-board .finance-variance-card ol,
+.finance-board .finance-variance-card ul {
+  gap: .15rem;
+}
+
+.finance-board .finance-variance-card li {
+  padding-block: .12rem;
+  line-height: 1.3;
+}
+
+.finance-board .finance-variance-card a,
+.finance-board .finance-variance-card li > * {
+  padding-block: 0;
+}
+
+.finance-board .finance-variance-card__footer,
+.finance-board .finance-variance-card p {
+  display: none;
+}
+
+/* Each row is the item, its figure and its chevron on one line. Off the board
+   the name sits above its code on two lines, which at three rows to a third of
+   a row is more height than the card has. Nothing is dropped — the code is on
+   the page the row links to. */
+.finance-board .finance-variance-card ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.finance-board .finance-variance-card__link {
+  display: flex;
+  align-items: baseline;
+  gap: .3rem;
+  min-inline-size: 0;
+  padding: .1rem 0;
+}
+
+.finance-board .finance-variance-card__link > :first-child {
+  display: block;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finance-board .finance-variance-card__link small,
+.finance-board .finance-variance-card__link .table-subtext {
+  display: none;
+}
+
+.finance-board .finance-variance-card__indicator {
+  flex: 0 0 auto;
+}
+
+/* Three cards to a third of a row leaves about 74px each. That is a heading and
+   two rows, so both are cut to what a line actually needs. */
+.finance-board .finance-insight-cards > * {
+  padding: .35rem .45rem;
+  gap: .15rem;
+}
+
+.finance-board .finance-insight-cards h2 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.3;
+}
+
+.finance-board .finance-variance-card__link {
+  padding: 0;
+  line-height: 1.35;
+}
+
+.finance-board .finance-variance-card li {
+  padding-block: 0;
+}
+
+.finance-board .finance-warnings li {
+  line-height: 1.35;
+}
+
+/* The item name and the chevron carry their own sizes, so the compact ramp
+   never reached them and each row stayed 39px tall in a 74px card. */
+.finance-board .finance-variance-card__link > :first-child {
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+}
+
+.finance-board .finance-variance-card__link .numeric {
+  font-size: var(--font-size-xs);
+}
+
+.finance-board .finance-variance-card__indicator {
+  font-size: var(--font-size-md);
+  line-height: 1;
+}
+
+/* The columns are laid out from the baseline up, which makes each group only as
+   tall as its own bars. On the board the plot has a height to fill, so they
+   stretch into it instead of collapsing to nothing. */
+.finance-board .level-one-section .vbars__viewport {
+  display: flex;
+  align-items: stretch;
+}
+
+.finance-board .level-one-section .vbars__cols {
+  align-items: stretch;
+  block-size: 100%;
+  padding-block-start: .9rem;
+}
+
+.finance-board .level-one-section .vgroup__bars {
+  align-items: flex-end;
+}
+
+/* Two ranked rows and a heading is what an insight card holds at this height.
+   The list keeps whatever rows fit and the card says how deep it went; the full
+   ranking is on the table each row links to. */
+.finance-board .finance-variance-card ol {
+  display: grid;
+  grid-auto-rows: min-content;
+  overflow: hidden;
+}
+
+.finance-board .finance-variance-card__link > :first-child {
+  font-size: var(--font-size-xs);
+}
+
+.finance-board .finance-variance-card__link .numeric {
+  font-size: var(--font-size-2xs);
+}
+
+.finance-board .finance-insight-cards h2 {
+  font-size: var(--font-size-xs);
+}
+
+/* The row is three pieces at three sizes. Aligned on their baselines inside a
+   container still carrying the page's own 16px strut, the line box came out
+   38px tall for 13px of content. Centred, and with the container itself on the
+   compact ramp, the row is as tall as its tallest piece. */
+.finance-board .finance-variance-card__link {
+  align-items: center;
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+}
+
+.finance-board .finance-variance-card ol,
+.finance-board .finance-variance-card li {
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+}
+
+.finance-board .level-one-section > .section-heading .button {
+  padding-block: .12rem;
+  font-size: var(--font-size-xs);
+}
+
+/* The last few pixels at 900: the phase card's heading row, the chart's bar
+   floor and the deviation rows each give up a little rather than one of them
+   giving up a line. */
+.finance-board .level-one-section > .section-heading {
+  gap: .3rem;
+}
+
+.finance-board .level-one-section .vbars__legend {
+  gap: .2rem .7rem;
+}
+
+.finance-board .managerial-combo-chart__band--bars {
+  min-block-size: 3.6rem;
+}
+
+.finance-board .finance-variance-card li {
+  line-height: 1.2;
+}
+
+.finance-board .finance-variance-card__link {
+  line-height: 1.2;
+}
+
+/* The phase card's legend and its link sit on the heading line rather than
+   taking a line of their own. */
+.finance-board .level-one-section .vbars {
+  gap: .2rem;
+}
+
+.finance-board .level-one-section .vbars__legend {
+  font-size: var(--font-size-2xs);
+}
+
+.finance-board .finance-variance-card ol {
+  gap: .05rem;
+}
+
+/* The last handful of pixels at 900. Both are a line's leading, not a line. */
+.finance-board .level-one-section .vgroup__name {
+  line-height: 1.15;
+}
+
+.finance-board .level-one-section .vbar em {
+  font-size: var(--font-size-2xs);
+}
+
+.finance-board .finance-variance-card li,
+.finance-board .finance-variance-card__link {
+  line-height: 1.1;
+}
+
+/* Three pixels at 900, which is one row's remaining leading. */
+.finance-board .finance-variance-card ol {
+  gap: 0;
+}
+
+.finance-board .finance-variance-card__indicator {
+  line-height: .9;
+}
+
+/* Six chips and the button have to share the card's height. The grid was
+   centring them, so the second row slid under the button instead of the rows
+   sharing what was left. */
+.finance-board .report-builder-section__grid {
+  align-content: stretch;
+  grid-auto-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.finance-board .report-builder-chip {
+  gap: .15rem;
+  padding: .2rem .3rem;
+  font-size: var(--font-size-2xs);
+  line-height: 1.2;
+}
+
+.finance-board .report-builder-chip__icon {
+  inline-size: 1rem;
+  block-size: 1rem;
+  font-size: var(--font-size-2xs);
+}
+
+.finance-board .report-builder-section__cta,
+.finance-board .report-builder-section .button--primary {
+  flex: 0 0 auto;
+  padding-block: .35rem;
+  font-size: var(--font-size-sm);
 }
