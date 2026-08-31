@@ -2519,8 +2519,10 @@ a.finance-variance-card__link:hover {
 
 .finance-grid--pair { grid-template-columns: 1fr 1fr; }
 
-/* The three insight cards keep their own column under the curve. */
-.finance-grid--insights { grid-template-columns: 1fr; }
+/* The curve takes half the page, directly under the phase chart in the row
+   above it — same column, same width — and the three insight cards divide the
+   other half between them. */
+.finance-grid--insights { grid-template-columns: 1fr 1fr; }
 
 /* The three insight cards share one row inside their own column, so none of
    them takes a different width because its text ran longer. */
@@ -2821,9 +2823,7 @@ a.breakdown-donut:focus-visible {
   flex: 0 0 auto;
 }
 
-/* Three across. They sit under the curve now rather than beside it, so each
-   one has a third of the page instead of a third of a third — wide enough for
-   the item names and the amounts that used to collide. */
+/* Three across inside their own half of the row. */
 .finance-insight-cards {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -2866,7 +2866,7 @@ a.breakdown-donut:focus-visible {
      first splits its height between two stacked cards, the managerial chart
      beside them stops compressing at about 230px, and the third holds three
      cards in a column. Each weight is what its own contents need. */
-  grid-template-rows: auto auto minmax(0, 1.2fr) minmax(0, .68fr) minmax(0, 1.32fr);
+  grid-template-rows: auto auto minmax(0, 1.16fr) minmax(0, .96fr) minmax(0, .88fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
