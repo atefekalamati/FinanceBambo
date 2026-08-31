@@ -143,11 +143,35 @@
    Report builder — the chooser
    -------------------------------------------------------------------------- */
 
+/* The host opens its builder as a near-full-screen popup, not a dialog sized to
+   its contents — a stated height, so the picker has room whichever category is
+   open and the panel does not resize under the reader as they move between
+   them. Same measure, same backdrop. */
 .report-builder-dialog {
-  inline-size: min(46rem, 94vw);
-  max-block-size: 92vh;
+  inline-size: min(1100px, 100%);
+  block-size: min(92vh, 900px);
+  /* `.confirm-dialog` caps every dialog in the module at 31rem, which is right
+     for a confirmation and 600px too narrow for a two-column picker. */
+  max-inline-size: none;
+  max-block-size: none;
   padding: 0;
+  border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 50%);
+}
+
+.report-builder-dialog::backdrop {
+  background: rgb(4 9 20 / 62%);
+  backdrop-filter: blur(2px);
+}
+
+@media (max-width: 36rem) {
+  .report-builder-dialog {
+    inline-size: 100%;
+    block-size: 100%;
+    max-inline-size: none;
+    border-radius: 0;
+  }
 }
 
 .report-builder-dialog__bar {
@@ -667,4 +691,186 @@
   .report-builder-section {
     display: none;
   }
+}
+
+/* --------------------------------------------------------------------------
+   The picker's two levels — subjects, then one subject's reports.
+   -------------------------------------------------------------------------- */
+
+.report-builder-cats {
+  display: grid;
+  gap: .38rem;
+  align-content: start;
+}
+
+.report-builder-cats[hidden],
+.report-builder-level2[hidden] {
+  display: none;
+}
+
+/* A full-width row, not another chip: it drills in rather than toggling, and it
+   should not look like the things it contains. */
+.report-builder-cat {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  inline-size: 100%;
+  padding: .55rem .68rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: .56rem;
+  background: rgb(120 145 205 / 6%);
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: .72rem;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.report-builder-cat:hover,
+.report-builder-cat:focus-visible {
+  border-color: color-mix(in srgb, var(--dash-actual, #00ac58) 40%, transparent);
+  background: color-mix(in srgb, var(--dash-actual, #00ac58) 8%, transparent);
+  color: var(--color-text-primary);
+}
+
+.report-builder-cat__title {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* How many of this subject's reports are already in the document. */
+.report-builder-cat__badge {
+  flex: 0 0 auto;
+  min-inline-size: 1.15rem;
+  padding: .05rem .38rem;
+  border-radius: 999px;
+  background: var(--dash-actual, #00ac58);
+  color: #06210f;
+  font-size: .6rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.report-builder-cat__chevron {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: .9rem;
+  line-height: 1;
+}
+
+/* --- level two ---------------------------------------------------------- */
+
+.report-builder-level2 {
+  display: grid;
+  gap: .45rem;
+  align-content: start;
+  min-block-size: 0;
+}
+
+.report-builder-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .15rem .1rem;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: .7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.report-builder-back:hover,
+.report-builder-back:focus-visible {
+  color: var(--dash-actual, #00ac58);
+}
+
+.report-builder-back__chevron {
+  font-size: .95rem;
+  line-height: 1;
+}
+
+.report-builder-level2__title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: .8rem;
+  font-weight: 800;
+}
+
+.report-builder-level2__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  line-height: 1.6;
+}
+
+.report-builder-level2__items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .38rem;
+}
+
+@media (max-width: 36rem) {
+  .report-builder-level2__items {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A chosen report is marked on its whole row, not only in its box. */
+.report-builder-option.is-checked {
+  border-color: color-mix(in srgb, var(--dash-actual, #00ac58) 50%, transparent);
+  background: color-mix(in srgb, var(--dash-actual, #00ac58) 12%, transparent);
+  color: var(--color-text-primary);
+}
+
+/* --- the popup's own height -------------------------------------------- */
+
+/* The popup states its height, so what is inside has to fill it: the bar and
+   the build button hold their size and the picker takes the rest, scrolling
+   inside itself when a category has more reports than the space. Without this
+   the panel sat at its content height and left the lower half of a 900px popup
+   empty. */
+.report-builder-dialog {
+  display: flex;
+  flex-direction: column;
+}
+
+.report-builder-dialog__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  display: flex;
+  padding: var(--space-lg);
+  overflow: hidden;
+}
+
+.report-builder-panel {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+}
+
+.report-builder-groups {
+  flex: 0 0 auto;
+}
+
+.report-builder-cats,
+.report-builder-level2 {
+  min-block-size: 0;
+  overflow-y: auto;
+  padding-inline-end: .15rem;
+}
+
+/* Only one of the two is on screen, so they share the same track. */
+.report-builder-cats,
+.report-builder-level2 {
+  grid-row: 4;
 }
