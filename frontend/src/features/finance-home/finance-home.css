@@ -2853,7 +2853,7 @@ a.breakdown-donut:focus-visible {
      first splits its height between two stacked cards, the managerial chart
      beside them stops compressing at about 230px, and the third holds three
      cards in a column. Each weight is what its own contents need. */
-  grid-template-rows: auto auto minmax(0, 1.34fr) minmax(0, .78fr) minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1.58fr) minmax(0, .64fr) minmax(0, .98fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -3690,4 +3690,15 @@ a.breakdown-donut:focus-visible {
   .finance-board .managerial-combo-chart__plot {
     --managerial-label-lines: 4;
   }
+}
+
+/* Three rows and a header in a card that is now a quarter of a row: the table
+   keeps every column and every figure, on tighter leading. */
+.finance-board .prices-summary__table th {
+  padding-block-end: .2rem;
+}
+
+.finance-board .prices-summary__table td {
+  padding-block: .18rem;
+  line-height: 1.25;
 }
