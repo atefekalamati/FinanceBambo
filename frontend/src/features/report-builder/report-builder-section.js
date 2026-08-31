@@ -1,6 +1,7 @@
 import { element } from "../../shared/dom/elements.js";
 import { featuredReports } from "./report-catalog.js";
 import { openReportBuilder } from "./report-builder-dialog.js";
+import { reportIcon, sparkIcon } from "./report-icons.js";
 
 /**
  * The report builder's place on the overview.
@@ -18,7 +19,9 @@ export function createReportBuilderSection({ onBuild }) {
   const head = element("div", "report-builder-section__head");
   const title = element("h2", "report-builder-section__title");
   title.id = "report-builder-section-title";
-  title.append(element("span", "report-builder-panel__star", "★"), document.createTextNode(" گزارش‌ساز هوشمند"));
+  const star = sparkIcon();
+  star.setAttribute("class", "report-builder-panel__star");
+  title.append(star, document.createTextNode(" گزارش‌ساز هوشمند"));
   const info = element("span", "report-builder-panel__info", "i");
   info.setAttribute("role", "img");
   info.setAttribute("aria-label", "راهنما");
@@ -32,7 +35,9 @@ export function createReportBuilderSection({ onBuild }) {
     const chip = element("button", "report-builder-chip");
     chip.type = "button";
     chip.title = report.summary;
-    chip.append(element("span", "report-builder-chip__icon", report.title.slice(0, 1)));
+    const icon = reportIcon(report.key);
+    icon.setAttribute("class", "report-builder-chip__icon");
+    chip.append(icon);
     chip.append(element("span", "report-builder-chip__label", report.title));
     chip.addEventListener("click", () => openReportBuilder({ preselected: [report.key], onBuild }));
     grid.append(chip);
@@ -40,7 +45,9 @@ export function createReportBuilderSection({ onBuild }) {
 
   const cta = element("button", "button button--primary report-builder-section__cta");
   cta.type = "button";
-  cta.append(element("span", "report-builder-panel__star", "★"), document.createTextNode(" ساخت گزارش اختصاصی"));
+  const ctaStar = sparkIcon();
+  ctaStar.setAttribute("class", "report-builder-panel__star");
+  cta.append(ctaStar, document.createTextNode(" ساخت گزارش اختصاصی"));
   cta.addEventListener("click", () => openReportBuilder({ preselected: [], onBuild }));
 
   section.append(head, lead, grid, cta);
