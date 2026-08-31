@@ -2503,18 +2503,11 @@ a.finance-variance-card__link:hover {
   min-inline-size: 0;
 }
 
-/* The chart takes the row's height on its own and the two summary cards stack
-   beside it. This holds at every width down to the single-column breakpoint —
-   it was the laptop arrangement and it reads better than 6/2/2 at any size,
-   because two cards of 4fr are wider than two of 2fr and the chart loses
-   nothing it was using. */
+/* The four figures read in two columns of two, which needs less width than one
+   row of four — so the chart beside them takes the larger share and its columns
+   get the room they need to be read. */
 .finance-grid--main {
-  grid-template-columns: 6fr 4fr;
-  grid-template-rows: auto auto;
-}
-
-.finance-grid--main > :first-child {
-  grid-row: 1 / span 2;
+  grid-template-columns: 4fr 6fr;
 }
 
 .finance-grid--pair { grid-template-columns: 1fr 1fr; }
@@ -2782,11 +2775,6 @@ a.breakdown-donut:focus-visible {
 @media (max-width: 36rem) {
   .finance-grid--main {
     grid-template-columns: 1fr;
-    grid-template-rows: none;
-  }
-
-  .finance-grid--main > :first-child {
-    grid-row: auto;
   }
 
   .finance-grid {
@@ -2865,7 +2853,7 @@ a.breakdown-donut:focus-visible {
      first splits its height between two stacked cards, the managerial chart
      beside them stops compressing at about 230px, and the third holds three
      cards in a column. Each weight is what its own contents need. */
-  grid-template-rows: auto auto minmax(0, 1.02fr) minmax(0, .94fr) minmax(0, 1.04fr);
+  grid-template-rows: auto auto minmax(0, 1.34fr) minmax(0, .78fr) minmax(0, 1fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -3620,7 +3608,8 @@ a.breakdown-donut:focus-visible {
 
 .finance-figures {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: var(--board-gap);
   min-inline-size: 0;
   min-block-size: 0;
@@ -3638,37 +3627,49 @@ a.breakdown-donut:focus-visible {
   overflow: hidden;
 }
 
+/* The figure is the card. In a box this size the compact ramp left it looking
+   like a caption with three lines of air around it, so the amount is set to the
+   card rather than to the board's smallest step, and its label and note sit
+   under it at the sizes the rest of the board uses. */
 .finance-board .finance-figures .summary-card h2 {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: var(--font-size-2xs);
+  font-size: var(--font-size-xs);
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 .finance-board .finance-figures .summary-card__value {
-  margin: 0;
-  font-size: var(--font-size-lg);
+  margin: .12rem 0 .06rem;
+  font-size: clamp(1rem, 1.5vw, 1.45rem);
   font-weight: 900;
-  line-height: 1.15;
+  line-height: 1.1;
 }
 
 .finance-board .finance-figures .summary-card__unit {
   color: var(--color-text-muted);
   font-size: var(--font-size-2xs);
-  line-height: 1.3;
+  line-height: 1.4;
 }
 
-/* Two rows of two once four across would make each too narrow to read. */
-@media (max-width: 64rem) {
-  .finance-figures {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+/* The unit and the amount of a compacted figure are two spans; at this size
+   they read as one line rather than a stack. */
+.finance-board .finance-figures .summary-card__value .money-display {
+  display: inline-flex;
+  align-items: baseline;
+  gap: .25em;
+  flex-wrap: wrap;
+}
+
+.finance-board .finance-figures .summary-card__value .money-display__unit {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
 }
 
 @media (max-width: 36rem) {
   .finance-figures {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
   }
 }
 
