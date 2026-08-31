@@ -3534,3 +3534,36 @@ a.breakdown-donut:focus-visible {
     --managerial-label-lines: 3;
   }
 }
+
+/* --- the curve's height is stated, never discovered ---------------------
+   The chart measures its surface and draws an SVG that fills it. Where the
+   board has released its fixed rows the surface has no height of its own, so
+   the SVG's intrinsic size became the surface's size, which the observer then
+   measured and drew again a little larger. At one viewport, 1400x800, the card
+   went 217 -> 242 -> 258px over three visits and never came back down.
+
+   The surface is given a definite height here, so what the chart draws can
+   never decide how tall the thing it is drawn into is. The card and the row
+   carry a ceiling of their own besides, as a floor under the bug rather than a
+   second fix for it.
+   ------------------------------------------------------------------------ */
+
+.finance-board .finance-curve-card .cost-curve__surface {
+  max-block-size: 100%;
+}
+
+@media (max-height: 57rem), (max-width: 64rem) {
+  .finance-board .finance-curve-card .cost-curve__surface {
+    block-size: clamp(8rem, 20vh, 12rem);
+    min-block-size: 0;
+    max-block-size: 12rem;
+  }
+
+  .finance-board .finance-curve-card {
+    max-block-size: 20rem;
+  }
+
+  .finance-board .finance-grid--insights > * {
+    max-block-size: 20rem;
+  }
+}
