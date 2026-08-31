@@ -55,7 +55,8 @@ from coreint.security import (CoreAuthContextAssembler, CoreRbacPermissionAuthor
 
 from . import database, seed
 from .connection import ReconnectingConnection
-from .environment import (app_env, core_progress_enabled, core_url, migration_url,
+from .environment import (app_env, core_identity_settings, core_progress_enabled,
+                          core_url, migration_url,
                           seeding_allowed)
 from .ports import (ContextPermissionAuthorizer, LocalFileStorage, SeededActivityProvider,
                     SeededProgressSnapshotProvider, SingleTenantScopeAuthorizer,
@@ -146,8 +147,15 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
             seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.PROGRESS_SNAPSHOTS, seed.IMPORTER_ID)
         activity_provider = SeededActivityProvider(seed.ACTIVITIES)
     else:
+        # Against a real Core database the fixture identifiers name nobody, so Core refuses
+        # them -- correctly, and in a way that reads as a permission problem rather than the
+        # configuration one it is. These three settings say who the host stands in for; they
+        # grant nothing, and every gate below still asks Core about whoever is named.
+        actor, organization, project = core_identity_settings()
         application.state.auth_context_provider = CoreAuthContextAssembler(
-            core, core_identity(seed.ACTOR_ID, seed.ORGANIZATION_ID, seed.PROJECT_ID))
+            core, core_identity(actor or seed.ACTOR_ID,
+                                organization or seed.ORGANIZATION_ID,
+                                project or seed.PROJECT_ID))
         application.state.scope_authorizer = CoreScopeAuthorizer(core)
         application.state.permission_authorizer = CoreRbacPermissionAuthorizer(core)
         # Progress is the one port Core cannot fill on its own -- see
