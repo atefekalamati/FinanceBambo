@@ -11,16 +11,23 @@ import { createCostCurveChart } from "../../shared/components/cost-curve-chart.j
 import { buildCostCurve } from "../../shared/charts/cost-curve.js";
 import { buildMonthlyTrend, TREND_MODES } from "../../shared/reports/monthly-trend.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
-import { buildBulletPresentation, buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
+import { buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
 import { createBreakdownChart } from "../../shared/components/breakdown-chart.js";
 import { createTomanDisplay } from "../../shared/components/money-display.js";
 import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
 import { canAccessSurface } from "../../core/auth/permissions.js";
-import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/variances/variance-rollup.js";
 import { createReportBuilderSection } from "../report-builder/report-builder-section.js";
 import { createLevelOneSection } from "../level-one/level-one-section.js";
 import { createPricesSummary } from "./prices-summary.js";
-import { createBreakdownDonut } from "./breakdown-donut.js";
+
+/* The four the board shows, in the order it shows them. The rest of the
+   catalogue is still what the report page and the builder draw on. */
+const BOARD_FIGURE_KEYS = Object.freeze([
+  "initialEstimateIrr",
+  "actualCostIrr",
+  "remainingPhysicalCostIrr",
+  "actualCostPerSquareMeterIrr",
+]);
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -258,63 +265,6 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   return section;
 }
 
-/**
- * The rows lead to this surface's own tables, which are read-only whoever opens
- * them. They used to lead into the price and item editors on امور مالی — a link
- * that worked for an administrator and was a way straight past the split for
- * everyone else.
- */
-/**
- * The deepest few deviations, and a way to the table that holds them all.
- *
- * `limit` is how many the card has room for, not how many there are. The link
- * under it goes to the full table either way.
- */
-function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref, limit = 5) {
-  const section = document.createElement("section");
-  section.className = "finance-analysis-card finance-variance-card";
-  const heading = document.createElement("h2");
-  heading.textContent = title;
-  section.append(heading);
-  if (!rows?.length) {
-    const empty = document.createElement("p");
-    empty.className = "finance-analysis-card__empty";
-    empty.textContent = "برای این تحلیل هنوز داده معتبری ثبت نشده است.";
-    section.append(empty);
-    return section;
-  }
-  const list = document.createElement("ol");
-  rows.slice(0, limit).forEach((row) => {
-    const item = document.createElement("li");
-    const link = document.createElement(baseHref ? "a" : "div");
-    link.className = "finance-variance-card__link";
-    if (baseHref) {
-      const target = new URLSearchParams();
-      if (row.resourceId) target.set("resourceId", row.resourceId);
-      if (row.estimateLineId) target.set("estimateLineId", row.estimateLineId);
-      link.href = `${baseHref}${target.size ? `?${target.toString()}` : ""}`;
-      link.setAttribute("aria-label", `${row.resourceTitle || row.resourceCode || "قلم هزینه بدون عنوان"}؛ مشاهده جزئیات ${title}`);
-    }
-    const identity = document.createElement("span");
-    identity.textContent = row.resourceTitle || row.resourceCode || "قلم هزینه بدون عنوان";
-    const value = document.createElement("strong");
-    value.className = "numeric";
-    value.textContent = valueFormatter(row[valueKey]);
-    link.append(identity, value);
-    // The chevron promises somewhere to go. A row that is not a link keeps the
-    // column so the rows stay aligned, and keeps it empty.
-    const indicator = document.createElement("span");
-    indicator.className = "finance-variance-card__indicator";
-    indicator.setAttribute("aria-hidden", "true");
-    if (baseHref) indicator.textContent = "‹";
-    link.append(indicator);
-    item.append(link);
-    list.append(item);
-  });
-  section.append(list);
-  return section;
-}
-
 const SNAPSHOT_STATUS_LABELS = Object.freeze({
   ready: "آماده",
   superseded: "جایگزین‌شده",
@@ -509,11 +459,19 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   basis.append(basisMeta);
 
   // ── row 1 — the main chart, the day prices, the cost mix ───────────────
+  // The four figures a reader opens this page for, then the chart that puts
+  // them against the estimate. Reading right to left: figures, then chart.
+  const figures = element("section", "finance-figures");
+  figures.setAttribute("aria-label", "شاخص‌های اصلی مالی پروژه");
+  BOARD_FIGURE_KEYS.forEach((key) => {
+    const item = SUMMARY_ITEMS.find(([itemKey]) => itemKey === key);
+    if (item) figures.append(createSummaryCard(item[0], item[1], item[2], data.metrics));
+  });
+
   const rowMain = element("div", "finance-grid finance-grid--main");
   rowMain.append(
+    figures,
     createManagerialComparisonPanel(data.metrics, comparisons.management, monthly, chartState),
-    createPricesSummary(prices ?? {}),
-    createBreakdownDonut({ view: buildBulletPresentation(data.breakdown) }),
   );
 
   // ── row 2 — the phase report beside the report builder ─────────────────
@@ -542,13 +500,7 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
     curvePanel.append(cumulative.panel);
   }
   const insightCards = element("div", "finance-insight-cards");
-  insightCards.append(
-    buildWarningsCard(data),
-    // One row per item. The service answers with an estimate line each, and the
-    // same item used on two activities would otherwise be listed twice.
-    createVariancePanel("بیشترین انحراف قیمت", rollupPriceVariances(data.topPriceVariances), "varianceIrr", formatCompactMoneyFromIrr, "#/report-prices", 5),
-    createVariancePanel("بیشترین انحراف مقدار", rollupQuantityVariances(data.topQuantityVariances), "varianceQuantity", formatDisplayNumber, "#/report-items", 5),
-  );
+  insightCards.append(createPricesSummary(prices ?? {}), buildWarningsCard(data));
   rowThird.append(curvePanel, insightCards);
 
   board.append(pageHeader, basis, rowMain, rowSecond, rowThird);

@@ -2865,7 +2865,7 @@ a.breakdown-donut:focus-visible {
      first splits its height between two stacked cards, the managerial chart
      beside them stops compressing at about 230px, and the third holds three
      cards in a column. Each weight is what its own contents need. */
-  grid-template-rows: auto auto minmax(0, 1.16fr) minmax(0, .96fr) minmax(0, .88fr);
+  grid-template-rows: auto auto minmax(0, 1.02fr) minmax(0, .94fr) minmax(0, 1.04fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -2911,6 +2911,7 @@ a.breakdown-donut:focus-visible {
 .finance-board .finance-grid > .finance-managerial-comparison,
 .finance-board .finance-grid > .level-one-section,
 .finance-board .finance-grid > .report-builder-section,
+.finance-board .finance-figures > *,
 .finance-board .finance-insight-cards > * {
   gap: var(--board-gap);
   min-block-size: 0;
@@ -3608,4 +3609,84 @@ a.breakdown-donut:focus-visible {
    that is still a notice. */
 .finance-board .finance-insight-cards > .finance-warnings--clear {
   border-color: rgb(34 197 94 / 30%);
+}
+
+/* --- the four figures --------------------------------------------------
+   Four cards across the row's own half, each the same width and height as the
+   others. They are `.summary-card`, the same component the report page draws,
+   so nothing about them is a second implementation — only their arrangement
+   belongs to the board.
+   ------------------------------------------------------------------------ */
+
+.finance-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--board-gap);
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+.finance-board .finance-figures > .summary-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: .1rem;
+  min-block-size: 0;
+  block-size: 100%;
+  padding: .45rem .5rem;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.finance-board .finance-figures .summary-card h2 {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-2xs);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.finance-board .finance-figures .summary-card__value {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.finance-board .finance-figures .summary-card__unit {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-2xs);
+  line-height: 1.3;
+}
+
+/* Two rows of two once four across would make each too narrow to read. */
+@media (max-width: 64rem) {
+  .finance-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 36rem) {
+  .finance-figures {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --- the second column of the last row ---------------------------------
+   Day prices over the calculation notes, two stacked cards rather than three
+   side by side.
+   ------------------------------------------------------------------------ */
+
+.finance-board .finance-insight-cards {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+/* The chart moved to the narrower column, so four labels of its width need a
+   fourth line where the board has released its rows and there is height to give
+   them one. */
+@media (max-height: 57rem), (max-width: 64rem) {
+  .finance-board .managerial-combo-chart__plot {
+    --managerial-label-lines: 4;
+  }
 }
