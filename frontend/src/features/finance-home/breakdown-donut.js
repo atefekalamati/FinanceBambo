@@ -11,6 +11,9 @@ import { formatDisplayNumber } from "../../shared/formatters/display.js";
  * proportion of a total, so the segments are shares of the sum of the same
  * actual figures the full section lists.
  *
+ * Parked: the overview does not show it while the owner decides what belongs on
+ * the board. Wiring it back is one import and one append.
+ *
  * The whole card is one link. A donut that only responds to a click on the ring
  * leaves the legend, the centre figure and the heading inert, and none of that
  * is reachable from a keyboard.

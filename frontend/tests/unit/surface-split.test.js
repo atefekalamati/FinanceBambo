@@ -82,12 +82,19 @@ test("the deviation rows lead to this surface's own read-only tables", () => {
   // They used to lead into the price and item editors on امور مالی — a link
   // that worked for an administrator and was a way straight past the split for
   // everyone else. The twin routes are read-only whoever opens them.
-  // The trailing argument is how deep the card lists; what this guard is about
-  // is the href, so it allows one.
-  assert.match(source, /formatCompactMoneyFromIrr, "#\/report-prices"(, \d+)?\)/);
-  assert.match(source, /formatDisplayNumber, "#\/report-items"(, \d+)?\)/);
-  assert.doesNotMatch(source, /"#\/prices"/);
-  assert.doesNotMatch(source, /"#\/financial-items"/);
+  // The deviation panel is parked in features/finance-home/variance-panel.js
+  // while the owner decides what belongs on the board, so nothing wires it and
+  // there is no call site left to read a href out of. The rule it was written
+  // for has not gone anywhere and is what these check: neither the overview nor
+  // the parked panel names an editor on امور مالی. Its destination is still the
+  // caller's argument, so wiring it back cannot reintroduce one without
+  // tripping this.
+  const parked = read("../../src/features/finance-home/variance-panel.js");
+  assert.match(parked, /baseHref/, "the panel still takes its destination from the caller");
+  [source, parked].forEach((text) => {
+    assert.doesNotMatch(text, /"#\/prices"/);
+    assert.doesNotMatch(text, /"#\/financial-items"/);
+  });
   // The one shortcut left that crosses the split is behind the surface check
   // itself, not a permission this page names for itself.
   assert.match(source, /const canOperate = canAccessSurface\(context, SURFACES\.OPERATIONS\)/);
