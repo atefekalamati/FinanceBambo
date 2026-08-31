@@ -1,0 +1,293 @@
+/* ============================================================================
+   گرید نمای کلی مالی — همهٔ قواعدی که جای بلاک‌ها و سهم فضایشان را تعیین می‌کند
+
+   استخراج از: src/features/finance-home/finance-home.css
+   این فایل فقط برای بازبینی است و جایی import نمی‌شود.
+
+   ترتیب: از بیرون به داخل، و در هر بخش از حالت پیش‌فرض به مدیاکوئری‌ها.
+   ============================================================================ */
+
+
+/* ┌──────────────────────────────────────────────────────────────────────────┐
+   │ ۱. زنجیرهٔ ارتفاع                                                        │
+   │                                                                          │
+   │ ارتفاع از بالا بسته می‌شود. اگر هر حلقه از این زنجیره ارتفاع قطعی نداشته  │
+   │ باشد، block-size:100% روی برد به هیچ حل می‌شود و برد به اندازهٔ محتوایش   │
+   │ بزرگ می‌شود — که همان حالتی است که قبلاً صفحه را اسکرول می‌کرد.           │
+   └──────────────────────────────────────────────────────────────────────────┘ */
+
+#finance-module-root:has(.finance-board) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  block-size: 100dvh;
+  min-block-size: 34rem;
+  padding: var(--board-gap, .55rem);
+  overflow: hidden;
+}
+
+/* برد فرزند مستقیم mount نیست؛ صفحه بینشان است و باید ارتفاع را رد کند. */
+#finance-module-root:has(.finance-board) > .finance-home-page {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+
+/* ┌──────────────────────────────────────────────────────────────────────────┐
+   │ ۲. خودِ برد — تقسیم ارتفاع بین ردیف‌ها                                   │
+   │                                                                          │
+   │ minmax(0, Nfr) یعنی «کف صفر، سقف سهم». محتوا نمی‌تواند ترک را باز کند.   │
+   │ ردیف‌ها با هم مساوی نیستند: نمودار مدیریتی زیر ~۲۳۰px فشرده نمی‌شود.      │
+   └──────────────────────────────────────────────────────────────────────────┘ */
+
+.finance-board {
+  --board-gap: .45rem;
+  --board-pad: .5rem;
+
+  /* رمپ فونت فشرده، فقط روی همین صفحه. توکن‌ها همان توکن‌های سایت‌اند. */
+  --font-size-lg: .92rem;
+  --font-size-md: .78rem;
+  --font-size-sm: .7rem;
+  --font-size-xs: .62rem;
+  --font-size-2xs: .56rem;
+  --space-xs: .2rem;
+  --space-sm: .3rem;
+  --space-md: var(--board-pad);
+  --space-lg: var(--board-pad);
+  --space-xl: .7rem;
+  --radius-lg: .55rem;
+  --radius-md: .45rem;
+  --level-one-plot-height: 100%;
+
+  display: grid;
+  /*                       هدر  نوار مبنا   ردیف۱      ردیف۲       ردیف۳   */
+  grid-template-rows: auto auto minmax(0, 1fr) minmax(0, .72fr) minmax(0, 1.28fr);
+  gap: var(--board-gap);
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+
+/* ┌──────────────────────────────────────────────────────────────────────────┐
+   │ ۳. تقسیم عرض داخل هر ردیف                                                │
+   └──────────────────────────────────────────────────────────────────────────┘ */
+
+.finance-grid {
+  display: grid;
+  gap: var(--space-md);
+  align-items: stretch;
+  min-inline-size: 0;
+}
+
+.finance-board .finance-grid {
+  gap: var(--board-gap);
+  min-block-size: 0;
+}
+
+/* ردیف ۱ — نمودار | قیمت‌های روز | ترکیب هزینه */
+.finance-grid--main { grid-template-columns: 6fr 2fr 2fr; }
+
+/* ردیف ۲ — گزارش سطح ۱ | گزارش‌ساز */
+.finance-grid--pair { grid-template-columns: 1fr 1fr; }
+
+/* ردیف ۳ — منحنی تجمعی | ستون کارت‌های بینش */
+.finance-grid--insights { grid-template-columns: 3fr 2fr; }
+
+/* سه کارت بینش، سه سهم مساوی از ارتفاع ستون خودشان */
+.finance-board .finance-insight-cards {
+  gap: var(--board-gap);
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  min-block-size: 0;
+}
+
+
+/* ┌──────────────────────────────────────────────────────────────────────────┐
+   │ ۴. سطح مشترک کارت‌ها                                                     │
+   │ هر کارتی که در یک ردیف بنشیند این را می‌پوشد — یک پس‌زمینه، یک پدینگ،     │
+   │ و هرگز بلندتر از ردیفش.                                                  │
+   └──────────────────────────────────────────────────────────────────────────┘ */
+
+.finance-board .overview-card,
+.finance-board .finance-grid > .finance-managerial-comparison,
+.finance-board .finance-grid > .level-one-section,
+.finance-board .finance-grid > .report-builder-section,
+.finance-board .finance-insight-cards > * {
+  gap: var(--board-gap);
+  min-block-size: 0;
+  block-size: 100%;
+  padding: var(--board-pad);
+  overflow: hidden;
+}
+
+/* هر دو پنل سوییچ در یک جعبه‌اند، پس تعویض نمودار ارتفاع را تکان نمی‌دهد. */
+.finance-board .finance-analysis-card .analysis-chart-panel {
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+
+/* ╔══════════════════════════════════════════════════════════════════════════╗
+   ║ مدیاکوئری‌ها                                                             ║
+   ╚══════════════════════════════════════════════════════════════════════════╝ */
+
+
+/* ── ≤ ۷۰rem (۱۱۲۰px) — لپ‌تاپ ──────────────────────────────────────────────
+   نمودار سهم بیشتری می‌گیرد و دو کارت کوچک زیر هم کنارش می‌روند.
+   ستون کارت‌های بینش تک‌ستونه می‌شود.                                        */
+
+@media (max-width: 70rem) {
+  .finance-grid--main {
+    grid-template-columns: 6fr 4fr;
+    grid-template-rows: auto auto;
+  }
+
+  .finance-grid--main > :first-child {
+    grid-row: 1 / span 2;
+  }
+
+  .finance-grid--insights {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ── ≤ ۶۴rem (۱۰۲۴px) — تبلت ───────────────────────────────────────────────
+   اینجا برد ارتفاع ثابتش را رها می‌کند و صفحه عادی اسکرول می‌شود.
+   نمودار تمام‌عرض می‌شود، قیمت و دونات زیرش دوستونه.                          */
+
+@media (max-width: 64rem) {
+  .finance-grid--main {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .finance-grid--main > :first-child {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+
+  .finance-grid--pair {
+    grid-template-columns: 1fr;
+  }
+
+  #finance-module-root:has(.finance-board) {
+    grid-template-rows: none;
+    block-size: auto;
+    min-block-size: 0;
+    padding: clamp(1rem, 3vw, 2.5rem);
+    overflow: visible;
+  }
+
+  #finance-module-root:has(.finance-board) > .finance-home-page {
+    grid-template-rows: none;
+    block-size: auto;
+  }
+
+  .finance-board {
+    grid-template-rows: none;
+    block-size: auto;
+    overflow: visible;
+  }
+
+  .finance-board .overview-card,
+  .finance-board .finance-grid > .finance-managerial-comparison,
+  .finance-board .finance-grid > .level-one-section,
+  .finance-board .finance-grid > .report-builder-section,
+  .finance-board .finance-insight-cards > * {
+    block-size: auto;
+    overflow: visible;
+  }
+}
+
+
+/* ── ≤ ۴۸rem (۷۶۸px) — موبایل بزرگ ─────────────────────────────────────────
+   سه کارت بینش تک‌ستونه.                                                     */
+
+@media (max-width: 48rem) {
+  .finance-insight-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ── ≤ ۳۶rem (۵۷۶px) — موبایل ──────────────────────────────────────────────
+   همه‌چیز تک‌ستونه، گپ و پدینگ یک پله کمتر.                                   */
+
+@media (max-width: 36rem) {
+  .finance-grid--main {
+    grid-template-columns: 1fr;
+  }
+
+  .finance-grid {
+    gap: var(--space-sm);
+  }
+
+  .finance-board .overview-card,
+  .finance-board .finance-grid > .finance-managerial-comparison,
+  .finance-board .finance-grid > .level-one-section,
+  .finance-board .finance-grid > .report-builder-section,
+  .finance-board .finance-insight-cards > * {
+    padding: var(--space-sm);
+  }
+}
+
+
+/* ── ارتفاع ≤ ۵۱rem (۸۱۶px) — نمایشگر کوتاه ────────────────────────────────
+   مستقل از عرض. برد ردیف‌های ثابتش را رها می‌کند و صفحه اسکرول می‌شود، چون در
+   این ارتفاع نگه‌داشتن «یک صفحه» یعنی بریدن نمودارها.
+   جعبهٔ نمودار اینجا صریحاً اعلام می‌شود، چون ارتفاع کارتی برای ارث بردن نیست. */
+
+@media (max-height: 51rem) {
+  #finance-module-root:has(.finance-board) {
+    grid-template-rows: none;
+    block-size: auto;
+    min-block-size: 0;
+    overflow: visible;
+  }
+
+  #finance-module-root:has(.finance-board) > .finance-home-page,
+  .finance-board {
+    grid-template-rows: none;
+    block-size: auto;
+    overflow: visible;
+  }
+
+  .finance-board .overview-card,
+  .finance-board .finance-grid > .finance-managerial-comparison,
+  .finance-board .finance-grid > .level-one-section,
+  .finance-board .finance-grid > .report-builder-section,
+  .finance-board .finance-insight-cards > * {
+    block-size: auto;
+    min-block-size: 11rem;
+  }
+}
+
+@media (max-height: 51rem), (max-width: 64rem) {
+  .finance-board .finance-analysis-card .analysis-chart-panel {
+    block-size: clamp(9rem, 24vh, 15rem);
+  }
+
+  .finance-board .finance-analysis-card {
+    min-block-size: 0;
+  }
+}
+
+
+/* ============================================================================
+   خلاصهٔ رفتار
+
+   عرض ≥ ۷۰rem  و  ارتفاع > ۵۱rem   →  برد ثابت، بدون اسکرول
+                                        ردیف ۱: 6fr 2fr 2fr
+                                        ردیف ۲: 1fr 1fr
+                                        ردیف ۳: 3fr 2fr  (بینش‌ها ۳ ردیف مساوی)
+
+   ۶۴–۷۰rem                          →  ردیف ۱: 6fr 4fr (نمودار دو ردیف)
+                                        ردیف ۳: تک‌ستونه
+
+   ≤ ۶۴rem  یا  ارتفاع ≤ ۵۱rem       →  ارتفاع ثابت رها، صفحه اسکرول می‌کند
+                                        کارت‌ها block-size:auto
+
+   ≤ ۴۸rem                           →  کارت‌های بینش تک‌ستونه
+   ≤ ۳۶rem                           →  همه تک‌ستونه، فاصله‌ها یک پله کمتر
+   ============================================================================ */

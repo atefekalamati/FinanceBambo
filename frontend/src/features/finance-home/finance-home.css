@@ -2503,9 +2503,24 @@ a.finance-variance-card__link:hover {
   min-inline-size: 0;
 }
 
-.finance-grid--main { grid-template-columns: 6fr 2fr 2fr; }
+/* The chart takes the row's height on its own and the two summary cards stack
+   beside it. This holds at every width down to the single-column breakpoint —
+   it was the laptop arrangement and it reads better than 6/2/2 at any size,
+   because two cards of 4fr are wider than two of 2fr and the chart loses
+   nothing it was using. */
+.finance-grid--main {
+  grid-template-columns: 6fr 4fr;
+  grid-template-rows: auto auto;
+}
+
+.finance-grid--main > :first-child {
+  grid-row: 1 / span 2;
+}
+
 .finance-grid--pair { grid-template-columns: 1fr 1fr; }
-.finance-grid--insights { grid-template-columns: 3fr 2fr; }
+
+/* The three insight cards keep their own column under the curve. */
+.finance-grid--insights { grid-template-columns: 1fr; }
 
 /* The three insight cards share one row inside their own column, so none of
    them takes a different width because its text ran longer. */
@@ -2745,32 +2760,8 @@ a.breakdown-donut:focus-visible {
    ------------------------------------------------------------------------ */
 
 /* Laptop: the chart keeps its lead, the two small cards stack beside it. */
-@media (max-width: 70rem) {
-  .finance-grid--main {
-    grid-template-columns: 6fr 4fr;
-    grid-template-rows: auto auto;
-  }
-
-  .finance-grid--main > :first-child {
-    grid-row: 1 / span 2;
-  }
-
-  .finance-grid--insights {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* Tablet: two columns throughout. */
 @media (max-width: 64rem) {
-  .finance-grid--main {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .finance-grid--main > :first-child {
-    grid-column: 1 / -1;
-    grid-row: auto;
-  }
-
   .finance-grid--pair {
     grid-template-columns: 1fr;
   }
@@ -2790,6 +2781,11 @@ a.breakdown-donut:focus-visible {
 @media (max-width: 36rem) {
   .finance-grid--main {
     grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+
+  .finance-grid--main > :first-child {
+    grid-row: auto;
   }
 
   .finance-grid {
@@ -2825,13 +2821,11 @@ a.breakdown-donut:focus-visible {
   flex: 0 0 auto;
 }
 
-/* The three insight cards keep one column inside their own area. Three across
-   in a third of the page leaves each about 175px, which is narrower than the
-   item names and amounts they carry, and the two collide. Stacked they stay
-   equal in width, padding and header height — which is what was asked for —
-   and nothing overflows. */
+/* Three across. They sit under the curve now rather than beside it, so each
+   one has a third of the page instead of a third of a third — wide enough for
+   the item names and the amounts that used to collide. */
 .finance-insight-cards {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 /* --------------------------------------------------------------------------
@@ -2868,12 +2862,11 @@ a.breakdown-donut:focus-visible {
   --level-one-plot-height: 100%;
 
   display: grid;
-  /* Header, basis, then the three content rows. The cards of a row are always
-     the same height as each other; the rows themselves are not equal, because
-     the managerial chart carries a value guide and a four-column label band
-     that stop compressing at about 230px, and squeezing every row down to what
-     the shortest one needs would cost that chart its axis. */
-  grid-template-rows: auto auto minmax(0, 1fr) minmax(0, .72fr) minmax(0, 1.28fr);
+  /* Header, basis, then the three content rows. The rows are not equal: the
+     first splits its height between two stacked cards, the managerial chart
+     beside them stops compressing at about 230px, and the third holds three
+     cards in a column. Each weight is what its own contents need. */
+  grid-template-rows: auto auto minmax(0, 1.2fr) minmax(0, .68fr) minmax(0, 1.32fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -2909,7 +2902,7 @@ a.breakdown-donut:focus-visible {
 
 .finance-board .finance-insight-cards {
   gap: var(--board-gap);
-  grid-template-rows: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   min-block-size: 0;
 }
 
@@ -3174,8 +3167,14 @@ a.breakdown-donut:focus-visible {
 
 /* A short viewport cannot hold three rows of charts at a size anyone can read.
    Rather than clip them, the board lets go of its fixed rows and the page
-   scrolls — the promise is one screen on a desktop screen, not at any height. */
-@media (max-height: 51rem) {
+   scrolls — the promise is one screen on a desktop screen, not at any height.
+
+   The threshold is 57rem rather than 51 because the first row now stacks two
+   cards where it used to sit three side by side, and the third stacks the curve
+   above its cards: both arrangements read better and both cost height. At
+   900px the total demand is about 60px over what is there, and scrolling 60px
+   is better than cutting three cards to hide it. */
+@media (max-height: 57rem) {
   #finance-module-root:has(.finance-board) {
     grid-template-rows: none;
     block-size: auto;
@@ -3508,12 +3507,31 @@ a.breakdown-donut:focus-visible {
 
 /* Where the board has let go of its fixed rows there is no card height to
    inherit, so the box is stated instead of discovered. */
-@media (max-height: 51rem), (max-width: 64rem) {
+@media (max-height: 57rem), (max-width: 64rem) {
   .finance-board .finance-analysis-card .analysis-chart-panel {
     block-size: clamp(9rem, 24vh, 15rem);
   }
 
   .finance-board .finance-analysis-card {
     min-block-size: 0;
+  }
+}
+
+/* Row 3 stacks the curve above the three cards now, so the curve's own box is
+   what has to give when the row is short. */
+.finance-board .finance-curve-card .cost-curve__surface {
+  min-block-size: 0;
+}
+
+.finance-board .finance-curve-card .analysis-chart-panel {
+  min-block-size: 0;
+}
+
+/* Four column labels in a 449px chart need a third line. Where the board has
+   released its rows there is height to give them one, so the band takes it
+   rather than cutting the label. */
+@media (max-height: 57rem), (max-width: 64rem) {
+  .finance-board .managerial-combo-chart__plot {
+    --managerial-label-lines: 3;
   }
 }
