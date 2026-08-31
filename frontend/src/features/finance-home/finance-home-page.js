@@ -558,7 +558,10 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
 /** هشدارهای کیفیت محاسبه, as one of the three equal insight cards. */
 function buildWarningsCard(data) {
   const warnings = document.createElement("section");
-  warnings.className = "finance-warnings";
+  // It sits in a row with the two deviation cards, so it is one of them: the
+  // same surface, border, radius, padding and heading come from the class they
+  // already share rather than from a second set of rules kept in step by hand.
+  warnings.className = "finance-analysis-card finance-warnings";
   warnings.setAttribute("aria-label", "هشدارهای محاسبات مالی");
   const reportWarnings = [...(data.warnings ?? [])];
   if (data.calculationStatus === "incomplete") {

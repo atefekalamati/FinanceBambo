@@ -3567,3 +3567,45 @@ a.breakdown-donut:focus-visible {
     max-block-size: 20rem;
   }
 }
+
+/* notices.css treats `.finance-warnings` as a notice — dashed border, notice
+   background, its own padding and leading. Right where it is a band warning the
+   reader about something; wrong where it is one of three cards in a row.
+
+   It cannot simply be outranked by order: that rule's `:is()` list contains
+   `.form-message:not(:empty)`, and `:is()` takes the specificity of its most
+   specific argument, so the whole list weighs (0,2,0) — the same as
+   `.finance-board .finance-insight-cards > *`, and notices.css is imported
+   later. Naming the card in the selector puts this at (0,3,0), which settles it
+   whatever the import order becomes. */
+.finance-board .finance-insight-cards > .finance-warnings {
+  margin: 0;
+  padding: .35rem .45rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+  color: inherit;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+/* Its rows read at the same size as the deviation rows beside them. The bullet
+   stays — this is still a list of warnings — but takes the indent a card can
+   spare rather than a notice's. */
+.finance-board .finance-insight-cards > .finance-warnings ul {
+  gap: .12rem;
+  padding-inline-start: .85rem;
+}
+
+.finance-board .finance-insight-cards > .finance-warnings li,
+.finance-board .finance-insight-cards > .finance-warnings p {
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+/* The clear state keeps its green edge — that is the one thing about this card
+   that is still a notice. */
+.finance-board .finance-insight-cards > .finance-warnings--clear {
+  border-color: rgb(34 197 94 / 30%);
+}
