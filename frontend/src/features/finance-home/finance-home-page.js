@@ -13,6 +13,7 @@ import { buildMonthlyTrend, TREND_MODES } from "../../shared/reports/monthly-tre
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildBulletPresentation, buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
 import { createBreakdownChart } from "../../shared/components/breakdown-chart.js";
+import { createTomanDisplay } from "../../shared/components/money-display.js";
 import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
 import { canAccessSurface } from "../../core/auth/permissions.js";
 import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/variances/variance-rollup.js";
@@ -38,32 +39,6 @@ const RELATED_SUMMARY_KEYS = new Set(["actualCostPerSquareMeterIrr", "forecastPe
 /* The destinations of the گزارش مالی surface, in the order a reader wants them:
    the current report, the same report over a chosen period, the documents the
    figures are built from, and how the amounts are displayed. */
-
-function createTomanDisplay(value, { compact = false } = {}) {
-  const display = document.createElement("span");
-  display.className = "money-display";
-  if (!/^-?\d+$/.test(String(value ?? ""))) {
-    display.textContent = "قابل محاسبه نیست";
-    return display;
-  }
-  const compactValue = compact ? compactMoneyFromIrr(value) : null;
-  const exactValue = formatTomanFromIrr(value);
-  const unit = document.createElement("span");
-  unit.className = "money-display__unit";
-  unit.textContent = compactValue?.unit ?? getDisplayCurrencyLabel();
-  const amount = document.createElement("bdi");
-  amount.className = "money-display__amount numeric";
-  amount.dir = "ltr";
-  amount.textContent = compactValue?.amount ?? formatDisplayNumber(irrToDisplayValue(value));
-  display.append(unit, amount);
-  if (compactValue?.compact) {
-    display.classList.add("compact-money");
-    display.dataset.exact = exactValue;
-    display.setAttribute("aria-label", exactValue);
-    display.tabIndex = 0;
-  }
-  return display;
-}
 
 function createSummaryCard(key, label, description, data) {
   const card = document.createElement("article");
