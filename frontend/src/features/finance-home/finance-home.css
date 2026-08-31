@@ -3175,7 +3175,7 @@ a.breakdown-donut:focus-visible {
 /* A short viewport cannot hold three rows of charts at a size anyone can read.
    Rather than clip them, the board lets go of its fixed rows and the page
    scrolls — the promise is one screen on a desktop screen, not at any height. */
-@media (max-height: 49rem) {
+@media (max-height: 51rem) {
   #finance-module-root:has(.finance-board) {
     grid-template-rows: none;
     block-size: auto;
@@ -3470,4 +3470,50 @@ a.breakdown-donut:focus-visible {
   flex: 0 0 auto;
   padding-block: .35rem;
   font-size: var(--font-size-sm);
+}
+
+/* --- the chart panels' alternative tables ------------------------------- */
+
+/* Each trend panel carries a table saying in rows what its chart says in
+   shapes. On a full page it sits under the chart; in a card sized to one screen
+   it is 600px of content in a 175px box, and switching to the monthly view
+   dropped it in and pushed the row open.
+
+   It is taken out of the layout the way the module hides anything a screen
+   reader still needs — visually hidden, not display:none — so the alternative
+   view survives even though there is no room to draw it here. The same table is
+   drawn in full on the report page and in a produced report. */
+.finance-board .analysis-chart-panel > .table-scroll {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- the chart panels keep the card's height, not their own ------------- */
+
+/* Both panels of the switch occupy one box. Whichever is showing, the box is
+   the same size — so flipping between تجمیعی and روند ماهانه changes what is
+   drawn and nothing else. Without this the monthly chart brings its own natural
+   height, which is four times the managerial one, and the whole row jumps. */
+.finance-board .finance-analysis-card .analysis-chart-panel {
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+/* Where the board has let go of its fixed rows there is no card height to
+   inherit, so the box is stated instead of discovered. */
+@media (max-height: 51rem), (max-width: 64rem) {
+  .finance-board .finance-analysis-card .analysis-chart-panel {
+    block-size: clamp(9rem, 24vh, 15rem);
+  }
+
+  .finance-board .finance-analysis-card {
+    min-block-size: 0;
+  }
 }
