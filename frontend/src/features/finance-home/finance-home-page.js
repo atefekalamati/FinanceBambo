@@ -267,9 +267,8 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
 /**
  * The deepest few deviations, and a way to the table that holds them all.
  *
- * `limit` is how many the card has room for, not how many there are: the board
- * gives each of its three insight cards a third of a row, and a five-row list
- * does not fit in one. The link under it goes to the full table either way.
+ * `limit` is how many the card has room for, not how many there are. The link
+ * under it goes to the full table either way.
  */
 function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref, limit = 5) {
   const section = document.createElement("section");
@@ -548,8 +547,8 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
     buildWarningsCard(data),
     // One row per item. The service answers with an estimate line each, and the
     // same item used on two activities would otherwise be listed twice.
-    createVariancePanel("بیشترین انحراف قیمت", rollupPriceVariances(data.topPriceVariances), "varianceIrr", formatCompactMoneyFromIrr, "#/report-prices", 2),
-    createVariancePanel("بیشترین انحراف مقدار", rollupQuantityVariances(data.topQuantityVariances), "varianceQuantity", formatDisplayNumber, "#/report-items", 2),
+    createVariancePanel("بیشترین انحراف قیمت", rollupPriceVariances(data.topPriceVariances), "varianceIrr", formatCompactMoneyFromIrr, "#/report-prices", 5),
+    createVariancePanel("بیشترین انحراف مقدار", rollupQuantityVariances(data.topQuantityVariances), "varianceQuantity", formatDisplayNumber, "#/report-items", 5),
   );
   rowThird.append(curvePanel, insightCards);
 
