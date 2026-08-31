@@ -20,8 +20,13 @@
   gap: var(--space-sm);
 }
 
+/* The mark and the words are one line, the way the host writes this heading —
+   an SVG in a block-level heading otherwise sits on a line of its own. */
 .report-builder-section__title,
 .report-builder-panel__title {
+  display: flex;
+  align-items: center;
+  gap: .42rem;
   margin: 0;
   color: var(--color-text-primary);
   font-size: 1rem;
@@ -31,8 +36,13 @@
 /* The star is the mark the project puts on its own builder. It carries no
    meaning of its own, so it is hidden from anything that reads the page aloud. */
 .report-builder-panel__star {
-  color: var(--brand-teal);
-  font-size: .9em;
+  flex: 0 0 auto;
+  inline-size: 1.05rem;
+  block-size: 1.05rem;
+  color: var(--dash-actual, var(--brand-teal));
+  fill: currentColor;
+  stroke: none;
+  vertical-align: -.15em;
 }
 
 /* On the green button the brand colour disappears into the background, so the
@@ -40,6 +50,8 @@
    than relying on a space that collapses once the type gets small. */
 .button .report-builder-panel__star {
   margin-inline-end: .25em;
+  inline-size: 1rem;
+  block-size: 1rem;
   color: currentColor;
 }
 
@@ -74,18 +86,20 @@
 
 .report-builder-chip {
   display: grid;
-  gap: .3rem;
+  gap: .28rem;
   justify-items: center;
-  padding: .7rem .5rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  align-content: center;
+  padding: .55rem .35rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: .56rem;
   color: var(--color-text-secondary);
-  background: rgb(4 13 32 / 30%);
+  background: rgb(120 145 205 / 6%);
   font-family: inherit;
-  font-size: .72rem;
-  font-weight: 700;
-  line-height: 1.5;
+  font-size: .68rem;
+  font-weight: 600;
+  line-height: 1.3;
   text-align: center;
+  overflow-wrap: anywhere;
   cursor: pointer;
   transition:
     border-color var(--duration-fast) var(--ease-standard),
@@ -95,21 +109,26 @@
 
 .report-builder-chip:hover,
 .report-builder-chip:focus-visible {
-  border-color: var(--color-accent);
+  border-color: var(--color-border);
   color: var(--color-text-primary);
-  background: var(--color-btn-action);
+  background: rgb(120 145 205 / 14%);
 }
 
 .report-builder-chip__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 1.5rem;
-  block-size: 1.5rem;
-  border-radius: var(--radius-sm);
-  color: var(--brand-teal);
-  background: color-mix(in srgb, var(--brand-teal) 14%, transparent);
-  font-size: .78rem;
+  inline-size: .95rem;
+  block-size: .95rem;
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .85;
+}
+
+.report-builder-chip:hover .report-builder-chip__icon,
+.report-builder-chip:focus-visible .report-builder-chip__icon {
+  opacity: 1;
 }
 
 .report-builder-section__cta,
