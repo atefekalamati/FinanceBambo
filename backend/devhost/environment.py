@@ -12,6 +12,7 @@ deployed module would have to carry.
 import os
 import socket
 from pathlib import Path
+from uuid import UUID
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = REPO_ROOT / ".env"
@@ -46,6 +47,102 @@ def setting(name: str, default: str | None = None) -> str | None:
     return load_env_file().get(name, default)
 
 
+#: The central BAMBO server, and the one database on it Finance is allowed to touch.
+#:
+#: Named here rather than in each caller so there is one place to read the rule from and one
+#: place to change it. The host is matched, not just the database name: `bambo` lives on this
+#: same server, and a DSN that reached it would be writing Finance rows into the Core database.
+CENTRAL_HOSTS = frozenset({"192.168.100.200"})
+CENTRAL_DATABASE = "bambo_canonical_local"
+
+#: Refused wherever they appear. `bambo` is Core's own database; `bambo_finance_dev` is the
+#: superseded local one that `.env` still points at, which is how a host that looked correctly
+#: configured spent a week reading an empty database nobody had migrated.
+FORBIDDEN_DATABASES = frozenset({"bambo"})
+OBSOLETE_DATABASES = frozenset({"bambo_finance_dev"})
+
+
+def dsn_target(dsn: str):
+    """`(host, database)` for a DSN, or `(None, None)` when it cannot be read.
+
+    Accepts both the URL form and libpq keyword form. Unknown is returned rather than
+    guessed: a rule applied to a misread address is worse than no rule, because it reads as
+    enforcement while enforcing something else.
+    """
+    if not dsn:
+        return None, None
+    text = dsn.strip()
+    if "://" in text:
+        from urllib.parse import urlsplit
+        parsed = urlsplit(text)
+        return parsed.hostname, (parsed.path.lstrip("/") or None)
+    keywords = dict(
+        part.split("=", 1) for part in text.split() if "=" in part
+    )
+    return keywords.get("host"), keywords.get("dbname")
+
+
+def check_runtime_dsn(name: str, dsn: str | None) -> str | None:
+    """Refuse a runtime DSN that names a database Finance must not run against.
+
+    Three rules, in the order a mistake is likely to be made:
+
+      * anything on the central server must be `bambo_canonical_local`. This is what keeps a
+        stray DSN out of `bambo`, and it is checked by address so renaming cannot bypass it;
+      * `bambo_finance_dev` is refused everywhere. It is the superseded local database, and
+        `.env` still points at it, so an unset environment variable silently lands there;
+      * `bambo` is refused everywhere, on any host.
+
+    A local database that is none of those is left alone: the demo builders and the test
+    suite need one, and a lock that broke them would be turned off rather than obeyed.
+    """
+    host, database = dsn_target(dsn)
+    if database is None:
+        return dsn
+    if database in FORBIDDEN_DATABASES:
+        raise MissingConfiguration(
+            f"{name} names database {database!r}, which belongs to Core.\n"
+            f"Finance runs against {CENTRAL_DATABASE!r} and nothing else on that server."
+        )
+    if database in OBSOLETE_DATABASES:
+        raise MissingConfiguration(
+            f"{name} names {database!r}, the superseded local database.\n"
+            f"Point it at {CENTRAL_DATABASE!r}, or unset {ENV_FILE}'s entry for it."
+        )
+    if host in CENTRAL_HOSTS and database != CENTRAL_DATABASE:
+        raise MissingConfiguration(
+            f"{name} names database {database!r} on the central server.\n"
+            f"Only {CENTRAL_DATABASE!r} is permitted there."
+        )
+    return dsn
+
+
+def check_runtime_pairing() -> None:
+    """Refuse a Finance database and a Core database on opposite sides of the network.
+
+    Finance rows in one place and the authorization they are gated by in another is a
+    correctness hole that reports no error: every request is answered, and answered against a
+    Core that knows nothing about the data being returned.
+    """
+    finance_host, finance_db = dsn_target(setting("FINANCE_DEV_DSN"))
+    core_host, core_db = dsn_target(setting("FINANCE_CORE_DSN"))
+    if core_db is None or finance_db is None:
+        return
+    finance_central = finance_host in CENTRAL_HOSTS
+    core_central = core_host in CENTRAL_HOSTS
+    if finance_central != core_central:
+        raise MissingConfiguration(
+            "FINANCE_DEV_DSN and FINANCE_CORE_DSN are on different servers "
+            f"({finance_host} and {core_host}).\n"
+            "Finance data and the Core that authorizes it must be the same database."
+        )
+    if finance_central and core_db != finance_db:
+        raise MissingConfiguration(
+            f"FINANCE_DEV_DSN names {finance_db!r} and FINANCE_CORE_DSN names {core_db!r} "
+            "on the central server.\nBoth must be " f"{CENTRAL_DATABASE!r}."
+        )
+
+
 def database_url() -> str:
     dsn = setting("FINANCE_DEV_DSN")
     if not dsn:
@@ -54,7 +151,8 @@ def database_url() -> str:
             f"Copy {REPO_ROOT / '.env.example'} to {ENV_FILE} and fill in the password for\n"
             "the bambo_finance_app role, or export FINANCE_DEV_DSN in this shell."
         )
-    return dsn
+    check_runtime_pairing()
+    return check_runtime_dsn("FINANCE_DEV_DSN", dsn)
 
 
 def migration_url() -> str | None:
@@ -137,7 +235,45 @@ def core_url() -> str | None:
     database. Core and Finance are separate schemas owned by separate teams and may well be
     separate databases; a single variable would quietly assume otherwise.
     """
-    return setting("FINANCE_CORE_DSN")
+    return check_runtime_dsn("FINANCE_CORE_DSN", setting("FINANCE_CORE_DSN"))
+
+
+def core_identity_settings():
+    """Which real person, organization and project the development host stands in for.
+
+    Only meaningful with `FINANCE_CORE_DSN` set. The fixture identifiers in `devhost/seed.py`
+    name a person who exists in the seeded demo and in no real Core database, so pointing the
+    Core adapters at a real one and leaving them in place asks Core about somebody who is not
+    there. Core answers correctly -- no membership, no permissions, 403 -- and the page reads
+    as a permission problem when it is a configuration one.
+
+    This changes *who is calling* and nothing else. Membership, roles, permissions and every
+    gate still come from Core's own tables for whoever is named here: naming a user grants
+    them nothing, exactly as a real host session grants nothing by itself.
+
+    Returns `(user_id, organization_id, project_id)`, each None when unset.
+    """
+    user = setting("FINANCE_DEMO_USER_ID")
+    organization = setting("FINANCE_DEMO_ORGANIZATION_ID")
+    project = setting("FINANCE_DEMO_PROJECT_ID")
+    parsed_user = _uuid_setting("FINANCE_DEMO_USER_ID", user)
+    parsed_organization = _uuid_setting("FINANCE_DEMO_ORGANIZATION_ID", organization)
+    return parsed_user, parsed_organization, (project.strip() if project else None)
+
+
+def _uuid_setting(name: str, value: str | None):
+    """A UUID setting, or a refusal naming the setting.
+
+    Falling back to the fixture on a typo would start the host against a real Core database
+    under an identity nobody chose, and the only symptom would be a 403 that looks like the
+    one this setting exists to fix.
+    """
+    if not value or not value.strip():
+        return None
+    try:
+        return UUID(value.strip())
+    except ValueError as error:
+        raise MissingConfiguration(f"{name} is not a UUID: {value.strip()!r}") from error
 
 
 def core_progress_enabled() -> bool:
