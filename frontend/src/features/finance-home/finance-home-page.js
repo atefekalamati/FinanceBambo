@@ -504,7 +504,6 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   if (provenance) basis.append(provenance);
   const basisMeta = element("div", "finance-basis__meta");
   basisMeta.append(
-    element("small", "finance-report-meta", `تاریخ گزارش ${formatBusinessDate(data.reportingDate)}`),
     createSettingsLink(),
   );
   basis.append(basisMeta);

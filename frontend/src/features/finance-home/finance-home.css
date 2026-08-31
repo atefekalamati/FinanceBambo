@@ -2625,7 +2625,6 @@ a.finance-variance-card__link:hover {
 .prices-summary__price {
   inline-size: 32%;
   font-weight: 700;
-  text-align: start;
 }
 
 .prices-summary__trend {
