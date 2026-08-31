@@ -1,6 +1,7 @@
 import { element, tableCaption, tableHead } from "../dom/elements.js";
 import { compactMoneyFromIrr, compactMoneyScale, formatCompactMoneyFromIrr, formatTomanFromIrr } from "../formatters/money.js";
 import { formatDisplayNumber } from "../formatters/display.js";
+import { createTomanDisplay } from "./money-display.js";
 
 /**
  * ترکیب هزینه — actual cost per kind of item against the estimate for that kind.
