@@ -2507,7 +2507,7 @@ a.finance-variance-card__link:hover {
    row of four — so the chart beside them takes the larger share and its columns
    get the room they need to be read. */
 .finance-grid--main {
-  grid-template-columns: 4fr 6fr;
+  grid-template-columns: 3.5fr 1.9fr 5.6fr;
 }
 
 .finance-grid--pair { grid-template-columns: 1fr 1fr; }
@@ -2772,9 +2772,25 @@ a.breakdown-donut:focus-visible {
 }
 
 /* One column, in the order the reader needs it. */
+/* Three columns need room the chart cannot give up twice. Below this the row
+   folds: the figures beside the way in, the chart across both. */
+@media (max-width: 64rem) {
+  .finance-grid--main {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .finance-grid--main > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 36rem) {
   .finance-grid--main {
     grid-template-columns: 1fr;
+  }
+
+  .finance-grid--main > :last-child {
+    grid-column: auto;
   }
 
   .finance-grid {
@@ -3768,4 +3784,102 @@ a.breakdown-donut:focus-visible {
   .finance-board .finance-figures {
     grid-template-rows: none;
   }
+}
+
+/* --- the way into فاکتورها ----------------------------------------------
+   An entry point, not a summary: nothing behind the link is rebuilt here. The
+   whole card is the anchor, the way the cost-mix card on this board already is,
+   so the heading and the line under it belong to the link rather than sitting
+   beside a smaller one.
+   ------------------------------------------------------------------------ */
+
+a.invoices-entry {
+  justify-content: space-between;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+a.invoices-entry:hover,
+a.invoices-entry:focus-visible {
+  border-color: color-mix(in srgb, var(--dash-actual, #00ac58) 45%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dash-actual, #00ac58) 7%, transparent), transparent 60%),
+    var(--app-card-navy);
+}
+
+a.invoices-entry:focus-visible {
+  outline: 2px solid var(--dash-actual, #00ac58);
+  outline-offset: 2px;
+}
+
+.invoices-entry__head {
+  justify-content: flex-start;
+  gap: .4rem;
+}
+
+.invoices-entry__mark {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  border: 1px solid color-mix(in srgb, var(--dash-actual, #00ac58) 30%, transparent);
+  border-radius: .45rem;
+  background: color-mix(in srgb, var(--dash-actual, #00ac58) 14%, transparent);
+  color: var(--dash-actual, #00ac58);
+}
+
+.invoices-entry__icon {
+  inline-size: .85rem;
+  block-size: .85rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.invoices-entry__lead {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+}
+
+.invoices-entry__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .22rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.invoices-entry__tags li {
+  padding: .1rem .38rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  background: rgb(120 145 205 / 6%);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.invoices-entry__action {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  margin-block-start: auto;
+  color: var(--dash-actual, #00ac58);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+.invoices-entry__chevron {
+  font-size: .95rem;
+  line-height: 1;
 }

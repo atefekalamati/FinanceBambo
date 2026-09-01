@@ -19,6 +19,7 @@ import { canAccessSurface } from "../../core/auth/permissions.js";
 import { createReportBuilderSection } from "../report-builder/report-builder-section.js";
 import { createLevelOneSection } from "../level-one/level-one-section.js";
 import { createPricesSummary } from "./prices-summary.js";
+import { createInvoicesEntry } from "./invoices-entry.js";
 
 /* The four the board shows, in the order it shows them. The rest of the
    catalogue is still what the report page and the builder draw on. */
@@ -471,6 +472,9 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   const rowMain = element("div", "finance-grid finance-grid--main");
   rowMain.append(
     figures,
+    // Between the figures and the chart: the one thing on this row a reader
+    // comes to *do* rather than read.
+    createInvoicesEntry(),
     createManagerialComparisonPanel(data.metrics, comparisons.management, monthly, chartState),
   );
 
