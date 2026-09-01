@@ -24,24 +24,40 @@ export function createLevelOneSection({ rollup, error = null }) {
     element("span", "", "گزارش مالی سطح ۱"),
     element("h2", "", "هزینه هر مرحله در برابر برآورد آن"),
   );
-  const link = element("a", "button button--ghost button--small", "مشاهده جزئیات مراحل");
-  link.href = "#/level-one";
-  heading.append(copy, link);
+  heading.append(copy);
   section.append(heading);
+
+  /**
+   * The way to the phases' own page, under the chart rather than beside the
+   * heading. It was a ghost button up there, which put a second bordered box
+   * inside a card that is already one and took height off the chart on a board
+   * that has none to give. As a line of text it reads the way the invoices card
+   * says its own way in — same place, same weight, smaller than the body.
+   *
+   * It is appended last in every branch, including the ones that have no chart:
+   * a reader who is told the rollup is not ready yet still has somewhere to go.
+   */
+  const finish = () => {
+    const link = element("a", "level-one-section__link");
+    link.href = "#/level-one";
+    link.append(document.createTextNode("مشاهده جزئیات مراحل"), element("span", "level-one-section__chevron", "‹"));
+    section.append(link);
+    return section;
+  };
 
   if (error) {
     section.append(element("p", "inline-notice", formatApiErrorMessage(error, "دریافت گزارش سطح ۱ انجام نشد.")));
-    return section;
+    return finish();
   }
   if (rollup?.available === false) {
     section.append(element("p", "inline-notice", "سرویس مالی هنوز هزینه‌ها را بر اساس ساختار شکست کار جمع نمی‌زند. این بخش به‌محض آماده‌شدن سرویس، داده واقعی را نشان می‌دهد."));
-    return section;
+    return finish();
   }
 
   const view = buildWbsView({ nodes: rollup?.nodes ?? [], unattributedActualIrr: rollup?.unattributedActualIrr });
   if (view.isEmpty) {
     section.append(element("p", "inline-notice", "برای هیچ مرحله‌ای از پروژه هزینه یا برآوردی ثبت نشده است."));
-    return section;
+    return finish();
   }
 
   section.append(createLevelOneChart({
@@ -65,5 +81,5 @@ export function createLevelOneSection({ rollup, error = null }) {
     section.append(element("p", "level-one-section__note",
       `${formatCompactMoneyFromIrr(view.unattributed.actualCostIrr)} از هزینه ثبت‌شده به هیچ مرحله‌ای وصل نیست و در این نمودار نیامده است.`));
   }
-  return section;
+  return finish();
 }

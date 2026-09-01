@@ -52,6 +52,32 @@
   max-inline-size: 100%;
 }
 
+/* The way to the phases' page, under the chart. Same shape as the invoices
+   card's own line — accent, bold, a chevron after it — one step down in size
+   because it sits under a chart rather than being a card's whole purpose. */
+.level-one-section__link {
+  display: inline-flex;
+  align-self: flex-start;
+  justify-self: start;
+  align-items: center;
+  gap: .25rem;
+  margin-block-start: auto;
+  color: var(--dash-actual);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.level-one-section__link:hover,
+.level-one-section__link:focus-visible {
+  text-decoration: underline;
+}
+
+.level-one-section__chevron {
+  font-size: .95rem;
+  line-height: 1;
+}
+
 .level-one-section__note {
   margin: 0;
   color: var(--color-text-muted);

@@ -3383,11 +3383,6 @@ a.breakdown-donut:focus-visible {
   line-height: 1.3;
 }
 
-.finance-board .level-one-section > .section-heading .button {
-  padding-block: .12rem;
-  font-size: var(--font-size-xs);
-}
-
 /* The last few pixels at 900: the phase card's heading row, the chart's bar
    floor and the deviation rows each give up a little rather than one of them
    giving up a line. */
