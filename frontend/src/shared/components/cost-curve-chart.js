@@ -74,8 +74,17 @@ export function createCostCurveChart({
   let view = null;
   let frame = null;
 
-  /** Lays the guide out once so its widest label can be measured. */
-  function layoutGuide(box, ticks) {
+  /**
+   * Lays the guide out once so its widest label can be measured.
+   *
+   * `scale` is what the drawing is squashed by. The canvas is drawn in a space
+   * at least MIN_HEIGHT tall and then stretched to the surface with
+   * `preserveAspectRatio: none`, so in a surface shorter than that every
+   * gridline lands at a fraction of where it was drawn. These labels are HTML,
+   * not SVG, and nothing scales them — so they are placed in the squashed space
+   * the reader actually sees, or a label names a line it is no longer beside.
+   */
+  function layoutGuide(box, ticks, scale = 1) {
     const nodes = ticks.map((tick) => {
       const node = element("span", "cost-curve__guide-value", formatValue(tick.valueIrr));
       const exact = formatExactValue(tick.valueIrr);
@@ -89,8 +98,8 @@ export function createCostCurveChart({
     guideLayer.replaceChildren(...unit, ...nodes);
     const widest = nodes.reduce((result, node) => Math.max(result, node.offsetWidth), 0);
     if (box) {
-      guideLayer.style.setProperty("--plot-top", `${box.top}px`);
-      guideLayer.style.setProperty("--plot-height", `${box.innerHeight}px`);
+      guideLayer.style.setProperty("--plot-top", `${box.top * scale}px`);
+      guideLayer.style.setProperty("--plot-height", `${box.innerHeight * scale}px`);
       guideLayer.style.setProperty("--lane", `${box.lane}px`);
     }
     return widest;
@@ -111,7 +120,7 @@ export function createCostCurveChart({
     // Measured, then laid out again once the box that depends on it is known.
     const widest = layoutGuide(null, view.ticks);
     const box = geometry(width, height, widest, isNarrow);
-    layoutGuide(box, view.ticks);
+    layoutGuide(box, view.ticks, (surface.clientHeight || height) / height);
 
     const canvas = svg("svg", {
       class: "cost-curve__canvas",

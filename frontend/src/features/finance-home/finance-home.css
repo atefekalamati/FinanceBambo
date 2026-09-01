@@ -2872,7 +2872,7 @@ a.breakdown-donut:focus-visible {
      first splits its height between two stacked cards, the managerial chart
      beside them stops compressing at about 230px, and the third holds three
      cards in a column. Each weight is what its own contents need. */
-  grid-template-rows: auto auto minmax(0, 1.58fr) minmax(0, .64fr) minmax(0, .98fr);
+  grid-template-rows: auto auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -3151,39 +3151,13 @@ a.breakdown-donut:focus-visible {
   font-size: var(--font-size-md);
 }
 
-/* A short viewport cannot hold three rows of charts at a size anyone can read.
-   Rather than clip them, the board lets go of its fixed rows and the page
-   scrolls — the promise is one screen on a desktop screen, not at any height.
-
-   The threshold is 57rem rather than 51 because the first row now stacks two
-   cards where it used to sit three side by side, and the third stacks the curve
-   above its cards: both arrangements read better and both cost height. At
-   900px the total demand is about 60px over what is there, and scrolling 60px
-   is better than cutting three cards to hide it. */
-@media (max-height: 57rem) {
-  #finance-module-root:has(.finance-board) {
-    grid-template-rows: none;
-    block-size: auto;
-    min-block-size: 0;
-    overflow: visible;
-  }
-
-  #finance-module-root:has(.finance-board) > .finance-home-page,
-  .finance-board {
-    grid-template-rows: none;
-    block-size: auto;
-    overflow: visible;
-  }
-
-  .finance-board .overview-card,
-  .finance-board .finance-grid > .finance-managerial-comparison,
-  .finance-board .finance-grid > .level-one-section,
-  .finance-board .finance-grid > .report-builder-section,
-  .finance-board .finance-insight-cards > * {
-    block-size: auto;
-    min-block-size: 11rem;
-  }
-}
+/* A short viewport keeps the three rows and their weights: the board is still
+   two columns of three rows here, so it is still the arrangement those weights
+   describe. Only below 64rem, where every row collapses to one column, does the
+   board stop being three rows and let the page scroll — that release lives in
+   the width query above, and it has to stay there rather than here: a rule in a
+   `max-height` query would also match a phone held sideways, and being later in
+   the file it would win and re-lock the single column it cannot hold. */
 
 /* The plot carries a 17rem floor from the wide-screen rules — it was written
    when this chart had a page row to itself. On the board it takes the height
@@ -3467,7 +3441,7 @@ a.breakdown-donut:focus-visible {
 
    It is now sized to the window rather than pinned near a floor, and it is the
    same box for both charts, so flipping still moves nothing. */
-@media (max-height: 57rem), (max-width: 64rem) {
+@media (max-width: 64rem) {
   .finance-board .finance-analysis-card .analysis-chart-panel {
     block-size: clamp(13rem, 34vh, 24rem);
   }
@@ -3490,7 +3464,7 @@ a.breakdown-donut:focus-visible {
 /* Four column labels in a 449px chart need a third line. Where the board has
    released its rows there is height to give them one, so the band takes it
    rather than cutting the label. */
-@media (max-height: 57rem), (max-width: 64rem) {
+@media (max-width: 64rem) {
   .finance-board .managerial-combo-chart__plot {
     --managerial-label-lines: 3;
   }
@@ -3513,7 +3487,7 @@ a.breakdown-donut:focus-visible {
   max-block-size: 100%;
 }
 
-@media (max-height: 57rem), (max-width: 64rem) {
+@media (max-width: 64rem) {
   .finance-board .finance-curve-card .cost-curve__surface {
     block-size: clamp(8rem, 20vh, 12rem);
     min-block-size: 0;
@@ -3650,15 +3624,26 @@ a.breakdown-donut:focus-visible {
    side by side.
    ------------------------------------------------------------------------ */
 
+/* The two cards want different amounts. The day prices are a table — a header
+   and three rows, 116px that cannot be argued down without dropping a price —
+   while the quality notes are a list that reads fine short. Splitting the column
+   in half gave the table less than it needs at every height under 1080 and cut
+   its last row. The table takes what it needs and the notes take the rest. */
 .finance-board .finance-insight-cards {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* Which means the notes are the card that can end up shorter than its list, so
+   the list scrolls rather than losing its tail without saying so. */
+.finance-board .finance-insight-cards > .finance-warnings ul {
+  overflow-y: auto;
 }
 
 /* The chart moved to the narrower column, so four labels of its width need a
    fourth line where the board has released its rows and there is height to give
    them one. */
-@media (max-height: 57rem), (max-width: 64rem) {
+@media (max-width: 64rem) {
   .finance-board .managerial-combo-chart__plot {
     --managerial-label-lines: 4;
   }
@@ -3726,7 +3711,7 @@ a.breakdown-donut:focus-visible {
    it lets go: in an auto-height container the tracks stop growing with their
    contents and the two cards land on top of each other. Released, the rows are
    whatever the cards need. */
-@media (max-height: 57rem), (max-width: 64rem) {
+@media (max-width: 64rem) {
   .finance-board .finance-insight-cards,
   .finance-board .finance-figures {
     grid-template-rows: none;
