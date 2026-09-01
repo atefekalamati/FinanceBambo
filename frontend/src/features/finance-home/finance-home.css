@@ -2906,7 +2906,7 @@ a.breakdown-donut:focus-visible {
   /* The basis bar, then the three content rows. The heading above them is
      visually hidden and out of flow, so it takes no track — leaving one here
      for it would park an empty fifth of the board under the last row. */
-  grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1.5fr) auto minmax(0, 1fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -2976,6 +2976,24 @@ a.breakdown-donut:focus-visible {
 
 .finance-board .finance-insight-cards > .prices-summary {
   padding: 10px 12px;
+}
+
+/* The phase chart's own height, while it shares its row with another section.
+   246.4px of content — the height it has in the host — which with the 16px
+   padding above and the card's border comes to 280 border-box, because
+   box-sizing is border-box everywhere here.
+
+   Two things had to give for this to hold. The shared card rule above says
+   `block-size: 100%`, which handed the card whatever the row was; and the row
+   itself was a 1.5fr track, so its height came from the board rather than from
+   what it holds. The row is `auto` now and takes the card's 280 — which is also
+   what keeps the builder beside it the same height, since that one still fills
+   the row. Rows one and three keep their weights and divide what is left.
+
+   Below 64rem the pair stops being two columns, so the height is released again
+   in the width query further down. */
+.finance-board .finance-grid--pair > .level-one-section {
+  block-size: 280px;
 }
 
 .finance-board .finance-page-header {
