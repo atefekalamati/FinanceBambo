@@ -2506,8 +2506,19 @@ a.finance-variance-card__link:hover {
 /* The four figures read in two columns of two, which needs less width than one
    row of four — so the chart beside them takes the larger share and its columns
    get the room they need to be read. */
+/* Half and half, the same split rows two and three make — so the gutter
+   between them is one straight line from the top of the board to the bottom. */
 .finance-grid--main {
-  grid-template-columns: 3.5fr 1.9fr 5.6fr;
+  grid-template-columns: 1fr 1fr;
+}
+
+/* The figures and the way in divide that half between themselves. */
+.finance-lead {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--board-gap);
+  min-inline-size: 0;
+  min-block-size: 0;
 }
 
 .finance-grid--pair { grid-template-columns: 1fr 1fr; }
@@ -2772,25 +2783,17 @@ a.breakdown-donut:focus-visible {
 }
 
 /* One column, in the order the reader needs it. */
-/* Three columns need room the chart cannot give up twice. Below this the row
-   folds: the figures beside the way in, the chart across both. */
+/* Half a row is not enough for four figures and a card beside a chart, so the
+   row stacks: the pair above, the chart across the full width below. */
 @media (max-width: 64rem) {
   .finance-grid--main {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .finance-grid--main > :last-child {
-    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 36rem) {
-  .finance-grid--main {
+  .finance-lead {
     grid-template-columns: 1fr;
-  }
-
-  .finance-grid--main > :last-child {
-    grid-column: auto;
   }
 
   .finance-grid {
