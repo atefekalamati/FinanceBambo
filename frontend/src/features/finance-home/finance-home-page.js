@@ -435,18 +435,19 @@ function createSettingsLink() {
 
 function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null, cumulative = null, levelOne = null, prices = null) {
   const board = element("div", "finance-board");
-  const pageHeader = document.createElement("header");
-  pageHeader.className = "finance-page-header";
-  const pageTitle = document.createElement("h1");
-  pageTitle.className = "finance-page-title";
-  pageTitle.textContent = "گزارش مالی پروژه";
-  const headerActions = element("div", "finance-page-header__actions");
-  const toAreas = element("a", "button button--ghost button--small", "بخش‌های گزارش");
+
+  // The board had a full-width header over it carrying the page's name and two
+  // buttons. On a page whose whole promise is one screen, a band that says only
+  // what the reader already knows is the most expensive thing on it — so the
+  // two ways out move down into the basis bar beside the settings gear, as
+  // text rather than buttons, and the name stays for anyone who cannot see the
+  // page: the document still needs a heading, and a screen reader still reads
+  // it first.
+  const pageTitle = element("h1", "sr-only", "گزارش مالی پروژه");
+  const toAreas = element("a", "finance-basis__link", "بخش‌های گزارش");
   toAreas.href = "#/work-areas";
-  const toOperations = element("a", "button button--ghost finance-surface-link", "رفتن به امور مالی");
+  const toOperations = element("a", "finance-basis__link", "رفتن به امور مالی");
   toOperations.href = `#${homeRouteFor(SURFACES.OPERATIONS)?.path ?? "/finance"}`;
-  headerActions.append(toAreas, toOperations);
-  pageHeader.append(pageTitle, headerActions);
 
   const comparisons = buildOverviewComparisons(data.metrics);
 
@@ -455,6 +456,8 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   if (provenance) basis.append(provenance);
   const basisMeta = element("div", "finance-basis__meta");
   basisMeta.append(
+    toAreas,
+    toOperations,
     createSettingsLink(),
   );
   basis.append(basisMeta);
@@ -510,7 +513,7 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   insightCards.append(createPricesSummary(prices ?? {}), buildWarningsCard(data));
   rowThird.append(curvePanel, insightCards);
 
-  board.append(pageHeader, basis, rowMain, rowSecond, rowThird);
+  board.append(pageTitle, basis, rowMain, rowSecond, rowThird);
   return board;
 }
 

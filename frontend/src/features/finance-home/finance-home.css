@@ -2578,6 +2578,41 @@ a.finance-variance-card__link:hover {
   margin-inline-start: auto;
 }
 
+/* The two ways off this page sit in the basis bar beside the gear. They are
+   links, not buttons: a button's padding and border would make two more boxes
+   in a bar that already carries one, and nothing here is an action — both go
+   somewhere.
+
+   Losing the border means the space between them is the only thing telling the
+   reader they are two links and not one phrase, so they get their own gap
+   rather than the bar's — at the bar's .3rem, «بخش‌های گزارش رفتن به امور مالی»
+   reads as a single run of words. */
+.finance-basis__link + .finance-basis__link {
+  margin-inline-start: .65rem;
+}
+
+.finance-basis__link:last-of-type {
+  margin-inline-end: .35rem;
+}
+
+.finance-basis__link {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.finance-basis__link:hover,
+.finance-basis__link:focus-visible {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
 .finance-page-header__actions {
   display: flex;
   flex-wrap: wrap;
@@ -2868,11 +2903,10 @@ a.breakdown-donut:focus-visible {
   --level-one-plot-height: 100%;
 
   display: grid;
-  /* Header, basis, then the three content rows. The rows are not equal: the
-     first splits its height between two stacked cards, the managerial chart
-     beside them stops compressing at about 230px, and the third holds three
-     cards in a column. Each weight is what its own contents need. */
-  grid-template-rows: auto auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  /* The basis bar, then the three content rows. The heading above them is
+     visually hidden and out of flow, so it takes no track — leaving one here
+     for it would park an empty fifth of the board under the last row. */
+  grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
