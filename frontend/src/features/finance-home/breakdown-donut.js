@@ -20,8 +20,8 @@ import { formatDisplayNumber } from "../../shared/formatters/display.js";
  */
 
 const SEGMENT_COLORS = Object.freeze([
-  "var(--chart-actual, #21c07a)",
-  "var(--chart-plan, #4a90e2)",
+  "var(--dash-actual)",
+  "var(--dash-plan)",
   "var(--chart-amber, #e8a33d)",
   "var(--chart-violet, #8b7fd4)",
 ]);

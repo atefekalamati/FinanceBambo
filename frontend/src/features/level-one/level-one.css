@@ -87,13 +87,13 @@
 }
 
 .vbars__legend .dot {
-  inline-size: .6rem;
-  block-size: .6rem;
-  border-radius: .18rem;
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 3px;
 }
 
-.dot--actual { background: var(--chart-actual, #21c07a); }
-.dot--plan { background: var(--chart-plan, #4a90e2); }
+.dot--actual { background: var(--dash-actual); }
+.dot--plan { background: var(--dash-plan); }
 
 .vbars__unit {
   margin-inline-start: auto;
@@ -175,8 +175,8 @@
   border-radius: .25rem .25rem 0 0;
 }
 
-.vbar--plan { background: var(--chart-plan, #4a90e2); }
-.vbar--actual { background: var(--chart-actual, #21c07a); }
+.vbar--plan { background: var(--dash-plan); }
+.vbar--actual { background: var(--dash-actual); }
 
 /* The figure sits above its own column, and is the amount rather than a
    percentage — a percentage of an estimate that differs per phase cannot be
@@ -194,7 +194,7 @@
 }
 
 .vgroup[data-state="over"] .vbar--actual em {
-  color: var(--chart-over, #e5484d);
+  color: var(--dash-sev-crit);
 }
 
 .vgroup__name {
@@ -215,7 +215,7 @@ a.vgroup__name {
 
 a.vgroup__name:hover,
 a.vgroup__name:focus-visible {
-  color: var(--chart-actual, #21c07a);
+  color: var(--dash-actual);
   text-decoration: underline;
 }
 
@@ -312,7 +312,7 @@ a.vgroup__name:focus-visible {
   inline-size: var(--bar-width, 0%);
   min-inline-size: 2px;
   border-radius: .3rem;
-  background: var(--chart-actual, #21c07a);
+  background: var(--dash-actual);
 }
 
 .level-one-breakdown__share {

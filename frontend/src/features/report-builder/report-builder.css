@@ -37,9 +37,9 @@
    meaning of its own, so it is hidden from anything that reads the page aloud. */
 .report-builder-panel__star {
   flex: 0 0 auto;
-  inline-size: 1.05rem;
-  block-size: 1.05rem;
-  color: var(--dash-actual, var(--brand-teal));
+  inline-size: 17px;
+  block-size: 17px;
+  color: var(--dash-actual);
   fill: currentColor;
   stroke: none;
   vertical-align: -.15em;
@@ -60,13 +60,19 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  inline-size: 1.35rem;
-  block-size: 1.35rem;
+  inline-size: 19px;
+  block-size: 19px;
   border: 1px solid var(--color-border);
-  border-radius: 50%;
+  border-radius: 999px;
   color: var(--color-text-muted);
-  font-size: .68rem;
-  font-weight: 800;
+  /* The reference writes this as `font: italic 700 10px/1 inherit`, but `inherit`
+     is not a valid family in the shorthand, so the whole declaration is dropped
+     and the size and weight never land. Same values, as longhands. */
+  font-style: italic;
+  font-weight: 700;
+  font-size: 10px;
+  line-height: 1;
+  opacity: .5;
   cursor: help;
 }
 
@@ -81,23 +87,23 @@
 .report-builder-section__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: .55rem;
+  gap: 6px;
 }
 
 .report-builder-chip {
   display: grid;
-  gap: .28rem;
+  gap: 3px;
   justify-items: center;
   align-content: center;
-  padding: .55rem .35rem;
+  padding: 5px 4px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: .56rem;
+  border-radius: 9px;
   color: var(--color-text-secondary);
   background: rgb(120 145 205 / 6%);
   font-family: inherit;
-  font-size: .68rem;
+  font-size: 9.5px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.25;
   text-align: center;
   overflow-wrap: anywhere;
   cursor: pointer;
@@ -115,8 +121,8 @@
 }
 
 .report-builder-chip__icon {
-  inline-size: .95rem;
-  block-size: .95rem;
+  inline-size: 13px;
+  block-size: 13px;
   color: currentColor;
   fill: none;
   stroke: currentColor;
@@ -607,11 +613,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .report-builder-chip {
-    font-size: .66rem;
-    overflow-wrap: anywhere;
-  }
-
   .report-doc__cover {
     flex-direction: column-reverse;
     align-items: flex-start;
@@ -648,20 +649,6 @@
     gap: .4rem;
   }
 
-  .report-builder-chip {
-    padding: .55rem .35rem;
-    font-size: .6rem;
-    line-height: 1.45;
-    /* The titles are long and some of their words are longer than half a phone
-       is wide, so a word breaks rather than pushing the column out. */
-    overflow-wrap: anywhere;
-  }
-
-  .report-builder-chip__icon {
-    inline-size: 1.25rem;
-    block-size: 1.25rem;
-    font-size: .68rem;
-  }
 }
 
 @media print {
