@@ -469,12 +469,15 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
     if (item) figures.append(createSummaryCard(item[0], item[1], item[2], data.metrics));
   });
 
+  // The figures and the way into فاکتورها share one half of the row, so the
+  // row itself splits at the same place rows two and three do and the gutter
+  // reads as one line down the page. Their own split happens a level below it.
+  const lead = element("div", "finance-lead");
+  lead.append(figures, createInvoicesEntry());
+
   const rowMain = element("div", "finance-grid finance-grid--main");
   rowMain.append(
-    figures,
-    // Between the figures and the chart: the one thing on this row a reader
-    // comes to *do* rather than read.
-    createInvoicesEntry(),
+    lead,
     createManagerialComparisonPanel(data.metrics, comparisons.management, monthly, chartState),
   );
 
