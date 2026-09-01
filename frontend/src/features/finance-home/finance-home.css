@@ -3702,3 +3702,61 @@ a.breakdown-donut:focus-visible {
   padding-block: .18rem;
   line-height: 1.25;
 }
+
+/* --- the chart card's heading, and what was holding it open -------------
+   The heading measured 52px against a 22px title. The height was not the
+   title's: `.button` carries `min-block-size: 2.75rem` — a 44px floor, right
+   for a touch target on a form and wrong for a two-word toggle sitting in a
+   card heading — and `.button--small` does not lift it. Nothing scoped to the
+   board had touched that floor, which is why the heading never moved.
+
+   The floor is lifted here and only here, and the toggle is given the size it
+   actually is: a pair of words. Everything the button class does elsewhere is
+   untouched.
+   ------------------------------------------------------------------------ */
+
+.finance-board .finance-analysis-card__heading {
+  gap: .4rem;
+  min-block-size: 0;
+}
+
+.finance-board .finance-analysis-card__heading h2 {
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+}
+
+.finance-board .analysis-chart-switch {
+  gap: .12rem;
+  padding: .1rem;
+}
+
+.finance-board .analysis-chart-switch .button {
+  min-block-size: 0;
+  padding: .16rem .5rem;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* The deviation strip under the chart is a one-line note, not a card of its
+   own; its margin was a third of what the columns lost. */
+.finance-board .managerial-deviation {
+  margin-block-start: .3rem;
+  padding: .2rem .45rem;
+}
+
+.finance-board .managerial-combo-chart {
+  margin-block-start: .15rem;
+}
+
+/* Two fixed 1fr rows are right while the board owns its height and wrong once
+   it lets go: in an auto-height container the tracks stop growing with their
+   contents and the two cards land on top of each other. Released, the rows are
+   whatever the cards need. */
+@media (max-height: 57rem), (max-width: 64rem) {
+  .finance-board .finance-insight-cards,
+  .finance-board .finance-figures {
+    grid-template-rows: none;
+  }
+}
