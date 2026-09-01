@@ -74,22 +74,23 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: .35rem 1.1rem;
+  gap: 16px;
+  padding: 0 2px 5px;
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: 700;
+  font-size: 11.5px;
 }
 
 .vbars__legend > span {
   display: inline-flex;
   align-items: center;
-  gap: .4rem;
+  gap: 6px;
 }
 
+/* The reference scopes the legend dot larger and squarer than the shared .dot. */
 .vbars__legend .dot {
-  inline-size: 10px;
-  block-size: 10px;
-  border-radius: 3px;
+  inline-size: 11px;
+  block-size: 11px;
+  border-radius: 2px;
 }
 
 .dot--actual { background: var(--dash-actual); }
@@ -103,7 +104,7 @@
 .vbars__plot {
   display: flex;
   align-items: stretch;
-  gap: .6rem;
+  gap: 8px;
   min-inline-size: 0;
 }
 
@@ -114,9 +115,9 @@
   flex: 0 0 auto;
   flex-direction: column;
   justify-content: space-between;
-  padding-block: 0 calc(var(--level-one-name-band) + .35rem);
+  padding-block-end: 22px;
   color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
+  font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   text-align: end;
 }
@@ -132,6 +133,20 @@
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
+  border-inline-start: 1px solid var(--dash-grid);
+  border-block-end: 1px solid var(--dash-grid);
+  scrollbar-width: thin;
+  scrollbar-color: var(--dash-plan) transparent;
+  scroll-snap-type: x proximity;
+}
+
+.vbars__viewport::-webkit-scrollbar {
+  block-size: 7px;
+}
+
+.vbars__viewport::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--dash-plan) 60%, transparent);
+  border-radius: 6px;
 }
 
 .vbars__viewport:focus-visible {
@@ -142,54 +157,66 @@
 .vbars__cols {
   display: flex;
   align-items: flex-end;
-  gap: 0;
-  min-inline-size: min-content;
-  padding-block-start: 1.15rem; /* the amount above the tallest column */
+  justify-content: flex-start;
+  gap: 6px;
+  inline-size: 100%;
+  padding: 16px 6px 0; /* the amount above the tallest column */
 }
 
-/* The spacing between phases is padding inside each group rather than a gap
-   between them, so the groups' baselines touch and read as one axis line
-   instead of nineteen separate ticks. */
+/* Six phases to a screenful, and never narrower than the floor — past that the
+   viewport scrolls rather than the columns thinning to a hairline. */
 .vgroup {
-  display: grid;
-  flex: 0 0 auto;
-  gap: .4rem;
-  inline-size: clamp(5.5rem, 9vw, 7.5rem);
-  padding-inline: clamp(.3rem, .8vw, .7rem);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 0 0 calc((100% - 30px) / 6);
+  min-inline-size: 92px;
+  block-size: var(--level-one-plot-height);
+  scroll-snap-align: start;
 }
 
 .vgroup__bars {
+  flex: 1 1 auto;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  gap: .28rem;
-  block-size: var(--level-one-plot-height);
-  padding-block-start: 0;
-  border-block-end: 1px solid var(--color-border);
+  gap: 10px;
+  inline-size: 100%;
+  padding-inline: 8px;
 }
 
 .vbar {
   position: relative;
-  inline-size: 1.6rem;
+  flex: 1 1 0;
+  min-inline-size: 14px;
+  max-inline-size: 52px;
   min-block-size: 2px;
-  border-radius: .25rem .25rem 0 0;
+  border-radius: 4px 4px 0 0;
 }
 
-.vbar--plan { background: var(--dash-plan); }
-.vbar--actual { background: var(--dash-actual); }
+/* The bar fades toward its foot rather than sitting flat, so a tall column does
+   not read as a solid block of colour. */
+.vbar--plan {
+  background: linear-gradient(180deg, var(--dash-plan), color-mix(in srgb, var(--dash-plan) 55%, transparent));
+}
+
+.vbar--actual {
+  background: linear-gradient(180deg, var(--dash-actual), color-mix(in srgb, var(--dash-actual) 55%, transparent));
+}
 
 /* The figure sits above its own column, and is the amount rather than a
    percentage — a percentage of an estimate that differs per phase cannot be
    compared across the row. */
 .vbar em {
   position: absolute;
-  inset-block-end: calc(100% + .2rem);
-  inset-inline: 50% auto;
-  transform: translateX(50%);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-2xs, .62rem);
+  inset-block-start: -16px;
+  inset-inline: 0;
+  color: var(--color-text-secondary, var(--color-text-muted));
+  font-size: 10.5px;
   font-style: normal;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -198,12 +225,13 @@
 }
 
 .vgroup__name {
-  display: block;
-  block-size: var(--level-one-name-band);
+  flex: 0 0 auto;
+  margin-block-start: 6px;
+  max-inline-size: 100%;
   overflow: hidden;
   color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  line-height: 1.35;
+  font-size: 12px;
+  white-space: nowrap;
   text-align: center;
   text-overflow: ellipsis;
 }

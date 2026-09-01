@@ -80,8 +80,8 @@
 .report-builder-panel__lead {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  line-height: 1.7;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .report-builder-section__grid {
@@ -316,9 +316,15 @@
    control says which way it is about to move. */
 .report-builder-group__chevron {
   flex: 0 0 auto;
-  color: var(--color-text-muted);
-  font-size: .9rem;
-  line-height: 1;
+  inline-size: 15px;
+  block-size: 15px;
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .55;
   transition: transform var(--duration-fast) var(--ease-standard);
 }
 
@@ -343,10 +349,12 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
-  gap: .55rem;
-  padding: .55rem .6rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9px;
+  background: rgb(120 145 205 / 6%);
+  font-size: 10.8px;
   cursor: pointer;
 }
 
@@ -363,14 +371,14 @@
 
 .report-builder-option__copy strong {
   color: var(--color-text-primary);
-  font-size: .76rem;
+  font-size: 10.8px;
   font-weight: 700;
 }
 
 .report-builder-option__copy small {
   color: var(--color-text-muted);
-  font-size: .68rem;
-  line-height: 1.65;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 /* A report that cannot be produced yet still shows, with the reason where its
@@ -398,8 +406,9 @@
 
 .report-builder-panel__hint {
   margin: 0;
+  min-block-size: 1.3em;
   color: var(--color-text-muted);
-  font-size: .7rem;
+  font-size: 10.5px;
   text-align: end;
 }
 
@@ -686,7 +695,7 @@
 
 .report-builder-cats {
   display: grid;
-  gap: .38rem;
+  gap: 6px;
   align-content: start;
 }
 
@@ -700,15 +709,15 @@
 .report-builder-cat {
   display: flex;
   align-items: center;
-  gap: .5rem;
+  gap: 8px;
   inline-size: 100%;
-  padding: .55rem .68rem;
+  padding: 9px 11px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: .56rem;
+  border-radius: 9px;
   background: rgb(120 145 205 / 6%);
   color: var(--color-text-secondary);
   font-family: inherit;
-  font-size: .72rem;
+  font-size: 11.5px;
   font-weight: 600;
   text-align: start;
   cursor: pointer;
@@ -735,28 +744,34 @@
 /* How many of this subject's reports are already in the document. */
 .report-builder-cat__badge {
   flex: 0 0 auto;
-  min-inline-size: 1.15rem;
-  padding: .05rem .38rem;
+  min-inline-size: 18px;
+  padding: 1px 6px;
   border-radius: 999px;
   background: var(--dash-actual, #00ac58);
   color: #06210f;
-  font-size: .6rem;
+  font-size: 10px;
   font-weight: 800;
   text-align: center;
 }
 
 .report-builder-cat__chevron {
   flex: 0 0 auto;
-  color: var(--color-text-muted);
-  font-size: .9rem;
-  line-height: 1;
+  inline-size: 15px;
+  block-size: 15px;
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .55;
 }
 
 /* --- level two ---------------------------------------------------------- */
 
 .report-builder-level2 {
   display: grid;
-  gap: .45rem;
+  gap: 8px;
   align-content: start;
   min-block-size: 0;
 }
@@ -765,13 +780,13 @@
   justify-self: start;
   display: inline-flex;
   align-items: center;
-  gap: .3rem;
-  padding: .15rem .1rem;
+  gap: 5px;
+  padding: 3px 2px;
   border: 0;
   background: none;
   color: var(--color-text-muted);
   font-family: inherit;
-  font-size: .7rem;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -782,15 +797,22 @@
 }
 
 .report-builder-back__chevron {
-  font-size: .95rem;
-  line-height: 1;
+  flex: 0 0 auto;
+  inline-size: 14px;
+  block-size: 14px;
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .report-builder-level2__title {
   margin: 0;
   color: var(--color-text-primary);
-  font-size: .8rem;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .report-builder-level2__note {
@@ -803,7 +825,7 @@
 .report-builder-level2__items {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: .38rem;
+  gap: 6px;
 }
 
 @media (max-width: 36rem) {

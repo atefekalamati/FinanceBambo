@@ -5,6 +5,7 @@ import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { buildPeriodPresets, matchPreset, validatePeriod } from "../../shared/dates/reporting-periods.js";
 import { REPORT_CATEGORIES, findReport, normalizeSelection, reportsByCategory } from "./report-catalog.js";
+import { chevronIcon } from "./report-icons.js";
 
 /**
  * Choosing what goes in the document.
@@ -78,10 +79,12 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
   periodGroup.className = "report-builder-group";
   const periodSummary = document.createElement("summary");
   periodSummary.className = "report-builder-group__summary";
+  const periodChevron = chevronIcon("forward");
+  periodChevron.setAttribute("class", "report-builder-group__chevron");
   periodSummary.append(
     element("span", "report-builder-group__title", "بازه گزارش"),
     element("span", "report-builder-group__meta"),
-    element("span", "report-builder-group__chevron", "‹"),
+    periodChevron,
   );
   const periodMeta = periodSummary.querySelector(".report-builder-group__meta");
   const periodBody = element("div", "report-builder-group__body");
@@ -142,7 +145,8 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
   const back = element("button", "report-builder-back");
   back.type = "button";
   back.setAttribute("aria-label", "بازگشت به فهرست دسته‌ها");
-  const backChevron = element("span", "report-builder-back__chevron", "›");
+  const backChevron = chevronIcon("back");
+  backChevron.setAttribute("class", "report-builder-back__chevron");
   back.append(backChevron, document.createTextNode(" بازگشت به دسته‌ها"));
   back.addEventListener("click", showLevelOne);
   level2.append(back, level2Title, level2Note, level2Items);
@@ -156,11 +160,9 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
     const badge = element("span", "report-builder-cat__badge");
     badge.dataset.groupCount = category.key;
     badge.hidden = true;
-    tile.append(
-      element("span", "report-builder-cat__title", category.title),
-      badge,
-      element("span", "report-builder-cat__chevron", "‹"),
-    );
+    const chevron = chevronIcon("forward");
+    chevron.setAttribute("class", "report-builder-cat__chevron");
+    tile.append(element("span", "report-builder-cat__title", category.title), badge, chevron);
     tile.addEventListener("click", () => openCategory(category));
     cats.append(tile);
   });

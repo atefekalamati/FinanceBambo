@@ -58,6 +58,26 @@ export function reportIcon(key) {
   return icon;
 }
 
+/**
+ * The chevrons the host draws beside a category row and on the way back.
+ *
+ * `forward` is the one on a tile — it points the way the reader is going, which
+ * on an RTL page is to the left. `back` is its mirror. They are stroked glyphs
+ * rather than the `‹` and `›` characters that stood here before: those are drawn
+ * by whichever font answers for them, so their weight never matched the rest of
+ * the icons and their direction was at the mercy of the bidi algorithm.
+ */
+export function chevronIcon(direction = "forward") {
+  const icon = document.createElementNS(SVG_NS, "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("focusable", "false");
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", direction === "back" ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6");
+  icon.append(path);
+  return icon;
+}
+
 /** The filled star the host puts before a «هوشمند» heading and on its build button. */
 export function sparkIcon() {
   const icon = document.createElementNS(SVG_NS, "svg");
