@@ -2990,9 +2990,19 @@ a.breakdown-donut:focus-visible {
    what keeps the builder beside it the same height, since that one still fills
    the row. Rows one and three keep their weights and divide what is left.
 
+   The builder beside it is stated too, not left to fill the row. It already
+   landed on 280 by filling it — the row's height is the chart's — but that made
+   its box a consequence of its neighbour's, and it showed: at 1366x768 the row
+   resolved to 280.016 and the builder inherited the sixteen thousandths while
+   the chart, which is stated, stayed at 280. Both stated, both exact.
+
+   Their content boxes differ because their padding does, which is the point:
+   246.4 under 16px all round, 255.4 under 11/14/12 — the two the host has.
+
    Below 64rem the pair stops being two columns, so the height is released again
    in the width query further down. */
-.finance-board .finance-grid--pair > .level-one-section {
+.finance-board .finance-grid--pair > .level-one-section,
+.finance-board .finance-grid--pair > .report-builder-section {
   block-size: 280px;
 }
 
