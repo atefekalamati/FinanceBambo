@@ -2130,6 +2130,11 @@ a.finance-variance-card__link:hover {
   position: absolute;
   z-index: 2;
   top: 0;
+  /* Placed with a physical `left` the chart measures, so the logical property
+     has to stand aside — in RTL it would otherwise win and pin the panel to the
+     right edge. It was being reset from the chart on every hover; it is a
+     constant, so it is stated once, here. */
+  inset-inline-start: auto;
   min-inline-size: 11rem;
   max-inline-size: min(17rem, 100%);
   padding: .55rem .7rem;
@@ -2333,11 +2338,21 @@ a.finance-variance-card__link:hover {
 /* The figure above the marker — the reader's "you are here". */
 .cost-curve__callout {
   position: absolute;
+  transform: translateX(-50%);
   color: var(--dash-actual);
   font-weight: 800;
   font-size: var(--font-size-sm, .8rem);
   white-space: nowrap;
   pointer-events: none;
+}
+
+/* Centred on its point everywhere but the last stretch of the plot, where half
+   of it would hang off the edge — the marker usually lands there, because the
+   actual series stops at today. There it tucks against the edge instead.
+   The chart decides WHICH of the two applies; both of them are stated here. */
+.cost-curve__callout--near-end {
+  transform: translateX(-100%);
+  padding-inline-end: 6px;
 }
 
 /* --- the value guide -------------------------------------------------- */
@@ -2906,7 +2921,7 @@ a.breakdown-donut:focus-visible {
   /* The basis bar, then the three content rows. The heading above them is
      visually hidden and out of flow, so it takes no track — leaving one here
      for it would park an empty fifth of the board under the last row. */
-  grid-template-rows: auto minmax(0, 1.5fr) auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -2976,34 +2991,6 @@ a.breakdown-donut:focus-visible {
 
 .finance-board .finance-insight-cards > .prices-summary {
   padding: 10px 12px;
-}
-
-/* The phase chart's own height, while it shares its row with another section.
-   246.4px of content — the height it has in the host — which with the 16px
-   padding above and the card's border comes to 280 border-box, because
-   box-sizing is border-box everywhere here.
-
-   Two things had to give for this to hold. The shared card rule above says
-   `block-size: 100%`, which handed the card whatever the row was; and the row
-   itself was a 1.5fr track, so its height came from the board rather than from
-   what it holds. The row is `auto` now and takes the card's 280 — which is also
-   what keeps the builder beside it the same height, since that one still fills
-   the row. Rows one and three keep their weights and divide what is left.
-
-   The builder beside it is stated too, not left to fill the row. It already
-   landed on 280 by filling it — the row's height is the chart's — but that made
-   its box a consequence of its neighbour's, and it showed: at 1366x768 the row
-   resolved to 280.016 and the builder inherited the sixteen thousandths while
-   the chart, which is stated, stayed at 280. Both stated, both exact.
-
-   Their content boxes differ because their padding does, which is the point:
-   246.4 under 16px all round, 255.4 under 11/14/12 — the two the host has.
-
-   Below 64rem the pair stops being two columns, so the height is released again
-   in the width query further down. */
-.finance-board .finance-grid--pair > .level-one-section,
-.finance-board .finance-grid--pair > .report-builder-section {
-  block-size: 280px;
 }
 
 .finance-board .finance-page-header {
