@@ -137,7 +137,8 @@ export function createCombinationChart({
     // push the page sideways.
     const surfaceWidth = surface.clientWidth;
     const bandCentre = Number(hit.getAttribute("data-centre"));
-    tooltip.style.insetInlineStart = "auto";
+    // Measured against the start of the surface, then placed: the panel's own
+    // width is only known once it is somewhere definite.
     tooltip.style.left = "0px";
     const panelWidth = tooltip.offsetWidth;
     const left = Math.min(Math.max(bandCentre - panelWidth / 2, 4), Math.max(surfaceWidth - panelWidth - 4, 4));

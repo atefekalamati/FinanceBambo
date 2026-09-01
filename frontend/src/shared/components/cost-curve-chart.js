@@ -190,9 +190,8 @@ export function createCostCurveChart({
       // where it normally sits, because the actual series stops at today — so
       // it tucks in against the edge instead of hanging off it.
       const nearEnd = at > box.left + box.innerWidth * 0.72;
+      callout.classList.toggle("cost-curve__callout--near-end", nearEnd);
       callout.style.left = `${at}px`;
-      callout.style.transform = nearEnd ? "translateX(-100%)" : "translateX(-50%)";
-      callout.style.paddingInlineEnd = nearEnd ? "6px" : "0";
       callout.style.top = `${Math.max(box.top - 20, 0)}px`;
       surface.append(callout);
     }
