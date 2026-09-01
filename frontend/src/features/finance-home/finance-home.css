@@ -2961,6 +2961,23 @@ a.breakdown-donut:focus-visible {
   overflow: hidden;
 }
 
+/* Four blocks are given their own padding rather than the board's, so each has
+   the inset its own contents want. They come after the shared rule above and
+   carry the same weight, so it is their order that makes them win — keep them
+   here, below it. */
+.finance-board .finance-grid > .report-builder-section {
+  padding: 11px 14px 12px;
+}
+
+.finance-board .finance-grid > .level-one-section,
+.finance-board .finance-grid > .finance-managerial-comparison {
+  padding: 16px;
+}
+
+.finance-board .finance-insight-cards > .prices-summary {
+  padding: 10px 12px;
+}
+
 .finance-board .finance-page-header {
   margin: 0;
   padding: 0;
