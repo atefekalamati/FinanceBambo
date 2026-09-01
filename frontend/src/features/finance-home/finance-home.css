@@ -3495,9 +3495,18 @@ a.breakdown-donut:focus-visible {
 
 /* Where the board has let go of its fixed rows there is no card height to
    inherit, so the box is stated instead of discovered. */
+/* Where the board has released its rows the panel needs a height of its own, or
+   both charts of the switch would bring their own and the card would resize as
+   the reader flipped between them. The number was first set to stop that and
+   was far too small: on a 900px window it gave the columns 92px and on a 768px
+   one 60px — which is what every attempt at making them taller kept failing to
+   change, because none of them applied below 912px of viewport height.
+
+   It is now sized to the window rather than pinned near a floor, and it is the
+   same box for both charts, so flipping still moves nothing. */
 @media (max-height: 57rem), (max-width: 64rem) {
   .finance-board .finance-analysis-card .analysis-chart-panel {
-    block-size: clamp(9rem, 24vh, 15rem);
+    block-size: clamp(13rem, 34vh, 24rem);
   }
 
   .finance-board .finance-analysis-card {
