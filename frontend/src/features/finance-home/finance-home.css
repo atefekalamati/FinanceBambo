@@ -761,9 +761,6 @@
   margin-block-start: .6rem;
   padding: .65rem .9rem .25rem;
   border-radius: var(--radius-md);
-  background:
-    linear-gradient(180deg, rgb(120 145 205 / 5%), transparent 70%),
-    rgb(4 13 32 / 18%);
   overflow: visible;
 }
 
@@ -876,6 +873,12 @@
   position: relative;
   flex: 1 1 auto;
   min-block-size: 0;
+  /* A size container, so a column can be measured against the plot it stands
+     in — both its width and its height. `size` and not `inline-size` because
+     the height is the half that matters: the column width was the one thing in
+     this chart answering to neither, and a short plot with 52px columns is what
+     made the bars read as stubs. */
+  container-type: size;
 }
 
 /* Declared, not discovered: the band is exactly as tall as the lines it holds,
@@ -957,7 +960,14 @@
 .managerial-combo-chart__column {
   align-self: end;
   justify-self: center;
-  inline-size: clamp(1.65rem, 4vw, 3.25rem);
+  /* Was clamp(1.65rem, 4vw, 3.25rem) — measured 52px at 1920x1080, 1920x900,
+     1920x800, 1600x900 and 1440x900 alike, because 4vw clears the ceiling on
+     every desktop. A constant, while everything around it moved.
+
+     Now a share of its own cell, capped by a share of the plot's height, so it
+     narrows when the chart narrows AND when the row gets short. The floor keeps
+     it a bar rather than a hairline on a phone. */
+  inline-size: min(clamp(1rem, 34cqi, 2.4rem), 22cqh);
   margin-inline: auto;
   block-size: max(.25rem, var(--column-size));
   max-block-size: 100%;
