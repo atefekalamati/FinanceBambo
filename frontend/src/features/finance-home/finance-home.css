@@ -547,14 +547,14 @@
   position: absolute;
   z-index: -1;
   inset: 0;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--summary-accent) 12%, transparent), transparent 58%);
+  /* background: linear-gradient(135deg, color-mix(in srgb, var(--summary-accent) 12%, transparent), transparent 58%); */
   pointer-events: none;
 }
 
 .finance-home-page .summary-card--primary {
   min-block-size: 8.25rem;
   padding: 1rem 1.1rem;
-  box-shadow: var(--dash-shadow), var(--dash-inner), 0 0 1.25rem color-mix(in srgb, var(--summary-accent) 10%, transparent);
+  /* box-shadow: var(--dash-shadow), var(--dash-inner), 0 0 1.25rem color-mix(in srgb, var(--summary-accent) 10%, transparent); */
 }
 
 .finance-home-page .summary-card--primary:hover {
@@ -564,7 +564,6 @@
 .finance-home-page .summary-card--related {
   min-block-size: 5.4rem;
   padding: .7rem .9rem;
-  background: color-mix(in srgb, var(--app-card-navy) 92%, var(--summary-accent));
 }
 
 .finance-home-page .summary-card--support {
@@ -3774,10 +3773,14 @@ a.breakdown-donut:focus-visible {
    draws. In a card this narrow the line gets the room and the word sits under
    it rather than beside it, and both come down to the table's own scale. */
 .finance-board .prices-summary .price-trend {
-  min-inline-size: 0;
+  /* min-inline-size: 0;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  justify-items: center;
+  justify-items: center; */
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: start;
+  align-items: start;
 }
 
 .finance-board .prices-summary .price-trend svg {
