@@ -20,6 +20,10 @@ const routes = [
   "ai-review",
   "reports",
   "period-report",
+  // Both shapes the level-1 report takes: the phase list, and one phase opened.
+  "level-one",
+  "level-one?wbs=1.8",
+  "work-areas",
   "audit",
   "settings",
 ];

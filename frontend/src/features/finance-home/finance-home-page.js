@@ -7,13 +7,29 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { reportWarningText } from "../../shared/warnings/finance-warning-labels.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { createCombinationChart } from "../../shared/components/combination-chart.js";
+import { createCostCurveChart } from "../../shared/components/cost-curve-chart.js";
+import { buildCostCurve } from "../../shared/charts/cost-curve.js";
 import { buildMonthlyTrend, TREND_MODES } from "../../shared/reports/monthly-trend.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
-import { buildBulletPresentation, buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
+import { buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
+import { createBreakdownChart } from "../../shared/components/breakdown-chart.js";
+import { createTomanDisplay } from "../../shared/components/money-display.js";
 import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
 import { canAccessSurface } from "../../core/auth/permissions.js";
-import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/variances/variance-rollup.js";
 import { createReportBuilderSection } from "../report-builder/report-builder-section.js";
+import { reportIcon } from "../report-builder/report-icons.js";
+import { createLevelOneSection } from "../level-one/level-one-section.js";
+import { createPricesSummary } from "./prices-summary.js";
+import { createInvoicesEntry } from "./invoices-entry.js";
+
+/* The four the board shows, in the order it shows them. The rest of the
+   catalogue is still what the report page and the builder draw on. */
+const BOARD_FIGURE_KEYS = Object.freeze([
+  "initialEstimateIrr",
+  "actualCostIrr",
+  "remainingPhysicalCostIrr",
+  "actualCostPerSquareMeterIrr",
+]);
 
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
@@ -28,50 +44,10 @@ const SUMMARY_ITEMS = Object.freeze([
 
 const PRIMARY_SUMMARY_KEYS = new Set(["initialEstimateIrr", "actualCostIrr", "remainingPhysicalCostIrr", "forecastFinalCostIrr"]);
 const RELATED_SUMMARY_KEYS = new Set(["actualCostPerSquareMeterIrr", "forecastPerSquareMeterIrr"]);
-const SUPPLEMENTARY_SUMMARY_KEYS = new Set([
-  "actualCostPerSquareMeterIrr",
-  "currentExecutedValueIrr",
-  "forecastPerSquareMeterIrr",
-  "moneyRequiredToContinueIrr",
-]);
 
 /* The destinations of the گزارش مالی surface, in the order a reader wants them:
    the current report, the same report over a chosen period, the documents the
    figures are built from, and how the amounts are displayed. */
-const WORK_AREAS = Object.freeze([
-  { key: "reports", title: "گزارش وضعیت مالی", description: "گزارش به‌روز پروژه، انحراف قیمت و مقدار، و ثبت گزارش تثبیت‌شده", meta: "گزارش به‌روز · انحرافات · چاپ", href: "#/reports" },
-  { key: "period-report", title: "گزارش دوره‌ای", description: "ساخت گزارش برای یک بازه زمانی دلخواه با خروجی چاپ و CSV", meta: "بازه دلخواه · مقایسه · خروجی", href: "#/period-report" },
-  { key: "invoices", title: "ثبت و مشاهده فاکتورها", description: "ثبت فاکتور و مشاهده فهرست، وضعیت، فروشنده، مبلغ و جزئیات خطوط", meta: "ثبت · فهرست · وضعیت", href: "#/invoices" },
-  { key: "report-prices", title: "جدول قیمت‌ها", description: "قیمت پایه سازمان، قیمت اختصاصی پروژه و قیمت روز هر قلم، با خروجی اکسل", meta: "فقط‌خواندنی · خروجی اکسل", href: "#/report-prices" },
-  { key: "report-items", title: "جدول اقلام و برآورد", description: "ریز برآورد هر فعالیت، مقدار اولیه و آخرین مقدار اصلاح‌شده، با خروجی اکسل", meta: "فقط‌خواندنی · خروجی اکسل", href: "#/report-items" },
-  { key: "report-settings", title: "تنظیمات نمایش", description: "واحد نمایش مبالغ و فهرست دسترسی‌های مالی این حساب", meta: "واحد مبلغ · دسترسی‌ها", href: "#/report-settings" },
-]);
-
-function createTomanDisplay(value, { compact = false } = {}) {
-  const display = document.createElement("span");
-  display.className = "money-display";
-  if (!/^-?\d+$/.test(String(value ?? ""))) {
-    display.textContent = "قابل محاسبه نیست";
-    return display;
-  }
-  const compactValue = compact ? compactMoneyFromIrr(value) : null;
-  const exactValue = formatTomanFromIrr(value);
-  const unit = document.createElement("span");
-  unit.className = "money-display__unit";
-  unit.textContent = compactValue?.unit ?? getDisplayCurrencyLabel();
-  const amount = document.createElement("bdi");
-  amount.className = "money-display__amount numeric";
-  amount.dir = "ltr";
-  amount.textContent = compactValue?.amount ?? formatDisplayNumber(irrToDisplayValue(value));
-  display.append(unit, amount);
-  if (compactValue?.compact) {
-    display.classList.add("compact-money");
-    display.dataset.exact = exactValue;
-    display.setAttribute("aria-label", exactValue);
-    display.tabIndex = 0;
-  }
-  return display;
-}
 
 function createSummaryCard(key, label, description, data) {
   const card = document.createElement("article");
@@ -89,196 +65,6 @@ function createSummaryCard(key, label, description, data) {
   unit.textContent = unavailable ? "داده مبنا موجود نیست" : description;
   card.append(title, value, unit);
   return card;
-}
-
-function createWorkAreaCard(area) {
-  const card = document.createElement("article");
-  card.className = "work-area-card";
-  const marker = document.createElement("span");
-  marker.className = "work-area-card__marker";
-  marker.setAttribute("aria-hidden", "true");
-  marker.textContent = area.title.slice(0, 1);
-  const content = document.createElement("div");
-  const title = document.createElement("h2");
-  title.textContent = area.title;
-  const description = document.createElement("p");
-  description.textContent = area.description;
-  const meta = document.createElement("span");
-  meta.className = "work-area-card__meta";
-  meta.textContent = area.meta;
-  content.append(title, description, meta);
-  const action = document.createElement(area.href ? "a" : "button");
-  action.className = `button ${area.href ? "button--primary" : "button--ghost"}`;
-  action.textContent = area.href ? "ورود" : "به‌زودی";
-  if (area.href) action.href = area.href;
-  else {
-    action.type = "button";
-    action.disabled = true;
-  }
-  card.append(marker, content, action);
-  return card;
-}
-
-/**
- * The bullet form of the cost comparison.
- *
- * One track per category. The bar is what was spent; the marker across it is
- * what was estimated. Passing the marker is the whole point of the chart, so it
- * is a thing the eye lands on rather than a difference between two lengths in
- * two different rows.
- *
- * The scale is shared and ends on a round number, so the categories stay
- * comparable as amounts and every bar can be read against the axis. What a
- * shared scale cannot show — how far through its own budget a category is — is
- * the percentage beside it.
- */
-function createBulletChart(view) {
-  const chart = element("div", "bullet-chart");
-  chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", "نمودار هزینه واقعی هر نوع قلم در برابر برآورد همان نوع");
-
-  const gridlines = () => {
-    const grid = element("span", "bullet-chart__grid");
-    grid.setAttribute("aria-hidden", "true");
-    view.ticks.forEach((tick) => {
-      const line = element("span", "bullet-chart__gridline");
-      line.style.setProperty("--at", `${tick.magnitude}%`);
-      grid.append(line);
-    });
-    return grid;
-  };
-
-  view.rows.forEach((row) => {
-    const article = element("article", `bullet-chart__row${row.overBudget ? " bullet-chart__row--over" : ""}`);
-    article.append(element("h3", "", row.label));
-
-    const track = element("div", "bullet-chart__track");
-    track.append(gridlines());
-    if (!row.actualBelowZero && row.actualMagnitude > 0) {
-      const fill = element("span", `bullet-chart__fill chart-mark${row.overBudget ? " bullet-chart__fill--over" : ""}`);
-      fill.style.setProperty("--fill", `${row.actualMagnitude}%`);
-      track.append(fill);
-    }
-    if (row.estimateMagnitude !== null) {
-      const target = element("span", "bullet-chart__target chart-mark");
-      target.style.setProperty("--at", `${row.estimateMagnitude}%`);
-      target.title = `برآورد اولیه: ${formatTomanFromIrr(row.initialEstimateIrr)}`;
-      track.append(target);
-    }
-
-    const amount = element("span", "bullet-chart__value numeric compact-money", formatCompactMoneyFromIrr(row.actualCostIrr));
-    amount.dataset.exact = formatTomanFromIrr(row.actualCostIrr);
-    amount.setAttribute("aria-label", formatTomanFromIrr(row.actualCostIrr));
-    amount.tabIndex = 0;
-
-    // One sentence per row, because the shape only means something next to the
-    // number it stands for.
-    const ratio = element("span", `bullet-chart__ratio${row.overBudget ? " bullet-chart__ratio--over" : ""}`);
-    if (row.consumedPercent !== null) {
-      ratio.textContent = row.overBudget
-        ? `${formatDisplayNumber(String(Math.round(row.consumedPercent)))}٪ برآورد`
-        : `${formatDisplayNumber(String(Math.round(row.consumedPercent)))}٪ مصرف‌شده`;
-    } else if (row.actualCostIrr !== "0") {
-      ratio.classList.add("bullet-chart__ratio--unknown");
-      ratio.textContent = "برآورد ثبت نشده";
-    } else {
-      ratio.classList.add("bullet-chart__ratio--unknown");
-      ratio.textContent = "بدون داده";
-    }
-
-    article.setAttribute("aria-label", `${row.label}؛ هزینه واقعی ${formatTomanFromIrr(row.actualCostIrr)}؛ ${row.hasEstimate ? `برآورد ${formatTomanFromIrr(row.initialEstimateIrr)}؛ ${ratio.textContent}` : "برآوردی ثبت نشده است"}`);
-    article.append(track, amount, ratio);
-    chart.append(article);
-  });
-
-  const scale = element("div", "bullet-chart__scale");
-  scale.setAttribute("aria-hidden", "true");
-  scale.append(element("span", "bullet-chart__scale-label", compactMoneyScale(view.ceilingIrr)?.unit ?? ""));
-  const scaleTrack = element("div", "bullet-chart__scale-track");
-  view.ticks.forEach((tick) => {
-    const mark = element("span", "bullet-chart__scale-mark", formatDisplayNumber(compactMoneyScale(view.ceilingIrr)?.format(tick.valueIrr) ?? ""));
-    mark.style.setProperty("--at", `${tick.magnitude}%`);
-    scaleTrack.append(mark);
-  });
-  scale.append(scaleTrack);
-  chart.append(scale);
-
-  const viewport = element("div", "bullet-chart-viewport");
-  viewport.append(chart);
-  return viewport;
-}
-
-function createBreakdownChart(view) {
-  const section = document.createElement("section");
-  section.className = "finance-breakdown";
-  const heading = document.createElement("div");
-  heading.className = "section-heading";
-  const copy = document.createElement("div");
-  const eyebrow = document.createElement("span");
-  eyebrow.textContent = "ترکیب هزینه";
-  const title = document.createElement("h2");
-  title.textContent = "مقایسه برآورد اولیه و هزینه واقعی";
-  copy.append(eyebrow, title);
-  const hint = document.createElement("small");
-  hint.textContent = "میله هزینه واقعی است و نشانگر، برآورد همان نوع قلم";
-  heading.append(copy, hint);
-
-  const wrapper = document.createElement("div");
-  wrapper.className = "table-scroll breakdown-table-wrapper";
-  wrapper.setAttribute("role", "region");
-  wrapper.setAttribute("aria-label", "مقادیر دقیق مقایسه مالی");
-  wrapper.tabIndex = 0;
-  const table = document.createElement("table");
-  table.className = "data-table breakdown-table";
-  const caption = document.createElement("caption");
-  caption.textContent = "جدول جایگزین نمودار ترکیب هزینه به تفکیک نوع قلم هزینه";
-  const thead = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["نوع قلم هزینه", "برآورد اولیه", "هزینه واقعی ثبت‌شده", "نسبت به برآورد", "پیش‌بینی هزینه نهایی"].forEach((text) => {
-    const cell = document.createElement("th");
-    cell.textContent = text;
-    header.append(cell);
-  });
-  thead.append(header);
-  const tbody = document.createElement("tbody");
-  view.rows.forEach((row) => {
-    const record = document.createElement("tr");
-    [row.label, row.initialEstimateIrr, row.actualCostIrr].forEach((text, index) => {
-      const cell = document.createElement("td");
-      if (index === 0) cell.textContent = text;
-      else cell.append(createTomanDisplay(text));
-      record.append(cell);
-    });
-    // The one column the table never had: the comparison itself, in a number.
-    const ratioCell = document.createElement("td");
-    if (row.consumedPercent === null) {
-      ratioCell.textContent = row.actualCostIrr === "0" ? "—" : "برآورد ثبت نشده";
-    } else {
-      ratioCell.className = `numeric${row.overBudget ? " variance-direction variance-direction--increase" : ""}`;
-      ratioCell.textContent = `${formatDisplayNumber(String(Math.round(row.consumedPercent)))}٪`;
-    }
-    record.append(ratioCell);
-    const forecast = document.createElement("td");
-    forecast.append(createTomanDisplay(row.forecastFinalIrr));
-    record.append(forecast);
-    tbody.append(record);
-  });
-  table.append(caption, thead, tbody);
-  wrapper.append(table);
-  section.append(heading, createBulletLegend(), createBulletChart(view), wrapper);
-  return section;
-}
-
-function createBulletLegend() {
-  const legend = element("ul", "breakdown-legend breakdown-legend--bullet");
-  const actual = element("li", "", "هزینه واقعی ثبت‌شده");
-  actual.dataset.series = "actual";
-  const target = element("li", "", "برآورد اولیه");
-  target.dataset.series = "target";
-  const over = element("li", "", "بیش از برآورد");
-  over.dataset.series = "over";
-  legend.append(actual, target, over);
-  return legend;
 }
 
 const ANALYSIS_CHARTS = Object.freeze({
@@ -462,7 +248,7 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   const switcher = element("div", "analysis-chart-switch");
   switcher.setAttribute("role", "group");
   switcher.setAttribute("aria-label", "انتخاب نمودار هزینه");
-  Object.entries(ANALYSIS_CHARTS).forEach(([key, meta]) => {
+  Object.entries(ANALYSIS_CHARTS).filter(([key]) => panels[key]).forEach(([key, meta]) => {
     const button = element("button", "button button--small button--ghost", meta.label);
     button.type = "button";
     button.dataset.chart = key;
@@ -478,83 +264,6 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   // the whole overview, and defaulting here would throw the reader back to the
   // managerial chart every time they changed it.
   activate(panels[activeChart] ? activeChart : "managerial");
-  return section;
-}
-
-function createSupplementarySummary(metrics) {
-  const section = document.createElement("aside");
-  section.className = "finance-supplementary-summary";
-  section.setAttribute("aria-label", "اطلاعات تکمیلی وضعیت مالی");
-  const heading = document.createElement("div");
-  heading.className = "finance-supplementary-summary__heading";
-  const eyebrow = document.createElement("span");
-  eyebrow.textContent = "شاخص‌های مکمل";
-  const title = document.createElement("h2");
-  title.textContent = "اطلاعات تکمیلی";
-  const description = document.createElement("p");
-  description.textContent = "جزئیات مؤثر برای تفسیر تصویر مالی پروژه";
-  heading.append(eyebrow, title, description);
-  const list = document.createElement("div");
-  list.className = "finance-supplementary-summary__list";
-  SUMMARY_ITEMS
-    .filter(([key]) => SUPPLEMENTARY_SUMMARY_KEYS.has(key))
-    .forEach(([key, label, detail]) => {
-      const item = createSummaryCard(key, label, detail, metrics);
-      item.classList.add("summary-card--compact");
-      list.append(item);
-    });
-  section.append(heading, list);
-  return section;
-}
-
-/**
- * The rows lead to this surface's own tables, which are read-only whoever opens
- * them. They used to lead into the price and item editors on امور مالی — a link
- * that worked for an administrator and was a way straight past the split for
- * everyone else.
- */
-function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref) {
-  const section = document.createElement("section");
-  section.className = "finance-analysis-card finance-variance-card";
-  const heading = document.createElement("h2");
-  heading.textContent = title;
-  section.append(heading);
-  if (!rows?.length) {
-    const empty = document.createElement("p");
-    empty.className = "finance-analysis-card__empty";
-    empty.textContent = "برای این تحلیل هنوز داده معتبری ثبت نشده است.";
-    section.append(empty);
-    return section;
-  }
-  const list = document.createElement("ol");
-  rows.slice(0, 5).forEach((row) => {
-    const item = document.createElement("li");
-    const link = document.createElement(baseHref ? "a" : "div");
-    link.className = "finance-variance-card__link";
-    if (baseHref) {
-      const target = new URLSearchParams();
-      if (row.resourceId) target.set("resourceId", row.resourceId);
-      if (row.estimateLineId) target.set("estimateLineId", row.estimateLineId);
-      link.href = `${baseHref}${target.size ? `?${target.toString()}` : ""}`;
-      link.setAttribute("aria-label", `${row.resourceTitle || row.resourceCode || "قلم هزینه بدون عنوان"}؛ مشاهده جزئیات ${title}`);
-    }
-    const identity = document.createElement("span");
-    identity.textContent = row.resourceTitle || row.resourceCode || "قلم هزینه بدون عنوان";
-    const value = document.createElement("strong");
-    value.className = "numeric";
-    value.textContent = valueFormatter(row[valueKey]);
-    link.append(identity, value);
-    // The chevron promises somewhere to go. A row that is not a link keeps the
-    // column so the rows stay aligned, and keeps it empty.
-    const indicator = document.createElement("span");
-    indicator.className = "finance-variance-card__indicator";
-    indicator.setAttribute("aria-hidden", "true");
-    if (baseHref) indicator.textContent = "‹";
-    link.append(indicator);
-    item.append(link);
-    list.append(item);
-  });
-  section.append(list);
   return section;
 }
 
@@ -725,85 +434,58 @@ function createSettingsLink() {
   return link;
 }
 
-function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null) {
-  const fragment = document.createDocumentFragment();
-  const pageHeader = document.createElement("header");
-  pageHeader.className = "finance-page-header";
-  const pageTitle = document.createElement("h1");
-  pageTitle.className = "finance-page-title";
-  pageTitle.textContent = "گزارش مالی پروژه";
-  const toOperations = element("a", "button button--ghost finance-surface-link", "رفتن به امور مالی");
+function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null, cumulative = null, levelOne = null, prices = null) {
+  const board = element("div", "finance-board");
+
+  // The board had a full-width header over it carrying the page's name and two
+  // buttons. On a page whose whole promise is one screen, a band that says only
+  // what the reader already knows is the most expensive thing on it — so the
+  // two ways out move down into the basis bar beside the settings gear, as
+  // text rather than buttons, and the name stays for anyone who cannot see the
+  // page: the document still needs a heading, and a screen reader still reads
+  // it first.
+  const pageTitle = element("h1", "sr-only", "گزارش مالی پروژه");
+  const toAreas = element("a", "finance-basis__link", "بخش‌های گزارش");
+  toAreas.href = "#/work-areas";
+  const toOperations = element("a", "finance-basis__link", "رفتن به امور مالی");
   toOperations.href = `#${homeRouteFor(SURFACES.OPERATIONS)?.path ?? "/finance"}`;
-  pageHeader.append(pageTitle, toOperations);
 
-  const summaryHeader = document.createElement("div");
-  summaryHeader.className = "section-heading";
-  const summaryHeading = document.createElement("div");
-  const summaryEyebrow = document.createElement("span");
-  summaryEyebrow.textContent = "وضعیت مالی پروژه";
-  const summaryTitle = document.createElement("h2");
-  summaryTitle.textContent = "شاخص‌های اصلی در یک نگاه";
-  summaryHeading.append(summaryEyebrow, summaryTitle);
-  const reportMeta = document.createElement("small");
-  reportMeta.className = "finance-report-meta";
-  reportMeta.textContent = `تاریخ گزارش ${formatBusinessDate(data.reportingDate)} · نسخه پیشرفت پروژه`;
-  // The heading sits at one end of the row and these at the other, which is
-  // what .section-heading's own space-between already arranges.
-  const summaryTrailing = element("div", "section-heading__trailing");
-  summaryTrailing.append(reportMeta, createSettingsLink());
-  summaryHeader.append(summaryHeading, summaryTrailing);
   const comparisons = buildOverviewComparisons(data.metrics);
-  const overviewPanel = document.createElement("section");
-  overviewPanel.className = "finance-overview-panel";
-  const overviewLayout = document.createElement("div");
-  overviewLayout.className = "finance-overview-layout";
-  overviewLayout.append(
+
+  // ── row 0 — the basis of the figures, full width, settings inside it ────
+  const basis = element("section", "finance-basis");
+  if (provenance) basis.append(provenance);
+  const basisMeta = element("div", "finance-basis__meta");
+  basisMeta.append(
+    toAreas,
+    toOperations,
+    createSettingsLink(),
+  );
+  basis.append(basisMeta);
+
+  // ── row 1 — the main chart, the day prices, the cost mix ───────────────
+  // The four figures a reader opens this page for, then the chart that puts
+  // them against the estimate. Reading right to left: figures, then chart.
+  const figures = element("section", "finance-figures");
+  figures.setAttribute("aria-label", "شاخص‌های اصلی مالی پروژه");
+  BOARD_FIGURE_KEYS.forEach((key) => {
+    const item = SUMMARY_ITEMS.find(([itemKey]) => itemKey === key);
+    if (item) figures.append(createSummaryCard(item[0], item[1], item[2], data.metrics));
+  });
+
+  // The figures and the way into فاکتورها share one half of the row, so the
+  // row itself splits at the same place rows two and three do and the gutter
+  // reads as one line down the page. Their own split happens a level below it.
+  const lead = element("div", "finance-lead");
+  lead.append(figures, createInvoicesEntry());
+
+  const rowMain = element("div", "finance-grid finance-grid--main");
+  rowMain.append(
+    lead,
     createManagerialComparisonPanel(data.metrics, comparisons.management, monthly, chartState),
-    createSupplementarySummary(data.metrics),
   );
-  overviewPanel.append(summaryHeader, overviewLayout);
 
-  const warnings = document.createElement("section");
-  warnings.className = "finance-warnings";
-  warnings.setAttribute("aria-label", "هشدارهای محاسبات مالی");
-  const reportWarnings = [...(data.warnings ?? [])];
-  if (data.calculationStatus === "incomplete") {
-    reportWarnings.unshift({
-      code: "CALCULATION_INCOMPLETE",
-      message: `محاسبات مالی کامل نیست؛ ${formatDisplayNumber(data.missingPriceCount ?? 0)} قیمت و ${formatDisplayNumber(data.excludedEstimateLineCount ?? 0)} ردیف برآورد در محاسبه نهایی لحاظ نشده است.`,
-    });
-  }
-  if (reportWarnings.length) {
-    const warningTitle = document.createElement("h2");
-    warningTitle.textContent = "هشدارهای کیفیت محاسبه";
-    const list = document.createElement("ul");
-    reportWarnings.forEach((warning) => {
-      const item = document.createElement("li");
-      item.textContent = reportWarningText(warning);
-      list.append(item);
-    });
-    warnings.append(warningTitle, list);
-  } else {
-    warnings.classList.add("finance-warnings--clear");
-    warnings.textContent = "برای محاسبات زنده فعلی هشداری ثبت نشده است.";
-  }
-
-  const breakdownView = buildBulletPresentation(data.breakdown);
-  const breakdown = breakdownView.rows.length ? createBreakdownChart(breakdownView) : document.createDocumentFragment();
-  const insights = document.createElement("section");
-  insights.className = "finance-insights";
-  insights.setAttribute("aria-label", "تحلیل و هشدارهای مالی");
-  const riskStack = document.createElement("div");
-  riskStack.className = "finance-risk-stack";
-  riskStack.append(
-    warnings,
-    // One row per item. The service answers with an estimate line each, and the
-    // same item used on two activities would otherwise be listed twice.
-    createVariancePanel("بیشترین انحراف قیمت", rollupPriceVariances(data.topPriceVariances), "varianceIrr", formatCompactMoneyFromIrr, "#/report-prices"),
-    createVariancePanel("بیشترین انحراف مقدار", rollupQuantityVariances(data.topQuantityVariances), "varianceQuantity", formatDisplayNumber, "#/report-items"),
-  );
-  insights.append(breakdown, riskStack);
-
+  // ── row 2 — the phase report beside the report builder ─────────────────
   const builder = createReportBuilderSection({
     onBuild: ({ selection, period }) => {
       const query = new URLSearchParams({ sections: selection.join(",") });
@@ -814,20 +496,77 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
       window.location.hash = `#/report-builder?${query.toString()}`;
     },
   });
+  const rowSecond = element("div", "finance-grid finance-grid--pair");
+  rowSecond.append(createLevelOneSection(levelOne ?? {}), builder);
 
-  const areasHeader = document.createElement("div");
-  areasHeader.className = "section-heading";
-  const areasHeading = document.createElement("div");
-  areasHeading.append(element("span", "", "بخش‌های گزارش مالی"), element("h2", "", "گزارش‌ها و اسناد این پروژه"));
-  areasHeader.append(areasHeading);
-  const areas = document.createElement("section");
-  areas.className = "work-area-grid";
-  areas.setAttribute("aria-label", "بخش‌های گزارش مالی");
-  WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
+  // ── row 3 — the cumulative curve beside the three insight cards ────────
+  const rowThird = element("div", "finance-grid finance-grid--insights");
+  const curvePanel = element("section", "overview-card finance-curve-card");
+  curvePanel.setAttribute("aria-label", "روند تجمعی هزینه پروژه");
+  const curveHead = element("header", "overview-card__head");
+  curveHead.append(element("h2", "overview-card__title", "روند تجمعی هزینه"));
+  curvePanel.append(curveHead);
+  if (cumulative?.panel) {
+    cumulative.panel.hidden = false;
+    curvePanel.append(cumulative.panel);
+  }
+  const insightCards = element("div", "finance-insight-cards");
+  insightCards.append(createPricesSummary(prices ?? {}), buildWarningsCard(data));
+  rowThird.append(curvePanel, insightCards);
 
-  if (provenance) fragment.append(pageHeader, provenance, overviewPanel, insights, builder, areasHeader, areas);
-  else fragment.append(pageHeader, overviewPanel, insights, builder, areasHeader, areas);
-  return fragment;
+  board.append(pageTitle, basis, rowMain, rowSecond, rowThird);
+  return board;
+}
+
+/**
+ * One line of the host's smart summary: a glyph in a tinted disc, then the
+ * sentence. Same class names it uses, so the two are one component once this
+ * mounts rather than two that happen to agree.
+ *
+ * Two tones, not the host's three. A report warning arrives with a code and no
+ * severity, so every one of them is a warning; `good` is the card with none.
+ * Inventing a third tier would be reading a judgement out of data that does not
+ * carry one.
+ */
+function summaryRow(tone, text) {
+  const row = element("li", `smrow smrow--${tone}`);
+  const mark = element("span", "smrow__icon");
+  mark.append(reportIcon(tone === "good" ? "check" : "alert"));
+  row.append(mark, element("p", "", text));
+  return row;
+}
+
+/** هشدارهای کیفیت محاسبه, as one of the three equal insight cards. */
+function buildWarningsCard(data) {
+  const warnings = document.createElement("section");
+  // It sits in a row with the two deviation cards, so it is one of them: the
+  // same surface, border, radius, padding and heading come from the class they
+  // already share rather than from a second set of rules kept in step by hand.
+  warnings.className = "finance-analysis-card finance-warnings";
+  warnings.setAttribute("aria-label", "هشدارهای محاسبات مالی");
+  const reportWarnings = [...(data.warnings ?? [])];
+  if (data.calculationStatus === "incomplete") {
+    reportWarnings.unshift({
+      code: "CALCULATION_INCOMPLETE",
+      message: `محاسبات مالی کامل نیست؛ ${formatDisplayNumber(data.missingPriceCount ?? 0)} قیمت و ${formatDisplayNumber(data.excludedEstimateLineCount ?? 0)} ردیف برآورد در محاسبه نهایی لحاظ نشده است.`,
+    });
+  }
+  const title = document.createElement("h2");
+  title.textContent = "هشدارهای کیفیت محاسبه";
+  warnings.append(title);
+  if (reportWarnings.length) {
+    const list = document.createElement("ul");
+    reportWarnings.forEach((warning) => {
+      list.append(summaryRow("warn", reportWarningText(warning)));
+    });
+    warnings.append(list);
+  } else {
+    warnings.classList.add("finance-warnings--clear");
+    const list = document.createElement("ul");
+    list.append(summaryRow("good", "برای محاسبات زنده فعلی هشداری ثبت نشده است."));
+    warnings.append(list);
+  }
+  return warnings;
 }
 
 const DIRECTION_LABELS = Object.freeze({
@@ -885,6 +624,63 @@ function trendTable(view) {
 function trendLegend() {
   const legend = element("ul", "breakdown-legend monthly-trend-legend");
   [["actual", "هزینه واقعی ثبت‌شده"], ["initial", "برآورد ماهانه"]].forEach(([series, label]) => {
+    const item = element("li", "", label);
+    item.dataset.series = series;
+    legend.append(item);
+  });
+  return legend;
+}
+
+/**
+ * The cumulative curve: the money twin of the host platform's progress S-curve.
+ *
+ * Both series are running totals, so each period adds to the one before it and
+ * the curve only climbs. The plan comes from the per-period estimates the host's
+ * periodic files carry; until those arrive the panel draws the actual alone and
+ * says why rather than quietly showing one curve as if it were the comparison.
+ */
+function createCostCurvePanel({ trend, trendError }) {
+  const panel = element("div", "analysis-chart-panel finance-cost-curve");
+  panel.dataset.chart = "cumulative";
+
+  if (trendError) {
+    panel.append(element("p", "inline-notice", formatApiErrorMessage(trendError, "دریافت روند تجمعی هزینه انجام نشد.")));
+    return { panel, chart: null };
+  }
+
+  const trendView = buildMonthlyTrend({ months: trend?.months ?? [], mode: TREND_MODES.CUMULATIVE });
+  if (trendView.isEmpty) {
+    panel.append(element("p", "inline-notice", trend?.unavailableReason ?? "هنوز فاکتور تأییدشده‌ای برای ساخت روند تجمعی ثبت نشده است."));
+    return { panel, chart: null };
+  }
+
+  const view = buildCostCurve({ points: trendView.points });
+  const axisScale = compactMoneyScale(view.ceilingIrr);
+  panel.append(curveLegend());
+
+  const chart = createCostCurveChart({
+    formatValue: (value) => axisScale?.format(value) ?? "",
+    formatExactValue: (value) => formatTomanFromIrr(value),
+    // Exact, never compacted. The guide's numbers are rounded because they are
+    // a ruler; this one is a figure the reader takes away, and "۰٫۱۹ میلیارد"
+    // hides everything between ۱۸۵ and ۱۹۴ میلیون behind one rounded digit.
+    formatMarker: (value) => formatTomanFromIrr(value),
+    unitLabel: axisScale?.unit ?? "",
+    ariaLabel: "منحنی تجمعی هزینه واقعی در برابر برآورد تجمعی پروژه",
+  });
+  chart.setData(view);
+  panel.append(chart.element);
+
+  if (view.hasPlan && view.planPartial) {
+    panel.append(element("p", "inline-notice", "برای بخشی از دوره‌ها برآورد ثبت نشده و منحنی برنامه در آن بازه‌ها کامل نیست."));
+  }
+  return { panel, chart };
+}
+
+/** Green fill for what was spent, dashed blue for what was planned. */
+function curveLegend() {
+  const legend = element("ul", "breakdown-legend cost-curve-legend");
+  [["actual", "واقعی"], ["plan", "برنامه (هدف)"]].forEach(([series, label]) => {
     const item = element("li", "", label);
     item.dataset.series = series;
     legend.append(item);
@@ -952,7 +748,7 @@ function createMonthlyTrendPanel({ trend, trendError }) {
   };
 }
 
-export function createFinanceHomePage({ context = null, reportsAdapter, progressAdapter }) {
+export function createFinanceHomePage({ context = null, reportsAdapter, progressAdapter, pricesAdapter }) {
   // The deviation rows lead to this surface's own read-only tables now, so the
   // only thing left that crosses into امور مالی is the empty state's shortcut to
   // the progress versions — offered only to an account that may be there.
@@ -960,6 +756,10 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let trend = null;
   let trendError = null;
+  let wbsRollup = null;
+  let wbsError = null;
+  let priceWorkspace = null;
+  let priceError = null;
   let activeChart = "managerial";
   let chart = null;
   let snapshots = [];
@@ -987,14 +787,28 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
         selectedSnapshotId = latest.progressSnapshotId;
         // The trend is independent of the overview: a failure there must not
         // take the eight headline metrics down with it.
-        const [report, monthly] = await Promise.all([
+        const [report, monthly, rollup, workspace] = await Promise.all([
           reportsAdapter.getOverview({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId }),
           reportsAdapter.getMonthlyTrend({ reportingDate: latest.reportingDate }).then(
             (value) => { trendError = null; return value; },
             (error) => { trendError = error; return null; },
           ),
+          // Independent too: the phase report is not built on the service yet,
+          // and its absence must not take the headline metrics down with it.
+          reportsAdapter.getWbsRollup({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId }).then(
+            (value) => { wbsError = null; return value; },
+            (error) => { wbsError = error; return null; },
+          ),
+          // The same workspace #/report-prices reads, through the same adapter.
+          // The summary shows three of its rows; it computes nothing of its own.
+          pricesAdapter.getPrices().then(
+            (value) => { priceError = null; return value; },
+            (error) => { priceError = error; return null; },
+          ),
         ]);
         trend = monthly;
+        wbsRollup = rollup;
+        priceWorkspace = workspace;
         state = report ? createRequestState(REQUEST_STATUS.SUCCESS, report) : createRequestState(REQUEST_STATUS.EMPTY);
       }
     } catch (error) {
@@ -1035,6 +849,9 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
     disposeChart();
     const renderContent = (data) => {
       const built = createMonthlyTrendPanel({ trend, trendError });
+      const curve = createCostCurvePanel({ trend, trendError });
+      const levelOne = { rollup: wbsRollup, error: wbsError };
+      const prices = { workspace: priceWorkspace, error: priceError };
       chart = built.chart;
       const provenance = createSnapshotProvenance({
         snapshots,
@@ -1042,7 +859,7 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
         report: data,
         onSelect: selectSnapshot,
       });
-      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance);
+      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance, curve, levelOne, prices);
     };
     root.replaceChildren(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }

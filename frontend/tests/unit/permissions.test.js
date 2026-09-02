@@ -41,6 +41,14 @@ const ROUTE_PERMISSIONS = Object.freeze({
   // own contents already ask for.
   "report-builder": "finance_report.view",
   "report-items": "finance.view",
+  // Cost rolled up the breakdown structure, from GET /reports/live/by-wbs —
+  // a report of what the figures turned out to be, so it asks for the report
+  // reading permission like the other two report pages.
+  "level-one": "finance_report.view",
+  // The destinations page is the list of links that used to close the overview.
+  // It reads nothing of its own, so it asks for the same reading permission the
+  // pages it points at do.
+  "work-areas": "finance.view",
   // The reader-only settings view shows a currency choice held in this browser
   // and a read-back of the permissions the host granted. Its one request is
   // GET /settings, so it asks for reading like every other door.
@@ -130,10 +138,12 @@ test("the split moved pages between surfaces without dropping any", () => {
     "report-home",
     "reports",
     "period-report",
+    "level-one",
     "invoices",
     "report-prices",
     "report-items",
     "report-builder",
+    "work-areas",
     "report-settings",
   ]);
   assert.deepEqual(routesForSurface(SURFACES.OPERATIONS).map((route) => route.key), [

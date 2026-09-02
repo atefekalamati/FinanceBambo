@@ -26,7 +26,11 @@ test("every route the router can reach has a page behind it", () => {
 
 test("the operations home shows no money, and the report home shows no operations", () => {
   const operations = read("../../src/features/finance-home/operations-home-page.js");
-  const report = read("../../src/features/finance-home/finance-home-page.js");
+  // The report surface's destinations moved off the overview onto a page of
+  // their own, reached from the bar at the top. Both files together are what
+  // that surface offers.
+  const report = read("../../src/features/finance-home/finance-home-page.js")
+    + read("../../src/features/work-areas/work-areas.js");
   // Two screens quoting the same total is how two screens start disagreeing:
   // the figures live on the report, and the operations home links to them.
   assert.doesNotMatch(operations, /summary-card|managerial-combo-chart|bullet-chart/, "the operations home must not draw the figures");
@@ -37,12 +41,14 @@ test("the operations home shows no money, and the report home shows no operation
   const reportPaths = routesForSurface(SURFACES.REPORT).map((route) => route.path.slice(1));
   linked(operations).forEach((path) => assert.ok(operationsPaths.includes(path), `امور مالی links to ${path}, which is not its own`));
   linked(report).forEach((path) => assert.ok(reportPaths.includes(path), `گزارش مالی links to ${path}, which is not its own`));
-  // Every destination of a surface, apart from its home, is offered by it. The
-  // report builder is the exception: it is not somewhere to go from a card, it
-  // is what its own section on the page produces.
+  // Every destination of a surface, apart from its home, is offered by it as a
+  // card. Two are reached from the page furniture instead: the report builder is
+  // what its own section produces, and the destinations page is a button in the
+  // header — it is where the cards live, so it cannot also be one of them.
+  const FROM_FURNITURE = new Set(["report-builder", "work-areas"]);
   const offered = (surface, home) => routesForSurface(surface)
     .map((route) => route.path.slice(1))
-    .filter((path) => path !== home && path !== "report-builder");
+    .filter((path) => path !== home && !FROM_FURNITURE.has(path));
   assert.deepEqual(linked(operations).sort(), offered(SURFACES.OPERATIONS, homeRouteFor(SURFACES.OPERATIONS).path.slice(1)).sort());
   assert.deepEqual(linked(report).sort(), offered(SURFACES.REPORT, homeRouteFor(SURFACES.REPORT).path.slice(1)).sort());
 });
@@ -76,10 +82,19 @@ test("the deviation rows lead to this surface's own read-only tables", () => {
   // They used to lead into the price and item editors on امور مالی — a link
   // that worked for an administrator and was a way straight past the split for
   // everyone else. The twin routes are read-only whoever opens them.
-  assert.match(source, /formatCompactMoneyFromIrr, "#\/report-prices"\)/);
-  assert.match(source, /formatDisplayNumber, "#\/report-items"\)/);
-  assert.doesNotMatch(source, /"#\/prices"/);
-  assert.doesNotMatch(source, /"#\/financial-items"/);
+  // The deviation panel is parked in features/finance-home/variance-panel.js
+  // while the owner decides what belongs on the board, so nothing wires it and
+  // there is no call site left to read a href out of. The rule it was written
+  // for has not gone anywhere and is what these check: neither the overview nor
+  // the parked panel names an editor on امور مالی. Its destination is still the
+  // caller's argument, so wiring it back cannot reintroduce one without
+  // tripping this.
+  const parked = read("../../src/features/finance-home/variance-panel.js");
+  assert.match(parked, /baseHref/, "the panel still takes its destination from the caller");
+  [source, parked].forEach((text) => {
+    assert.doesNotMatch(text, /"#\/prices"/);
+    assert.doesNotMatch(text, /"#\/financial-items"/);
+  });
   // The one shortcut left that crosses the split is behind the surface check
   // itself, not a permission this page names for itself.
   assert.match(source, /const canOperate = canAccessSurface\(context, SURFACES\.OPERATIONS\)/);

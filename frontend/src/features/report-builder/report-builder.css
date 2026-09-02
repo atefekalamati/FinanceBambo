@@ -17,22 +17,32 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-sm);
+  gap: 8px;
 }
 
+/* The mark and the words are one line, the way the host writes this heading —
+   an SVG in a block-level heading otherwise sits on a line of its own. */
 .report-builder-section__title,
 .report-builder-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin: 0;
   color: var(--color-text-primary);
-  font-size: 1rem;
-  font-weight: 800;
+  font-size: .9rem;
+  font-weight: 700;
 }
 
 /* The star is the mark the project puts on its own builder. It carries no
    meaning of its own, so it is hidden from anything that reads the page aloud. */
 .report-builder-panel__star {
-  color: var(--brand-teal);
-  font-size: .9em;
+  flex: 0 0 auto;
+  inline-size: 17px;
+  block-size: 17px;
+  color: var(--dash-actual);
+  fill: currentColor;
+  stroke: none;
+  vertical-align: -.15em;
 }
 
 /* On the green button the brand colour disappears into the background, so the
@@ -40,6 +50,8 @@
    than relying on a space that collapses once the type gets small. */
 .button .report-builder-panel__star {
   margin-inline-end: .25em;
+  inline-size: 1rem;
+  block-size: 1rem;
   color: currentColor;
 }
 
@@ -48,13 +60,19 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  inline-size: 1.35rem;
-  block-size: 1.35rem;
+  inline-size: 19px;
+  block-size: 19px;
   border: 1px solid var(--color-border);
-  border-radius: 50%;
+  border-radius: 999px;
   color: var(--color-text-muted);
-  font-size: .68rem;
-  font-weight: 800;
+  /* The reference writes this as `font: italic 700 10px/1 inherit`, but `inherit`
+     is not a valid family in the shorthand, so the whole declaration is dropped
+     and the size and weight never land. Same values, as longhands. */
+  font-style: italic;
+  font-weight: 700;
+  font-size: 10px;
+  line-height: 1;
+  opacity: .5;
   cursor: help;
 }
 
@@ -62,30 +80,32 @@
 .report-builder-panel__lead {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  line-height: 1.7;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .report-builder-section__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: .55rem;
+  gap: 6px;
 }
 
 .report-builder-chip {
   display: grid;
-  gap: .3rem;
+  gap: 3px;
   justify-items: center;
-  padding: .7rem .5rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  align-content: center;
+  padding: 5px 4px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9px;
   color: var(--color-text-secondary);
-  background: rgb(4 13 32 / 30%);
+  background: rgb(120 145 205 / 6%);
   font-family: inherit;
-  font-size: .72rem;
-  font-weight: 700;
-  line-height: 1.5;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.25;
   text-align: center;
+  overflow-wrap: anywhere;
   cursor: pointer;
   transition:
     border-color var(--duration-fast) var(--ease-standard),
@@ -95,40 +115,75 @@
 
 .report-builder-chip:hover,
 .report-builder-chip:focus-visible {
-  border-color: var(--color-accent);
+  border-color: var(--color-border);
   color: var(--color-text-primary);
-  background: var(--color-btn-action);
+  background: rgb(120 145 205 / 14%);
 }
 
 .report-builder-chip__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 1.5rem;
-  block-size: 1.5rem;
-  border-radius: var(--radius-sm);
-  color: var(--brand-teal);
-  background: color-mix(in srgb, var(--brand-teal) 14%, transparent);
-  font-size: .78rem;
+  inline-size: 13px;
+  block-size: 13px;
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .85;
+}
+
+.report-builder-chip:hover .report-builder-chip__icon,
+.report-builder-chip:focus-visible .report-builder-chip__icon {
+  opacity: 1;
 }
 
 .report-builder-section__cta,
 .report-builder-panel__build {
   inline-size: 100%;
-  min-block-size: 2.75rem;
-  font-size: .86rem;
-  font-weight: 800;
+  /* .app-btn's own box. The floor `.button` carries is a 44px touch target for a
+     form; this one is a full-width bar whose height is its padding, the way the
+     host's is. */
+  min-block-size: 0;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* --------------------------------------------------------------------------
    Report builder — the chooser
    -------------------------------------------------------------------------- */
 
+/* The host opens its builder as a near-full-screen popup, not a dialog sized to
+   its contents — a stated height, so the picker has room whichever category is
+   open and the panel does not resize under the reader as they move between
+   them. Same measure, same backdrop. */
 .report-builder-dialog {
-  inline-size: min(46rem, 94vw);
-  max-block-size: 92vh;
+  inline-size: min(1100px, 100%);
+  block-size: min(92vh, 900px);
+  /* `.confirm-dialog` caps every dialog in the module at 31rem, which is right
+     for a confirmation and 600px too narrow for a two-column picker. */
+  max-inline-size: none;
+  max-block-size: none;
   padding: 0;
+  border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 50%);
+}
+
+.report-builder-dialog::backdrop {
+  background: rgb(4 9 20 / 62%);
+  backdrop-filter: blur(2px);
+}
+
+@media (max-width: 36rem) {
+  .report-builder-dialog {
+    inline-size: 100%;
+    block-size: 100%;
+    max-inline-size: none;
+    border-radius: 0;
+  }
 }
 
 .report-builder-dialog__bar {
@@ -267,9 +322,15 @@
    control says which way it is about to move. */
 .report-builder-group__chevron {
   flex: 0 0 auto;
-  color: var(--color-text-muted);
-  font-size: .9rem;
-  line-height: 1;
+  inline-size: 15px;
+  block-size: 15px;
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .55;
   transition: transform var(--duration-fast) var(--ease-standard);
 }
 
@@ -294,10 +355,12 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
-  gap: .55rem;
-  padding: .55rem .6rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9px;
+  background: rgb(120 145 205 / 6%);
+  font-size: 10.8px;
   cursor: pointer;
 }
 
@@ -314,14 +377,14 @@
 
 .report-builder-option__copy strong {
   color: var(--color-text-primary);
-  font-size: .76rem;
+  font-size: 10.8px;
   font-weight: 700;
 }
 
 .report-builder-option__copy small {
   color: var(--color-text-muted);
-  font-size: .68rem;
-  line-height: 1.65;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 /* A report that cannot be produced yet still shows, with the reason where its
@@ -349,8 +412,9 @@
 
 .report-builder-panel__hint {
   margin: 0;
+  min-block-size: 1.3em;
   color: var(--color-text-muted);
-  font-size: .7rem;
+  font-size: 10.5px;
   text-align: end;
 }
 
@@ -564,11 +628,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .report-builder-chip {
-    font-size: .66rem;
-    overflow-wrap: anywhere;
-  }
-
   .report-doc__cover {
     flex-direction: column-reverse;
     align-items: flex-start;
@@ -605,20 +664,6 @@
     gap: .4rem;
   }
 
-  .report-builder-chip {
-    padding: .55rem .35rem;
-    font-size: .6rem;
-    line-height: 1.45;
-    /* The titles are long and some of their words are longer than half a phone
-       is wide, so a word breaks rather than pushing the column out. */
-    overflow-wrap: anywhere;
-  }
-
-  .report-builder-chip__icon {
-    inline-size: 1.25rem;
-    block-size: 1.25rem;
-    font-size: .68rem;
-  }
 }
 
 @media print {
@@ -648,4 +693,199 @@
   .report-builder-section {
     display: none;
   }
+}
+
+/* --------------------------------------------------------------------------
+   The picker's two levels — subjects, then one subject's reports.
+   -------------------------------------------------------------------------- */
+
+.report-builder-cats {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.report-builder-cats[hidden],
+.report-builder-level2[hidden] {
+  display: none;
+}
+
+/* A full-width row, not another chip: it drills in rather than toggling, and it
+   should not look like the things it contains. */
+.report-builder-cat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  inline-size: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9px;
+  background: rgb(120 145 205 / 6%);
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.report-builder-cat:hover,
+.report-builder-cat:focus-visible {
+  border-color: color-mix(in srgb, var(--dash-actual, #00ac58) 40%, transparent);
+  background: color-mix(in srgb, var(--dash-actual, #00ac58) 8%, transparent);
+  color: var(--color-text-primary);
+}
+
+.report-builder-cat__title {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* How many of this subject's reports are already in the document. */
+.report-builder-cat__badge {
+  flex: 0 0 auto;
+  min-inline-size: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--dash-actual, #00ac58);
+  color: #06210f;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.report-builder-cat__chevron {
+  flex: 0 0 auto;
+  inline-size: 15px;
+  block-size: 15px;
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .55;
+}
+
+/* --- level two ---------------------------------------------------------- */
+
+.report-builder-level2 {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-block-size: 0;
+}
+
+.report-builder-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 2px;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.report-builder-back:hover,
+.report-builder-back:focus-visible {
+  color: var(--dash-actual, #00ac58);
+}
+
+.report-builder-back__chevron {
+  flex: 0 0 auto;
+  inline-size: 14px;
+  block-size: 14px;
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.report-builder-level2__title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.report-builder-level2__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  line-height: 1.6;
+}
+
+.report-builder-level2__items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+@media (max-width: 36rem) {
+  .report-builder-level2__items {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A chosen report is marked on its whole row, not only in its box. */
+.report-builder-option.is-checked {
+  border-color: color-mix(in srgb, var(--dash-actual, #00ac58) 50%, transparent);
+  background: color-mix(in srgb, var(--dash-actual, #00ac58) 12%, transparent);
+  color: var(--color-text-primary);
+}
+
+/* --- the popup's own height -------------------------------------------- */
+
+/* The popup states its height, so what is inside has to fill it: the bar and
+   the build button hold their size and the picker takes the rest, scrolling
+   inside itself when a category has more reports than the space. Without this
+   the panel sat at its content height and left the lower half of a 900px popup
+   empty. */
+.report-builder-dialog {
+  display: flex;
+  flex-direction: column;
+}
+
+.report-builder-dialog__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  display: flex;
+  padding: var(--space-lg);
+  overflow: hidden;
+}
+
+.report-builder-panel {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+}
+
+.report-builder-groups {
+  flex: 0 0 auto;
+}
+
+.report-builder-cats,
+.report-builder-level2 {
+  min-block-size: 0;
+  overflow-y: auto;
+  padding-inline-end: .15rem;
+}
+
+/* Only one of the two is on screen, so they share the same track. */
+.report-builder-cats,
+.report-builder-level2 {
+  grid-row: 4;
 }
