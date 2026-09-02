@@ -239,9 +239,14 @@ function createManagerialComparisonPanel(
   if (tickScale) {
     const guide = element("div", "managerial-combo-chart__scale");
     guide.setAttribute("aria-hidden", "true");
-    guide.append(
-      element("span", "managerial-combo-chart__scale-unit", tickScale.unit),
-    );
+    // The unit belongs to the values row, not to the plot beneath it. Every band
+    // reserves the same strip for the guide, so putting it in the values band
+    // lands it in that strip on the same line as the figures — aligned because
+    // it is measured against the row it reads with, not offset until it looks
+    // right at one width.
+    const unit = element("span", "managerial-combo-chart__scale-unit", tickScale.unit);
+    unit.setAttribute("aria-hidden", "true");
+    valuesBand.append(unit);
     ticks.forEach((tick) => {
       const row = element("div", "managerial-combo-chart__scale-row");
       row.style.setProperty("--scale-size", `${tick.magnitude}%`);
