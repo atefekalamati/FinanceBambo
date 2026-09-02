@@ -3605,14 +3605,6 @@ a.breakdown-donut:focus-visible {
   line-height: 1.35;
 }
 
-/* Its rows read at the same size as the deviation rows beside them. The bullet
-   stays — this is still a list of warnings — but takes the indent a card can
-   spare rather than a notice's. */
-.finance-board .finance-insight-cards > .finance-warnings ul {
-  gap: .12rem;
-  padding-inline-start: .85rem;
-}
-
 .finance-board .finance-insight-cards > .finance-warnings li,
 .finance-board .finance-insight-cards > .finance-warnings p {
   font-size: var(--font-size-xs);
@@ -3703,6 +3695,65 @@ a.breakdown-donut:focus-visible {
    Day prices over the calculation notes, two stacked cards rather than three
    side by side.
    ------------------------------------------------------------------------ */
+
+/* --- a warning, said the way the host says a summary line ---------------
+   .smrow and its parts, at the host's own values: a tinted pill with a subtle
+   border, a glyph in a 20px disc, and the sentence at 11px. The list loses its
+   bullets and its indent — the disc is the marker now. */
+
+.finance-board .finance-warnings ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.finance-board .finance-warnings .smrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-text-muted) 6%, transparent);
+}
+
+.finance-board .finance-warnings .smrow p {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.finance-board .finance-warnings .smrow__icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  inline-size: 20px;
+  block-size: 20px;
+  border-radius: 50%;
+}
+
+.finance-board .finance-warnings .smrow__icon svg {
+  inline-size: 11px;
+  block-size: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.finance-board .finance-warnings .smrow--good .smrow__icon {
+  color: var(--dash-actual);
+  background: color-mix(in srgb, var(--dash-actual) 15%, transparent);
+}
+
+.finance-board .finance-warnings .smrow--warn .smrow__icon {
+  color: var(--dash-sev-med);
+  background: color-mix(in srgb, var(--dash-sev-med) 15%, transparent);
+}
 
 /* Side by side, not stacked: the prices take three fifths and the notes two.
    Both are one row tall now, so neither is sized by what the other needs — the
