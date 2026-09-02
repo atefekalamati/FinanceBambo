@@ -39,6 +39,10 @@ const PATHS = Object.freeze({
   estimateLines: ["M5 4h14v16H5z", "M8 8h8", "M8 12h8", "M8 16h5"],
   /* منحنی S — a curve climbing */
   sCurve: ["M3 19c4 0 5-14 9-14s6 10 9 10", "M3 21h18"],
+  /* یک سطر خلاصه، بی‌ایراد — a tick */
+  check: ["M4 12.5l5 5L20 6.5"],
+  /* یک سطر خلاصه، هشدار — a bang */
+  alert: ["M12 7.5v5.5", "M12 16.5h.01"],
   /* گزارش سطح ۱ — a hierarchy */
   levelOne: ["M12 3v4", "M6 21v-6", "M18 21v-6", "M6 15h12v-4H6z", "M12 7v4"],
 });

@@ -17,6 +17,7 @@ import { createTomanDisplay } from "../../shared/components/money-display.js";
 import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
 import { canAccessSurface } from "../../core/auth/permissions.js";
 import { createReportBuilderSection } from "../report-builder/report-builder-section.js";
+import { reportIcon } from "../report-builder/report-icons.js";
 import { createLevelOneSection } from "../level-one/level-one-section.js";
 import { createPricesSummary } from "./prices-summary.js";
 import { createInvoicesEntry } from "./invoices-entry.js";
@@ -517,6 +518,24 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   return board;
 }
 
+/**
+ * One line of the host's smart summary: a glyph in a tinted disc, then the
+ * sentence. Same class names it uses, so the two are one component once this
+ * mounts rather than two that happen to agree.
+ *
+ * Two tones, not the host's three. A report warning arrives with a code and no
+ * severity, so every one of them is a warning; `good` is the card with none.
+ * Inventing a third tier would be reading a judgement out of data that does not
+ * carry one.
+ */
+function summaryRow(tone, text) {
+  const row = element("li", `smrow smrow--${tone}`);
+  const mark = element("span", "smrow__icon");
+  mark.append(reportIcon(tone === "good" ? "check" : "alert"));
+  row.append(mark, element("p", "", text));
+  return row;
+}
+
 /** هشدارهای کیفیت محاسبه, as one of the three equal insight cards. */
 function buildWarningsCard(data) {
   const warnings = document.createElement("section");
@@ -538,14 +557,14 @@ function buildWarningsCard(data) {
   if (reportWarnings.length) {
     const list = document.createElement("ul");
     reportWarnings.forEach((warning) => {
-      const item = document.createElement("li");
-      item.textContent = reportWarningText(warning);
-      list.append(item);
+      list.append(summaryRow("warn", reportWarningText(warning)));
     });
     warnings.append(list);
   } else {
     warnings.classList.add("finance-warnings--clear");
-    warnings.append(element("p", "", "برای محاسبات زنده فعلی هشداری ثبت نشده است."));
+    const list = document.createElement("ul");
+    list.append(summaryRow("good", "برای محاسبات زنده فعلی هشداری ثبت نشده است."));
+    warnings.append(list);
   }
   return warnings;
 }
