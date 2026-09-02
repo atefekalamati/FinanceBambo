@@ -3995,3 +3995,63 @@ body[data-finance-runtime] .app-workspace {
   block-size: 100%;
   min-block-size: 0;
 }
+
+/* --------------------------------------------------------------------------
+   The cumulative chart, narrower than its card
+   --------------------------------------------------------------------------
+   Nothing sizes this chart directly: it is flex: 1 1 auto inside a panel that
+   is the same, so it takes whatever the card has — the card being one of the
+   two 1fr columns of row one. 753.6px at 1920x1080.
+
+   Four columns do not need all of it. Seventy per cent of what it had, centred
+   in what it no longer fills. The panel is a column flex, so the inline axis is
+   its cross axis: an explicit inline-size beats the stretch it would otherwise
+   get, and the auto margins centre what is left.
+
+   Keyed on the panel's own data-chart, so the monthly chart beside it is
+   untouched — that one has twelve columns and wants the whole width.
+   ------------------------------------------------------------------------ */
+
+@media (min-width: 425px) {
+  .finance-board .analysis-chart-panel[data-chart="managerial"] .managerial-combo-chart {
+    inline-size: 70%;
+    margin-inline: auto;
+  }
+}
+
+/* Under 425 the card is barely wider than the four columns, so there is no
+   surplus to give back — narrowing here would only crowd them. What gives
+   instead is the type and the columns themselves.
+
+   The label takes the value's own size through a variable both read, rather
+   than the same literal written twice: «set with the number on the column»
+   should stay true when either is next changed. */
+@media (max-width: 424.98px) {
+  /* On __plot, not on the chart: that is where every other rule declares these,
+     including one on .finance-board with no query behind it, and a variable is
+     read from the nearest ancestor that sets it — a definition further out is
+     simply not seen. */
+  .managerial-combo-chart__plot,
+  .finance-board .managerial-combo-chart__plot {
+    /* A plain length, not the cqi clamp the value carries elsewhere: only the
+       value sits inside a query container (__cell), so the same clamp resolved
+       against a 17px column for one and against the viewport for the other —
+       7.36px beside 9.92px, from one expression. A fixed size is what makes
+       them actually equal. */
+    --managerial-value-size: .5rem;
+    --managerial-label-size: var(--managerial-value-size);
+    --managerial-label-leading: 1.25;
+  }
+
+  .managerial-combo-chart__value {
+    font-size: var(--managerial-value-size);
+  }
+
+  .managerial-combo-chart__value .money-display__unit {
+    font-size: clamp(.4rem, 6cqi, .52rem);
+  }
+
+  .managerial-combo-chart__column {
+    inline-size: clamp(1.1rem, 3.4vw, 1.9rem);
+  }
+}
