@@ -3068,19 +3068,28 @@ a.breakdown-donut:focus-visible {
 }
 
 /* The heading row of the phase card carries its link inline. */
+/* .dash-card--msp .dash-card__head: the title and its badge pack at the start
+   rather than being pushed apart, eight apart. */
 .finance-board .level-one-section > .section-heading {
   align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
+/* .dash-card__title's own size and weight. */
 .finance-board .level-one-section > .section-heading h2 {
   margin: 0;
-  font-size: var(--font-size-md);
+  font-size: .9rem;
+  font-weight: 700;
 }
 
-.finance-board .level-one-section > .section-heading span {
+/* The eyebrow, which sits inside the copy block. Written as a descendant it
+   also caught the head's own badge — the one thing in this heading that is a
+   direct child and must stay. Named by where it actually is. */
+.finance-board .level-one-section > .section-heading > div > span {
   display: none;
 }
 
@@ -3408,10 +3417,6 @@ a.breakdown-donut:focus-visible {
 /* The last few pixels at 900: the phase card's heading row, the chart's bar
    floor and the deviation rows each give up a little rather than one of them
    giving up a line. */
-.finance-board .level-one-section > .section-heading {
-  gap: .3rem;
-}
-
 .finance-board .managerial-combo-chart__band--bars {
   min-block-size: 3.6rem;
 }

@@ -24,7 +24,13 @@ export function createLevelOneSection({ rollup, error = null }) {
     element("span", "", "گزارش مالی سطح ۱"),
     element("h2", "", "هزینه هر مرحله در برابر برآورد آن"),
   );
-  heading.append(copy);
+  // The host's own chart heads carry this: a title, then a small ringed «i».
+  // Same class name it uses, so the two read as one component once mounted.
+  const info = element("span", "rc-info", "i");
+  info.setAttribute("role", "img");
+  info.setAttribute("aria-label", "راهنما");
+  info.title = "هزینه ثبت‌شده هر مرحله در برابر برآورد اولیه همان مرحله. مرحله‌ای که از برآورد خود گذشته با رنگ متفاوت مشخص است.";
+  heading.append(copy, info);
   section.append(heading);
 
   /**
