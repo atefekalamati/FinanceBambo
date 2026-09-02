@@ -1011,9 +1011,16 @@
   pointer-events: none;
 }
 
+/* The band is the unit's containing block, so the strip it sits in is the same
+   strip every band reserves, and it shares the row's baseline: the figures are
+   laid to the end of their cells, so the unit is laid to the end of the band. */
+.managerial-combo-chart__band--values {
+  position: relative;
+}
+
 .managerial-combo-chart__scale-unit {
   position: absolute;
-  inset-block-start: 0;
+  inset-block-end: 0;
   inset-inline-end: 0;
   inline-size: calc(var(--managerial-scale-gutter) - var(--managerial-scale-gap));
   color: var(--color-text-muted);
