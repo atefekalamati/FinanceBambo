@@ -19,11 +19,15 @@ import { formatDisplayNumber } from "../../shared/formatters/display.js";
  * is reachable from a keyboard.
  */
 
+/* Four segments, all from tokens the platform already defines. The last two
+   named --chart-amber and --chart-violet, which are declared nowhere: they only
+   ever drew their own fallbacks, so the ring's first half followed the theme and
+   its second half did not. */
 const SEGMENT_COLORS = Object.freeze([
   "var(--dash-actual)",
   "var(--dash-plan)",
-  "var(--chart-amber, #e8a33d)",
-  "var(--chart-violet, #8b7fd4)",
+  "var(--dash-sev-med)",
+  "var(--dash-sev-high)",
 ]);
 
 function exactInteger(value) {

@@ -2288,14 +2288,17 @@ a.finance-variance-card__link:hover {
   block-size: 100%;
 }
 
-.cost-curve__gridline {
-  stroke: var(--chart-gridline, rgb(148 163 184 / 16%));
-  stroke-width: 1;
-}
-
+/* The canvas is drawn in a space at least MIN_HEIGHT tall and stretched to the
+   surface with preserveAspectRatio:none, so in a surface shorter than that every
+   stroke is squashed with it — a 2px line rendering at 1.1 vertically and 2
+   horizontally, its weight changing with its angle. non-scaling-stroke is what
+   the host puts on all four for exactly this reason: the geometry stretches,
+   the ink does not. */
+.cost-curve__gridline,
 .cost-curve__baseline {
-  stroke: var(--chart-gridline-strong, rgb(148 163 184 / 34%));
+  stroke: var(--dash-grid);
   stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 
 /* The plan is a target, not a record: dashed, so it never reads as something
@@ -2303,17 +2306,19 @@ a.finance-variance-card__link:hover {
 .cost-curve__plan {
   fill: none;
   stroke: var(--dash-plan);
-  stroke-width: 2.5;
-  stroke-dasharray: 7 6;
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
   stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
 }
 
 .cost-curve__actual {
   fill: none;
   stroke: var(--dash-actual);
-  stroke-width: 2.5;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 
 .cost-curve__area {
@@ -2323,15 +2328,17 @@ a.finance-variance-card__link:hover {
 }
 
 .cost-curve__marker-line {
-  stroke: var(--dash-actual);
-  stroke-width: 1.5;
-  stroke-dasharray: 4 4;
-  opacity: .75;
+  stroke: color-mix(in srgb, var(--dash-actual) 70%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
 }
 
+/* A 7px disc with a 2px ring of the card behind it, so it reads as sitting on
+   the line rather than being a kink in it. */
 .cost-curve__marker-dot {
   fill: var(--dash-actual);
-  stroke: var(--surface-1, #0f1b2b);
+  stroke: var(--color-surface-panel);
   stroke-width: 2;
 }
 
@@ -2341,7 +2348,7 @@ a.finance-variance-card__link:hover {
   transform: translateX(-50%);
   color: var(--dash-actual);
   font-weight: 800;
-  font-size: var(--font-size-sm, .8rem);
+  font-size: 13px;
   white-space: nowrap;
   pointer-events: none;
 }
@@ -2389,8 +2396,8 @@ a.finance-variance-card__link:hover {
      tick of 100 belongs at the top of it. */
   inset-block-start: calc(var(--plot-top, 0px) + var(--plot-height, 0px) * (1 - var(--tick, 0) / 100));
   transform: translateY(-50%);
-  color: var(--text-muted, #8298ad);
-  font-size: var(--font-size-xs, .7rem);
+  color: var(--color-text-muted);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: auto;
@@ -2406,12 +2413,12 @@ a.finance-variance-card__link:hover {
   z-index: 40;
   padding: .25rem .5rem;
   border-radius: var(--radius-sm, 6px);
-  background: var(--surface-3, #1c2b3f);
-  color: var(--text-strong, #e8eef5);
+  background: var(--color-surface-elevated);
+  color: var(--color-text-primary);
   font-size: var(--font-size-xs, .7rem);
   font-weight: 700;
   white-space: nowrap;
-  box-shadow: var(--shadow-md, 0 6px 18px rgb(0 0 0 / 35%));
+  box-shadow: var(--dash-shadow);
 }
 
 /* --- period labels ---------------------------------------------------- */
@@ -2427,8 +2434,8 @@ a.finance-variance-card__link:hover {
   position: absolute;
   top: .2rem;
   transform: translateX(-50%);
-  color: var(--text-muted, #8298ad);
-  font-size: var(--font-size-xs, .7rem);
+  color: var(--color-text-muted);
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -2710,7 +2717,7 @@ a.breakdown-donut {
 a.breakdown-donut:hover,
 a.breakdown-donut:focus-visible {
   border-color: var(--color-accent);
-  background: var(--color-surface-2, rgb(148 163 184 / 6%));
+  background: color-mix(in srgb, var(--color-text-muted) 6%, transparent);
 }
 
 a.breakdown-donut:focus-visible {
