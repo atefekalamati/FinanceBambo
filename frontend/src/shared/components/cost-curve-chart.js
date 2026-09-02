@@ -175,7 +175,7 @@ export function createCostCurveChart({
       const y = py(view.marker.y);
       const stem = svg("g", { class: "cost-curve__marker" });
       stem.append(svg("line", { x1: x, x2: x, y1: box.top, y2: box.top + box.innerHeight, class: "cost-curve__marker-line" }));
-      stem.append(svg("circle", { cx: x, cy: y, r: 4, class: "cost-curve__marker-dot" }));
+      stem.append(svg("circle", { cx: x, cy: y, r: 3.5, class: "cost-curve__marker-dot" }));
       canvas.append(stem);
     }
 
