@@ -3704,20 +3704,38 @@ a.breakdown-donut:focus-visible {
    side by side.
    ------------------------------------------------------------------------ */
 
-/* The two cards want different amounts. The day prices are a table — a header
-   and three rows, 116px that cannot be argued down without dropping a price —
-   while the quality notes are a list that reads fine short. Splitting the column
-   in half gave the table less than it needs at every height under 1080 and cut
-   its last row. The table takes what it needs and the notes take the rest. */
+/* Side by side, not stacked: the prices take three fifths and the notes two.
+   Both are one row tall now, so neither is sized by what the other needs — the
+   reason they were stacked with the table on `auto` no longer applies. */
 .finance-board .finance-insight-cards {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
-/* Which means the notes are the card that can end up shorter than its list, so
-   the list scrolls rather than losing its tail without saying so. */
-.finance-board .finance-insight-cards > .finance-warnings ul {
+/* Either card can now be shorter than its content, so both scroll rather than
+   losing their tail without saying so. */
+.finance-board .finance-insight-cards > .finance-warnings ul,
+.finance-board .finance-insight-cards > .prices-summary {
   overflow-y: auto;
+}
+
+/* The trend is the line and the word, the same component the price table
+   draws. In a card this narrow the line gets the room and the word sits under
+   it rather than beside it, and both come down to the table's own scale. */
+.finance-board .prices-summary .price-trend {
+  min-inline-size: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  justify-items: center;
+}
+
+.finance-board .prices-summary .price-trend svg {
+  block-size: 1.1rem;
+}
+
+.finance-board .prices-summary .price-trend__label {
+  font-size: var(--font-size-2xs);
+  line-height: 1.2;
 }
 
 /* The chart moved to the narrower column, so four labels of its width need a

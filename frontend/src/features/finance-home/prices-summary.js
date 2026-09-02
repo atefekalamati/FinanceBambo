@@ -1,6 +1,7 @@
 import { element } from "../../shared/dom/elements.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
+import { createPriceTrend } from "../../shared/components/price-trend.js";
 
 /**
  * قیمت‌های روز — three rows of the price table, on the overview.
@@ -15,13 +16,6 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
  */
 
 const ROW_COUNT = 3;
-
-const TREND_LABELS = Object.freeze({
-  up: "افزایشی",
-  down: "کاهشی",
-  flat: "بدون تغییر",
-  none: "بدون سابقه",
-});
 
 export function createPricesSummary({ workspace = null, error = null } = {}) {
   const section = element("section", "overview-card prices-summary");
@@ -62,13 +56,12 @@ export function createPricesSummary({ workspace = null, error = null } = {}) {
     const record = document.createElement("tr");
     const name = element("td", "prices-summary__name");
     name.append(element("span", "", item.resource?.title ?? "قلم بدون عنوان"));
-    const direction = item.trend?.trendDirection ?? "none";
     const price = element("td", "numeric prices-summary__price",
       formatTomanFromIrr(item.currentPrice.unitPriceIRR, { withCurrency: false }));
+    // The table's own trend, not a second reading of it: same function, same
+    // item, same history — so the line here is the line there.
     const trend = element("td", "prices-summary__trend");
-    const chip = element("span", "trend-chip", TREND_LABELS[direction] ?? TREND_LABELS.none);
-    chip.dataset.direction = direction;
-    trend.append(chip);
+    trend.append(createPriceTrend(item, workspace?.history ?? []));
     record.append(name, price, trend);
     body.append(record);
   });
