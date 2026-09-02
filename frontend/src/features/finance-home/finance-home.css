@@ -2945,7 +2945,14 @@ a.breakdown-donut:focus-visible {
 #finance-module-root:has(.finance-board) {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  block-size: 100dvh;
+  /* 100% of whatever holds this mount, not 100% of the window. Standalone that
+     is the page, and the shell rules at the foot of this file give the chain
+     from <html> down a definite height so the percentage resolves. Mounted in
+     the host it is the cell the module is given — which is the whole point:
+     dvh asks for the host's entire window and comes out taller than its own
+     cell by exactly the height of the host's chrome. Measured at 1920x1080 in
+     a 988px cell, the board was 1080 and the last row was cut by 92px. */
+  block-size: 100%;
   min-block-size: 34rem;
   padding: var(--board-gap, .55rem);
   overflow: hidden;
@@ -3966,4 +3973,25 @@ a.invoices-entry:focus-visible {
 .invoices-entry__chevron {
   font-size: .95rem;
   line-height: 1;
+}
+
+/* --------------------------------------------------------------------------
+   The standalone shell's own height chain
+   --------------------------------------------------------------------------
+   Nothing between <html> and the mount carried a height, which is why the board
+   asked the window directly. It asks its container now, so the container has to
+   be something — but only here: every selector is keyed on the runtime marker
+   index.html puts on <body>, so a host that mounts the module owns its own
+   container's height and none of this can reach it.
+   ------------------------------------------------------------------------ */
+
+html:has(> body[data-finance-runtime]),
+body[data-finance-runtime] {
+  block-size: 100%;
+}
+
+body[data-finance-runtime] > #finance-app,
+body[data-finance-runtime] .app-workspace {
+  block-size: 100%;
+  min-block-size: 0;
 }
