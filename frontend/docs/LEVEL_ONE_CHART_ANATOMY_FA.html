@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نمودار سطح ۱ — هرچه اندازه‌اش را می‌سازد</title>
+<!-- Generated for the BAMBO finance module. Every rule below was enumerated from
+     the live DOM with CSS.getMatchedStylesForNode, not by searching the source,
+     so media queries, inheritance and cascade order are all accounted for. -->
+<style>*,::before,::after{box-sizing:border-box}body{margin:0}</style>
+<style>
+  /* The module already ships this face, so the file reads correctly with no
+     network — the path is relative to docs/, which is where this lives. */
+  @font-face {
+    font-family: "Vazirmatn";
+    src: url("../public/assets/fonts/Vazirmatn-Variable.woff2") format("woff2-variations");
+    font-weight: 100 900;
+    font-display: swap;
+  }
+</style>
+<style>
+  :root {
+    --ink: #17202b;
+    --ink-soft: #5a6675;
+    --ink-faint: #8b95a3;
+    --ground: #f7f8fa;
+    --panel: #ffffff;
+    --rule: #e2e6eb;
+    --rule-soft: #eef1f4;
+    --plan: #2563eb;
+    --actual: #059669;
+    --flag: #b45309;
+    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+    --fa: "Vazirmatn", system-ui, sans-serif;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --ink: #e8edf3;
+      --ink-soft: #a3aebc;
+      --ink-faint: #6c7787;
+      --ground: #0d1219;
+      --panel: #141b24;
+      --rule: #263140;
+      --rule-soft: #1c2531;
+      --plan: #60a5fa;
+      --actual: #34d399;
+      --flag: #fbbf24;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #e8edf3;
+    --ink-soft: #a3aebc;
+    --ink-faint: #6c7787;
+    --ground: #0d1219;
+    --panel: #141b24;
+    --rule: #263140;
+    --rule-soft: #1c2531;
+    --plan: #60a5fa;
+    --actual: #34d399;
+    --flag: #fbbf24;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--fa);
+    line-height: 1.65;
+    direction: rtl;
+  }
+  .wrap { max-width: 62rem; margin: 0 auto; padding: 3rem 1.25rem 6rem; }
+
+  header.top { border-bottom: 2px solid var(--ink); padding-bottom: 1.25rem; margin-bottom: 2.5rem; }
+  header.top h1 { margin: 0 0 .3rem; font-size: clamp(1.5rem, 4vw, 2.1rem); font-weight: 800; letter-spacing: -.01em; }
+  header.top p { margin: 0; color: var(--ink-soft); font-size: .95rem; }
+  .stamp { font-family: var(--mono); font-size: .72rem; color: var(--ink-faint); direction: ltr; text-align: left; margin-top: .6rem; }
+
+  h2 { font-size: 1.15rem; font-weight: 800; margin: 3rem 0 .3rem; padding-top: 1.4rem; border-top: 1px solid var(--rule); }
+  h2 .n { font-family: var(--mono); font-size: .8rem; color: var(--ink-faint); margin-inline-end: .5rem; }
+  h2 + .sub { margin: 0 0 1.4rem; color: var(--ink-soft); font-size: .9rem; }
+  h3 { font-size: .95rem; font-weight: 800; margin: 1.8rem 0 .6rem; }
+
+  code, .mono { font-family: var(--mono); font-size: .82em; direction: ltr; unicode-bidi: isolate; }
+  code { background: var(--rule-soft); padding: .1em .35em; border-radius: 3px; }
+
+  pre {
+    font-family: var(--mono); font-size: .76rem; line-height: 1.7;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; direction: ltr; text-align: left; margin: .8rem 0;
+  }
+  pre .c { color: var(--ink-faint); }
+  pre .k { color: var(--plan); }
+  pre .v { color: var(--actual); font-weight: 600; }
+  pre .f { color: var(--flag); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; margin: .8rem 0 1.2rem; font-size: .84rem; }
+  th, td { text-align: right; padding: .5rem .6rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  th { font-weight: 800; color: var(--ink-soft); font-size: .76rem; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--rule); }
+  td.m, th.m { font-family: var(--mono); font-size: .78rem; direction: ltr; text-align: left; unicode-bidi: isolate; }
+  tbody tr:last-child td { border-bottom: none; }
+  .scroll { overflow-x: auto; }
+
+  .tree { font-family: var(--mono); font-size: .78rem; line-height: 1.9; direction: ltr; text-align: left;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem 1.1rem;
+    overflow-x: auto; white-space: pre; }
+  .tree .cls { color: var(--plan); }
+  /* Persian asides inside an LTR block: isolated so the bidi algorithm cannot
+     drag their punctuation out into the tree's own drawing. */
+  .tree .note { color: var(--ink-faint); unicode-bidi: isolate; }
+
+  .chain { display: grid; gap: .5rem; margin: 1rem 0 1.4rem; }
+  .step { display: grid; grid-template-columns: 1.6rem 1fr; gap: .7rem; align-items: start;
+    background: var(--panel); border: 1px solid var(--rule); border-inline-start: 3px solid var(--plan);
+    border-radius: 7px; padding: .65rem .8rem; }
+  .step .i { font-family: var(--mono); font-size: .74rem; font-weight: 600; color: var(--plan); padding-top: .15rem; }
+  .step .t { font-size: .86rem; }
+  .step .t b { font-weight: 800; }
+  .step .calc { font-family: var(--mono); font-size: .76rem; color: var(--ink-soft); direction: ltr; text-align: left;
+    unicode-bidi: isolate; margin-top: .3rem; }
+  .step--out { border-inline-start-color: var(--actual); }
+  .step--out .i { color: var(--actual); }
+
+  .flag { background: color-mix(in srgb, var(--flag) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--flag) 32%, transparent);
+    border-radius: 8px; padding: .8rem 1rem; margin: 1.2rem 0; font-size: .87rem; }
+  .flag b { color: var(--flag); }
+
+  .file { font-family: var(--mono); font-size: .74rem; color: var(--ink-faint); direction: ltr;
+    unicode-bidi: isolate; display: block; margin-bottom: .15rem; }
+  .rulecard { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px;
+    padding: .7rem .85rem; margin-bottom: .6rem; }
+  .rulecard .sel { font-family: var(--mono); font-size: .78rem; direction: ltr; unicode-bidi: isolate;
+    color: var(--plan); word-break: break-word; display: block; margin-bottom: .4rem; }
+  .rulecard .med { font-family: var(--mono); font-size: .72rem; color: var(--flag); direction: ltr; unicode-bidi: isolate; }
+  .rulecard ul { margin: 0; padding-inline-start: 1.1rem; }
+  .rulecard li { font-family: var(--mono); font-size: .75rem; direction: ltr; unicode-bidi: isolate;
+    text-align: left; color: var(--ink-soft); line-height: 1.75; }
+  .rulecard li.sz { color: var(--ink); font-weight: 600; }
+  .rulecard li.sz::marker { color: var(--actual); }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <h1>نمودار سطح ۱ — هرچه اندازه‌اش را می‌سازد</h1>
+  <p>هر فایل، هر قاعده و هر عددی که عرض و ارتفاع ستون‌های این نمودار را تعیین می‌کند.</p>
+  <div class="stamp">enumerated from the live DOM via CSS.getMatchedStylesForNode · 1920×1080 &amp; 1366×768 · branch <code>frontend</code> @ a0a74e4</div>
+</header>
+
+<p>قواعد این فهرست با grep جمع نشده‌اند. از خودِ مرورگر پرسیده شده کدام قواعد روی هر گره اعمال می‌شوند، پس مدیاکوئری‌ها، ارث‌بری و ترتیب آبشار همه در آن هست و چیزی جا نمانده.</p>
+
+<h2><span class="n">۱</span>ساختار</h2>
+<p class="sub">آنچه JS می‌سازد. کلاس‌ها همان‌هایی هستند که داشبورد میزبان به‌کار می‌برد.</p>
+
+<div class="tree">section<span class="cls">.level-one-section</span>
+├─ div<span class="cls">.section-heading</span>
+│   └─ div › span + h2 <span class="note">(span روی برد مخفی است)</span>
+├─ div<span class="cls">.vbars</span>
+│   ├─ div<span class="cls">.vbars__legend</span> › span › i<span class="cls">.dot.dot--actual|--plan</span> + متن، span<span class="cls">.vbars__unit</span>
+│   └─ div<span class="cls">.vbars__plot</span>
+│       ├─ div<span class="cls">.vbars__y</span> › span<span class="cls">.vbars__tick</span> × ۶ <span class="note">(محور، ثابت)</span>
+│       └─ div<span class="cls">.vbars__viewport</span> <span class="note">← اسکرول افقی + قاب محور اینجاست</span>
+│           └─ div<span class="cls">.vbars__cols</span>
+│               └─ div<span class="cls">.vgroup</span> × ۱۹ <span class="note">[data-state="over"]</span>
+│                   ├─ div<span class="cls">.vgroup__bars</span>
+│                   │   ├─ div<span class="cls">.vbar.vbar--plan</span> › em <span class="note">style="height:N%"</span>
+│                   │   └─ div<span class="cls">.vbar.vbar--actual</span> › em <span class="note">style="height:N%"</span>
+│                   └─ a|span<span class="cls">.vgroup__name</span>
+├─ a<span class="cls">.level-one-section__link</span> › متن + span<span class="cls">.level-one-section__chevron</span>
+└─ p<span class="cls">.level-one-section__note</span> × ۰–۲</div>
+
+<h2><span class="n">۲</span>کدهایی که آن را می‌سازند</h2>
+<p class="sub">چهار فایل. هیچ‌کدام عرض یا ارتفاع را تعیین نمی‌کنند جز آنجا که صریح گفته شده.</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th class="m">فایل</th><th>خط</th><th>نقشش در اندازه</th></tr></thead>
+  <tbody>
+    <tr><td class="m">features/level-one/level-one-section.js</td><td>۸۵</td><td>سکشن، سرصفحه، لینک و یادداشت‌ها را می‌سازد و ردیف‌ها را به نمودار می‌دهد. <b>هیچ اندازه‌ای نمی‌دهد.</b></td></tr>
+    <tr><td class="m">features/level-one/level-one-chart.js</td><td>۹۸</td><td>گره‌ها را می‌سازد. تنها استایل inline‌اش <code>bar.style.height = "N%"</code> است (خط ۵۴) — درصدِ سقف محور، نه اندازه.</td></tr>
+    <tr><td class="m">shared/charts/value-ticks.js</td><td>۱۱۹</td><td><code>buildValueTicks</code> سقف محور را روی نردبان ۱-۲-۵ می‌سازد. <b>این تعیین می‌کند ستون‌ها چقدر پر شوند</b>، نه چقدر پهن.</td></tr>
+    <tr><td class="m">shared/reports/wbs-rollup.js</td><td>۱۹۴</td><td>هزینه را در ساختار شکست کار بالا می‌برد. تعداد ستون‌ها (۱۹) از اینجا می‌آید.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="flag">
+<b>تنها استایل inline در این نمودار ارتفاع میله است</b> — و مرجع هم دقیقاً همین کار را می‌کند (<code>style="height:100.0%"</code> روی هر <code>.vbar</code>). این عدد گزارش است، نه استایل؛ جایش در CSS نیست.
+</div>
+
+<h2><span class="n">۳</span>زنجیرهٔ عرض ستون</h2>
+<p class="sub">عرض یک <code>.vgroup</code> از این پنج قدم می‌آید. اعداد واقعی‌اند، اندازه‌گیری‌شده در ۱۹۲۰×۱۰۸۰.</p>
+
+<div class="chain">
+  <div class="step"><div class="i">۱</div><div class="t">
+    <b>سکشن</b> نیمی از ردیف را می‌گیرد، منهای پدینگ ۱۶ و بوردر ۱.
+    <div class="calc">.level-one-section → 787.6 − 32 − 2 = <b>753.6</b></div></div></div>
+
+  <div class="step"><div class="i">۲</div><div class="t">
+    <b>محور</b> از عرض کم می‌شود؛ <code>flex: 0 0 auto</code> است، پس هرچه برچسب‌هایش می‌خواهند برمی‌دارد. گپ <code>.vbars__plot</code> ۸px است.
+    <div class="calc">753.6 − 24.7 (محور) − 8 (گپ) = <b>720.9</b> برای viewport</div></div></div>
+
+  <div class="step"><div class="i">۳</div><div class="t">
+    <b>viewport</b> بوردر شروع ۱px دارد (قاب محور)، و <code>.vbars__cols</code> عرض ۱۰۰٪ آن را می‌گیرد.
+    <div class="calc">720.9 − 1 = <b>719.9</b> → cols</div></div></div>
+
+  <div class="step"><div class="i">۴</div><div class="t">
+    <b>cols</b> پدینگ افقی ۶+۶ دارد. جعبهٔ محتوایش همان چیزی است که <code>100%</code> در فرمول به آن اشاره می‌کند.
+    <div class="calc">719.9 − 12 = <b>707.9</b> ← این «۱۰۰٪» فرمول است</div></div></div>
+
+  <div class="step step--out"><div class="i">۵</div><div class="t">
+    <b>گروه</b> یک‌ششم آن منهای پنج گپ ۶پیکسلی، با کف ۹۲px.
+    <div class="calc">flex: 0 0 calc((100% − 30px) / 6)  →  (707.9 − 30) / 6 = <b>112.98px</b></div>
+    <div class="calc">min-inline-size: 92px  →  اینجا فعال نیست (113 &gt; 92)</div></div></div>
+</div>
+
+<p>عدد <code>30px</code> در فرمول ۵ گپِ ۶پیکسلی بین ۶ گروهِ قابل‌مشاهده است. یعنی مرجع عمداً <b>۶ ستون در هر نما</b> را هدف گرفته؛ نوزده مرحله در ۲۲۶۰px می‌نشینند و بقیه با اسکرول افقی می‌آیند.</p>
+
+<h3>و عرض خود میله</h3>
+<div class="chain">
+  <div class="step step--out"><div class="i">←</div><div class="t">
+    دو میله داخل <code>.vgroup__bars</code> که پدینگ افقی ۸+۸ و گپ ۱۰ دارد.
+    <div class="calc">(113 − 16 − 10) / 2 = <b>43.5px</b>   [کف ۱۴، سقف ۵۲ — هیچ‌کدام فعال نیست]</div></div></div>
+</div>
+
+<h2><span class="n">۴</span>زنجیرهٔ ارتفاع ستون</h2>
+<p class="sub">ارتفاع از بالا می‌آید: ردیف گرید برد → سکشن → cols → گروه → میله‌ها.</p>
+
+<div class="chain">
+  <div class="step"><div class="i">۱</div><div class="t">
+    <b>ردیف دوم برد</b> سهمش را از <code>grid-template-rows</code> می‌گیرد.
+    <div class="calc">auto minmax(0,1.5fr) <b>minmax(0,1.5fr)</b> minmax(0,1fr) → 371px</div></div></div>
+
+  <div class="step"><div class="i">۲</div><div class="t">
+    <b>سکشن</b> <code>block-size: 100%</code> دارد و پدینگ ۱۶؛ سرصفحه و لینک از آن کم می‌شوند و <code>.vbars</code> با <code>flex: 1 1 auto</code> باقی را می‌گیرد.
+    <div class="calc">371 → vbars = <b>283.4</b></div></div></div>
+
+  <div class="step"><div class="i">۳</div><div class="t">
+    <b>plot</b> باقی <code>.vbars</code> است بعد از راهنما؛ <code>viewport</code> هم‌ارتفاعش، منهای بوردر پایین و نوار اسکرول.
+    <div class="calc">plot 176 → cols = <b>165</b></div></div></div>
+
+  <div class="step"><div class="i">۴</div><div class="t">
+    <b>گروه</b> ارتفاعش را از متغیر می‌گیرد که روی برد <code>100%</code> است — یعنی ۱۰۰٪ محتوای cols، بعد از پدینگ بالای ۱۶.
+    <div class="calc">block-size: var(--level-one-plot-height) = 100%  →  165 − 16 = <b>149</b></div></div></div>
+
+  <div class="step step--out"><div class="i">۵</div><div class="t">
+    <b>میله‌ها</b> باقی گروه‌اند بعد از نام و مارجین ۶ آن.
+    <div class="calc">149 − 21 (نام) − 6 (مارجین) = <b>122px</b> ← ارتفاع کاملِ یک ستون ۱۰۰٪</div></div></div>
+</div>
+
+<div class="flag">
+<b>ارتفاعِ دیده‌شدهٔ هر میله دو عامل دارد، نه یکی.</b> ۱۲۲px بالاترین حدّ ممکن است؛ ارتفاع واقعی <code>122 × (مبلغ ÷ سقف محور)</code> است و سقف را بلندترین مرحله می‌سازد. با دادهٔ فعلی بلندترین مرحله ۴۴۳ و بیشتر مراحل زیر ۲۸ میلیون‌اند، پس ۲۱ میله از ۳۸ زیر ۲px درمی‌آیند و به کف <code>min-block-size: 2px</code> می‌چسبند. <b>این با هیچ تنظیم اندازه‌ای عوض نمی‌شود — تصمیم مقیاس است.</b>
+</div>
+
+<h2><span class="n">۵</span>مقادیر اندازه‌گیری‌شده</h2>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>گره</th><th class="m">۱۹۲۰×۱۰۸۰</th><th class="m">۱۳۶۶×۷۶۸</th></tr></thead>
+  <tbody>
+    <tr><td>سکشن</td><td class="m">787.6 × 371</td><td class="m">670.6 × 254</td></tr>
+    <tr><td>vbars</td><td class="m">753.6 × 283.4</td><td class="m">636.6 × 166.4</td></tr>
+    <tr><td>plot</td><td class="m">753.6 × 176</td><td class="m">636.6 × 117.5</td></tr>
+    <tr><td>محور</td><td class="m">24.7 × 176</td><td class="m">24.7 × 117.5</td></tr>
+    <tr><td>viewport</td><td class="m">720.9 × 176</td><td class="m">603.9 × 117.5</td></tr>
+    <tr><td>cols</td><td class="m">719.9 × 165</td><td class="m">602.9 × 106.5</td></tr>
+    <tr><td><b>گروه (ستون)</b></td><td class="m"><b>113 × 149</b></td><td class="m"><b>93.5 × 90.5</b></td></tr>
+    <tr><td>میله‌ها</td><td class="m">113 × 122</td><td class="m">93.5 × 63.5</td></tr>
+    <tr><td><b>یک میله</b></td><td class="m"><b>43.5</b> × متغیر</td><td class="m"><b>33.7</b> × متغیر</td></tr>
+    <tr><td>نام</td><td class="m">113 × 21</td><td class="m">93.5 × 21</td></tr>
+    <tr><td>عرض کل اسکرول</td><td class="m">2260</td><td class="m">1890</td></tr>
+    <tr><td>ستون در هر نما</td><td class="m">6.1</td><td class="m">6.1</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2><span class="n">۶</span>هر قاعده، به ترتیب آبشار</h2>
+<p class="sub">با <span class="mono">&lt;&lt;</span> علامت‌گذاری‌شده‌ها آن‌هایی هستند که در اندازه دخالت دارند. <code>*{box-sizing:border-box}</code> از <span class="mono">base.css:7</span> روی همه اعمال است و تکرار نشده.</p>
+
+<h3>ظرف — <code>.level-one-section</code></h3>
+<div class="rulecard"><span class="file">features/level-one/level-one.css:9</span><span class="sel">.level-one-page, .level-one-section</span>
+<ul><li class="sz">--level-one-plot-height: clamp(9rem, 22vw, 13rem)</li><li>--level-one-name-band: 2.7rem</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:49</span><span class="sel">.level-one-section</span>
+<ul><li>display: grid</li><li class="sz">gap: var(--space-md)</li><li class="sz">max-inline-size: 100%</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:2480</span><span class="sel">.overview-card, .finance-grid &gt; .finance-managerial-comparison, .finance-grid &gt; .level-one-section, .finance-grid &gt; .report-builder-section, .finance-insight-cards &gt; *</span>
+<ul><li>display: flex</li><li class="sz">flex-direction: column</li><li class="sz">gap: var(--space-sm)</li><li class="sz">min-inline-size: 0</li><li class="sz">padding: var(--space-md)</li><li class="sz">border: 1px solid var(--color-border)</li><li class="sz">border-radius: var(--radius-lg)</li><li>background: var(--app-card-navy)</li><li>box-shadow: var(--dash-shadow), var(--dash-inner)</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:2978</span><span class="sel">.finance-board … &gt; .level-one-section …</span>
+<ul><li class="sz">gap: var(--board-gap)</li><li class="sz">min-block-size: 0</li><li class="sz">block-size: 100%</li><li class="sz">padding: var(--board-pad)</li><li>overflow: hidden</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:2995</span><span class="sel">.finance-board .finance-grid &gt; .level-one-section, … &gt; .finance-managerial-comparison</span>
+<ul><li class="sz">padding: 16px</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:3040</span><span class="sel">.finance-board .level-one-section</span>
+<ul><li class="sz">--level-one-plot-height: 100%</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:2862</span><span class="sel">.overview-card, … .finance-grid &gt; .level-one-section, …</span>
+<span class="med">@media (max-width: 36rem)</span>
+<ul><li class="sz">padding: var(--space-sm)</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:3169</span><span class="sel">.finance-board … &gt; .level-one-section …</span>
+<span class="med">@media (max-width: 64rem)</span>
+<ul><li class="sz">block-size: auto</li><li>overflow: visible</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:3176</span><span class="sel">.finance-board .level-one-section</span>
+<span class="med">@media (max-width: 64rem)</span>
+<ul><li class="sz">--level-one-plot-height: clamp(7rem, 20vw, 10rem)</li></ul></div>
+
+<h3>نمودار — <code>.vbars</code></h3>
+<div class="rulecard"><span class="file">features/level-one/level-one.css:89</span><span class="sel">.vbars</span>
+<ul><li>display: grid</li><li class="sz">gap: var(--space-sm)</li><li class="sz">padding: var(--space-md) var(--space-md) var(--space-sm)</li><li class="sz">border: 1px solid var(--color-border)</li><li class="sz">border-radius: var(--radius-lg)</li><li>background / box-shadow</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:3024</span><span class="sel">.finance-board .vbars, .finance-board .vbars__plot, …</span>
+<ul><li class="sz">min-block-size: 0</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:3052</span><span class="sel">.finance-board .level-one-section .vbars</span>
+<ul><li class="sz">flex: 1 1 auto</li><li class="sz">min-block-size: 0</li><li class="sz">padding: 0</li><li class="sz">border: 0</li><li class="sz">border-radius: 0</li><li>background: none · box-shadow: none</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:3429</span><span class="sel">.finance-board .level-one-section .vbars</span>
+<ul><li class="sz">gap: .2rem</li></ul></div>
+
+<h3>راهنما و محور</h3>
+<div class="rulecard"><span class="file">features/level-one/level-one.css:99</span><span class="sel">.vbars__legend</span>
+<ul><li>display: flex</li><li class="sz">flex-wrap: wrap</li><li class="sz">gap: 16px</li><li class="sz">padding: 0 2px 5px</li><li class="sz">font-size: 11.5px</li><li>color: var(--color-text-muted)</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:116</span><span class="sel">.vbars__legend .dot</span>
+<ul><li class="sz">inline-size: 11px</li><li class="sz">block-size: 11px</li><li class="sz">border-radius: 2px</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:139</span><span class="sel">.vbars__y</span>
+<ul><li>display: flex · justify-content: space-between</li><li class="sz">flex: 0 0 auto</li><li class="sz">flex-direction: column</li><li class="sz">padding-block-end: 22px</li><li class="sz">font-size: 12.5px</li><li>font-variant-numeric: tabular-nums · text-align: end</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:3048</span><span class="sel">.finance-board .level-one-section .vbars__tick</span>
+<ul><li class="sz">line-height: 1</li></ul></div>
+
+<h3>سطح و ستون‌ها — اینجا اندازه تعیین می‌شود</h3>
+<div class="rulecard"><span class="file">features/level-one/level-one.css:130</span><span class="sel">.vbars__plot</span>
+<ul><li>display: flex · align-items: stretch</li><li class="sz">gap: 8px</li><li class="sz">min-inline-size: 0</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:156</span><span class="sel">.vbars__viewport</span>
+<ul><li class="sz">flex: 1 1 auto</li><li class="sz">min-inline-size: 0</li><li>overflow-x: auto · overflow-y: hidden</li><li class="sz">border-inline-start: 1px solid var(--dash-grid)</li><li class="sz">border-block-end: 1px solid var(--dash-grid)</li><li>scrollbar-width: thin · scrollbar-color: var(--dash-plan) transparent</li><li>scroll-snap-type: x proximity</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:3361</span><span class="sel">.finance-board .level-one-section .vbars__viewport</span>
+<ul><li>display: flex · align-items: stretch</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:183</span><span class="sel">.vbars__cols</span>
+<ul><li>display: flex · align-items: flex-end · justify-content: flex-start</li><li class="sz">gap: 6px</li><li class="sz">inline-size: 100%</li><li class="sz">padding: 16px 6px 0</li></ul></div>
+
+<div class="rulecard"><span class="file">features/finance-home/finance-home.css:3366</span><span class="sel">.finance-board .level-one-section .vbars__cols</span>
+<ul><li>align-items: stretch</li><li class="sz">block-size: 100%</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:194</span><span class="sel">.vgroup</span>
+<ul><li>display: flex · flex-direction: column · align-items: stretch</li><li class="sz">flex: 0 0 calc((100% − 30px) / 6)</li><li class="sz">min-inline-size: 92px</li><li class="sz">block-size: var(--level-one-plot-height)</li><li>scroll-snap-align: start</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:204</span><span class="sel">.vgroup__bars</span>
+<ul><li>display: flex · align-items: flex-end · justify-content: center</li><li class="sz">flex: 1 1 auto</li><li class="sz">gap: 10px</li><li class="sz">inline-size: 100%</li><li class="sz">padding-inline: 8px</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:214</span><span class="sel">.vbar</span>
+<ul><li>position: relative</li><li class="sz">flex: 1 1 0</li><li class="sz">min-inline-size: 14px</li><li class="sz">max-inline-size: 52px</li><li class="sz">min-block-size: 2px</li><li class="sz">border-radius: 4px 4px 0 0</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:225 · 229</span><span class="sel">.vbar--plan · .vbar--actual</span>
+<ul><li>background: linear-gradient(180deg, var(--dash-plan|--dash-actual), color-mix(… 55%, transparent))</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:236</span><span class="sel">.vbar em</span>
+<ul><li>position: absolute · inset-block-start: −16px · inset-inline: 0</li><li class="sz">font-size: 10.5px</li><li>font-weight: 700 · text-align: center · white-space: nowrap</li></ul></div>
+
+<div class="rulecard"><span class="file">features/level-one/level-one.css:253</span><span class="sel">.vgroup__name</span>
+<ul><li class="sz">flex: 0 0 auto</li><li class="sz">margin-block-start: 6px</li><li class="sz">max-inline-size: 100%</li><li class="sz">font-size: 12px</li><li>overflow: hidden · white-space: nowrap · text-overflow: ellipsis · text-align: center</li></ul></div>
+
+<h2><span class="n">۷</span>سه چیزی که اگر عوضشان کنید همه‌چیز جابه‌جا می‌شود</h2>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>اگر این را عوض کنید</th><th>این عوض می‌شود</th></tr></thead>
+  <tbody>
+    <tr><td class="m">.vgroup { flex: … / 6 }<br><span class="file">level-one.css:194</span></td><td>تعداد ستون در هر نما. عدد <code>30px</code> هم باید با آن بخواند: <code>گپ × (تعداد − ۱)</code>.</td></tr>
+    <tr><td class="m">.vgroup { min-inline-size: 92px }<br><span class="file">level-one.css:194</span></td><td>کف عرض ستون. زیر این عرض، فرمول کنار می‌رود و اسکرول بیشتر می‌شود.</td></tr>
+    <tr><td class="m">--level-one-plot-height<br><span class="file">finance-home.css:3040</span></td><td>ارتفاع ستون‌ها. روی برد <code>100%</code> است. <b>روی خود سکشن تعریف شده، پس تعریفش روی <code>.finance-board</code> کار نمی‌کند</b> — اعلان خود المان بر ارث مقدم است.</td></tr>
+  </tbody>
+</table>
+</div>
+
+</div>
+
+</html>
