@@ -2920,7 +2920,11 @@ a.breakdown-donut:focus-visible {
   --space-md: var(--board-pad);
   --space-lg: var(--board-pad);
   --space-xl: .7rem;
-  --radius-lg: .55rem;
+  /* .dash-card's corner. Every card and panel on this board reads this one
+     variable, so stating it here rounds all of them the way the host does
+     rather than one card at a time. Buttons and chips carry their own radii and
+     are untouched. */
+  --radius-lg: 16px;
   --radius-md: .45rem;
   --level-one-plot-height: 100%;
 
@@ -3095,14 +3099,12 @@ a.breakdown-donut:focus-visible {
 
 /* --- the report builder ------------------------------------------------- */
 
-.finance-board .report-builder-section__lead,
-.finance-board .report-builder-panel__info {
-  display: none;
-}
+/* The host's own card carries both: a line saying what the builder does, and
+   the «i» beside the heading. Neither is hidden here any more. */
 
 .finance-board .report-builder-section__grid {
   flex: 1 1 auto;
-  gap: var(--board-gap);
+  gap: 6px;
   align-content: center;
   min-block-size: 0;
 }
@@ -3247,6 +3249,13 @@ a.breakdown-donut:focus-visible {
    because what shrinks is the bars' own track and nothing else. */
 .finance-board .managerial-combo-chart__plot {
   min-block-size: 0;
+}
+
+/* The plot's own tinted panel. It reads --radius-md, which the board keeps
+   small, so it was the one box on this page still rounded at 7.2 while every
+   card around it went to 16. */
+.finance-board .managerial-combo-chart {
+  border-radius: 16px;
 }
 
 /* Each figure above a column is an amount and its unit on two lines. */
@@ -3465,8 +3474,6 @@ a.breakdown-donut:focus-visible {
 .finance-board .report-builder-section__cta,
 .finance-board .report-builder-section .button--primary {
   flex: 0 0 auto;
-  padding-block: .35rem;
-  font-size: var(--font-size-sm);
 }
 
 /* --- the chart panels' alternative tables ------------------------------- */

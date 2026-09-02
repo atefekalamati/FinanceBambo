@@ -17,7 +17,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-sm);
+  gap: 8px;
 }
 
 /* The mark and the words are one line, the way the host writes this heading —
@@ -26,11 +26,11 @@
 .report-builder-panel__title {
   display: flex;
   align-items: center;
-  gap: .42rem;
+  gap: 7px;
   margin: 0;
   color: var(--color-text-primary);
-  font-size: 1rem;
-  font-weight: 800;
+  font-size: .9rem;
+  font-weight: 700;
 }
 
 /* The star is the mark the project puts on its own builder. It carries no
@@ -140,9 +140,15 @@
 .report-builder-section__cta,
 .report-builder-panel__build {
   inline-size: 100%;
-  min-block-size: 2.75rem;
-  font-size: .86rem;
-  font-weight: 800;
+  /* .app-btn's own box. The floor `.button` carries is a 44px touch target for a
+     form; this one is a full-width bar whose height is its padding, the way the
+     host's is. */
+  min-block-size: 0;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* --------------------------------------------------------------------------
