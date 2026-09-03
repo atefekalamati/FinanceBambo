@@ -32,6 +32,8 @@ import { createSettingsPage } from "../features/settings/settings-page.js";
 import { createReportsPage } from "../features/reports/reports-page.js";
 import { createPeriodReportPage } from "../features/period-report/period-report-page.js";
 import { createReportBuilderPage } from "../features/report-builder/report-builder-page.js";
+import { createLevelOnePage } from "../features/level-one/level-one-page.js";
+import { createWorkAreasPage } from "../features/work-areas/work-areas-page.js";
 import { createAuditPage } from "../features/audit/audit-page.js";
 import { DISPLAY_CURRENCY_CHANGED_EVENT } from "../shared/preferences/currency-preference.js";
 
@@ -101,7 +103,7 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
   // those inputs produce. Both read the same adapters, so the report shows an
   // operations change as soon as the service has it.
   if (route.key === "finance-home") root.append(createOperationsHomePage({ progressAdapter: adapters.progress }));
-  if (route.key === "report-home") root.append(createFinanceHomePage({ context, reportsAdapter: adapters.reports, progressAdapter: adapters.progress }));
+  if (route.key === "report-home") root.append(createFinanceHomePage({ context, reportsAdapter: adapters.reports, progressAdapter: adapters.progress, pricesAdapter: adapters.prices }));
   if (route.key === "financial-items" || route.key === "report-items") {
     root.append(createFinancialItemsPage({
       context,
@@ -126,6 +128,16 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
       auditAdapter: adapters.audit,
       invoicesAdapter: adapters.invoices,
       progressAdapter: adapters.progress,
+    }));
+  }
+  if (route.key === "work-areas") root.append(createWorkAreasPage());
+  if (route.key === "level-one") {
+    root.append(createLevelOnePage({
+      context,
+      adapters,
+      // The phase being opened travels in the address, so it can be linked to
+      // and reopened rather than only reached by clicking through the list.
+      wbsCode: routeQuery.get("wbs") || null,
     }));
   }
   if (route.key === "report-builder") {

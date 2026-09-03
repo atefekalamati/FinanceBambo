@@ -113,6 +113,30 @@ def host_context(context=None) -> dict:
 #: A real host reads identity from its session and would never accept it from a header.
 DEMO_USER_HEADER = "X-Demo-User"
 
+#: Which MSP field this host reads an activity code from, for BOTH Core adapters.
+#:
+#: `coreint.ACTIVITY_CODE_FIELDS` defaults to `("text1", "outline_number", "wbs")` and its
+#: own docstring calls the first entry a guess: an activity code in Text1 is a planning
+#: convention, not a schema fact. The guess reasons that being wrong "shows up as unmapped
+#: lines, which is visible, rather than as wrong pairings, which would not be" -- and that
+#: holds only while Text1 is empty.
+#:
+#: Measured against a real BAMBO schedule (`Sources/زمان بندی پل.mpp`, 328 tasks), Text1 is
+#: filled on every single task with a Jalali status date such as `1404/5/18`. The default
+#: order therefore resolves each activity code to a DATE: 128 distinct "codes", the worst
+#: shared by 27 assignments. Reading the structure instead gives 266 codes with a worst case
+#: of 7. Pairing an estimate line to a status date is not a near miss -- every task sharing
+#: that date becomes one activity, and a correction meant for one line reaches all of them.
+#:
+#: The library default is deliberately left alone: a host whose planners really do write
+#: codes in Text1 still needs it, and this is a deployment decision, not a library one. The
+#: constructors already take the argument, which is what makes this a wiring change.
+#:
+#: BOTH adapters must be given the same value. `CoreProjectActivityProvider` keys its
+#: activities by the same rule, so rewiring one and not the other would offer estimate lines
+#: activity codes the progress feed never emits -- worse than leaving both alone.
+ACTIVITY_CODE_FIELDS = ("outline_number", "wbs")
+
 
 def core_identity(default_user, organization_id, project_id):
     """The seam where the host says *who* is calling. See CoreAuthContextAssembler.
@@ -162,11 +186,16 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
         # `environment.core_progress_enabled` and `coreint/progress.py`. The seeded feed
         # stands in for the host's progress module, which is where assignment-level
         # quantities actually come from in production.
+        #
+        # Both adapters are given ACTIVITY_CODE_FIELDS from one constant rather than two
+        # literals: the two must agree, and two literals are how they stop agreeing.
         progress_provider = (
-            CoreProgressSnapshotProvider(core) if core_progress_enabled()
+            CoreProgressSnapshotProvider(core, activity_code_fields=ACTIVITY_CODE_FIELDS)
+            if core_progress_enabled()
             else SeededProgressSnapshotProvider(seed.ORGANIZATION_ID, seed.PROJECT_ID,
                                                 seed.PROGRESS_SNAPSHOTS, seed.IMPORTER_ID))
-        activity_provider = CoreProjectActivityProvider(core)
+        activity_provider = CoreProjectActivityProvider(
+            core, activity_code_fields=ACTIVITY_CODE_FIELDS)
 
     storage = LocalFileStorage(storage_root)
 

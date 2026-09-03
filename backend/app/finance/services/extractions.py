@@ -73,6 +73,47 @@ class FinanceExtractionService:
             "awaitingReview", "draft", extractor.adapter_name, fields, scope.actor_user_id, self.clock(), Decimal(0))
         return await self.repo.create_next(scope, draft)
 
+    async def schedule(self, scope, attachment_id, background, hints=None, force_new=False):
+        """Start an extraction without holding the request open.
+
+        A local OCR or transcription takes seconds to minutes. Running it inline would keep
+        an HTTP connection open for the whole of it and, with a synchronous model call, block
+        the worker as well -- so an upload would appear to hang and a second upload would
+        queue behind it.
+
+        The status the caller polls is the attachment's, not a new one. `finance_attachments`
+        already carries `uploaded -> processing -> ready | failed`, and `start` already moves
+        it through them; adding a second status column would give the same fact two homes and
+        eventually two answers. The draft appears when the work finishes, and
+        `GET /extractions?fileId=` is how the client notices.
+
+        Returns the attachment, already moved to `processing`, so the caller gets a truthful
+        status immediately rather than a promise.
+        """
+        attachment = await self.attachments.get(scope, attachment_id)
+        if attachment is None: raise FinanceRecordNotFound("file not found")
+        if scope.actor_user_id != attachment.uploaded_by:
+            raise ExtractionForbidden("only the uploader can process this file")
+        if attachment.processing_status not in {"uploaded", "failed", "ready"}:
+            raise AIExtractionFailed("file is already processing")
+        if not force_new:
+            existing = await self.repo.latest_for_file(scope, attachment_id)
+            if existing is not None:
+                return attachment, existing
+
+        async def run():
+            # Every failure mode is already handled inside `start`, which moves the
+            # attachment to `failed` and leaves it retryable. Nothing is re-raised here:
+            # there is no request left to answer, and an unhandled exception in a background
+            # task would be a log line nobody reads instead of a status the user can see.
+            try:
+                await self.start(scope, attachment_id, hints, force_new=True)
+            except FinanceDomainError:
+                pass
+
+        background(run)
+        return attachment, None
+
     async def retry(self, scope, draft_id, hints=None):
         current = await self.get(scope, draft_id)
         if current.submitted_by != scope.actor_user_id: raise ExtractionForbidden("only the uploader can retry this extraction")

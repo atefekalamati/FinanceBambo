@@ -1,5 +1,7 @@
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
+import { createBreakdownChart } from "../../shared/components/breakdown-chart.js";
+import { buildBulletPresentation } from "../../shared/reports/report-presentation.js";
 import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
@@ -356,7 +358,11 @@ export function createReportsPage({ context, adapter }) {
     const analysis = element("section", "report-analysis-grid");
     analysis.setAttribute("aria-label", "جزئیات اثر تغییرات و انحرافات مالی");
     analysis.append(renderPriceVariances(report.topPriceVariances), renderQuantityVariances(report.topQuantityVariances));
-    fragment.append(toolbar, renderMetrics(report.metrics), renderBreakdown(report.breakdown), analysis, renderReportWarnings(report.warnings, report));
+    // The overview shows a donut summary of this and links here for the whole
+    // comparison, so the chart it summarises has to be on the page it points at.
+    const breakdownView = buildBulletPresentation(report.breakdown);
+    const breakdownChart = breakdownView.rows.length ? createBreakdownChart(breakdownView) : document.createDocumentFragment();
+    fragment.append(toolbar, renderMetrics(report.metrics), breakdownChart, renderBreakdown(report.breakdown), analysis, renderReportWarnings(report.warnings, report));
     if (actionError) fragment.append(element("p", "inline-notice state-card--danger", actionError));
     if (snapshot) fragment.append(renderSnapshot(snapshot, { canExport: capabilitiesFor(context).exportReport, onDownload: downloadCsv }));
     return fragment;
