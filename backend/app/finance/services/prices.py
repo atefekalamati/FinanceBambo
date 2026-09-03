@@ -1,0 +1,39 @@
+from datetime import datetime,timezone,date
+from uuid import uuid4
+from ..domain.prices import PriceVersion,PricePeriodOverlap,latest_price_trend
+
+class FinancePriceService:
+ def __init__(self,repository,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)): self.repo=repository;self.ids=id_factory;self.clock=clock
+ async def create(self,scope,resource_id,command):
+  if scope.actor_user_id is None: raise PermissionError("authenticated actor is required")
+  history=await self.repo.history(scope,resource_id)
+  # Prices are append-only with no effectiveTo, so the only overlap possible is two
+  # versions of the same scope claiming the same effective day.
+  if any(x.scope_kind==command.scope_kind and x.effective_from==command.effective_from for x in history):
+   raise PricePeriodOverlap("a price for this scope already takes effect on that date")
+  version=max((x.version for x in history),default=0)+1
+  value=PriceVersion(self.ids(),scope.organization_id,scope.project_id,resource_id,command.scope_kind,version,command.unit_price_irr,command.effective_from,command.reason,scope.actor_user_id,self.clock())
+  return await self.repo.append(scope,value,self.ids())
+ async def history(self,scope,resource_id=None): return await self.repo.history(scope,resource_id)
+ async def current(self,scope,resource_id,as_of:date): return await self.repo.current(scope,resource_id,as_of)
+ async def trends(self,scope,as_of:date):
+  histories=await self.repo.trend_history(scope,as_of);result=[]
+  for resource_id,versions in histories.items():
+   project=[value for value in versions if value.scope_kind=="project"]
+   organization=[value for value in versions if value.scope_kind=="organization"]
+   project_trend=latest_price_trend(project);organization_trend=latest_price_trend(organization)
+   project_current=None if project_trend is None else project_trend[0]
+   organization_current=None if organization_trend is None else organization_trend[0]
+   selected=project or organization
+   trend=latest_price_trend(selected)
+   if trend is None:
+    result.append({"resource_id":resource_id,"organization_price_irr":None,"organization_effective_from":None,"project_price_irr":None,"project_effective_from":None,"current_price_irr":None,"current_effective_from":None,"previous_price_irr":None,"latest_change_percent":None,"trend_direction":"none","scope_kind":None,"trend_points":[]});continue
+   current,previous,percent,direction,points=trend
+   result.append({"resource_id":resource_id,
+    "organization_price_irr":None if organization_current is None else organization_current.unit_price_irr,
+    "organization_effective_from":None if organization_current is None else organization_current.effective_from,
+    "project_price_irr":None if project_current is None else project_current.unit_price_irr,
+    "project_effective_from":None if project_current is None else project_current.effective_from,
+    "current_price_irr":current.unit_price_irr,"current_effective_from":current.effective_from,
+    "previous_price_irr":None if previous is None else previous.unit_price_irr,"latest_change_percent":percent,"trend_direction":direction,"scope_kind":current.scope_kind,"trend_points":[{"effective_from":value.effective_from,"unit_price_irr":value.unit_price_irr} for value in points]})
+  return result
