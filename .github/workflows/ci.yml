@@ -80,6 +80,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt -r backend/requirements-test.txt
+      - name: Contract is current
+        working-directory: backend
+        # Regenerates the schema in memory and compares. A route or a field that
+        # moved without contracts/openapi.json being refreshed stops the build,
+        # so a contract change cannot reach master unseen.
+        run: python scripts/export_openapi.py --check
+
       - name: Tests
         working-directory: backend
         run: python -m pytest -q
