@@ -836,15 +836,24 @@
    same tracks, so a cell is always under the cell above it, and the label band
    is given a height in lines rather than taking one from its text. A
    breakpoint changes the variables; it never restates the layout. */
-.managerial-combo-chart__plot {
-  --managerial-columns: repeat(4, minmax(0, 1fr));
-  --managerial-gap: clamp(.3rem, 1vw, .75rem);
+/* The two strips the column band is inset by live here rather than on the plot
+   that uses them. The deviation strip has to start and end exactly where the
+   columns do, and it is the chart's sibling, not its descendant — read from the
+   plot it could never see them. This is the only element both are inside.
+
+   Everything else about the plot stays on the plot; only these two came up. */
+.analysis-chart-panel[data-chart="managerial"] {
   --managerial-reference-gutter: clamp(3.9rem, 7vw, 4.9rem);
   /* The strip the amount guide sits in, and how much of it is clear air between
      the numbers and the nearest column. The numbers keep the width they had;
      the gap is what grew, so the guide reads as its own thing beside the chart
      rather than as a label attached to the first bar. */
   --managerial-scale-gutter: clamp(3.55rem, 5.9vw, 4.5rem);
+}
+
+.managerial-combo-chart__plot {
+  --managerial-columns: repeat(4, minmax(0, 1fr));
+  --managerial-gap: clamp(.3rem, 1vw, .75rem);
   --managerial-scale-gap: .8rem;
   --managerial-label-lines: 3;
   --managerial-label-size: .76rem;
@@ -1821,12 +1830,16 @@ a.finance-variance-card__link:hover {
     white-space: nowrap;
   }
 
-  .managerial-combo-chart__plot {
-    --managerial-gap: .2rem;
-    /* The reference chip is dropped at this width and gives its strip back to
-       the columns. The value guide keeps its own, narrowed to the numbers. */
+  /* The reference chip is dropped at this width and gives its strip back to
+     the columns. The value guide keeps its own, narrowed to the numbers.
+     On the panel, following the base declaration of the same two. */
+  .analysis-chart-panel[data-chart="managerial"] {
     --managerial-reference-gutter: 0rem;
     --managerial-scale-gutter: 2.9rem;
+  }
+
+  .managerial-combo-chart__plot {
+    --managerial-gap: .2rem;
     --managerial-scale-gap: .5rem;
     --managerial-label-lines: 3;
     --managerial-label-size: .58rem;
@@ -4071,9 +4084,81 @@ body[data-finance-runtime] .app-workspace {
    untouched — that one has twelve columns and wants the whole width.
    ------------------------------------------------------------------------ */
 
+.finance-board .analysis-chart-panel[data-chart="managerial"] {
+  --managerial-chart-inline: 70%;
+  /* What sits between the chart's edge and its column band on each side, other
+     than the two gutters: the chart's own padding-inline (.45rem) and the
+     plot's (.25rem). Named here because the deviation has to clear the same
+     distance and neither box is its own. */
+  --managerial-chart-inset: .7rem;
+}
+
 .finance-board .analysis-chart-panel[data-chart="managerial"] .managerial-combo-chart {
-  inline-size: 70%;
+  inline-size: var(--managerial-chart-inline);
   margin-inline: auto;
+}
+
+/* --------------------------------------------------------------------------
+   1025 to 1280
+   --------------------------------------------------------------------------
+   Type first. The figure above each column measured 12.48px here, which is
+   --font-size-md exactly, and the label 9.28px, which is .58rem and on no rung
+   at all. Both are put on the board's own ladder a step below where they sat:
+   md -> sm for the figure, and 2xs for the label, the rung under the pair it
+   was sitting between. The figure's size was a container-query clamp before
+   this; a token is what was asked for, and at these widths the clamp was
+   pinned to its ceiling anyway.
+
+   Then the chart, which had 70% of a card that is narrower here than it is on
+   a monitor. 85% gives the four columns 331.8px of band at 1280 instead of
+   242.8 without letting them sprawl.
+
+   Last the deviation strip, which ran the full width of the panel while the
+   thing it describes ran down the middle of it. It now starts and ends exactly
+   where the column band does. Both margins are built from the same three
+   numbers the band is inset by, so the two cannot drift apart:
+
+     (100% - chart width) / 2      the chart's own auto margin
+     + --managerial-chart-inset    the chart's padding, and the plot's
+     + the gutter on that side     the reference chip's, or the guide's
+
+   The strip is a stretched item in a column flex, so setting both margins is
+   what sets its width.
+
+   This is the one query in the module with a floor as well as a ceiling. Every
+   other range is the base narrowed by a max-width, but the ranges under this
+   one have not been designed yet, and without a floor all three of these
+   reached them — 1024 and 800 were reading the smaller type before the floor
+   went on. A declaration inside a query that does not match is simply not
+   there, so the floor is what hands those widths back, and nothing here has to
+   be restated below to undo it.
+   ------------------------------------------------------------------------ */
+
+@media (min-width: 64rem) and (max-width: 80rem) {
+  .finance-board .analysis-chart-panel[data-chart="managerial"] {
+    --managerial-chart-inline: 85%;
+  }
+
+  .finance-board .managerial-combo-chart__plot {
+    --managerial-label-size: var(--font-size-2xs);
+  }
+
+  .finance-board .managerial-combo-chart__value {
+    font-size: var(--font-size-sm);
+  }
+
+  .finance-board
+    .analysis-chart-panel[data-chart="managerial"]
+    > .managerial-deviation {
+    margin-inline-start: calc(
+      (100% - var(--managerial-chart-inline)) / 2 +
+        var(--managerial-chart-inset) + var(--managerial-reference-gutter)
+    );
+    margin-inline-end: calc(
+      (100% - var(--managerial-chart-inline)) / 2 +
+        var(--managerial-chart-inset) + var(--managerial-scale-gutter)
+    );
+  }
 }
 
 /* Under 425 the card is barely wider than the four columns, so there is no
@@ -4113,9 +4198,10 @@ body[data-finance-runtime] .app-workspace {
   }
 
   /* Under 480 the card is barely wider than its four columns, so it takes the
-     whole of it back. */
-  .finance-board .analysis-chart-panel[data-chart="managerial"] .managerial-combo-chart {
-    inline-size: 100%;
+     whole of it back. Through the variable the chart's width is read from, so
+     anything else placed against that width follows it here too. */
+  .finance-board .analysis-chart-panel[data-chart="managerial"] {
+    --managerial-chart-inline: 100%;
   }
 }
 
