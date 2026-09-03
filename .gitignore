@@ -2,11 +2,19 @@
 .env
 .env.*
 !.env.example
+.venv/
+.venv*/
 
-# Dependencies and generated output
+# Frontend dependencies and generated output
 node_modules/
 dist/
 coverage/
+
+# Python and backend generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pg-test-temp/
 
 # Logs and temporary files
 *.log
@@ -19,7 +27,7 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Python cache from contract tooling
-__pycache__/
-*.py[cod]
-.pytest_cache/
+# Release-validation artefacts: database dumps taken during rehearsal.
+# A backup is the whole finance dataset in one file. It never belongs in version control,
+# and the rehearsal that produces it is meant to be repeatable, not archived.
+backend/.release-validation/
