@@ -277,6 +277,7 @@
 
 /* Each tier gives up the fact that says least, in order. */
 @media (max-width: 80rem) {
+
   .finance-snapshot-provenance__fact--imported {
     display: none;
   }
@@ -2938,7 +2939,15 @@ a.breakdown-donut:focus-visible {
   /* The basis bar, then the three content rows. The heading above them is
      visually hidden and out of flow, so it takes no track — leaving one here
      for it would park an empty fifth of the board under the last row. */
-  grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  /* Desktop, 1280 and up. Rows one and two are one part each; row three takes
+     1.15 because it holds the only chart whose readability is a question of
+     proportion rather than size — the cumulative curve was drawn 770 by 170,
+     4.5:1, a line squashed flat rather than a trend anyone can read. At 1920
+     that ratio gives it 770 by 284, which is 2.7:1.
+
+     Every narrower range keeps the previous weights until its own layout is
+     specified; the override is in the 80rem block below. */
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -3554,6 +3563,42 @@ a.breakdown-donut:focus-visible {
   min-block-size: 0;
 }
 
+/* --- the legend moves up beside the title ------------------------------
+   The card's height is the curve's height minus its chrome, and on a 1366 by
+   768 screen the chrome was 76px of 247 — a third of the card spent on a
+   title, a gap, and a two-word legend, leaving the curve 170px to be 653 wide
+   in. Row weight alone could not fix that without taking the height off the
+   two rows above.
+
+   The legend is a row of its own only because it is the panel's first child.
+   Lifted out of flow it sits in the header's empty half, where the managerial
+   card already keeps its own controls, and the 30px it was costing goes to the
+   plot: 170 -> 200 at 1366x768, 3.8:1 down to 3.3:1.
+
+   Scoped to the board because the panel is shared — the standalone curve page
+   builds the same panel and keeps its stacked legend. Absolute is safe here
+   because the header holds one short title and the legend two words; below
+   48rem the two are given their own lines again. */
+.finance-board .finance-curve-card {
+  position: relative;
+}
+
+.finance-board .finance-curve-card .cost-curve-legend {
+  position: absolute;
+  inset-block-start: var(--board-pad);
+  /* The title holds the inline start; the legend takes the end, which is the
+     side it already sat on when it had a row of its own. */
+  inset-inline-end: var(--board-pad);
+  margin-block-end: 0;
+}
+
+@media (max-width: 48rem) {
+  .finance-board .finance-curve-card .cost-curve-legend {
+    position: static;
+    margin-block-end: .65rem;
+  }
+}
+
 /* Four column labels in a 449px chart need a third line. Where the board has
    released its rows there is height to give them one, so the band takes it
    rather than cutting the label. */
@@ -4064,5 +4109,24 @@ body[data-finance-runtime] .app-workspace {
      whole of it back. */
   .finance-board .analysis-chart-panel[data-chart="managerial"] .managerial-combo-chart {
     inline-size: 100%;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Below the desktop range — held, not yet designed
+   --------------------------------------------------------------------------
+   The row weights above are the desktop answer. Every narrower range keeps what
+   the board had before that, so nothing under 1280 moved while the desktop
+   layout was being set; each will be replaced as its own layout is decided.
+
+   At the foot of the file on purpose. Both other 80rem blocks sit above
+   `.finance-board`'s own rule, and at equal weight the later declaration wins —
+   put here, this one is read after the base it is meant to override. Written
+   higher up it silently did nothing.
+   ------------------------------------------------------------------------ */
+
+@media (max-width: 80rem) {
+  .finance-board {
+    grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
   }
 }
