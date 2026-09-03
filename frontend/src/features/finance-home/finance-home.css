@@ -276,7 +276,7 @@
 }
 
 /* Each tier gives up the fact that says least, in order. */
-@media (max-width: 70rem) {
+@media (max-width: 80rem) {
   .finance-snapshot-provenance__fact--imported {
     display: none;
   }
@@ -1096,10 +1096,7 @@
   filter: drop-shadow(0 0 .3rem color-mix(in srgb, var(--dash-plan) 72%, transparent));
 }
 
-@media (min-width: 64.01rem) {
-  .finance-insights {
-    grid-template-columns: minmax(0, 1.64fr) minmax(18rem, .76fr);
-  }
+@media (min-width: 64rem) {
 
   .managerial-combo-chart__plot {
     min-block-size: 17rem;
@@ -1585,7 +1582,7 @@ a.finance-variance-card__link:hover {
   text-align: start;
 }
 
-@media (max-width: 70rem) {
+@media (max-width: 80rem) {
   .finance-managerial-comparison .finance-analysis-card__heading h2 {
     font-size: .88rem;
     line-height: 1.4;
@@ -1777,20 +1774,13 @@ a.finance-variance-card__link:hover {
   }
 }
 
-@media (min-width: 48.01rem) and (max-width: 64rem) {
+@media (max-width: 64rem) {
   .finance-overview-layout {
     grid-template-columns: minmax(0, 7fr) minmax(13rem, 3fr);
   }
 
   .managerial-combo-chart {
     overflow: visible;
-  }
-}
-
-@media (min-width: 48.01rem) and (max-width: 70rem) {
-  .finance-risk-stack .finance-analysis-card,
-  .finance-risk-stack .finance-warnings {
-    overflow-y: auto;
   }
 }
 
@@ -1908,7 +1898,7 @@ a.finance-variance-card__link:hover {
   }
 }
 
-@media (max-width: 26.5625rem) {
+@media (max-width: 30rem) {
   .finance-report-meta {
     font-size: .56rem;
     font-weight: 400;
@@ -4029,11 +4019,9 @@ body[data-finance-runtime] .app-workspace {
    untouched — that one has twelve columns and wants the whole width.
    ------------------------------------------------------------------------ */
 
-@media (min-width: 425px) {
-  .finance-board .analysis-chart-panel[data-chart="managerial"] .managerial-combo-chart {
-    inline-size: 70%;
-    margin-inline: auto;
-  }
+.finance-board .analysis-chart-panel[data-chart="managerial"] .managerial-combo-chart {
+  inline-size: 70%;
+  margin-inline: auto;
 }
 
 /* Under 425 the card is barely wider than the four columns, so there is no
@@ -4043,7 +4031,7 @@ body[data-finance-runtime] .app-workspace {
    The label takes the value's own size through a variable both read, rather
    than the same literal written twice: «set with the number on the column»
    should stay true when either is next changed. */
-@media (max-width: 424.98px) {
+@media (max-width: 30rem) {
   /* On __plot, not on the chart: that is where every other rule declares these,
      including one on .finance-board with no query behind it, and a variable is
      read from the nearest ancestor that sets it — a definition further out is
@@ -4070,5 +4058,11 @@ body[data-finance-runtime] .app-workspace {
 
   .managerial-combo-chart__column {
     inline-size: clamp(1.1rem, 3.4vw, 1.9rem);
+  }
+
+  /* Under 480 the card is barely wider than its four columns, so it takes the
+     whole of it back. */
+  .finance-board .analysis-chart-panel[data-chart="managerial"] .managerial-combo-chart {
+    inline-size: 100%;
   }
 }
