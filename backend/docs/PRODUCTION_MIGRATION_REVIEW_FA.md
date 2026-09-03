@@ -16,13 +16,36 @@
 3. `0003_invoice_linked_documents`
 4. `0004_report_snapshot_payload`
 5. `0005_progress_snapshot_source_type`
-6. `0006_progress_snapshot_host_reference` (head)
+6. `0006_progress_snapshot_host_reference`
+7. `0007_msp_resources_and_assignments`
+8. `0008_price_intelligence` (head)
 
 ```powershell
 alembic current      # این دیتابیس کجاست
 alembic upgrade head
-alembic current      # باید 0005 باشد
+alembic current      # باید 0008 باشد
 ```
+
+## 0008 — Price Intelligence Provider/Observation Layer
+
+این Revision فقط ساختار افزایشی هسته قیمت آنلاین را ایجاد می‌کند. داده خام Provider ابتدا
+در `price_observations` ثبت می‌شود و هیچ مسیر مستقیمی برای بازنویسی `price_versions` ندارد.
+Observationها immutable هستند و تنها نتیجه Validation/Resolution تأییدشده می‌تواند از مسیر
+سرویس موجود قیمت، یک PriceVersion جدید و append-only بسازد.
+
+جداول افزوده‌شده:
+
+- `price_providers`
+- `provider_items`
+- `provider_resource_mappings`
+- `price_collection_runs`
+- `price_observations`
+- `price_collection_schedules`
+- `price_resolution_policies`
+
+تمام داده‌های عملیاتی Scope دوگانه سازمان/پروژه، FKهای `RESTRICT`، Decimal دقیق، وضعیت‌های
+Text + CHECK و Indexهای Scope دارند. Up migration هیچ جدول یا رکورد قبلی را تغییر نمی‌دهد.
+Downgrade جداول همین Revision را حذف می‌کند و بنابراین فقط با Backup و مجوز صریح قابل اجراست.
 
 هر Revision داخل transaction خودش اجرا می‌شود (`env.py` آن را باز می‌کند) و اجرا روی اولین
 خطا متوقف می‌شود. بدنه‌ها از نظر ساختاری rerunnable طراحی شده‌اند: `IF NOT EXISTS` روی جدول‌ها

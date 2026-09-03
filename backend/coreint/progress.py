@@ -7,15 +7,21 @@ back empty:
   * `msp_snapshots` and `msp_file_versions` give a real snapshot identity, its lineage and
     the file it was parsed from. All of that maps cleanly.
   * `msp_tasks` gives task names, WBS, dates and **percentages**.
-  * Nothing in Core gives a resource, a unit, or a quantity. There is no assignment table,
-    and `msp_tasks` has no resource columns at all.
+  * `msp_resources` and `msp_resource_assignments`, WHEN CORE CARRIES THEM, give the
+    resource, the unit and the physical quantity per task. Those two tables are owned by
+    Core/Planning and delivered by `docs/sql/msp_resource_assignment_apply.sql`.
 
-So this adapter reports task-level rows with `assignmentExternalId` unset, and every
-quantity field null. Finance pairs those rows to estimate lines by activity code, finds no
-quantity, and reports the line as `unavailable` with a `PROGRESS_MISSING` warning.
+So this adapter has two modes, decided per request by asking the catalogue which tables
+exist. With both assignment tables present it reports real assignment rows carrying
+`assignmentExternalId`, resource, unit and quantity. With neither present it falls back to
+task-level rows with `assignmentExternalId` unset and every quantity field null -- Finance
+then pairs by activity code, finds no quantity, and reports the line as `unavailable` with a
+`PROGRESS_MISSING` warning. With exactly one present it raises `CoreSchemaMismatch`, because
+a half-migrated Core that answered anyway would be indistinguishable from one nobody had
+migrated at all.
 
-That is the correct outcome, not a gap to paper over. The alternatives were considered and
-each is worse:
+The fallback is the correct outcome for a Core without the tables, not a gap to paper over.
+The alternatives were considered and each is worse:
 
   * Inventing an assignment id would fabricate a link Core does not assert.
   * Multiplying a task percentage by the estimate line's own quantity would report the
@@ -38,6 +44,7 @@ worked around locally.
 """
 
 import re
+from decimal import Decimal
 from datetime import date
 
 from psycopg.rows import dict_row
@@ -57,7 +64,12 @@ STATUS_READY = "ready"
 STATUS_SUPERSEDED = "superseded"
 
 #: Core parses MPP files, and `msp_file_versions.file_type` says so.
-SOURCE_TYPE = "mpp"
+#: The value `progress_snapshot_refs.source_type` accepts. Revision 0005 constrains that
+#: column to microsoft_project/primavera/manual/other, and Core snapshots come from MPP
+#: files -- `msp_file_versions.file_type` is CHECKed to 'MPP'. The previous value here,
+#: "mpp", belonged to the schedule-adapter vocabulary in domain/schedule.py, and the
+#: database refused it the moment a reference was pinned from a Core snapshot.
+SOURCE_TYPE = "microsoft_project"
 
 #: A Jalali date as Core stores it: `1405-05-31` or `1405/05/31`.
 JALALI_DATE = re.compile(r"^\s*(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s*$")
@@ -101,6 +113,51 @@ TASKS = """
     WHERE snapshot_id = %(snapshot_id)s
     ORDER BY outline_number NULLS LAST, id
 """
+
+
+#: Assignment-level rows, when Core carries them. Joined to the task so one query answers
+#: the whole feed, and LEFT-joined to the resource because MSP leaves some assignments
+#: unlinked -- 12 of 727 in the reference file -- and dropping those would lose work that
+#: was really planned.
+ASSIGNMENTS = """
+    SELECT assignment.assignment_uid, assignment.task_uid, assignment.resource_uid,
+           assignment.units, assignment.planned_work, assignment.actual_work,
+           assignment.remaining_work, assignment.planned_quantity, assignment.actual_quantity,
+           assignment.remaining_quantity, assignment.quantity_unit,
+           assignment.assignment_work_complete_percent,
+           resource.resource_name, resource.native_type, resource.bambo_resource_type,
+           resource.resource_quantity_unit,
+           task.id AS task_row_id, task.uid, task.guid, task.task_id, task.name, task.wbs,
+           task.outline_number, task.outline_level, task.start, task.finish,
+           task.percent_complete, task.percent_work_complete,
+           task.physical_percent_complete, task.text1
+      FROM msp_resource_assignments AS assignment
+      JOIN msp_tasks AS task
+        ON task.snapshot_id = assignment.snapshot_id AND task.uid = assignment.task_uid
+      LEFT JOIN msp_resources AS resource
+        ON resource.snapshot_id = assignment.snapshot_id
+       AND resource.resource_uid = assignment.resource_uid
+     WHERE assignment.snapshot_id = %(snapshot_id)s
+     ORDER BY task.outline_number NULLS LAST, assignment.assignment_uid
+"""
+
+#: What has to exist before the assignment feed is used at all.
+ASSIGNMENT_TABLES = ("msp_resources", "msp_resource_assignments")
+
+CAPABILITY = """
+    SELECT count(*) AS present FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = ANY(%(names)s)
+"""
+
+
+class CoreSchemaMismatch(RuntimeError):
+    """Half of the assignment schema is present.
+
+    Deliberately fatal rather than a fallback. With one table missing the adapter could
+    still answer -- from task percentages, quietly, with no quantity -- and a half-migrated
+    Core would look exactly like a Core that had never been migrated. The difference matters
+    to whoever is running the migration, so it is raised instead of absorbed.
+    """
 
 
 def _bigint(value):
@@ -167,6 +224,39 @@ def _percent(value):
     return None if value is None else format(value, "f")
 
 
+def task_progress(task):
+    """How far along a task is: physical progress when stated, otherwise duration progress.
+
+    `physical_percent_complete` is the planner's statement about work actually in place, and
+    it is preferred whenever it says something. `percent_complete` is duration-based -- it
+    says only that time has passed -- and stands in when physical progress says nothing.
+
+    `percent_work_complete` is deliberately never used. It measures effort, and effort is not
+    a proportion of a physical quantity; substituting it is the conflation the rest of this
+    integration exists to avoid.
+
+    WHY A PHYSICAL ZERO IS TREATED AS SILENCE
+    Microsoft Project writes 0.0000 into this column for every task whether or not anyone
+    entered physical progress, and offers no way to tell the two apart. Central snapshot 40
+    is the case in point: all 1248 tasks carry physical 0.0000 while `percent_complete`
+    carries real values up to 100. Preferring the zero reported every one of those tasks as
+    untouched -- a confident, wrong statement on 1248 rows, and one that showed up as a
+    report with no progress at all rather than as an error anybody would notice.
+
+    So a physical zero yields to a non-zero duration figure. What is lost is a genuine
+    measured "nothing has been built yet" on a task whose schedule has advanced; what is
+    gained is not silently reporting a whole project as unstarted. When both are zero the
+    answer is zero either way, which is the common case and is unaffected.
+    """
+    physical = task["physical_percent_complete"]
+    duration = task["percent_complete"]
+    if physical is None:
+        return duration
+    if physical == 0 and duration is not None and duration != 0:
+        return duration
+    return physical
+
+
 def task_row(task, activity_code_fields=ACTIVITY_CODE_FIELDS):
     """One task as a progress-feed row.
 
@@ -174,13 +264,7 @@ def task_row(task, activity_code_fields=ACTIVITY_CODE_FIELDS):
     module docstring: this is the adapter reporting what it has rather than deriving what
     it does not.
     """
-    # `physical_percent_complete` first: it is the planner's statement about work actually
-    # in place. `percent_complete` is duration-based and says only that time has passed.
-    # `percent_work_complete` is deliberately not used -- it measures effort, and effort is
-    # not a proportion of a physical quantity.
-    progress = task["physical_percent_complete"]
-    if progress is None:
-        progress = task["percent_complete"]
+    progress = task_progress(task)
     return {
         "assignmentExternalId": None,
         "resourceExternalId": None,
@@ -204,6 +288,51 @@ def task_row(task, activity_code_fields=ACTIVITY_CODE_FIELDS):
             "taskStart": task["start"],
             "taskFinish": task["finish"],
         },
+        "manualOverride": None,
+    }
+
+
+def _decimal(value):
+    """A quantity as a string Finance can parse exactly, or None.
+
+    None stays None. A quantity nobody reported is not a quantity of zero, and this is the
+    last place that distinction could be lost before it reaches the report.
+    """
+    return None if value is None else format(Decimal(value), "f")
+
+
+def assignment_row(row, activity_code_fields=ACTIVITY_CODE_FIELDS):
+    """One assignment-level feed row, built from a joined assignment/resource/task row.
+
+    Quantity and work are kept apart on purpose. `plannedQuantity` is physical -- kilograms
+    of rebar, cubic metres of concrete -- and comes from MPXJ's Material field; `plannedWork`
+    is hours. Finance's progress precedence prefers the first and treats the second as a
+    weaker fallback, which only works if the two never arrive in the same field.
+
+    `unit` comes from the assignment's own `quantity_unit`, falling back to the resource's.
+    The assignment is preferred because it is the row the quantity belongs to; the fallback
+    exists because a planner convention may record the unit once, on the resource.
+    """
+    return {
+        "assignmentExternalId": (None if row["assignment_uid"] is None
+                                 else str(row["assignment_uid"])),
+        # Null on an assignment MSP left unlinked. Reported as unlinked rather than dropped,
+        # so a line that names it fails to pair visibly instead of vanishing.
+        "resourceExternalId": (None if row["resource_uid"] is None
+                               else str(row["resource_uid"])),
+        "resourceName": row["resource_name"],
+        # Core's BAMBO classification, which is null for a WORK resource MSP gives no basis
+        # to call labour or equipment. Finance shows those rather than guessing.
+        "resourceType": row["bambo_resource_type"],
+        "unit": row["quantity_unit"] or row["resource_quantity_unit"],
+        "plannedQuantity": _decimal(row["planned_quantity"]),
+        "actualQuantity": _decimal(row["actual_quantity"]),
+        "remainingQuantity": _decimal(row["remaining_quantity"]),
+        "plannedWork": _decimal(row["planned_work"]),
+        "actualWork": _decimal(row["actual_work"]),
+        "remainingWork": _decimal(row["remaining_work"]),
+        "assignmentWorkCompletePercent": _percent(row["assignment_work_complete_percent"]),
+        "task": task_row(row, activity_code_fields)["task"],
         "manualOverride": None,
     }
 
@@ -287,8 +416,37 @@ class CoreProgressSnapshotProvider:
              "organization_id": str(organization_id)})
         return await self._feed(rows[0]) if rows else None
 
+    async def _assignments_available(self):
+        """Whether Core carries the assignment tables -- and a refusal if it half does.
+
+        Asked once per feed and not cached: a migration can land between two requests, and a
+        provider that remembered "absent" would keep answering from task percentages long
+        after the real data arrived.
+        """
+        rows = await self._rows(CAPABILITY, {"names": list(ASSIGNMENT_TABLES)})
+        present = rows[0]["present"] if rows else 0
+        if present == len(ASSIGNMENT_TABLES):
+            return True
+        if present == 0:
+            return False
+        raise CoreSchemaMismatch(
+            f"{present} of {len(ASSIGNMENT_TABLES)} assignment tables exist "
+            f"({', '.join(ASSIGNMENT_TABLES)}). Core is half migrated.")
+
     async def _feed(self, row):
+        if await self._assignments_available():
+            rows = await self._rows(ASSIGNMENTS, {"snapshot_id": row["id"]})
+            # An empty assignment table for this snapshot is not the same as no schema. It
+            # means this snapshot was imported before assignments were captured, and the
+            # task-level feed is the honest answer for it.
+            if rows:
+                return self._envelope(
+                    row, [assignment_row(entry, self._activity_code_fields) for entry in rows])
         tasks = await self._rows(TASKS, {"snapshot_id": row["id"]})
+        return self._envelope(row, [task_row(task, self._activity_code_fields)
+                                    for task in tasks])
+
+    def _envelope(self, row, assignments):
         return {
             "snapshot": {
                 "organizationId": str(row["organization_id"]),
@@ -309,5 +467,5 @@ class CoreProgressSnapshotProvider:
                 "importedBy": str(row["created_by"]) if row["created_by"] else None,
                 "importedAt": row["created_at"].isoformat(),
             },
-            "assignments": [task_row(task, self._activity_code_fields) for task in tasks],
+            "assignments": assignments,
         }

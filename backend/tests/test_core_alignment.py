@@ -12,6 +12,7 @@ history. Neither is acceptable, so validation lives at the adapter instead.
 """
 
 import importlib.util
+import re
 import sys
 import unittest
 from datetime import date, datetime, timezone
@@ -354,11 +355,44 @@ class NoCoreForeignKeyTests(unittest.TestCase):
             yield path.name, module.UPGRADE_SQL + "\n" + module.DOWNGRADE_SQL
 
     def test_no_revision_references_a_core_table(self):
+        """A Finance revision may not point a foreign key at a Core table.
+
+        Matched on the SQL that creates a reference, not on the table name appearing
+        anywhere: `0007` explains at length why it does *not* reference msp_snapshots or
+        msp_tasks, and a substring test failed it for saying so.
+        """
         for name, sql in self.revision_sql():
             for table in self.CORE_TABLES:
                 with self.subTest(revision=name, table=table):
-                    self.assertNotIn(table, sql,
-                                     "a Finance revision must not touch a Core-owned table")
+                    self.assertNotRegex(
+                        sql, r"REFERENCES\s+%s\b" % table,
+                        "a Finance revision must not key into a Core-owned table")
+                    self.assertNotRegex(
+                        sql, r"ALTER\s+TABLE\s+(?:ONLY\s+)?%s\b" % table,
+                        "a Finance revision must not alter a Core-owned table")
+
+    def test_not_one_revision_keys_into_core(self):
+        """Zero Core foreign keys across the whole chain.
+
+        Not a style preference. The production migration role has no REFERENCES privilege on
+        Core tables and no administrator account exists to grant one, so a revision that
+        declared such a key would fail to apply rather than fail review. The three
+        relationships that would have been keys are logical, and
+        docs/sql/msp_resource_assignment_data_validation.sql counts their orphans.
+        """
+        found = [(name, table)
+                 for name, sql in self.revision_sql()
+                 for table in self.CORE_TABLES
+                 if re.search(r"REFERENCES\s+%s\b" % table, sql)]
+        self.assertEqual([], found)
+
+    def test_no_revision_alters_an_existing_core_table(self):
+        """The ownership line that did not move: Core tables are never modified here."""
+        for name, sql in self.revision_sql():
+            for table in self.CORE_TABLES:
+                with self.subTest(revision=name, table=table):
+                    self.assertNotRegex(sql, r"ALTER\s+TABLE\s+(?:ONLY\s+)?%s\b" % table)
+                    self.assertNotRegex(sql, r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?%s\b" % table)
 
     def test_no_revision_creates_a_core_owned_table(self):
         for name, sql in self.revision_sql():

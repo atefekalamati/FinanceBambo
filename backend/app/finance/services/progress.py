@@ -34,7 +34,7 @@ class ProgressService:
   # last one, because every provider call now goes through a reference that knows both.
   lookup=ref.get("host_snapshot_id") or snapshot_id
   feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(lookup))
-  snapshot_metadata(feed,s.organization_id,s.project_id,lookup)
+  header=snapshot_metadata(feed,s.organization_id,s.project_id,lookup)
   # Overrides stay keyed by the Finance UUID: they are Finance's records about the host's
   # snapshot, not the host's records, so they are named the way Finance names things.
   overrides=await self.repo.latest_overrides(s,ref["id"])
@@ -61,7 +61,36 @@ class ProgressService:
     row["quality"]="0"
     row["warnings"]=[{"code":"PROGRESS_MISSING","message":"No valid progress quantity is available for this assignment."}]
    assignments.append(row)
-  return {**feed,"assignments":assignments}
+  # The header still comes from the host's envelope -- that is the design, and the schema
+  # says so where it makes `version` optional "because the feed's header comes from the host
+  # provider, which cannot know it". Two things in that envelope are not Finance's contract,
+  # and returning `{**feed}` sent both straight through:
+  #
+  #   * `progressSnapshotId` is the identifier the provider was ASKED with, so a Core
+  #     adapter echoes back Core's bigint -- `"38"`. The response model means Finance's UUID.
+  #     The two identities are deliberately separate, and `hostSnapshotId` below is where
+  #     the Core one belongs.
+  #   * `snapshotType` is Core's vocabulary (TARGET/ACTUAL/RESCHEDULED). Finance's contract
+  #     excludes it on purpose: a *type* is not the *freshness* question `status` answers,
+  #     and `ApiModel` forbids extras, so it was a 500.
+  #
+  # Both surfaced the moment a reference existed for this project to open a feed with.
+  # Named field by field rather than filtered, so a key the provider adds later cannot
+  # silently become part of Finance's response.
+  return {"snapshot":{"organizationId":header.get("organizationId"),
+                      "projectId":header.get("projectId"),
+                      # Finance's own identifier -- the one the caller asked with.
+                      "progressSnapshotId":snapshot_id,
+                      "sourceFileVersionId":header.get("sourceFileVersionId"),
+                      "sourceFileNameSafe":header.get("sourceFileNameSafe"),
+                      "importedAt":header.get("importedAt"),
+                      "importedBy":header.get("importedBy"),
+                      "status":header.get("status"),
+                      "reportingDate":header.get("reportingDate"),
+                      "hostSnapshotId":header.get("hostSnapshotId"),
+                      "hostFileVersionId":header.get("hostFileVersionId"),
+                      "sourceType":header.get("sourceType")},
+          "assignments":assignments}
  async def current_reference(self,s,as_of):
   """The Finance reference for the host's current snapshot, created only if absent.
 

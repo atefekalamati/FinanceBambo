@@ -1,16 +1,47 @@
 import { ApiError } from "../../core/api/api-error.js";
 import { aggregateConfirmedInvoicesByMonth } from "../../shared/reports/monthly-trend.js";
 import { buildSeedInvoices } from "./invoices-adapter.js";
+import { buildWbsNodes, unattributedActualIrr } from "./wbs-fixture.js";
 
 /**
- * Synthetic monthly estimate baseline.
+ * The per-period plan, for the reference dataset only.
  *
- * The Backend has no monthly estimate anywhere in its contract — LiveMetrics
- * and TypeBreakdown carry no time dimension and EstimateLine has no dates — so
- * this exists only to make the overview trend demonstrable while that contract
- * is designed. The API adapter deliberately reports the series as unavailable
- * rather than deriving a lookalike, so nothing here can reach a real project.
+ * The real figures come from the host platform's periodic files: each period
+ * carries its own estimated quantities, this module prices them, and the
+ * cumulative curve is the running sum. That pipe does not exist yet, so the
+ * reference dataset models its shape — a construction ramp, slow at the start,
+ * heaviest through the structural months, tapering at handover.
+ *
+ * The API adapter still reports the series as unavailable rather than deriving
+ * a lookalike, so none of this can reach a real project. It exists so the
+ * cumulative chart can be judged before the pipe is built, and it is labelled
+ * `demo_period_plan` at the boundary rather than dressed up as a real source.
  */
+const PLAN_SHAPE = Object.freeze([2, 3, 5, 8, 11, 13, 14, 13, 11, 8, 7, 5]);
+
+function planWeights(count) {
+  if (count <= 0) return [];
+  return Array.from({ length: count }, (unused, index) => PLAN_SHAPE[Math.floor((index * PLAN_SHAPE.length) / count)]);
+}
+
+/**
+ * Splits a total across periods without losing a rial: every period takes its
+ * whole share and the last one absorbs the remainder, so the periods always sum
+ * to exactly the figure they were divided from.
+ */
+function distributePlan(count, totalIrr) {
+  const total = BigInt(totalIrr);
+  const weights = planWeights(count);
+  const sum = BigInt(weights.reduce((result, weight) => result + weight, 0));
+  if (sum === 0n) return weights.map(() => "0");
+  let allocated = 0n;
+  return weights.map((weight, index) => {
+    if (index === weights.length - 1) return String(total - allocated);
+    const share = (total * BigInt(weight)) / sum;
+    allocated += share;
+    return String(share);
+  });
+}
 function wait(duration = 320) {
   return new Promise((resolve) => setTimeout(resolve, duration));
 }
@@ -76,63 +107,41 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     const report = {
       reportingDate,
       progressSnapshotId,
-      // The figures the API produces from the seeded database, in rial, copied rather than
-      // derived: the mock exists so the interface can be developed without a backend, and a
-      // mock that did its own arithmetic would be a second implementation of the report to
-      // keep in step. Backend and database remain the source of financial truth.
-      //
-      // One row below departs from them on purpose -- see the equipment breakdown.
       metrics: {
-        initialEstimateIrr: "680000000000",
-        actualCostIrr: "229815320000",
-        currentExecutedValueIrr: "219604880000",
-        remainingPhysicalCostIrr: "509202120000",
-        moneyRequiredToContinueIrr: "485116720000",
-        forecastFinalCostIrr: "714932040000",
-        actualCostPerSquareMeterIrr: "54074190",
-        forecastPerSquareMeterIrr: "168219300",
+        initialEstimateIrr: "18650000000",
+        actualCostIrr: "6240000000",
+        currentExecutedValueIrr: "7150000000",
+        remainingPhysicalCostIrr: "12840000000",
+        moneyRequiredToContinueIrr: "11610000000",
+        forecastFinalCostIrr: "17850000000",
+        actualCostPerSquareMeterIrr: "1468235",
+        forecastPerSquareMeterIrr: "4200000",
       },
       breakdown: [
-        { resourceType: "material", initialEstimateIrr: "360000000000", revisedEstimateIrr: "384980000000", actualCostIrr: "131815320000", remainingPhysicalCostIrr: "341528860000", forecastFinalIrr: "380758780000" },
-        { resourceType: "labor", initialEstimateIrr: "150000000000", revisedEstimateIrr: "158000000000", actualCostIrr: "48000000000", remainingPhysicalCostIrr: "108021800000", forecastFinalIrr: "156021800000" },
-        // Deliberately over its estimate: forecast 89.6 exceeds the revised 84. A reference
-        // dataset in which nothing ever exceeds its budget cannot show the one state the
-        // comparison exists to reveal. This is the single row that departs from the seeded
-        // database, and it departs coherently -- forecast is still actual plus remaining,
-        // which the previous version of this row was not.
-        { resourceType: "equipment", initialEstimateIrr: "80000000000", revisedEstimateIrr: "84000000000", actualCostIrr: "30000000000", remainingPhysicalCostIrr: "59651460000", forecastFinalIrr: "89651460000" },
-        { resourceType: "general_cost", initialEstimateIrr: "90000000000", revisedEstimateIrr: "95500000000", actualCostIrr: "27000000000", remainingPhysicalCostIrr: "68500000000", forecastFinalIrr: "95500000000" },
+        { resourceType: "material", initialEstimateIrr: "9800000000", revisedEstimateIrr: "10200000000", actualCostIrr: "3920000000", remainingPhysicalCostIrr: "5440000000", forecastFinalIrr: "9360000000" },
+        { resourceType: "labor", initialEstimateIrr: "4100000000", revisedEstimateIrr: "4250000000", actualCostIrr: "1380000000", remainingPhysicalCostIrr: "2600000000", forecastFinalIrr: "3980000000" },
+        // Deliberately over its estimate. A reference dataset in which nothing
+        // ever exceeds its budget cannot show the one state the comparison
+        // exists to reveal.
+        { resourceType: "equipment", initialEstimateIrr: "2750000000", revisedEstimateIrr: "2680000000", actualCostIrr: "3400000000", remainingPhysicalCostIrr: "1930000000", forecastFinalIrr: "4100000000" },
+        { resourceType: "general_cost", initialEstimateIrr: "2000000000", revisedEstimateIrr: "2050000000", actualCostIrr: "330000000", remainingPhysicalCostIrr: "1640000000", forecastFinalIrr: "1970000000" },
       ],
       // One row per estimate line, the way the service answers: میلگرد is used on
       // two activities and arrives twice, and a line whose quantity was never
       // revised arrives with a deviation of zero. Both are what the presentation
       // has to fold away, so the mock has to contain them.
       topPriceVariances: [
-        // Shape from the report builder, values from the seeded database. Every field the
-        // new variance views read is present -- activity, base unit, price availability and
-        // the two quantities a rollup compares -- and the numbers are the ones the API
-        // actually returns for this project, so the mock cannot drift into a story the
-        // backend does not tell.
-        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", activityExternalId: "ACT-102", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد آجدار A3", resourceType: "material", baseUnit: "kg", varianceIrr: "16599600000", priceAvailable: true },
-        { resourceId: "20000000-0000-4000-8000-000000000005", estimateLineId: "30000000-0000-4000-8000-000000000005", activityExternalId: "ACT-202", resourceCode: "LAB-FORM", resourceTitle: "اکیپ قالب‌بندی", resourceType: "labor", baseUnit: "person_hour", varianceIrr: "11642400000", priceAvailable: true },
-        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000011", activityExternalId: "ACT-201", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد آجدار A3", resourceType: "material", baseUnit: "kg", varianceIrr: "10909800000", priceAvailable: true },
-        { resourceId: "20000000-0000-4000-8000-000000000007", estimateLineId: "30000000-0000-4000-8000-000000000007", activityExternalId: "ACT-201", resourceCode: "EQ-CRANE", resourceTitle: "جرثقیل برجی", resourceType: "equipment", baseUnit: "hour", varianceIrr: "8662500000", priceAvailable: true },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", activityExternalId: "ACT-102", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", baseUnit: "kg", varianceIrr: "460000000", priceAvailable: true },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000002", activityExternalId: "ACT-201", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", baseUnit: "kg", varianceIrr: "312000000", priceAvailable: true },
+        { resourceId: "20000000-0000-4000-8000-000000000003", estimateLineId: "30000000-0000-4000-8000-000000000004", activityExternalId: "ACT-201", resourceCode: "EQ-CRANE", resourceTitle: "جرثقیل", resourceType: "equipment", baseUnit: "hour", varianceIrr: "185000000", priceAvailable: true },
       ],
       topQuantityVariances: [
-        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", activityExternalId: "ACT-102", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد آجدار A3", resourceType: "material", baseUnit: "kg", initialQuantity: "380000.0000", revisedQuantity: "410000.0000", varianceQuantity: "30000.0000" },
-        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000011", activityExternalId: "ACT-201", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد آجدار A3", resourceType: "material", baseUnit: "kg", initialQuantity: "240000.0000", revisedQuantity: "255000.0000", varianceQuantity: "15000.0000" },
-        { resourceId: "20000000-0000-4000-8000-000000000005", estimateLineId: "30000000-0000-4000-8000-000000000005", activityExternalId: "ACT-202", resourceCode: "LAB-FORM", resourceTitle: "اکیپ قالب‌بندی", resourceType: "labor", baseUnit: "person_hour", initialQuantity: "240000.0000", revisedQuantity: "252000.0000", varianceQuantity: "12000.0000" },
-        { resourceId: "20000000-0000-4000-8000-000000000003", estimateLineId: "30000000-0000-4000-8000-000000000003", activityExternalId: "ACT-301", resourceCode: "MAT-BLOCK", resourceTitle: "بلوک سفالی دیوارچینی", resourceType: "material", baseUnit: "each", initialQuantity: "95000.0000", revisedQuantity: "105000.0000", varianceQuantity: "10000.0000" },
-        // A line whose quantity never moved. A rollup that only ever sees changes cannot
-        // show that it handles the case where nothing changed.
-        { resourceId: "20000000-0000-4000-8000-000000000002", estimateLineId: "30000000-0000-4000-8000-000000000002", activityExternalId: "ACT-201", resourceCode: "MAT-CONCRETE", resourceTitle: "بتن آماده C30", resourceType: "material", baseUnit: "m3", initialQuantity: "8600.0000", revisedQuantity: "8600.0000", varianceQuantity: "0.0000" },
+        { resourceId: "20000000-0000-4000-8000-000000000002", estimateLineId: "30000000-0000-4000-8000-000000000003", activityExternalId: "ACT-202", resourceCode: "LAB-FORM", resourceTitle: "اکیپ قالب‌بندی", resourceType: "labor", baseUnit: "person_hour", initialQuantity: "900.0000", revisedQuantity: "1025.7500", varianceQuantity: "125.7500" },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000001", activityExternalId: "ACT-102", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", baseUnit: "kg", initialQuantity: "10000.0000", revisedQuantity: "10042.5000", varianceQuantity: "42.5000" },
+        { resourceId: "20000000-0000-4000-8000-000000000001", estimateLineId: "30000000-0000-4000-8000-000000000002", activityExternalId: "ACT-201", resourceCode: "MAT-REBAR", resourceTitle: "میلگرد", resourceType: "material", baseUnit: "kg", initialQuantity: "8500.0000", revisedQuantity: "8500.0000", varianceQuantity: "0.0000" },
+        { resourceId: "20000000-0000-4000-8000-000000000003", estimateLineId: "30000000-0000-4000-8000-000000000004", activityExternalId: "ACT-201", resourceCode: "EQ-CRANE", resourceTitle: "جرثقیل", resourceType: "equipment", baseUnit: "hour", initialQuantity: "160.0000", revisedQuantity: "160.0000", varianceQuantity: "0.0000" },
       ],
-      // No warnings: every line has a current price and a measured progress quantity, which
-      // is what the seeded database actually produces. The previous fixture carried a
-      // CURRENT_PRICE_MISSING warning beside calculationStatus "complete" -- a combination
-      // the real report cannot emit, since a missing price is exactly what makes it
-      // incomplete.
-      warnings: [],
+      warnings: [{ code: "CURRENT_PRICE_MISSING", message: "Current price is missing.", estimateLineId: null }],
       calculationStatus: "complete",
       incompleteMetricKeys: [],
       missingPriceCount: 0,
@@ -217,20 +226,44 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     await wait(280);
     if (initialState === "error") throw new ApiError({ status: 503, code: "MONTHLY_TREND_UNAVAILABLE", message: "دریافت روند ماهانه هزینه انجام نشد.", requestId: "mock-monthly-trend-001" });
     if (initialState === "empty") return { months: [], estimateSource: "unavailable" };
-    // No estimate line carries a planned date, so the service has no monthly
-    // baseline to report and answers null on every point. The mock seeded one
-    // while the endpoint did not exist; keeping it now would make standalone
-    // draw a comparison the real product cannot, which is the one thing a
-    // reference dataset must never do.
+    // The periodic plan the cumulative curve compares against. The real one
+    // arrives with the host's period files; this is the reference dataset's
+    // stand-in, named as such at the boundary so nothing downstream mistakes it
+    // for a figure the service produced.
+    const actualMonths = aggregateConfirmedInvoicesByMonth(buildSeedInvoices(context));
+    const plan = distributePlan(actualMonths.length, "18650000000");
     return {
-      estimateSource: "unavailable",
+      estimateSource: "demo_period_plan",
       actualSource: "confirmed_financial_documents",
-      months: aggregateConfirmedInvoicesByMonth(buildSeedInvoices(context)).map((month) => ({
+      months: actualMonths.map((month, index) => ({
         ...month,
-        estimateIrr: null,
+        estimateIrr: plan[index] ?? null,
       })),
     };
   }
 
-  return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv, getMonthlyTrend });
+  /**
+   * Cost rolled up the breakdown structure. The service has no such endpoint
+   * yet; this answers the shape it is specified to answer so the report can be
+   * built and reviewed before it ships.
+   */
+  async function getWbsRollup({ parentWbsCode = null } = {}) {
+    await wait(240);
+    if (initialState === "error") throw new ApiError({ status: 503, code: "WBS_ROLLUP_UNAVAILABLE", message: "دریافت گزارش سطح‌بندی هزینه انجام نشد.", requestId: "mock-wbs-001" });
+    if (initialState === "empty") return { available: true, nodes: [], unattributedActualIrr: null, source: "demo_wbs_rollup" };
+    const all = buildWbsNodes();
+    const nodes = parentWbsCode
+      ? all.filter((node) => node.parentWbsCode === parentWbsCode)
+      : all.filter((node) => node.parentWbsCode === null);
+    return {
+      available: true,
+      nodes,
+      // Only claimed at the top level: a phase's own children account for all of
+      // that phase, so an unattributed figure there would be double-counted.
+      unattributedActualIrr: parentWbsCode ? null : unattributedActualIrr(all),
+      source: "demo_wbs_rollup",
+    };
+  }
+
+  return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv, getMonthlyTrend, getWbsRollup });
 }

@@ -1,0 +1,11 @@
+# Sample media stays out of the repository. A "test" invoice with a real vendor name and a
+# real amount is financial data whatever it is called, and this path is visible to everyone
+# with the repository.
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.mp3
+*.m4a
+*.wav
+*.ogg

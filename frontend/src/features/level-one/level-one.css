@@ -1,0 +1,458 @@
+/* --------------------------------------------------------------------------
+   گزارش مالی سطح ۱ — cost carried up the project's breakdown structure.
+   The shapes mirror the host's level-1 progress report on purpose: one row per
+   phase, two bars, a figure at the end. What differs is that a cost bar can pass
+   its estimate, so the row that does says so rather than only being longer.
+   -------------------------------------------------------------------------- */
+
+.level-one-page,
+.level-one-section {
+  --level-one-plot-height: clamp(9rem, 22vw, 13rem);
+  --level-one-name-band: 2.7rem;
+}
+
+.level-one-page {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+/* --- headline figures -------------------------------------------------- */
+
+.level-one-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-md);
+}
+
+.level-one-totals__card {
+  display: grid;
+  gap: .2rem;
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--app-card-navy);
+}
+
+.level-one-totals__value {
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.level-one-totals__label {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* --- the section ------------------------------------------------------- */
+
+.level-one-section {
+  display: grid;
+  gap: var(--space-md);
+  max-inline-size: 100%;
+}
+
+/* The way to the phases' page, under the chart. Same shape as the invoices
+   card's own line — accent, bold, a chevron after it — one step down in size
+   because it sits under a chart rather than being a card's whole purpose. */
+.level-one-section__link {
+  display: inline-flex;
+  align-self: flex-start;
+  justify-self: start;
+  align-items: center;
+  gap: .25rem;
+  margin-block-start: auto;
+  color: var(--dash-actual);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.level-one-section__link:hover,
+.level-one-section__link:focus-visible {
+  text-decoration: underline;
+}
+
+.level-one-section__chevron {
+  font-size: .95rem;
+  line-height: 1;
+}
+
+.level-one-section__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* `.section-heading span` in the shared components sheet paints every span in a
+   heading the accent green at .75rem/800 — it means the eyebrow, but it is
+   written as a descendant, so it reaches this badge too and outweighs a bare
+   `.rc-info`. Named through the heading here to put it back.
+
+   The host's own `.rc-info`, at its own values: a 19px ring at half opacity
+   with an italic serif-weight «i». Reused rather than re-invented so the badge
+   here and the one on the builder are the same thing. */
+.rc-info,
+.section-heading .rc-info {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  inline-size: 19px;
+  block-size: 19px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 10px;
+  line-height: 1;
+  opacity: .5;
+  cursor: help;
+}
+
+/* --- grouped columns, in the host's own shape -------------------------- */
+
+.vbars {
+  display: grid;
+  /* Two rows, and they are not equal: the legend is one line and the plot takes
+     everything else. Without this both rows are `auto` and a grid hands its free
+     space to them in equal parts — which put 102px behind a line of 11.5px type
+     and took the same 85px off the columns underneath it. */
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-md) var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.vbars__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 0 2px 5px;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.vbars__legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The reference scopes the legend dot larger and squarer than the shared .dot. */
+.vbars__legend .dot {
+  inline-size: 11px;
+  block-size: 11px;
+  border-radius: 2px;
+}
+
+.dot--actual { background: var(--dash-actual); }
+.dot--plan { background: var(--dash-plan); }
+
+.vbars__unit {
+  margin-inline-start: auto;
+  font-weight: 600;
+}
+
+.vbars__plot {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-inline-size: 0;
+}
+
+/* The guide stays put while the columns move under it, or the reader loses the
+   scale the moment they scroll to the phases they came to look at. */
+.vbars__y {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  justify-content: space-between;
+  padding-block-end: 22px;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.vbars__tick {
+  position: relative;
+  white-space: nowrap;
+}
+
+.vbars__viewport {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  border-inline-start: 1px solid var(--dash-grid);
+  border-block-end: 1px solid var(--dash-grid);
+  scrollbar-width: thin;
+  scrollbar-color: var(--dash-plan) transparent;
+  scroll-snap-type: x proximity;
+}
+
+.vbars__viewport::-webkit-scrollbar {
+  block-size: 7px;
+}
+
+.vbars__viewport::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--dash-plan) 60%, transparent);
+  border-radius: 6px;
+}
+
+.vbars__viewport:focus-visible {
+  outline: 2px solid var(--dash-actual);
+  outline-offset: 2px;
+}
+
+.vbars__cols {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 6px;
+  inline-size: 100%;
+  padding: 16px 6px 0; /* the amount above the tallest column */
+}
+
+/* Six phases to a screenful, and never narrower than the floor — past that the
+   viewport scrolls rather than the columns thinning to a hairline. */
+.vgroup {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 0 0 calc((100% - 30px) / 6);
+  min-inline-size: 92px;
+  block-size: var(--level-one-plot-height);
+  scroll-snap-align: start;
+}
+
+.vgroup__bars {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  inline-size: 100%;
+  padding-inline: 8px;
+}
+
+.vbar {
+  position: relative;
+  flex: 1 1 0;
+  min-inline-size: 14px;
+  max-inline-size: 52px;
+  min-block-size: 2px;
+  border-radius: 4px 4px 0 0;
+}
+
+/* The bar fades toward its foot rather than sitting flat, so a tall column does
+   not read as a solid block of colour. */
+.vbar--plan {
+  background: linear-gradient(180deg, var(--dash-plan), color-mix(in srgb, var(--dash-plan) 55%, transparent));
+}
+
+.vbar--actual {
+  background: linear-gradient(180deg, var(--dash-actual), color-mix(in srgb, var(--dash-actual) 55%, transparent));
+}
+
+/* The figure sits above its own column, and is the amount rather than a
+   percentage — a percentage of an estimate that differs per phase cannot be
+   compared across the row. */
+.vbar em {
+  position: absolute;
+  inset-block-start: -16px;
+  inset-inline: 0;
+  color: var(--color-text-secondary, var(--color-text-muted));
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.vgroup[data-state="over"] .vbar--actual em {
+  color: var(--dash-sev-crit);
+}
+
+.vgroup__name {
+  flex: 0 0 auto;
+  margin-block-start: 4px;
+  max-inline-size: 100%;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+a.vgroup__name {
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+a.vgroup__name:hover,
+a.vgroup__name:focus-visible {
+  color: var(--dash-actual);
+  text-decoration: underline;
+}
+
+/* --- cost that reaches no phase ---------------------------------------- */
+
+.level-one-unattributed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid color-mix(in srgb, var(--dash-sev-med) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--dash-sev-med) 8%, transparent);
+}
+
+.level-one-unattributed h3 {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.level-one-unattributed p {
+  flex: 1 1 18rem;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+}
+
+.level-one-unattributed strong {
+  font-size: var(--font-size-lg);
+  font-weight: 800;
+}
+
+/* --- tables ------------------------------------------------------------ */
+
+.level-one-table tr[data-state="over"] td {
+  background: color-mix(in srgb, var(--dash-sev-crit) 7%, transparent);
+}
+
+/* --- one phase, by kind of item ---------------------------------------- */
+
+.level-one-breakdown {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-card-navy);
+  box-shadow: var(--dash-shadow), var(--dash-inner);
+}
+
+.level-one-breakdown > h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.level-one-breakdown__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-md);
+}
+
+.level-one-breakdown__item {
+  display: grid;
+  gap: .35rem;
+}
+
+.level-one-breakdown__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.level-one-breakdown__head h3 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.level-one-breakdown__track {
+  position: relative;
+  block-size: .5rem;
+  border-radius: .3rem;
+  background: var(--dash-grid);
+}
+
+.level-one-breakdown__bar {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: var(--bar-width, 0%);
+  min-inline-size: 2px;
+  border-radius: .3rem;
+  background: var(--dash-actual);
+}
+
+.level-one-breakdown__share {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* --- narrow ------------------------------------------------------------ */
+
+@media (max-width: 48rem) {
+  .level-one-chart__row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 6.5rem);
+    row-gap: .4rem;
+  }
+
+  .level-one-chart__bars {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
+  .level-one-chart__figure {
+    justify-items: end;
+  }
+}
+
+/* --- exact amounts ------------------------------------------------------ */
+
+/* The figures on this page are compacted so the rows stay readable. The exact
+   amount is a hover away, through the same `::after` the other charts in this
+   module use rather than a second tooltip mechanism.
+
+   Named by element rather than by `[data-exact]` alone: a bare attribute
+   selector outweighs the single class the bars position themselves with, and
+   turned every bar from absolute back to relative — which left them inline, so
+   their width stopped applying and they vanished. The bars need no rule here;
+   they are already positioned, so their tooltip anchors to them as it is. */
+.level-one-page td[data-exact],
+.level-one-page strong[data-exact] {
+  position: relative;
+}
+
+.level-one-page [data-exact]:hover::after,
+.level-one-page [data-exact]:focus-visible::after {
+  content: attr(data-exact);
+  position: absolute;
+  inset-block-end: calc(100% + .35rem);
+  inset-inline-start: 0;
+  z-index: 40;
+  padding: .25rem .5rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: var(--dash-shadow);
+}

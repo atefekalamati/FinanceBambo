@@ -287,8 +287,19 @@ TASK_ROW = {
 }
 
 
-def progress_connection(snapshot=SNAPSHOT_ROW, tasks=(TASK_ROW,)):
+def progress_connection(snapshot=SNAPSHOT_ROW, tasks=(TASK_ROW,), assignment_tables=0,
+                        assignments=()):
+    """A Core connection that answers the three questions the provider asks.
+
+    `assignment_tables` is how many of msp_resources / msp_resource_assignments exist. It
+    defaults to zero, which is the Core these tests were written against: the provider then
+    reports task-level rows, which is what they assert.
+    """
     def answer(sql, _params):
+        if "information_schema.tables" in sql:
+            return [{"present": assignment_tables}]
+        if "FROM msp_resource_assignments" in sql:
+            return [dict(row) for row in assignments]
         if "FROM msp_tasks" in sql:
             return [dict(row) for row in tasks]
         return [dict(snapshot)] if snapshot else []
@@ -338,11 +349,25 @@ class ProgressHeaderTests(unittest.IsolatedAsyncioTestCase):
                     snapshot={**SNAPSHOT_ROW, "status_date_jalali": value}))["snapshot"]
                 self.assertEqual("2026-08-03", header["reportingDate"])
 
-    async def test_the_source_type_says_the_file_was_an_mpp(self):
-        from app.finance.domain.schedule import SOURCE_TYPES
+    async def test_the_source_type_is_one_the_reference_table_accepts(self):
+        """The header's sourceType is persisted, so it must satisfy the persisted contract.
+
+        This test previously compared it against `domain/schedule.SOURCE_TYPES` -- the
+        vocabulary of the schedule *adapters* ('synthetic', 'mpp', 'host_feed') -- and
+        passed while the value was wrong. The field actually flows through
+        `reference_from_header` into `progress_snapshot_refs.source_type`, which revision
+        0005 constrains to a different set. 'mpp' was not in it, so pinning a reference from
+        a Core snapshot violated the CHECK.
+        """
+        import re
+        from app.finance.schemas.progress import ProgressSnapshotResponse  # noqa: F401
+        revision = (BACKEND_ROOT / "alembic" / "versions"
+                    / "0005_progress_snapshot_source_type.py").read_text(encoding="utf-8")
+        permitted = set(re.findall(r"'([a-z_]+)'",
+                                   revision.split("source_type IN (")[1].split(")")[0]))
         header = (await self.feed())["snapshot"]
-        self.assertIn(header["sourceType"], SOURCE_TYPES)
-        self.assertEqual("mpp", header["sourceType"])
+        self.assertIn(header["sourceType"], permitted)
+        self.assertEqual("microsoft_project", header["sourceType"])
 
 
 class ProgressRowTests(unittest.IsolatedAsyncioTestCase):

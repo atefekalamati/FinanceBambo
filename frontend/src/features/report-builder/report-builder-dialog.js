@@ -1,19 +1,28 @@
 import { element } from "../../shared/dom/elements.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
-import { formatBusinessDate } from "../../shared/formatters/display.js";
+import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { buildPeriodPresets, matchPreset, validatePeriod } from "../../shared/dates/reporting-periods.js";
 import { REPORT_CATEGORIES, findReport, normalizeSelection, reportsByCategory } from "./report-catalog.js";
+import { chevronIcon } from "./report-icons.js";
 
 /**
  * Choosing what goes in the document.
  *
- * A category at a time, the way the project's own report builder does it: the
- * list stays short enough to read, and opening one is a decision about a subject
- * rather than a scroll through thirty checkboxes. Nothing is produced until at
- * least one report is chosen, and the button says so rather than failing after
- * the click.
+ * Two levels, the way the host platform's own builder does it: the popup opens
+ * on a list of subjects, and choosing one replaces the list with that subject's
+ * reports and a way back. It is not an accordion — only one category is on
+ * screen at a time, so the choice is always a short list rather than a scroll
+ * through every category at once.
+ *
+ * What is ticked survives moving between categories, because the selection is
+ * held here and the level-two markup is rebuilt from it each time. A category
+ * tile carries a count of what is chosen inside it, so nothing a reader picked
+ * disappears from view when they go looking in another subject.
+ *
+ * Nothing is produced until at least one report is chosen, and the button says
+ * so rather than failing after the click.
  */
 export function createReportBuilderDialog({ preselected = [], onBuild }) {
   const dialog = document.createElement("dialog");
@@ -55,10 +64,11 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
     build.disabled = count === 0;
     hint.textContent = count === 0
       ? "حداقل یک گزارش را برای ساخت PDF انتخاب کنید."
-      : `${count} گزارش انتخاب شده است.`;
-    groups.querySelectorAll("[data-group-count]").forEach((badge) => {
+      : `${formatDisplayNumber(String(count))} گزارش انتخاب شده است.`;
+    // The counts live on the category tiles now, not in the list above them.
+    panel.querySelectorAll("[data-group-count]").forEach((badge) => {
       const chosen = reportsByCategory(badge.dataset.groupCount).filter((report) => selected.has(report.key)).length;
-      badge.textContent = chosen ? `${chosen}` : "";
+      badge.textContent = chosen ? formatDisplayNumber(String(chosen)) : "";
       badge.hidden = chosen === 0;
     });
   }
@@ -69,10 +79,12 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
   periodGroup.className = "report-builder-group";
   const periodSummary = document.createElement("summary");
   periodSummary.className = "report-builder-group__summary";
+  const periodChevron = chevronIcon("forward");
+  periodChevron.setAttribute("class", "report-builder-group__chevron");
   periodSummary.append(
     element("span", "report-builder-group__title", "بازه گزارش"),
     element("span", "report-builder-group__meta"),
-    element("span", "report-builder-group__chevron", "‹"),
+    periodChevron,
   );
   const periodMeta = periodSummary.querySelector(".report-builder-group__meta");
   const periodBody = element("div", "report-builder-group__body");
@@ -120,29 +132,49 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
   periodRow.append(periodGroup);
   groups.append(periodRow);
   syncPeriodMeta();
+  // The period is a setting for the whole document, not one of the subjects,
+  // so it stays above them — and steps aside while a subject is open.
 
-  /* ── One row per category ─────────────────────────────────────────────── */
+  /* ── Level one: the subjects ──────────────────────────────────────────── */
+  const cats = element("div", "report-builder-cats");
+  const level2 = element("div", "report-builder-level2");
+  level2.hidden = true;
+  const level2Title = element("h4", "report-builder-level2__title");
+  const level2Note = element("p", "report-builder-level2__note");
+  const level2Items = element("div", "report-builder-level2__items");
+  const back = element("button", "report-builder-back");
+  back.type = "button";
+  back.setAttribute("aria-label", "بازگشت به فهرست دسته‌ها");
+  const backChevron = chevronIcon("back");
+  backChevron.setAttribute("class", "report-builder-back__chevron");
+  back.append(backChevron, document.createTextNode(" بازگشت به دسته‌ها"));
+  back.addEventListener("click", showLevelOne);
+  level2.append(back, level2Title, level2Note, level2Items);
+
   REPORT_CATEGORIES.forEach((category) => {
     const reports = reportsByCategory(category.key);
     if (!reports.length) return;
-    const row = element("li");
-    const group = document.createElement("details");
-    group.className = "report-builder-group";
-    const summary = document.createElement("summary");
-    summary.className = "report-builder-group__summary";
-    const badge = element("span", "report-builder-group__badge");
+    const tile = element("button", "report-builder-cat");
+    tile.type = "button";
+    tile.dataset.category = category.key;
+    const badge = element("span", "report-builder-cat__badge");
     badge.dataset.groupCount = category.key;
     badge.hidden = true;
-    summary.append(
-      element("span", "report-builder-group__title", category.title),
-      badge,
-      element("span", "report-builder-group__chevron", "‹"),
-    );
-    const body = element("div", "report-builder-group__body");
-    body.append(element("p", "report-builder-group__note", category.description));
+    const chevron = chevronIcon("forward");
+    chevron.setAttribute("class", "report-builder-cat__chevron");
+    tile.append(element("span", "report-builder-cat__title", category.title), badge, chevron);
+    tile.addEventListener("click", () => openCategory(category));
+    cats.append(tile);
+  });
 
-    reports.forEach((report) => {
+  /* ── Level two: one subject's reports ─────────────────────────────────── */
+  function openCategory(category) {
+    level2Title.textContent = category.title;
+    level2Note.textContent = category.description;
+    level2Items.replaceChildren();
+    reportsByCategory(category.key).forEach((report) => {
       const option = element("label", `report-builder-option${report.unavailable ? " report-builder-option--unavailable" : ""}`);
+      if (report.unavailable) option.title = report.unavailable;
       const box = document.createElement("input");
       box.type = "checkbox";
       box.value = report.key;
@@ -151,25 +183,33 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
       box.addEventListener("change", () => {
         if (box.checked) selected.add(report.key);
         else selected.delete(report.key);
+        option.classList.toggle("is-checked", box.checked);
         refresh();
       });
+      option.classList.toggle("is-checked", box.checked);
       const copy = element("span", "report-builder-option__copy");
       copy.append(element("strong", "", report.title), element("small", "", report.unavailable ?? report.summary));
       option.append(box, copy);
-      body.append(option);
+      level2Items.append(option);
     });
+    cats.hidden = true;
+    periodRow.hidden = true;
+    level2.hidden = false;
+    back.focus();
+  }
 
-    group.append(summary, body);
-    // A category the reader arrived with something chosen in is already open.
-    group.open = reports.some((report) => selected.has(report.key));
-    row.append(group);
-    groups.append(row);
-  });
+  function showLevelOne() {
+    level2.hidden = true;
+    cats.hidden = false;
+    periodRow.hidden = false;
+    refresh();
+  }
 
   build.addEventListener("click", () => {
     if (!selected.size) return;
     const validation = readPeriod();
     if (!validation.valid) {
+      showLevelOne();
       periodGroup.open = true;
       periodError.textContent = validation.errors.to ?? validation.errors.from ?? "";
       return;
@@ -178,7 +218,7 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
     onBuild({ selection: normalizeSelection([...selected]), period });
   });
 
-  panel.append(groups, hint, build);
+  panel.append(groups, cats, level2, hint, build);
   const body = element("div", "report-builder-dialog__body");
   body.append(panel);
   dialog.append(bar, body);

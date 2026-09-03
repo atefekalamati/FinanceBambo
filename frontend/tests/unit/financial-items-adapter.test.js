@@ -40,25 +40,16 @@ test("stores general cost as integer IRR amount without a physical quantity", as
   assert.equal(created.originalAmount, "5000000");
 });
 
-// The line is chosen by shape -- the first one carrying a quantity -- and the new value is
-// derived from it. Selecting it by a literal quantity tied this test to one number in the
-// demo fixture, so re-scaling the demo broke a test about immutability, which is not what it
-// is meant to be sensitive to.
-function firstQuantifiedLine(workspace) {
-  return workspace.estimateLines.find((item) => item.originalQuantity !== null);
-}
-
 test("appends revision history while keeping original quantity immutable", async () => {
   const adapter = createMockFinancialItemsAdapter(context);
   const before = await adapter.getWorkspace();
-  const line = firstQuantifiedLine(before);
-  const overrun = `${Math.round(Number(line.originalQuantity) * 1.1)}.0000`;
-  const after = await adapter.reviseEstimateLine({ lineId: line.lineId, revisedValue: overrun, reason: "اصلاح براساس نقشه اجرایی", expectedRevision: line.revision });
+  const line = before.estimateLines.find((item) => item.originalQuantity === "8500.0000");
+  const after = await adapter.reviseEstimateLine({ lineId: line.lineId, revisedValue: "9000.0000", reason: "اصلاح براساس نقشه اجرایی", expectedRevision: line.revision });
   const revised = after.estimateLines.find((item) => item.lineId === line.lineId);
-  assert.equal(revised.originalQuantity, line.originalQuantity);
-  assert.equal(revised.revisedQuantity, overrun);
-  assert.equal(revised.revisions[0].previousValue, line.revisedQuantity);
-  assert.equal(revised.revisions[0].newValue, overrun);
+  assert.equal(revised.originalQuantity, "8500.0000");
+  assert.equal(revised.revisedQuantity, "9000.0000");
+  assert.equal(revised.revisions[0].previousValue, "8500.0000");
+  assert.equal(revised.revisions[0].newValue, "9000.0000");
   assert.equal(revised.revisions[0].reason, "اصلاح براساس نقشه اجرایی");
   assert.equal(revised.revisions[0].isOverrun, true);
 });
@@ -66,10 +57,9 @@ test("appends revision history while keeping original quantity immutable", async
 test("rejects stale or no-change estimate revisions", async () => {
   const adapter = createMockFinancialItemsAdapter(context);
   const workspace = await adapter.getWorkspace();
-  const line = firstQuantifiedLine(workspace);
-  const overrun = `${Math.round(Number(line.originalQuantity) * 1.1)}.0000`;
+  const line = workspace.estimateLines.find((item) => item.originalQuantity === "8500.0000");
   await assert.rejects(
-    adapter.reviseEstimateLine({ lineId: line.lineId, revisedValue: overrun, reason: "اصلاح معتبر", expectedRevision: 999 }),
+    adapter.reviseEstimateLine({ lineId: line.lineId, revisedValue: "9000", reason: "اصلاح معتبر", expectedRevision: 999 }),
     (error) => error.code === "STALE_VERSION",
   );
   await assert.rejects(
