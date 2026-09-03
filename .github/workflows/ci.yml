@@ -1,0 +1,85 @@
+# What has to be true before anything reaches master.
+#
+# Both suites already existed and neither was run by anything but a person
+# remembering to. That is what this fixes: 311 frontend tests, 672 backend tests
+# and a 171-run layout audit, on every push and every pull request.
+#
+# The backend suite needs no database — the five tests that do skip themselves —
+# so this runs the whole thing without a service container. If that changes, add
+# postgres here rather than letting those tests quietly stay skipped.
+
+name: CI
+
+on:
+  push:
+    branches: [master, frontend, backend-finance]
+  pull_request:
+    branches: [master]
+
+# A second push to the same branch cancels the first: the answer that matters is
+# the one about the newest commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend — unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # No install step and no cache key: the module has no dependencies at all,
+      # neither runtime nor dev. Its tests are node:test and its scripts are
+      # plain ES modules.
+      - name: Syntax check
+        working-directory: frontend
+        run: npm run check
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test
+
+  layout:
+    name: Frontend — layout audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # The audit drives headless Chrome over 19 routes at 9 widths. The runner
+      # ships Chrome already; the script finds it through the same channel it
+      # does locally.
+      - name: Serve the module
+        working-directory: frontend
+        run: |
+          python3 -m http.server 43127 --bind 127.0.0.1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:43127/index.html >/dev/null && break
+            sleep 1
+          done
+      - name: Layout audit
+        working-directory: frontend
+        env:
+          # The script defaults to the Windows install and reads this when set.
+          CHROME_PATH: google-chrome
+        run: npm run audit:layout
+
+  backend:
+    name: Backend — pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt -r backend/requirements-test.txt
+      - name: Tests
+        working-directory: backend
+        run: python -m pytest -q
