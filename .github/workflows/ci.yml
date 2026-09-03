@@ -15,6 +15,9 @@ on:
     branches: [master, frontend, backend-finance]
   pull_request:
     branches: [master]
+  # So a run can be repeated without an empty commit — the layout job talks to a
+  # browser, and a green run is worth being able to ask for twice.
+  workflow_dispatch:
 
 # A second push to the same branch cancels the first: the answer that matters is
 # the one about the newest commit.
