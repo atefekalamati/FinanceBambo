@@ -87,15 +87,25 @@ function stylesheets(directory = SRC_DIR) {
   });
 }
 
+// Every width in a query, not the first one. A single pattern anchored at
+// `@media` stops at the condition it matches, so in
+// `@media (min-width: 64rem) and (max-width: 999rem)` it read 64rem, found no
+// second `@media`, and let 999rem through unchecked. The prelude is collected
+// first, then scanned on its own for as many widths as it holds.
+function mediaWidths(source) {
+  return [...source.matchAll(/@media[^{]*/g)].flatMap((query) =>
+    [...query[0].matchAll(/\((?:max|min)-width:\s*([\d.]+(?:rem|px|em))\)/g)]
+      .map((match) => match[1]));
+}
+
 test("stylesheets break only at the documented responsive scale", () => {
   const sheets = stylesheets();
-  const widths = sheets.flatMap(([, source]) => [...source.matchAll(/@media[^{]*?\((?:max|min)-width:\s*([\d.]+(?:rem|px|em))\)/g)].map((match) => match[1]));
+  const widths = sheets.flatMap(([, source]) => mediaWidths(source));
   assert.ok(sheets.length >= 10, "expected the feature and shared stylesheets to be discovered");
   assert.ok(widths.length >= 25, "the media-query scan found nothing, so this guard would pass vacuously");
 
   const offenders = sheets.flatMap(([name, source]) =>
-    [...source.matchAll(/@media[^{]*?\((?:max|min)-width:\s*([\d.]+(?:rem|px|em))\)/g)]
-      .map((match) => match[1])
+    mediaWidths(source)
       .filter((width) => !RESPONSIVE_SCALE.has(width) && SCALE_EXCEPTIONS.get(width) !== name)
       .map((width) => `${name}: ${width}`));
   assert.deepEqual(
