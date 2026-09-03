@@ -65,6 +65,8 @@ jobs:
         env:
           # The script defaults to the Windows install and reads this when set.
           CHROME_PATH: google-chrome
+          # No usable sandbox on the runner, and /dev/shm is 64MB there.
+          CHROME_FLAGS: --no-sandbox --disable-dev-shm-usage
         run: npm run audit:layout
 
   backend:
