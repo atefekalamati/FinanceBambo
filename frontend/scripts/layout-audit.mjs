@@ -31,11 +31,18 @@ const routes = [
 const widths = [1440, 1280, 1024, 900, 768, 600, 480, 390, 360];
 const port = 49333;
 const profile = await mkdtemp(join(tmpdir(), "bambo-layout-audit-"));
+// A CI runner has no usable Chrome sandbox and a small /dev/shm, and Chrome
+// simply never opens its debugging port there — which is what "DevTools endpoint
+// did not become ready" was. The flags that fix it should not be on by default
+// on a developer's machine, so the environment asks for them.
+const extraFlags = (process.env.CHROME_FLAGS ?? "").split(/\s+/).filter(Boolean);
+
 const chrome = spawn(chromePath, [
   "--headless=new",
   "--disable-gpu",
   "--no-first-run",
   "--no-default-browser-check",
+  ...extraFlags,
   `--remote-debugging-port=${port}`,
   `--user-data-dir=${profile}`,
   "about:blank",
