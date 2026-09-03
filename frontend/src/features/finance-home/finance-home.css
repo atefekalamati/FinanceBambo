@@ -2939,15 +2939,22 @@ a.breakdown-donut:focus-visible {
   /* The basis bar, then the three content rows. The heading above them is
      visually hidden and out of flow, so it takes no track — leaving one here
      for it would park an empty fifth of the board under the last row. */
-  /* Desktop, 1280 and up. Rows one and two are one part each; row three takes
-     1.15 because it holds the only chart whose readability is a question of
-     proportion rather than size — the cumulative curve was drawn 770 by 170,
-     4.5:1, a line squashed flat rather than a trend anyone can read. At 1920
-     that ratio gives it 770 by 284, which is 2.7:1.
+  /* Desktop, 1280 and up. The weights are the host dashboard's own row
+     proportions, so the two boards read as one page rather than two that
+     happen to sit in the same frame. Measured on a 2650x1055 screen, its
+     container was 975.200 tall and its rows filled it:
+
+       row 1   308.213   (the container less the two rows below it)
+       row 2   349.375
+       row 3   317.612
+
+     Divided through by row one that is 1 : 1.134 : 1.030 — the form the ratio
+     has to take here, because the module's container is not the same height as
+     the dashboard's and a pixel copied across would land in the wrong place.
 
      Every narrower range keeps the previous weights until its own layout is
      specified; the override is in the 80rem block below. */
-  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1.134fr) minmax(0, 1.03fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
