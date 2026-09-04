@@ -3,7 +3,7 @@
 Feature endpoints are intentionally added only in their approved delivery stage.
 """
 
-from fastapi import APIRouter, Request, UploadFile, File, Form,Response,Query
+from fastapi import APIRouter, BackgroundTasks, Request, UploadFile, File, Form,Response,Query
 from uuid import UUID
 
 from .schemas.settings import (
@@ -121,6 +121,29 @@ async def list_resources(projectId: str, request: Request):
 async def create_resource(projectId: str, payload: ResourceCreate, request: Request):
     scope = await _resource_scope(projectId, request, "finance.edit")
     return ResourceResponse.from_domain(await request.app.state.finance_resources_service.create_resource(scope, payload))
+
+@router.get("/task-resource-mappings")
+async def task_resource_mappings(projectId: str, request: Request, page: int = 1, pageSize: int = 100):
+    """MPP task <-> finance resource links, read-only, scoped through finance_resources.
+
+    task_id is msp_tasks.id -- the database identity of one task row in one snapshot, not
+    the Task ID printed inside the file. Task details come from the progress feed; this
+    lists the linkage Finance owns.
+    """
+    scope = await _resource_scope(projectId, request, "finance.view")
+    # Clamped, not validated-and-500'd: page=-1 or pageSize=0 would otherwise reach
+    # PostgreSQL as a negative LIMIT/OFFSET and blow up mid-query.
+    page = max(1, page)
+    page_size = min(max(1, pageSize), 500)
+    rows, total = await request.app.state.finance_resources_service.list_task_resource_mappings(
+        scope, page, page_size)
+    return {"items": [{"id": str(row["id"]), "taskId": row["task_id"],
+                       "resourceId": str(row["resource_id"]),
+                       "resourceCode": row["resource_code"],
+                       "resourceTitle": row["resource_title"],
+                       "externalResourceId": row["external_resource_id"]}
+                      for row in rows],
+            "page": page, "pageSize": page_size, "totalItems": total}
 
 @router.get("/resources/{resourceId}", response_model=ResourceResponse)
 async def get_resource(projectId: str, resourceId: UUID, request: Request):
@@ -313,6 +336,22 @@ async def get_finance_file_content(projectId:str,fileId:UUID,request:Request):
 async def start_extraction(projectId:str,fileId:UUID,payload:ExtractionStart,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit")
     return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.start(scope,fileId,payload.hints))
+
+@router.post("/files/{fileId}/extractions/async",status_code=202,responses=FINANCE_ERROR_RESPONSES)
+async def start_extraction_async(projectId:str,fileId:UUID,payload:ExtractionStart,request:Request,
+    background:BackgroundTasks):
+    """Queue an extraction and answer immediately.
+
+    A local OCR or transcription takes seconds to minutes; the synchronous route holds the
+    request open for all of it. Poll `GET /extractions?fileId=` -- the attachment status
+    returned here moves uploaded -> processing -> ready | failed on its own.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    attachment,existing=await request.app.state.finance_extraction_service.schedule(
+        scope,fileId,lambda run:background.add_task(run),payload.hints)
+    return {"fileId":str(fileId),"processingStatus":attachment.processing_status,
+            "extractionId":None if existing is None else str(existing.id),
+            "alreadyExtracted":existing is not None}
 
 @router.get("/extractions",response_model=ExtractionListResponse,responses=FINANCE_ERROR_RESPONSES)
 async def list_extractions(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),reviewStatus:str|None=Query(None,pattern="^(awaitingReview|accepted|rejected)$"),source:str|None=Query(None,pattern="^(image|voice)$"),fileId:UUID|None=None,linkedInvoiceId:UUID|None=None):

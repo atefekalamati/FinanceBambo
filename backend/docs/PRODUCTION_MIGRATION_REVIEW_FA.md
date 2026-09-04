@@ -16,13 +16,37 @@
 3. `0003_invoice_linked_documents`
 4. `0004_report_snapshot_payload`
 5. `0005_progress_snapshot_source_type`
-6. `0006_progress_snapshot_host_reference` (head)
+6. `0006_progress_snapshot_host_reference`
+7. `0007_msp_resources_and_assignments`
+8. `0008_price_intelligence`
+9. `0009_finance_task_resource_map` (head)
 
 ```powershell
 alembic current      # این دیتابیس کجاست
 alembic upgrade head
-alembic current      # باید 0005 باشد
+alembic current      # باید 0009 باشد
 ```
+
+## 0008 — Price Intelligence Provider/Observation Layer
+
+این Revision فقط ساختار افزایشی هسته قیمت آنلاین را ایجاد می‌کند. داده خام Provider ابتدا
+در `price_observations` ثبت می‌شود و هیچ مسیر مستقیمی برای بازنویسی `price_versions` ندارد.
+Observationها immutable هستند و تنها نتیجه Validation/Resolution تأییدشده می‌تواند از مسیر
+سرویس موجود قیمت، یک PriceVersion جدید و append-only بسازد.
+
+جداول افزوده‌شده:
+
+- `price_providers`
+- `provider_items`
+- `provider_resource_mappings`
+- `price_collection_runs`
+- `price_observations`
+- `price_collection_schedules`
+- `price_resolution_policies`
+
+تمام داده‌های عملیاتی Scope دوگانه سازمان/پروژه، FKهای `RESTRICT`، Decimal دقیق، وضعیت‌های
+Text + CHECK و Indexهای Scope دارند. Up migration هیچ جدول یا رکورد قبلی را تغییر نمی‌دهد.
+Downgrade جداول همین Revision را حذف می‌کند و بنابراین فقط با Backup و مجوز صریح قابل اجراست.
 
 هر Revision داخل transaction خودش اجرا می‌شود (`env.py` آن را باز می‌کند) و اجرا روی اولین
 خطا متوقف می‌شود. بدنه‌ها از نظر ساختاری rerunnable طراحی شده‌اند: `IF NOT EXISTS` روی جدول‌ها
@@ -33,6 +57,58 @@ alembic current      # باید 0005 باشد
 Revision rerunnable هستند، `alembic upgrade head` روی چنین دیتابیسی بدون خطا اجرا می‌شود و
 در پایان `0005` را ثبت می‌کند. `alembic stamp` لازم نیست — و `stamp` روی دیتابیسی که وضعیت
 واقعی‌اش تأیید نشده، خطرناک‌تر است، چون بدون اجرای چیزی ادعا می‌کند Migration انجام شده.
+
+## 0009 — پیوند Task زمان‌بندی Core به Resource مالی
+
+این Revision جدول `finance_task_resource_map` را می‌سازد: دقیقاً سه ستون
+(`id uuid PK`، `task_id bigint`، `resource_id uuid`) با `UNIQUE (task_id, resource_id)`
+و Index معکوس روی `resource_id`. دامنه سازمان/پروژه عمداً در این جدول تکرار نمی‌شود؛
+هر دو سرِ پیوند آن را دارند و هر خواندنی از مسیر `finance_resources` عبور می‌کند.
+
+**تصمیم ثبت‌شده — اولین FK به جدول Core:** `task_id` با
+`REFERENCES msp_tasks (id) ON DELETE CASCADE` و `resource_id` با
+`REFERENCES finance_resources (id) ON DELETE RESTRICT` تحمیل می‌شوند. این تصمیم صریح
+مالک پروژه است و قاعده «صفر FK به Core» (مستند 0007) را فقط برای همین یک جفت برمی‌دارد؛
+تست `test_core_alignment.py::test_exactly_the_sanctioned_key_reaches_into_core` همان
+یک استثنا را پین می‌کند.
+
+**پیش‌نیاز عملیاتی Production:** نقش Migration تولیدی طبق مستند 0007 امتیاز
+`REFERENCES` روی جداول Core ندارد. پیش از اجرای 0009 در چنین محیطی الزامی است:
+
+```sql
+GRANT REFERENCES ON msp_tasks TO <migration role>;
+```
+
+بدون این GRANT، اجرای 0009 با خطای privilege متوقف می‌شود (و هیچ چیزی تغییر نمی‌کند؛
+Revision داخل Transaction اجرا می‌شود).
+
+**حفاظت Cross-Project:** یک Constraint Trigger
+(`finance_task_resource_map_scope`) هنگام INSERT/UPDATE مسیر
+`task → msp_snapshots.project_id` را با `finance_resources.project_id` مقایسه می‌کند و
+در صورت اختلاف یا حل‌نشدن پروژه Task با SQLSTATE `23514`/`23503` رد می‌کند (fail-closed).
+برابری سازمان — که سمت MSP ستونی برای آن ندارد — در لایه سرویس Import از روی Auth
+Context تحمیل می‌شود.
+
+**پیش‌بررسی وجود Core و قفل ضد-race:** ‏Revision ابتدا با `to_regclass('msp_tasks')`
+fail-fast می‌کند (روی دیتابیس بدون Core، پیام دستورالعمل‌دار؛ آزموده: DB خام کاملاً
+دست‌نخورده ماند) و سپس `LOCK TABLE finance_resources IN SHARE ROW EXCLUSIVE MODE`
+می‌گیرد تا بین شمارش تکراری‌ها و ساخت Index یکتا هیچ نویسنده‌ای نلغزد.
+
+**Index یکتای جزئی روی `finance_resources`:**
+`ux_finance_resources_external_identity` روی
+`(organization_id, project_id, external_resource_id)` فقط برای ردیف‌های زنده
+(`external_resource_id IS NOT NULL AND deleted_at IS NULL`). پیش از ساخت، یک DO-block
+داده تکراری را می‌شمارد و در صورت وجود با پیام شمارش‌دار متوقف می‌شود — این Migration
+هرگز خودش ردیفی را merge یا حذف نمی‌کند.
+
+**Downgrade:** فقط Trigger، Function، جدول پیوند و Index یکتا را حذف می‌کند؛ هیچ ردیفی
+از `finance_resources` یا جداول Core لمس نمی‌شود. چون Downgrade جدولِ داده‌دار را حذف
+می‌کند، اجرای آن در Production فقط با Backup و مجوز صریح مجاز است.
+
+**نتیجه اجرا (محلی):** چرخه up/down/up روی دیتابیس خراشه سبز؛ ده رفتار runtime
+(یکتایی جفت، دو شاخه رد Trigger، CASCADE/RESTRICT، رد NULL، Index جزئی با
+soft-delete) با SQLSTATE مورد انتظار تأیید شد؛ `bambo_canonical_test` بدون خطا به 0009
+ارتقا یافت (صفر گروه تکراری در پیش‌بررسی).
 
 ## نتیجه Validation
 

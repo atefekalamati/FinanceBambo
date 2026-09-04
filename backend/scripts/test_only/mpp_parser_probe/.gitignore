@@ -1,0 +1,10 @@
+# Everything heavy in this probe is downloaded, not authored. None of it belongs in the
+# repository: the JRE alone is ~180 MB, and the whole directory is meant to be deleted
+# rather than maintained.
+probe-env/
+jre/
+
+# The fixture is generated from a real project schedule. That file is customer data --
+# task names, resource rates, quantities -- and it does not belong in git either.
+*.json
+!output_example.json

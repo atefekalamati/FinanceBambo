@@ -17,8 +17,13 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
     if (!validation.valid) throw new ApiError({ status: 422, code: "ATTACHMENT_VALIDATION_FAILED", message: Object.values(validation.errors).join(" "), details: validation.errors });
     return client.request(`${base}/files`, { method: "POST", body: formDataWithFile(file, { logicalType }) });
   }
+  // The async route. The synchronous one held the request open for the whole OCR run --
+  // about 35 seconds cold -- so the browser saw a hanging request, and the dev host, which
+  // serialises requests behind one lock, stalled every other call behind it. This answers
+  // 202 as soon as the work is queued and reports the attachment's own status; the caller
+  // watches that status rather than the response.
   async function startExtraction(fileId) {
-    return client.request(`${base}/files/${encodeURIComponent(fileId)}/extractions`, jsonOptions("POST", { hints: { locale: context.locale ?? "fa-IR" } }));
+    return client.request(`${base}/files/${encodeURIComponent(fileId)}/extractions/async`, jsonOptions("POST", { hints: { locale: context.locale ?? "fa-IR" } }));
   }
   async function getExtractions({ page = 1, pageSize = 50, reviewStatus = "", source = "", fileId = "", linkedInvoiceId = "" } = {}) {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });

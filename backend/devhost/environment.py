@@ -296,6 +296,74 @@ def core_progress_enabled() -> bool:
     return (setting("FINANCE_CORE_PROGRESS", "") or "").strip().lower() in ("1", "true", "yes", "on")
 
 
+#: The value that turns the local models on. Anything else -- unset, blank, a typo --
+#: leaves the refusing stand-in in place, which is the safe direction: a misspelt setting
+#: must not silently start a host that cannot extract but says it can.
+SELF_HOSTED_EXTRACTION = "self_hosted"
+
+
+def extraction_provider() -> str:
+    """Which extraction providers the host installs. `UnavailableExtractor` unless told.
+
+    Deliberately a NAME rather than a boolean. There will be more than one answer -- a
+    hosted API, a different local model -- and `EXTRACTION_AI=1` would have to be replaced
+    the first time a second option existed, while a name only gains a value.
+    """
+    return (setting("EXTRACTION_PROVIDER", "") or "").strip().lower()
+
+
+# --------------------------------------------------------------------------- MPP import
+#
+# Core owns MPP file handling; these settings say where the development host may read
+# schedule files from and how often the periodic import looks at them. Every default is
+# the OFF position: an unconfigured host imports nothing.
+
+def mpp_import_enabled() -> bool:
+    """Whether the periodic MPP import runs at all. Off unless explicitly on."""
+    return (setting("MPP_IMPORT_ENABLED", "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def mpp_import_root():
+    """The ONLY directory MPP files may be read from. None means no imports.
+
+    Callers hand the importer a name RELATIVE to this root; the resolver collapses
+    `..`, follows symlinks and re-checks containment, so configuration is the whole
+    attack surface and it is one line.
+    """
+    value = setting("MPP_IMPORT_ROOT")
+    return value.strip() if value and value.strip() else None
+
+
+def mpp_max_file_size_mb() -> int:
+    """Upper bound on an importable file. A schedule is megabytes, not gigabytes."""
+    raw_value = (setting("MPP_MAX_FILE_SIZE_MB", "") or "").strip()
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        parsed = 0
+    return parsed if parsed > 0 else 100
+
+
+def mpp_import_interval_minutes() -> int:
+    """How often the periodic import re-examines the configured files."""
+    raw_value = (setting("MPP_IMPORT_INTERVAL_MINUTES", "") or "").strip()
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        parsed = 0
+    return parsed if parsed > 0 else 60
+
+
+def mpp_java_home():
+    """The FULL JRE MPXJ runs on. None falls back to the process JAVA_HOME.
+
+    Full, not minimal: a jlink'd runtime without jdk.charsets dies inside MPXJ's own
+    charset initialiser asking for MacRoman, before any file is opened.
+    """
+    value = setting("MPP_JAVA_HOME")
+    return value.strip() if value and value.strip() else None
+
+
 def app_env() -> str:
     """The environment name, defaulting to development when unset.
 

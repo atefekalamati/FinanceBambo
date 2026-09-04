@@ -4,6 +4,7 @@
 !.env.example
 .venv/
 .venv*/
+ai-extraction-env/
 
 # Frontend dependencies and generated output
 node_modules/

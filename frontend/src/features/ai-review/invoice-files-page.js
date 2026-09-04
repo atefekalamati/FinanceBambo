@@ -4,6 +4,7 @@ import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatte
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { validateInvoiceFile } from "./file-upload-validation.js";
+import { waitForExtraction } from "./extraction-polling.js";
 import { element } from "../../shared/dom/elements.js";
 
 const STATUS_LABELS = Object.freeze({
@@ -130,13 +131,23 @@ function renderFiles(files, { adapter, canUpload, onChanged }) {
     process.addEventListener("click", async () => {
       process.disabled = true;
       process.textContent = "در حال پردازش…";
+      // The request answers 202 the moment the work is queued, so starting the extraction
+      // and finishing it are no longer the same event. A rejected start is deliberately NOT
+      // told apart from an accepted one: a duplicate request is refused with 503 while the
+      // file really is processing, and the poll below reports what actually happened in
+      // either case. A start refused for a permission reason leaves the file `uploaded`,
+      // which the poll returns at once.
       try {
         await adapter.startExtraction(file.fileId);
-        await onChanged();
-        window.location.hash = "#/ai-review";
       } catch (error) {
-        await onChanged();
+        // Intentionally ignored: the file's own status is the answer, not this rejection.
       }
+      const settled = await waitForExtraction({ adapter, fileId: file.fileId });
+      // Always refresh. The card renders `ready` or `failed` from the file's own row, and
+      // the failure block and the "پردازش دوباره" button already come from that status --
+      // so retry needs nothing new here.
+      await onChanged();
+      if (settled === "ready") window.location.hash = "#/ai-review";
     });
     const reviews = element("a", "button button--ghost", "مشاهده بازبینی‌ها");
     reviews.href = "#/ai-review";
