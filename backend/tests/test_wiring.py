@@ -52,6 +52,7 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/estimate-lines", "post"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/revisions", "post"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/progress-overrides", "get"),
+                ("/api/projects/{projectId}/finance/task-resource-mappings", "get"),
                 ("/api/projects/{projectId}/finance/resources/{resourceId}/prices", "get"),
                 ("/api/projects/{projectId}/finance/resources/{resourceId}/prices", "post"),
                 ("/api/projects/{projectId}/finance/price-history", "get"),

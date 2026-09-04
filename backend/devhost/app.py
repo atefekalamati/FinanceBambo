@@ -55,8 +55,10 @@ from coreint.security import (CoreAuthContextAssembler, CoreRbacPermissionAuthor
 
 from . import database, seed
 from .connection import ReconnectingConnection
-from .environment import (app_env, core_identity_settings, core_progress_enabled,
-                          core_url, migration_url,
+from .environment import (SELF_HOSTED_EXTRACTION, app_env, core_identity_settings,
+                          core_progress_enabled, core_url, extraction_provider,
+                          migration_url, mpp_import_enabled, mpp_import_interval_minutes,
+                          mpp_import_root, mpp_java_home, mpp_max_file_size_mb,
                           seeding_allowed)
 from .ports import (ContextPermissionAuthorizer, LocalFileStorage, SeededActivityProvider,
                     SeededProgressSnapshotProvider, SingleTenantScopeAuthorizer,
@@ -138,6 +140,32 @@ DEMO_USER_HEADER = "X-Demo-User"
 ACTIVITY_CODE_FIELDS = ("outline_number", "wbs")
 
 
+def extraction_providers():
+    """The image and voice extractors, and the switch that decides which.
+
+    The default stays `UnavailableExtractor`, which refuses. That is not caution for its own
+    sake: an extractor that quietly returns nothing would let a reviewer confirm an invoice
+    from an empty draft, so the absent provider says so and the request fails. Turning the
+    real models on is an explicit act.
+
+        EXTRACTION_PROVIDER=self_hosted
+
+    The models are imported INSIDE the branch. `extraction.providers` pulls in paddle and
+    torch -- several gigabytes and tens of seconds -- and a host that never extracts must
+    neither pay for that nor require the packages to be installed at all.
+
+    A failure to import is not swallowed. A host told to use the self-hosted providers and
+    unable to load them has a configuration fault, and starting anyway with the refusing
+    stand-in would hide it behind a message about the provider being unconfigured.
+    """
+    if extraction_provider() != SELF_HOSTED_EXTRACTION:
+        return (UnavailableExtractor("dev-image-extractor"),
+                UnavailableExtractor("dev-voice-extractor"))
+    from extraction.adapters import ImageExtractionAdapter, VoiceExtractionAdapter
+    print("self-hosted extraction ENABLED: OCR and speech run locally on this machine")
+    return ImageExtractionAdapter(), VoiceExtractionAdapter()
+
+
 def core_identity(default_user, organization_id, project_id):
     """The seam where the host says *who* is calling. See CoreAuthContextAssembler.
 
@@ -215,9 +243,10 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     application.state.invoice_service = invoice_service
     application.state.finance_attachment_service = FinanceAttachmentService(
         PsycopgAttachmentRepository(connection), storage)
+    image_extractor, voice_extractor = extraction_providers()
     application.state.finance_extraction_service = FinanceExtractionService(
         PsycopgExtractionRepository(connection), PsycopgAttachmentRepository(connection), storage,
-        UnavailableExtractor("dev-image-extractor"), UnavailableExtractor("dev-voice-extractor"),
+        image_extractor, voice_extractor,
         invoice_service=invoice_service)
     application.state.finance_live_report_service = FinanceLiveReportService(
         PsycopgLiveReportRepository(connection), progress_provider,
@@ -273,9 +302,57 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
             print("core integration ENABLED: membership, roles and permissions come from Core")
 
         wire(application, connection, storage_root, core)
+
+        # ------------------------------------------------------------------ MPP import
+        # Core-host duty, so it lives here and not in app/finance. The service opens its
+        # OWN connections: the request path serialises the shared handle behind a lock,
+        # and an import transaction held there would stall the host for a whole parse.
+        periodic = None
+        root = mpp_import_root()
+        if root:
+            import psycopg as _psycopg
+            from psycopg.rows import dict_row as _dict_row
+            from coreint.mpp_import import MppImportService
+            from coreint.mpp_reader import MpxjMppReader
+
+            def _mpp_connection():
+                return _psycopg.AsyncConnection.connect(
+                    dsn, autocommit=True, row_factory=_dict_row)
+
+            application.state.mpp_import_service = MppImportService(
+                _mpp_connection, MpxjMppReader(java_home=mpp_java_home()),
+                import_root=root, max_size_mb=mpp_max_file_size_mb())
+            print("mpp import CONFIGURED: root is set; POST /api/projects/{id}/mpp-imports")
+
+            if mpp_import_enabled():
+                interval = mpp_import_interval_minutes() * 60
+
+                async def _periodic():
+                    service = application.state.mpp_import_service
+                    while True:
+                        await asyncio.sleep(interval)
+                        try:
+                            outcomes = await service.periodic_tick()
+                            if outcomes:
+                                print("mpp periodic import:",
+                                      [(o.get("projectId"), o.get("status"))
+                                       for o in outcomes])
+                        except Exception as error:  # noqa: BLE001 -- the loop must survive
+                            print("mpp periodic import failed:", error)
+
+                periodic = asyncio.create_task(_periodic())
+                print(f"mpp periodic import ENABLED every {interval // 60} minutes")
         try:
             yield
         finally:
+            if periodic is not None:
+                periodic.cancel()
+                # Await the cancellation: an in-flight import gets to unwind its
+                # transaction before the connections underneath it are closed.
+                try:
+                    await periodic
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
             await connection.close()
             if core is not None:
                 await core.close()
@@ -310,6 +387,88 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
             response.headers["X-Finance-Data-Source"] = "postgresql"
             response.headers["X-Finance-Environment"] = app_env()
         return response
+
+    # ----------------------------------------------------------------- MPP import API
+    # Registered on the HOST application, not the finance router: importing a schedule is
+    # a Core-host duty, and app/finance must stay ignorant of files and parsers. The
+    # permissions are Core's own msp.* codes, resolved through the same ports every other
+    # request goes through.
+    _IMPORT_STATUS = {
+        "MPP_FILE_NOT_FOUND": 404,
+        "MPP_PATH_NOT_ALLOWED": 422,
+        "MPP_FILE_TOO_LARGE": 413,
+        "MPP_FILE_EMPTY": 422,
+        "MPP_FILE_CORRUPTED": 422,
+        "MPP_FORMAT_UNSUPPORTED": 422,
+        "MPP_PARSE_FAILED": 422,
+        "MPXJ_NOT_AVAILABLE": 503,
+        "JAVA_RUNTIME_NOT_AVAILABLE": 503,
+        "MPP_IMPORT_ALREADY_RUNNING": 409,
+        "MPP_DUPLICATE_FILE": 409,
+        "MPP_IMPORT_REFUSED": 403,
+    }
+
+    async def _mpp_guard(request: Request, project_id: str, permission: str):
+        state = request.app.state
+        context = await state.auth_context_provider.current(request)
+        await state.scope_authorizer.require_project(
+            context, context.organization_id, project_id)
+        await state.permission_authorizer.require(context, permission)
+        return context
+
+    def _mpp_service(request: Request):
+        service = getattr(request.app.state, "mpp_import_service", None)
+        if service is None:
+            from fastapi import HTTPException
+            raise HTTPException(503, "MPP import is not configured on this host "
+                                     "(set MPP_IMPORT_ROOT)")
+        return service
+
+    @application.post("/api/projects/{projectId}/mpp-imports", status_code=201)
+    async def run_mpp_import(projectId: str, request: Request):
+        from fastapi.responses import JSONResponse
+        from coreint.mpp_import import MppImportRefused
+        context = await _mpp_guard(request, projectId, "msp.upload")
+        service = _mpp_service(request)
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 -- an empty body means "the configured file"
+            pass
+        if not isinstance(body, dict):
+            body = {}          # a JSON scalar/array is not a request, it is an accident
+        # The service accepts exactly the project's own file, `<projectId>.mpp`; a body
+        # naming anything else is refused before the filesystem is consulted.
+        file_name = str(body.get("fileName") or f"{projectId}.mpp")
+        try:
+            # organization_id comes from the authenticated context, never from the body.
+            return await service.run_import(str(context.organization_id), projectId,
+                                            file_name,
+                                            actor_user_id=context.user_id)
+        except MppImportRefused as refused:
+            return JSONResponse(status_code=_IMPORT_STATUS.get(refused.code, 422),
+                                content={"error": {"code": refused.code,
+                                                   "message": str(refused)}})
+
+    @application.get("/api/projects/{projectId}/mpp-imports/latest")
+    async def latest_mpp_import(projectId: str, request: Request):
+        from fastapi import HTTPException
+        await _mpp_guard(request, projectId, "msp.view")
+        service = _mpp_service(request)
+        for result in reversed(list(service.recent.values())):
+            if result.get("projectId") == projectId:
+                return result
+        raise HTTPException(404, "no import has run for this project in this process")
+
+    @application.get("/api/projects/{projectId}/mpp-imports/{importId}")
+    async def get_mpp_import(projectId: str, importId: str, request: Request):
+        from fastapi import HTTPException
+        await _mpp_guard(request, projectId, "msp.view")
+        service = _mpp_service(request)
+        result = service.recent.get(importId)
+        if result is None or result.get("projectId") != projectId:
+            raise HTTPException(404, "unknown import id")
+        return result
 
     @application.get("/", response_class=HTMLResponse)
     @application.get("/index.html", response_class=HTMLResponse)

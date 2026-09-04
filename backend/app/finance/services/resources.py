@@ -81,6 +81,8 @@ class FinanceResourcesService:
             command.wbs_code, command.parent_task_external_id)
 
     async def list_estimate_lines(self, scope): return await self._repository.list_estimate_lines(scope)
+    async def list_task_resource_mappings(self, scope, page=1, page_size=100):
+        return await self._repository.list_task_resource_mappings(scope, page, page_size)
     async def create_estimate_line(self, scope, command: EstimateLineCreate):
         resource = await self.get_resource(scope, command.resource_id)
         activity = await self._activity(scope, command.activity_external_id)
