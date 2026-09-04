@@ -122,6 +122,29 @@ async def create_resource(projectId: str, payload: ResourceCreate, request: Requ
     scope = await _resource_scope(projectId, request, "finance.edit")
     return ResourceResponse.from_domain(await request.app.state.finance_resources_service.create_resource(scope, payload))
 
+@router.get("/task-resource-mappings")
+async def task_resource_mappings(projectId: str, request: Request, page: int = 1, pageSize: int = 100):
+    """MPP task <-> finance resource links, read-only, scoped through finance_resources.
+
+    task_id is msp_tasks.id -- the database identity of one task row in one snapshot, not
+    the Task ID printed inside the file. Task details come from the progress feed; this
+    lists the linkage Finance owns.
+    """
+    scope = await _resource_scope(projectId, request, "finance.view")
+    # Clamped, not validated-and-500'd: page=-1 or pageSize=0 would otherwise reach
+    # PostgreSQL as a negative LIMIT/OFFSET and blow up mid-query.
+    page = max(1, page)
+    page_size = min(max(1, pageSize), 500)
+    rows, total = await request.app.state.finance_resources_service.list_task_resource_mappings(
+        scope, page, page_size)
+    return {"items": [{"id": str(row["id"]), "taskId": row["task_id"],
+                       "resourceId": str(row["resource_id"]),
+                       "resourceCode": row["resource_code"],
+                       "resourceTitle": row["resource_title"],
+                       "externalResourceId": row["external_resource_id"]}
+                      for row in rows],
+            "page": page, "pageSize": page_size, "totalItems": total}
+
 @router.get("/resources/{resourceId}", response_model=ResourceResponse)
 async def get_resource(projectId: str, resourceId: UUID, request: Request):
     scope = await _resource_scope(projectId, request, "finance.view")

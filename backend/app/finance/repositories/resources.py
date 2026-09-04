@@ -4,10 +4,12 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
+from psycopg import errors
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from ..domain.resources import EstimateLine, FinanceResource, UnitMismatch
+from ..domain.resources import (DuplicateExternalResourceId, EstimateLine,
+                                FinanceResource, UnitMismatch)
 
 
 class PsycopgFinanceResourcesRepository:
@@ -38,6 +40,16 @@ class PsycopgFinanceResourcesRepository:
         return None if row is None else self._resource(row)
 
     async def create_resource(self, scope, value, audit_id):
+        try:
+            return await self._create_resource(scope, value, audit_id)
+        except errors.UniqueViolation as error:
+            if _is_external_identity_conflict(error):
+                raise DuplicateExternalResourceId(
+                    "another live resource in this project already uses external "
+                    "resource id %r" % value.external_resource_id) from error
+            raise
+
+    async def _create_resource(self, scope, value, audit_id):
         async with self._connection.transaction():
             async with self._connection.cursor() as c:
                 await c.execute("""INSERT INTO finance_resources (id,organization_id,project_id,resource_type,code,title,base_unit,dimension,external_resource_id,created_by,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (value.id,value.organization_id,value.project_id,value.type,value.code,value.title,value.base_unit,value.dimension,value.external_resource_id,value.created_by,value.created_at))
@@ -48,6 +60,18 @@ class PsycopgFinanceResourcesRepository:
         current = await self.get_resource(scope, resource_id)
         if current is None: return None
         updated = current.with_changes(**changes)
+        try:
+            return await self._update_resource(scope, resource_id, current, updated,
+                                               audit_id, occurred_at)
+        except errors.UniqueViolation as error:
+            if _is_external_identity_conflict(error):
+                raise DuplicateExternalResourceId(
+                    "another live resource in this project already uses external "
+                    "resource id %r" % updated.external_resource_id) from error
+            raise
+
+    async def _update_resource(self, scope, resource_id, current, updated, audit_id,
+                               occurred_at):
         async with self._connection.transaction():
             async with self._connection.cursor() as c:
                 await c.execute("""UPDATE finance_resources SET resource_type=%s,code=%s,title=%s,base_unit=%s,dimension=%s,external_resource_id=%s WHERE organization_id=%s AND project_id=%s AND id=%s AND deleted_at IS NULL""", (updated.type,updated.code,updated.title,updated.base_unit,updated.dimension,updated.external_resource_id,scope.organization_id,scope.project_id,resource_id))
@@ -61,6 +85,45 @@ class PsycopgFinanceResourcesRepository:
         grouped={line["id"]:[] for line in lines}
         for revision in history:grouped.setdefault(revision["estimate_line_id"],[]).append({key:value for key,value in revision.items() if key!="estimate_line_id"})
         return [self._line(line,grouped[line["id"]]) for line in lines]
+
+    async def list_task_resource_mappings(self, scope, page=1, page_size=100):
+        """The CURRENT MPP task links of this project's finance resources. Read-only.
+
+        Scoped through finance_resources -- the map table itself carries no tenant keys
+        by design (three columns), so the JOIN to a scope-filtered finance_resources IS
+        the scoping. Restricted to the project's LATEST snapshot: every import writes a
+        fresh set of task rows, so without the restriction the list would mix each
+        superseded generation with the current one and the totals would lie. Reading
+        msp_tasks here is sanctioned by 0009 itself -- the map's foreign key made
+        msp_tasks a hard precondition of this table, so the tables cannot exist apart.
+        Task DETAILS still come only from the Core feed.
+        """
+        offset = (max(page, 1) - 1) * page_size
+        current = """
+                SELECT map.id, map.task_id, map.resource_id,
+                       resource.code AS resource_code, resource.title AS resource_title,
+                       resource.external_resource_id
+                  FROM finance_task_resource_map AS map
+                  JOIN msp_tasks AS task ON task.id = map.task_id
+                  JOIN finance_resources AS resource ON resource.id = map.resource_id
+                 WHERE resource.organization_id = %s AND resource.project_id = %s
+                   AND resource.deleted_at IS NULL
+                   AND task.snapshot_id = (SELECT max(current.id)
+                                             FROM msp_snapshots AS current
+                                            WHERE current.project_id = %s)
+        """
+        async with self._connection.cursor(row_factory=dict_row) as c:
+            await c.execute(current + """
+                 ORDER BY map.task_id, resource.code
+                 LIMIT %s OFFSET %s
+            """, (scope.organization_id, scope.project_id, scope.project_id,
+                  page_size, offset))
+            rows = await c.fetchall()
+            await c.execute("SELECT count(*) AS n FROM (" + current + ") AS page",
+                            (scope.organization_id, scope.project_id,
+                             scope.project_id))
+            total = (await c.fetchone())["n"]
+        return rows, total
 
     async def create_estimate_line(self, scope, value, audit_id):
         async with self._connection.transaction():
@@ -87,3 +150,9 @@ class PsycopgFinanceResourcesRepository:
             if value is None: return None
             return {k: str(v) if isinstance(v,(UUID,Decimal,datetime)) else v for k,v in value.items()}
         await c.execute("""INSERT INTO finance_audit_events (id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,reason,before_values,after_values,occurred_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (audit_id,scope.organization_id,scope.project_id,actor,action,entity_type,entity_id,reason,Jsonb(clean(before)),Jsonb(clean(after)),at))
+
+
+def _is_external_identity_conflict(error):
+    """Whether a UniqueViolation is 0009's external-identity index, by its NAME --
+    a PK collision or any other unique constraint must keep its own meaning."""
+    return getattr(error.diag, "constraint_name", None) ==         "ux_finance_resources_external_identity"

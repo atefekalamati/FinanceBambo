@@ -78,6 +78,25 @@ def validate_file(logical_type: str, original_name: str, declared_mime: str, con
     return detected_mime, stored_extension
 
 
+def storage_name(value) -> str:
+    """The key this attachment was actually PUT under.
+
+    `upload` writes the file under `stored_name` -- `{file_id}.{extension}` -- and keeps
+    whatever key the storage returned in `storage_key`. Reading it back by `file_id` alone
+    asks for a name with no extension, which nothing was ever written to, so every
+    retrieval raised FileNotFoundError: the preview endpoint answered 500, and the
+    extraction service caught the same error in its broad `except Exception` and reported
+    "extraction provider is unavailable" -- blaming a provider it had not reached.
+
+    `storage_key` first, because it is what the storage itself answered with. `stored_name`
+    is the fallback for a row written before that column was populated, and `file_id` the
+    last resort so a storage that really does key by id still works.
+    """
+    return str(getattr(value, "storage_key", None)
+               or getattr(value, "stored_name", None)
+               or value.file_id)
+
+
 class FinanceAttachmentService:
     def __init__(self, repository, storage, id_factory=uuid4, clock=lambda: datetime.now(timezone.utc)):
         self.repo, self.storage, self.ids, self.clock = repository, storage, id_factory, clock
@@ -109,7 +128,8 @@ class FinanceAttachmentService:
 
     async def content(self, scope, file_id):
         value = await self.get(scope, file_id)
-        stored = await self.storage.get(str(scope.organization_id), scope.project_id, str(value.file_id))
+        stored = await self.storage.get(str(scope.organization_id), scope.project_id,
+                                        storage_name(value))
         content = stored if isinstance(stored,(bytes,bytearray,memoryview)) else getattr(stored,"content",None)
         if not isinstance(content,(bytes,bytearray,memoryview)):
             raise AttachmentStorageUnavailable("file content is unavailable")

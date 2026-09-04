@@ -122,7 +122,11 @@ class ExtractionTests(unittest.IsolatedAsyncioTestCase):
     async def test_voice_uses_independent_adapter_and_scoped_storage(self):
         draft=await self.service(attachment("invoice_voice")).start(FinanceScope(ORG,"p1",ACTOR),FILE_ID)
         self.assertEqual("voice-adapter",draft.provider_adapter);self.assertEqual(1,len(self.voice.calls))
-        self.assertEqual((str(ORG),"p1",str(FILE_ID)),self.storage.calls[0])
+        # The key the file was PUT under, not the bare id. The fixture gives this
+        # attachment a storage_key of "private/key" precisely because the two differ;
+        # asking by FILE_ID found nothing on a real LocalFileStorage, which stores
+        # under "{file_id}.{extension}".
+        self.assertEqual((str(ORG),"p1","private/key"),self.storage.calls[0])
 
     async def test_invalid_provider_contract_marks_initial_file_failed(self):
         bad=FakeExtractor(result={"fields":[{"key":"amount","confidence":2}]})

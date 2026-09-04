@@ -354,37 +354,50 @@ class NoCoreForeignKeyTests(unittest.TestCase):
             spec.loader.exec_module(module)
             yield path.name, module.UPGRADE_SQL + "\n" + module.DOWNGRADE_SQL
 
-    def test_no_revision_references_a_core_table(self):
-        """A Finance revision may not point a foreign key at a Core table.
+    #: The ONE sanctioned Core foreign key, decided by the project owner for the
+    #: task-resource link table: 0009 references msp_tasks (id) ON DELETE CASCADE so
+    #: a task Core deletes takes its mappings with it. The 0009 docstring records the
+    #: operational precondition this reverses from 0007's day: the production
+    #: migration role must first receive GRANT REFERENCES ON msp_tasks. Nothing else
+    #: is sanctioned; a second entry in this set is a review decision, not a
+    #: convenience.
+    SANCTIONED_CORE_KEYS = {("0009_finance_task_resource_map.py", "msp_tasks")}
 
-        Matched on the SQL that creates a reference, not on the table name appearing
-        anywhere: `0007` explains at length why it does *not* reference msp_snapshots or
-        msp_tasks, and a substring test failed it for saying so.
+    def test_no_revision_references_a_core_table(self):
+        """A Finance revision may not point a foreign key at a Core table -- except
+        the one sanctioned 0009 link. Matched on the SQL that creates a reference,
+        not on the table name appearing anywhere: `0007` explains at length why it
+        does *not* reference msp_snapshots or msp_tasks, and a substring test failed
+        it for saying so.
         """
         for name, sql in self.revision_sql():
             for table in self.CORE_TABLES:
                 with self.subTest(revision=name, table=table):
-                    self.assertNotRegex(
-                        sql, r"REFERENCES\s+%s\b" % table,
-                        "a Finance revision must not key into a Core-owned table")
+                    if (name, table) not in self.SANCTIONED_CORE_KEYS:
+                        self.assertNotRegex(
+                            sql, r"REFERENCES\s+%s\b" % table,
+                            "a Finance revision must not key into a Core-owned table")
                     self.assertNotRegex(
                         sql, r"ALTER\s+TABLE\s+(?:ONLY\s+)?%s\b" % table,
                         "a Finance revision must not alter a Core-owned table")
 
-    def test_not_one_revision_keys_into_core(self):
-        """Zero Core foreign keys across the whole chain.
+    def test_exactly_the_sanctioned_key_reaches_into_core(self):
+        """One Core foreign key across the whole chain: 0009 -> msp_tasks (id).
 
-        Not a style preference. The production migration role has no REFERENCES privilege on
-        Core tables and no administrator account exists to grant one, so a revision that
-        declared such a key would fail to apply rather than fail review. The three
-        relationships that would have been keys are logical, and
+        Until 0009 the count was zero and had to be: the production migration role
+        had no REFERENCES privilege on Core tables. The project owner has since
+        decided the task-resource link MUST be database-enforced, which turns the
+        missing privilege into a deployment precondition (GRANT REFERENCES ON
+        msp_tasks, recorded in 0009) instead of a design rule. This test pins the
+        exception to exactly that one pair so the next Core key is a decision
+        someone makes on purpose. The other logical relationships stay logical, and
         docs/sql/msp_resource_assignment_data_validation.sql counts their orphans.
         """
-        found = [(name, table)
+        found = {(name, table)
                  for name, sql in self.revision_sql()
                  for table in self.CORE_TABLES
-                 if re.search(r"REFERENCES\s+%s\b" % table, sql)]
-        self.assertEqual([], found)
+                 if re.search(r"REFERENCES\s+%s\b" % table, sql)}
+        self.assertEqual(self.SANCTIONED_CORE_KEYS, found)
 
     def test_no_revision_alters_an_existing_core_table(self):
         """The ownership line that did not move: Core tables are never modified here."""
