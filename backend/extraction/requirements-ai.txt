@@ -1,0 +1,26 @@
+# Self-hosted AI extraction -- LOCAL DEVELOPMENT ENVIRONMENT ONLY.
+#
+# Install ONLY into the isolated environment, never into the backend .venv:
+#
+#   cd backend
+#   ai-extraction-env/Scripts/python -m pip install -r extraction/requirements-ai.txt
+#
+# Versions are otherwise left to the resolver: the pinned set that works on Linux/CPython
+# 3.10 is not the set that has wheels for Windows/CPython 3.12. What actually resolved and
+# ran here is recorded in samples/README.md, and that is the set to pin for a server once
+# it has been chosen deliberately.
+
+# paddlepaddle is the one deliberate pin. 3.3.1 -- what the resolver picks unconstrained --
+# aborts on Windows CPU inside its own oneDNN path with
+# `ConvertPirAttribute2RuntimeAttribute not support`, BEFORE any image is read. Disabling
+# mkldnn and the PIR executor by flag does not avoid it; 3.0.0 does. Raise this ceiling only
+# after re-running scripts/test_ocr.py on the target platform.
+paddlepaddle<3.1
+paddleocr
+openai-whisper
+torch
+ffmpeg-python
+
+# NOT INSTALLABLE BY PIP: ffmpeg itself. Whisper shells out to it to decode every input
+# format, WAV included. On Windows: `winget install Gyan.FFmpeg` -- which does NOT add it to
+# PATH. See samples/README.md.

@@ -18,13 +18,10 @@ export function createMockPricesAdapter(context, { initialState = "success", res
   let conversionSequence = 4;
   const importPreviews = new Map();
   const resources = [
-    // Ids and titles match the resource catalogue in backend/devhost/seed.py, so the same
-    // resource is the same resource across adapters. The prices themselves stay per-unit
-    // and are already in a realistic range; only the identities were stale.
-    { resourceId: "20000000-0000-4000-8000-000000000001", code: "MAT-REBAR", title: "میلگرد آجدار A3", baseUnit: "kg" },
-    { resourceId: "20000000-0000-4000-8000-000000000005", code: "LAB-FORM", title: "اکیپ قالب‌بندی", baseUnit: "hour" },
-    { resourceId: "20000000-0000-4000-8000-000000000007", code: "EQ-CRANE", title: "جرثقیل برجی", baseUnit: "hour" },
-    { resourceId: "20000000-0000-4000-8000-000000000009", code: "GEN-PERMIT", title: "مجوز و عوارض شهرداری", baseUnit: null },
+    { resourceId: "20000000-0000-4000-8000-000000000001", code: "MAT-REBAR", title: "میلگرد", baseUnit: "kg" },
+    { resourceId: "20000000-0000-4000-8000-000000000002", code: "LAB-FORM", title: "اکیپ قالب‌بندی", baseUnit: "hour" },
+    { resourceId: "20000000-0000-4000-8000-000000000003", code: "EQ-CRANE", title: "جرثقیل", baseUnit: "hour" },
+    { resourceId: "20000000-0000-4000-8000-000000000004", code: "GEN-PERMIT", title: "هزینه مجوز", baseUnit: null },
   ];
 
   function getActiveResources() {

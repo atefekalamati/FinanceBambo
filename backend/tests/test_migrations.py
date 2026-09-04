@@ -39,16 +39,23 @@ LINKED = revision("0003_invoice_linked_documents")
 REPORT = revision("0004_report_snapshot_payload")
 SOURCE = revision("0005_progress_snapshot_source_type")
 HOST_REFERENCE = revision("0006_progress_snapshot_host_reference")
+MSP_RESOURCES = revision("0007_msp_resources_and_assignments")
+PRICE_INTELLIGENCE = revision("0008_price_intelligence")
+TASK_RESOURCE_MAP = revision("0009_finance_task_resource_map")
 
 #: The chain, oldest first. Order is part of the contract: 0004 backfills rows that 0001
 #: created, and 0005 alters a table 0001 defined.
-CHAIN = (CORE, CONFIRMATION, LINKED, REPORT, SOURCE, HOST_REFERENCE)
+CHAIN = (CORE, CONFIRMATION, LINKED, REPORT, SOURCE, HOST_REFERENCE, MSP_RESOURCES,
+         PRICE_INTELLIGENCE, TASK_RESOURCE_MAP)
 
 #: Revision id to the rest of its filename, so a test can find a revision's source.
 MODULE_SUFFIX = {"0001": "finance_core", "0002": "invoice_confirmation",
                  "0003": "invoice_linked_documents", "0004": "report_snapshot_payload",
                  "0005": "progress_snapshot_source_type",
-                 "0006": "progress_snapshot_host_reference"}
+                 "0006": "progress_snapshot_host_reference",
+                 "0007": "msp_resources_and_assignments",
+                 "0008": "price_intelligence",
+                 "0009": "finance_task_resource_map"}
 
 TABLES = (
     "finance_project_settings",
@@ -260,16 +267,18 @@ class AlembicChainTests(unittest.TestCase):
     """
 
     def test_the_chain_is_linear_and_in_the_historical_order(self):
-        self.assertEqual(["0001", "0002", "0003", "0004", "0005", "0006"],
-                         [module.revision for module in CHAIN])
-        expected_parents = [None, "0001", "0002", "0003", "0004", "0005"]
+        self.assertEqual(
+            ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"],
+            [module.revision for module in CHAIN])
+        expected_parents = [None, "0001", "0002", "0003", "0004", "0005", "0006", "0007",
+                            "0008"]
         self.assertEqual(expected_parents, [module.down_revision for module in CHAIN])
 
     def test_there_is_exactly_one_head(self):
         # A second head means two branches of schema history and an ambiguous "latest".
         revisions = {module.revision for module in CHAIN}
         parents = {module.down_revision for module in CHAIN} - {None}
-        self.assertEqual({"0006"}, revisions - parents)
+        self.assertEqual({"0009"}, revisions - parents)
 
     def test_every_revision_file_is_named_for_the_revision_it_declares(self):
         for path in sorted(VERSIONS.glob("*.py")):
@@ -283,7 +292,9 @@ class AlembicChainTests(unittest.TestCase):
         self.assertEqual(
             ["0001_finance_core", "0002_invoice_confirmation", "0003_invoice_linked_documents",
              "0004_report_snapshot_payload", "0005_progress_snapshot_source_type",
-             "0006_progress_snapshot_host_reference"],
+             "0006_progress_snapshot_host_reference",
+             "0007_msp_resources_and_assignments", "0008_price_intelligence",
+             "0009_finance_task_resource_map"],
             sorted(path.stem for path in VERSIONS.glob("*.py")))
 
     def test_every_revision_runs_both_directions(self):
@@ -407,6 +418,101 @@ class HostReferenceRevisionTests(unittest.TestCase):
         """
         self.assertNotIn("%", self.UP)
         self.assertNotIn("%", self.DOWN)
+
+
+class TaskResourceMapRevisionTests(unittest.TestCase):
+    """0009: the task-resource link table, read from the SQL that will run."""
+
+    UP = TASK_RESOURCE_MAP.UPGRADE_SQL
+    DOWN = TASK_RESOURCE_MAP.DOWNGRADE_SQL
+
+    def test_the_revision_extends_the_restored_chain(self):
+        self.assertEqual("0009", TASK_RESOURCE_MAP.revision)
+        self.assertEqual("0008", TASK_RESOURCE_MAP.down_revision)
+
+    def test_the_table_carries_exactly_three_columns(self):
+        match = re.search(r"(?is)create\s+table\s+finance_task_resource_map\s*\((.*?)\);",
+                          self.UP)
+        self.assertIsNotNone(match)
+        body = match.group(1)
+        columns = [line.strip() for line in body.splitlines()
+                   if line.strip() and not line.strip().upper().startswith(
+                       ("UNIQUE", "FOREIGN", "PRIMARY", "CHECK", "CONSTRAINT"))]
+        self.assertEqual(3, len(columns), columns)
+        self.assertRegex(columns[0], r"(?i)^id\s+uuid\s+primary\s+key")
+        self.assertRegex(columns[1], r"(?i)^task_id\s+bigint\s+not\s+null")
+        self.assertRegex(columns[2], r"(?i)^resource_id\s+uuid\s+not\s+null")
+
+    def test_task_id_references_the_database_identity_and_cascades(self):
+        # msp_tasks.id, the row identity -- NEVER the file's display Task ID.
+        self.assertRegex(self.UP, r"(?i)foreign\s+key\s*\(task_id\)\s*references\s+"
+                                  r"msp_tasks\s*\(id\)\s*on\s+delete\s+cascade")
+
+    def test_a_mapped_finance_resource_cannot_be_deleted(self):
+        self.assertRegex(self.UP, r"(?i)foreign\s+key\s*\(resource_id\)\s*references\s+"
+                                  r"finance_resources\s*\(id\)\s*on\s+delete\s+restrict")
+
+    def test_a_pair_can_exist_only_once(self):
+        self.assertRegex(self.UP, r"(?i)unique\s*\(task_id,\s*resource_id\)")
+
+    def test_reverse_lookups_have_their_index(self):
+        self.assertRegex(self.UP, r"(?i)create\s+index\s+ix_finance_task_resource_map_resource"
+                                  r"\s+on\s+finance_task_resource_map\s*\(resource_id\)")
+
+    def test_external_identity_is_unique_per_scope_over_live_rows_only(self):
+        match = re.search(r"(?is)create\s+unique\s+index\s+ux_finance_resources_external_identity"
+                          r"\s+on\s+finance_resources\s*\(organization_id,\s*project_id,\s*"
+                          r"external_resource_id\)\s*where\s+(.*?);", self.UP)
+        self.assertIsNotNone(match)
+        condition = match.group(1)
+        self.assertIn("external_resource_id IS NOT NULL", condition)
+        self.assertIn("deleted_at IS NULL", condition)
+
+    def test_the_duplicate_guard_runs_before_the_index_and_is_wired_to_the_count(self):
+        # Refusal over dirty data is a human decision surfaced early, not an index error.
+        self.assertLess(self.UP.index("HAVING COUNT(*) > 1"),
+                        self.UP.index("CREATE UNIQUE INDEX"))
+        self.assertIn("|| bad ||", self.UP)
+        self.assertIn("never merges or deletes rows", self.UP)
+
+    def test_writers_are_locked_out_between_the_guard_and_the_index(self):
+        # Without the lock, an INSERT racing the migration could land a duplicate
+        # after the count and fail the index build with a raw error instead.
+        lock = self.UP.index("LOCK TABLE finance_resources IN SHARE ROW EXCLUSIVE MODE")
+        self.assertLess(lock, self.UP.index("HAVING COUNT(*) > 1"))
+
+    def test_the_core_precondition_fails_fast_with_instructions(self):
+        # On a database without Core's msp_tasks the FK would fail anyway -- but with
+        # a bare undefined-table error. The precheck names the requirement instead.
+        precheck = self.UP.index("to_regclass('msp_tasks') IS NULL")
+        self.assertLess(precheck,
+                        self.UP.index("CREATE TABLE finance_task_resource_map"))
+        self.assertIn("42P01", self.UP)
+
+    def test_the_scope_guard_is_a_constraint_trigger_on_insert_and_update(self):
+        self.assertRegex(self.UP, r"(?i)create\s+constraint\s+trigger\s+"
+                                  r"finance_task_resource_map_scope\s+after\s+insert\s+or\s+update")
+
+    def test_the_scope_guard_fails_closed(self):
+        # A task with no resolvable project maps to NOTHING; silence would be a leak.
+        self.assertIn("task_project IS NULL", self.UP)
+        self.assertIn("has no resolvable project", self.UP)
+        self.assertIn("IS DISTINCT FROM", self.UP)
+
+    def test_neither_direction_contains_a_percent_sign(self):
+        # Same driver hazard 0006 documents: DDL() performs percent-substitution.
+        self.assertNotIn("%", self.UP)
+        self.assertNotIn("%", self.DOWN)
+
+    def test_the_rollback_drops_exactly_what_was_added_and_no_rows(self):
+        for statement in ("DROP TRIGGER IF EXISTS finance_task_resource_map_scope",
+                          "DROP FUNCTION IF EXISTS finance_task_resource_map_guard",
+                          "DROP TABLE IF EXISTS finance_task_resource_map",
+                          "DROP INDEX IF EXISTS ux_finance_resources_external_identity"):
+            self.assertIn(statement, self.DOWN)
+        lowered = self.DOWN.lower()
+        for forbidden in ("delete from", "truncate", "update ", "alter table finance_resources"):
+            self.assertNotIn(forbidden, lowered)
 
 
 class AlembicConfigurationTests(unittest.TestCase):

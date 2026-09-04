@@ -18,6 +18,18 @@ class UnitMismatch(FinanceDomainError):
     status = 422
 
 
+class DuplicateExternalResourceId(FinanceDomainError):
+    """Another live resource in this scope already claims this external id.
+
+    The uniqueness is 0009's partial index -- it is what makes the MPP import's
+    UID-to-resource matching deterministic -- and a violation is the CALLER's
+    conflict to resolve, not a server fault: 409, never a raw 500.
+    """
+
+    code = "DUPLICATE_EXTERNAL_RESOURCE_ID"
+    status = 409
+
+
 class UnitNotFound(FinanceDomainError):
     code = "UNIT_NOT_FOUND"
     status = 422

@@ -1,0 +1,46 @@
+# Self-hosted extraction providers -- INSTALLED ON THE HOST, NOT IN THE FINANCE MODULE.
+#
+# Deliberately a separate file from backend/requirements.txt. These packages weigh several
+# gigabytes and pull in a full deep-learning runtime; putting them in the module's own
+# requirements would put that weight into every deployment, including the ones that never
+# process an image. `app/finance` imports none of them -- a test asserts it.
+#
+#   pip install -r backend/extraction/requirements.txt
+#
+# THESE PINS TARGET A LINUX SERVER AND ARE NOT VERIFIED. They were chosen from the
+# projects' own documentation, not from an install that ran. On Windows with CPython 3.12
+# they do not resolve at all -- no wheels -- and the set that actually ran both providers
+# there is a different generation entirely (paddlepaddle 3.0.0, paddleocr 3.7.0, torch
+# 2.13.0). That verified set is the table in the setup guide. Before trusting this file on
+# a server, install it and run extraction/scripts/test_ocr.py and test_whisper.py; if it
+# resolves, replace this paragraph with the date and platform it was verified on.
+#
+# See docs/EXTRACTION_SELF_HOSTED_SETUP_FA.md for the CPU and GPU variants, the model
+# downloads, and the ffmpeg requirement, which pip cannot install.
+
+# --- image OCR -------------------------------------------------------------------------
+# paddlepaddle is the runtime; paddleocr is the model layer. The CPU wheel is the default;
+# the GPU build is a different package and a different index, so it is not pinned here --
+# the setup guide gives the exact command.
+paddlepaddle==2.6.2
+paddleocr==2.9.1
+
+# PaddleOCR reads images through these. They are its dependencies rather than ours, but
+# pinning them keeps a resolver from choosing a pair that does not work together.
+opencv-python-headless==4.10.0.84
+pillow==11.0.0
+
+# --- voice transcription ---------------------------------------------------------------
+# openai-whisper is the LOCAL Whisper implementation, not a client for any hosted API. It
+# downloads model weights once and runs entirely on this machine.
+openai-whisper==20240930
+
+# Whisper's tensor runtime. The CPU build is the default; the CUDA build comes from
+# PyTorch's own index -- again, see the setup guide.
+torch==2.5.1
+
+# --- NOT INSTALLABLE BY PIP -------------------------------------------------------------
+# ffmpeg. Whisper shells out to it to decode anything that is not already a 16 kHz mono WAV,
+# which is every m4a and ogg the browser produces. Install it with the system package
+# manager; the provider reports a clear error when it is missing rather than failing inside
+# the model.

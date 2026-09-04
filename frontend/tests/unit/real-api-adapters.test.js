@@ -43,7 +43,9 @@ test("uses real file and extraction routes for list, start, get, retry and rejec
   await adapter.getExtraction("draft-1");
   await adapter.retryExtraction("draft-1");
   await adapter.rejectExtraction({ draftId: "draft-1", expectedVersion: 3 });
-  assert.ok(calls.some((call) => call.path.endsWith("/files/file-1/extractions") && call.options.method === "POST"));
+  // `/extractions/async`: starting an extraction answers 202 and the page polls the
+  // attachment status. The blocking route held the request open for the whole OCR run.
+  assert.ok(calls.some((call) => call.path.endsWith("/files/file-1/extractions/async") && call.options.method === "POST"));
   assert.ok(calls.some((call) => call.path.endsWith("/extractions/draft-1") && !call.options));
   assert.ok(calls.some((call) => call.path.endsWith("/extractions/draft-1/retry")));
   const reject = calls.find((call) => call.path.endsWith("/extractions/draft-1/reject"));

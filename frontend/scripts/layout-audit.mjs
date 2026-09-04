@@ -104,6 +104,25 @@ function connect(webSocketDebuggerUrl) {
   };
 }
 
+/** Resolves once the module has rendered, or after `timeout` either way. */
+async function waitForRender(cdp, timeout = 8000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const probe = await cdp.send("Runtime.evaluate", {
+      expression: `(() => document.readyState === "complete"
+        && !!document.querySelector("#finance-module-root")?.firstElementChild)()`,
+      returnByValue: true,
+    });
+    if (probe.result?.value === true) {
+      // One more frame, so the render that just landed has been laid out.
+      await delay(120);
+      return true;
+    }
+    await delay(100);
+  }
+  return false;
+}
+
 const measurementExpression = `(() => {
   const root = document.documentElement;
   const viewportWidth = root.clientWidth;
@@ -186,7 +205,12 @@ try {
         mobile: width <= 768,
       });
       await cdp.send("Page.reload", { ignoreCache: true });
-      await delay(450);
+      // Not a fixed pause. A reload replaces the document, and an evaluate that
+      // lands mid-swap finds documentElement itself null — which crashed this
+      // script on whichever route happened to be slow that run, and would
+      // otherwise have skipped it while still counting it as a run. Wait for the
+      // module to have actually rendered, then measure.
+      await waitForRender(cdp);
       const result = await cdp.send("Runtime.evaluate", {
         expression: measurementExpression,
         returnByValue: true,

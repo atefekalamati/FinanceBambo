@@ -1,0 +1,22 @@
+{
+ "test": "end-to-end local extraction",
+ "generatedImage": "backend/extraction/test_data/generated_invoice.png",
+ "uploadEndpoint": "POST /api/projects/{projectId}/finance/files",
+ "extractionEndpoint": "POST /api/projects/{projectId}/finance/files/{fileId}/extractions",
+ "attachmentId": "fbedf3e1-35a3-4b6f-95dc-184a0abe0075",
+ "draftId": "ad0ea94e-d9ff-41d7-b11f-3cd3ebfc43e4",
+ "version": 1,
+ "reviewStatus": "awaitingReview",
+ "providerAdapter": "paddleocr-local",
+ "financialEffectIrr": "0",
+ "createdAt": "2026-09-02T22:35:44.004993-07:00",
+ "extractedFields": [
+  {
+   "key": "rawText",
+   "confidence": 0.9709,
+   "editedByUser": false,
+   "confirmedValue": null,
+   "extractedValue": "فاكتور فروش\nفروشنده شركت تست بامبو\nخريدار پروژه تراس پلاس\nINVOICE NO: INV-1405-001\nشماره فاكتور-\nDATE: 1405/06/12\nتاريخ: 1405/06/12\nمبلغ كلريال\nقيمت واحدريال\nواحد\nتعداد\nشرح كالا\n50,000,000\n5,000,000\nمترمكعب\n10\nبتن آماده\n85,000,000\n85,000\nکیلوگرم\n1000\nمیلگرد\nTOTAL: 135,000,000 IRR\nجمع كل:135,00,0 ريال\nمهر و امضاى فروشنده\nTEST FIXTURE - NOT A REAL INVOICE"
+  }
+ ]
+}
