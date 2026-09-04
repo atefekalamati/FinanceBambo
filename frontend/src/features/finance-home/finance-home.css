@@ -2697,10 +2697,34 @@ a.finance-variance-card__link:hover {
 }
 
 /* Long item names wrap rather than pushing the price out of the card. */
+/* Under `table-layout: fixed` the columns are measured from the first row and
+   nothing else — and the first row here is the header, which carried no widths
+   at all. The 44/32/24 below was written on the body cells, where fixed layout
+   never reads it, so the three columns were laid out as equal thirds and a long
+   item name pushed the price and the trend into each other.
+
+   Stated on the header cells, which is the row that decides. */
+.prices-summary__table th:nth-child(1) {
+  inline-size: 44%;
+}
+
+.prices-summary__table th:nth-child(2) {
+  inline-size: 32%;
+}
+
+.prices-summary__table th:nth-child(3) {
+  inline-size: 24%;
+}
+
+/* A name longer than its column is cut, not wrapped: the column is a fixed
+   share of a card that has no horizontal scroll, so anything that cannot be cut
+   has to come out of a neighbour. The full name stays in the title attribute. */
 .prices-summary__name {
   inline-size: 44%;
-  overflow-wrap: anywhere;
+  overflow: hidden;
   line-height: 1.5;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .prices-summary__price {
@@ -2865,6 +2889,14 @@ a.breakdown-donut:focus-visible {
 @media (max-width: 64rem) {
   .finance-grid--main {
     grid-template-columns: 1fr;
+  }
+
+  /* The row is the full width now rather than half of it, so the split inside
+     it goes even: four figures on one side, the way into فاکتورها on the other.
+     2fr 1fr was the answer to sharing half a row with a chart, and there is no
+     chart beside them here — it has moved to the row below. */
+  .finance-lead {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -3196,6 +3228,34 @@ a.breakdown-donut:focus-visible {
    page scrolls normally again, because a phone cannot hold nine sections at a
    readable size and pretending otherwise costs the content.
    ------------------------------------------------------------------------ */
+
+/* --------------------------------------------------------------------------
+   Below the desktop range — held, not yet designed
+   --------------------------------------------------------------------------
+   The row weights on `.finance-board` above are the desktop answer. Every
+   narrower range keeps what the board had before that, so nothing under 1280
+   moved while the desktop layout was being set; each will be replaced as its
+   own layout is decided.
+
+   Its place in the file is the whole rule. It has to be below `.finance-board`
+   to beat it — same weight, so the later declaration wins, and written above it
+   this silently did nothing. It has to be above the 64rem block for the same
+   reason in the other direction: there the board lets go of its rows entirely
+   (`grid-template-rows: none`, `block-size: auto`), and from the foot of the
+   file this reimposed three fr tracks on a board that had just been released.
+   The tracks then split the stacked content 1.5 : 1.5 : 1 whatever the cards
+   needed — at 1024 the level-one card was held at 585px for 360px of chart and
+   carried 200px of empty air above its columns.
+
+   Between the two, both readings come out right and neither needs a floor on
+   the query: 1025 to 1280 takes the weights, 1024 and down keeps `none`.
+   ------------------------------------------------------------------------ */
+
+@media (max-width: 80rem) {
+  .finance-board {
+    grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+}
 
 @media (max-width: 64rem) {
   #finance-module-root:has(.finance-board) {
@@ -4147,7 +4207,7 @@ body[data-finance-runtime] .app-workspace {
     font-size: var(--font-size-sm);
   }
 
-  .finance-board
+  /* .finance-board
     .analysis-chart-panel[data-chart="managerial"]
     > .managerial-deviation {
     margin-inline-start: calc(
@@ -4158,7 +4218,7 @@ body[data-finance-runtime] .app-workspace {
       (100% - var(--managerial-chart-inline)) / 2 +
         var(--managerial-chart-inset) + var(--managerial-scale-gutter)
     );
-  }
+  } */
 }
 
 /* Under 425 the card is barely wider than the four columns, so there is no
@@ -4206,20 +4266,62 @@ body[data-finance-runtime] .app-workspace {
 }
 
 /* --------------------------------------------------------------------------
-   Below the desktop range — held, not yet designed
+   769 to 1024
    --------------------------------------------------------------------------
-   The row weights above are the desktop answer. Every narrower range keeps what
-   the board had before that, so nothing under 1280 moved while the desktop
-   layout was being set; each will be replaced as its own layout is decided.
+   The board has let go of its height by here and the page scrolls, so nothing
+   in this range is a fight for room: what a card needs, it takes. The whole
+   range is written against that — no content compressed to make a row fit.
 
-   At the foot of the file on purpose. Both other 80rem blocks sit above
-   `.finance-board`'s own rule, and at equal weight the later declaration wins —
-   put here, this one is read after the base it is meant to override. Written
-   higher up it silently did nothing.
+   The last row was three cards across and the two beside the curve were 278 and
+   185 wide, which is not a table and a list so much as two columns of wrapped
+   words. It becomes two: the curve keeps its half, and the prices and the
+   warnings take the other half one above the other, a row each of equal height.
+   Both are then as wide as the curve is, which is what makes the price table
+   and the warning text readable — more than the type size does.
+
+   The row is given more height than it had. The curve was drawing into 154px
+   and reads as a flat line at that size; it is the surface that grows and the
+   card follows it.
+
+   Type comes down one rung across every section. The ramp is redefined rather
+   than a size at a time, so anything on this board reading a token moves with
+   it and nothing has to be listed here. The bottom rung is new — 2xs had none
+   below it to step onto.
+
+   At the end of the file because every rule here overrides one written for the
+   board further up, and at equal weight it is the later declaration that wins.
    ------------------------------------------------------------------------ */
 
-@media (max-width: 80rem) {
+/* Not bounded below: the two cards are better stacked at every width narrower
+   than this, and under 48rem they were being stacked already. */
+@media (max-width: 64rem) {
+  .finance-board .finance-insight-cards {
+    grid-template-columns: minmax(0, 1fr);
+    /* Two rows of one part each: equal height, whichever card holds more. */
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 64rem) {
   .finance-board {
-    grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
+    --font-size-lg: .78rem;
+    --font-size-md: .7rem;
+    --font-size-sm: .62rem;
+    --font-size-xs: .56rem;
+    --font-size-2xs: .5rem;
+  }
+
+  .finance-board .finance-curve-card .cost-curve__surface {
+    block-size: clamp(11rem, 27vh, 17rem);
+    max-block-size: 17rem;
+  }
+
+  /* Both caps come off. They held the last row to 20rem, which is under what
+     the curve now asks for and under what two stacked cards come to. The
+     curve's surface has a stated height of its own, so nothing here is left to
+     grow without an end. */
+  .finance-board .finance-curve-card,
+  .finance-board .finance-grid--insights > * {
+    max-block-size: none;
   }
 }
