@@ -3912,8 +3912,16 @@ a.breakdown-donut:focus-visible {
    draws. In a card this narrow the line gets the room and the word sits under
    it rather than beside it, and both come down to the table's own scale. */
 .finance-board .prices-summary .price-trend {
-  /* min-inline-size: 0;
-  grid-template-columns: minmax(0, 1fr);
+  /* prices.css floors this at 7rem, which is right for the wide table on the
+     prices page and is a hard 112px here. The trend column is 81px at 800 and
+     the cell could not hold what would not shrink, so the card carried 20px of
+     horizontal scroll — the column widths were never what caused it, and no
+     split of them could have fixed it: 112 is absolute and the table is not.
+
+     The svg is released with it. Its own `min-inline-size: auto` as a flex item
+     is a second floor behind the first. */
+  min-inline-size: 0;
+  /* grid-template-columns: minmax(0, 1fr);
   gap: 0;
   justify-items: center; */
   display: flex;
@@ -3923,6 +3931,7 @@ a.breakdown-donut:focus-visible {
 }
 
 .finance-board .prices-summary .price-trend svg {
+  min-inline-size: 0;
   block-size: 1.1rem;
 }
 
@@ -4323,5 +4332,26 @@ body[data-finance-runtime] .app-workspace {
   .finance-board .finance-curve-card,
   .finance-board .finance-grid--insights > * {
     max-block-size: none;
+  }
+
+  /* 44/32/24 gave the trend 78px at the bottom of this range, which is a
+     sparkline and a word in the space of a word. The name column is the one
+     that can afford to lose: it clips to an ellipsis by design and keeps the
+     whole title in the cell's own attribute, while the other two hold figures
+     that are only readable entire.
+
+     The three still come to 100 — under `table-layout: fixed` anything less is
+     shared out again by the browser and the split stops being the one written
+     here. */
+  .finance-board .prices-summary__table th:nth-child(1) {
+    inline-size: 36%;
+  }
+
+  .finance-board .prices-summary__table th:nth-child(2) {
+    inline-size: 32%;
+  }
+
+  .finance-board .prices-summary__table th:nth-child(3) {
+    inline-size: 32%;
   }
 }
