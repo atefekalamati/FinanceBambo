@@ -1,5 +1,5 @@
 import { element } from "../../shared/dom/elements.js";
-import { reportIcon } from "../report-builder/report-icons.js";
+import { chevronIcon, reportIcon } from "../report-builder/report-icons.js";
 
 /**
  * The way into فاکتورها, on the board.
@@ -37,7 +37,9 @@ export function createInvoicesEntry({ href = "#/invoices" } = {}) {
   card.append(tags);
 
   const action = element("span", "invoices-entry__action");
-  action.append(document.createTextNode("ورود به بخش فاکتورها"), element("span", "invoices-entry__chevron", "‹"));
+  const actionChevron = chevronIcon("forward");
+  actionChevron.setAttribute("class", "invoices-entry__chevron");
+  action.append(document.createTextNode("ورود به بخش فاکتورها"), actionChevron);
   card.append(action);
 
   return card;
