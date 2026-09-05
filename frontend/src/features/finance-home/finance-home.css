@@ -4447,4 +4447,37 @@ body[data-finance-runtime] .app-workspace {
     inline-size: .95rem;
     block-size: .95rem;
   }
+
+  /* --- what each chart is allowed to become on a tall window ------------- */
+
+  /* The panel already stopped growing — at 24rem, which on a 1200px window is
+     384px of card and a tallest column of 260 standing 20 wide. A column that
+     much taller than it is wide reads as a stripe rather than a bar, and the
+     four of them stop being comparable at a glance. The ceiling comes down to
+     18rem: 288 of panel, 164 of column, and 700 and 900 tall windows are left
+     where they were because they never reached the old ceiling anyway.
+
+     Left on the panel rather than the managerial chart inside it, so the card
+     is the same height in both modes and the switch still moves nothing. */
+  .finance-board .finance-analysis-card .analysis-chart-panel {
+    block-size: clamp(13rem, 34vh, 18rem);
+  }
+
+  /* The curve went the other way. It has the full width of the board here — 625
+     of surface where it had 290 — against a height still capped at 12rem for
+     when it was one of two cards in a row. 625 by 180 is 3.5:1, which is the
+     flat line this range was meant to stop drawing.
+
+     Both caps above it come off with the floor: the card's own and the one on
+     every child of the insights row, either of which would hold the card at
+     20rem and give the surface back what it just gained. */
+  .finance-board .finance-curve-card .cost-curve__surface {
+    block-size: clamp(12rem, 26vh, 18rem);
+    max-block-size: 18rem;
+  }
+
+  .finance-board .finance-curve-card,
+  .finance-board .finance-grid--insights > * {
+    max-block-size: none;
+  }
 }
