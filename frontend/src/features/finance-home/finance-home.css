@@ -3901,12 +3901,23 @@ a.breakdown-donut:focus-visible {
    Nothing here is a line. On a page carrying three real charts, a stroke that
    rises or falls reads as data whatever it was drawn for.
 
-   Only where there is room: below 1024 the card is 45 to 66px tall and its text
-   fills it to within 6px, so the mark is dropped rather than shrunk.
+   It is on at every width, sized to the card rather than to a breakpoint. The
+   card is a container, and the mark is driven off the card's *height* — 45px on
+   a phone against 166 on a laptop, a far wider swing than the width's 113 to
+   310 — so on a card that is wide and short it stays a mark rather than filling
+   it. A percentage block-size on an absolutely positioned element resolves
+   against the card's own padding box, which is what makes that possible without
+   `container-type: size` and the collapse that comes with it once the board has
+   released its rows.
+
+   The glow is the board's own. Its chart columns carry
+   `0 0 1rem color-mix(..., 24%, transparent)`; a stroked mark answers the same
+   way through drop-shadow.
    ------------------------------------------------------------------------ */
 
 .finance-board .finance-figures > .summary-card {
   position: relative;
+  container-type: inline-size;
 }
 
 .finance-board .summary-card__mark {
@@ -3914,17 +3925,20 @@ a.breakdown-donut:focus-visible {
   /* The text is start-aligned, so the empty half is the end one. Whole rather
      than bled past the edge: at -.7rem the card clipped a third off each mark
      and they read as broken shapes instead of as texture. */
-  inset-block-end: .35rem;
-  inset-inline-end: .45rem;
-  inline-size: clamp(2.6rem, 38%, 4.4rem);
-  block-size: auto;
+  inset-block-end: clamp(.15rem, 2.5cqi, .5rem);
+  inset-inline-end: clamp(.2rem, 3cqi, .6rem);
+  /* Height first, width from the viewBox. Whichever runs out — the card's width
+     or its height — is the one that sizes the mark. */
+  block-size: max(1.15rem, min(42cqi, 54%));
+  inline-size: auto;
   color: var(--summary-mark, var(--color-text-muted));
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.4;
+  stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: .12;
+  opacity: .3;
+  filter: drop-shadow(0 0 .3rem currentColor);
   pointer-events: none;
 }
 
@@ -3940,28 +3954,30 @@ a.breakdown-donut:focus-visible {
   --summary-mark: var(--brand-teal);
 }
 
-/* Below 1024 the card has 6 to 11px of slack. A watermark there sits under the
-   text rather than behind it. */
-@media (max-width: 64rem) {
-  .finance-board .summary-card__mark {
-    display: none;
-  }
-}
-
 @media print {
   .finance-board .summary-card__mark {
     display: none;
   }
 }
 
+/* The inset and the space between the three lines are the card's own, not one
+   number that is generous at 310 wide and crowding at 113.
+
+   In percentages, not `cqi`. The card declares `container-type` for the mark
+   inside it, but a container's own units do not resolve against itself — they
+   look to the nearest container above — and written in cqi these three sat at
+   their clamp ceilings at every width, which is how the mistake showed. A
+   percentage padding resolves against the card's own containing block, which is
+   its grid area, which is the card's width. The four cards are always the same
+   width as one another, so they stay level. */
 .finance-board .finance-figures > .summary-card {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: .1rem;
+  gap: 0;
   min-block-size: 0;
   block-size: 100%;
-  padding: .45rem .5rem;
+  padding: clamp(.28rem, 3.6%, .8rem) clamp(.35rem, 4.4%, .95rem);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -3979,7 +3995,10 @@ a.breakdown-donut:focus-visible {
 }
 
 .finance-board .finance-figures .summary-card__value {
-  margin: .12rem 0 .06rem;
+  /* The gap the card used to carry, moved onto the line between the other two
+     so it can be a percentage too — a flex `row-gap` in percent resolves against
+     a height, and the card's is indefinite once the board releases its rows. */
+  margin: clamp(.06rem, 1.7%, .32rem) 0;
   font-size: clamp(1rem, 1.5vw, 1.45rem);
   font-weight: 900;
   line-height: 1.1;
