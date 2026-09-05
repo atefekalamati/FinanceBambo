@@ -60,6 +60,10 @@ export function createLevelOneChart({ rows, formatExact, ariaLabel, onSelect = n
     const name = row.href
       ? element("a", "vgroup__name", row.title)
       : element("span", "vgroup__name", row.title);
+    // One line with an ellipsis is deliberate — nineteen stages of very
+    // different name lengths would otherwise stand on nineteen different
+    // floors. The title is where the whole name stays when it is cut.
+    name.title = row.title;
     if (row.href) {
       name.href = row.href;
       name.title = `جزئیات ${row.title}`;
