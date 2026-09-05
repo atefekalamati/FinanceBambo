@@ -4866,4 +4866,112 @@ body[data-finance-runtime] .app-workspace {
   .finance-board .finance-insight-cards {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  /* --- type: two sizes, and everything else under them ------------------- */
+
+  /* The board's ramp went back up to its widest values below 480, because the
+     rung it takes in the range above is behind a floor. It comes down here to
+     the same step, and everything token-sized follows it. */
+  .finance-board {
+    --font-size-lg: .78rem;
+    --font-size-md: .7rem;
+    --font-size-sm: .62rem;
+    --font-size-xs: .56rem;
+    --font-size-2xs: .5rem;
+  }
+
+  /* Section and card titles, at the host's own. Nine to fourteen px of six
+     different sizes before this — «قیمت‌های روز» at 9.92 beside «گزارش‌ساز
+     هوشمند» at 14.4 — and nothing about a card made its title a different
+     size from the card beside it. Clipped rather than wrapped: a title that
+     takes a second line on a phone pushes the thing it names off the screen. */
+  .finance-board :is(
+    .overview-card__title,
+    .report-builder-section__title,
+    .section-heading h2,
+    .finance-analysis-card__heading h2,
+    .finance-analysis-card > h2
+  ) {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: .9rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Body copy. `.summary-card__value` is a `p` too and is the figure the card
+     exists to show, so it is excluded by name rather than caught by the tag. */
+  .finance-board p:not(.summary-card__value) {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  /* The links take the size and the leading, not the colour: they carry
+     --dash-sev-med as every way off this page does, and the body rule's
+     `color` would have taken that back. */
+  .finance-board :is(
+    .finance-basis__link,
+    .invoices-entry__action,
+    .level-one-section__link,
+    .overview-card__link,
+    .invoice_registration
+  ) {
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  /* The figure on a summary card. 16px in a 168px column was the largest thing
+     on the page by half again. */
+  .finance-board .finance-figures .summary-card__value {
+    font-size: clamp(.7rem, 3.2vw, .9rem);
+  }
+
+  .finance-board .finance-figures {
+    --font-size-xs: .5rem;
+    --font-size-2xs: .46rem;
+  }
+
+  /* --- the three charts' own literals ------------------------------------ */
+
+  /* Each of these is a number or a name written in px inside its own
+     stylesheet, so no ramp ever reached them. */
+  .finance-board .level-one-section .vgroup__name,
+  .finance-board .level-one-section .vbars__tick,
+  .finance-board .level-one-section .vbars__unit,
+  .finance-board .level-one-section .vbars__legend {
+    font-size: var(--font-size-2xs);
+  }
+
+  .finance-board .level-one-section .vbar em {
+    font-size: .46rem;
+  }
+
+  .finance-board .managerial-combo-chart__value {
+    font-size: var(--font-size-2xs);
+  }
+
+  .finance-board .managerial-combo-chart__value .money-display__unit {
+    font-size: .44rem;
+  }
+
+  .finance-board .managerial-combo-chart__plot {
+    --managerial-label-size: .48rem;
+  }
+
+  .finance-board .cost-curve__callout {
+    font-size: var(--font-size-sm);
+  }
+
+  .finance-board .cost-curve__guide-value {
+    font-size: var(--font-size-2xs);
+  }
+
+  /* The card's one button. It was 14px, above the titles it sits under. */
+  .finance-board .report-builder-section .button {
+    font-size: 11px;
+  }
 }
