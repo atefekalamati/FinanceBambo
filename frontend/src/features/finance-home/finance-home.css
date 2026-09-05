@@ -2547,6 +2547,33 @@ a.finance-variance-card__link:hover {
   text-decoration: underline;
 }
 
+/* --- every way off the overview is one colour --------------------------
+   Five rules were colouring these, and they had drifted into four different
+   answers: the two in the basis bar were muted grey, «مشاهده همه» and the
+   variance chevron were --color-accent, and the two card links were
+   --dash-actual. Nothing distinguished them — all five do the same thing, which
+   is take the reader to another page — so they are named together here rather
+   than corrected one at a time and left to drift again.
+
+   `:is()` takes the weight of its strongest argument, so with the page class in
+   front this is (0,2,0) against the (0,1,0) of every rule it overrides, and it
+   wins wherever it sits in the file and whatever the import order becomes.
+   `.level-one-section__link` is styled in level-one.css and is reached the same
+   way.
+
+   Scoped to the overview on purpose: the same classes appear on the pages these
+   links lead to, where a link is not a way out of anywhere.
+   ------------------------------------------------------------------------ */
+.finance-home-page :is(
+  .finance-basis__link,
+  .invoices-entry__action,
+  .level-one-section__link,
+  .overview-card__link,
+  .finance-variance-card__indicator
+) {
+  color: var(--dash-sev-med);
+}
+
 /* --- rows -------------------------------------------------------------- */
 
 .finance-grid {
@@ -2662,7 +2689,6 @@ a.finance-variance-card__link:hover {
 
 .finance-basis__link:hover,
 .finance-basis__link:focus-visible {
-  color: var(--color-accent);
   text-decoration: underline;
 }
 
