@@ -2543,8 +2543,12 @@ a.finance-variance-card__link:hover {
 }
 
 .overview-card__link:hover,
-.overview-card__link:focus-visible {
-  text-decoration: underline;
+.overview-card__link:focus-visible ,
+.invoices-entry__action:hover,
+.invoices-entry__action:focus-visible,
+.finance-basis__link:hover,
+.finance-basis__link:focus-visible {
+  filter: brightness(1.2);
 }
 
 /* --- every way off the overview is one colour --------------------------
@@ -2687,10 +2691,6 @@ a.finance-variance-card__link:hover {
   white-space: nowrap;
 }
 
-.finance-basis__link:hover,
-.finance-basis__link:focus-visible {
-  text-decoration: underline;
-}
 
 .finance-page-header__actions {
   display: flex;
@@ -3334,6 +3334,9 @@ a.breakdown-donut:focus-visible {
   .finance-board .level-one-section__note {
     display: block;
   }
+  .finance-board .invoices-entry{
+    padding: 16px;
+  }
 }
 
 /* --- what has to give for a row to hold its chart ----------------------- */
@@ -3613,6 +3616,10 @@ a.breakdown-donut:focus-visible {
 .finance-board .report-builder-section__cta,
 .finance-board .report-builder-section .button--primary {
   flex: 0 0 auto;
+}
+
+.finance-board .report-builder-section__cta:hover{
+  filter: brightness(1.07);
 }
 
 /* --- the chart panels' alternative tables ------------------------------- */
@@ -4056,10 +4063,7 @@ a.breakdown-donut:focus-visible {
    beside a smaller one.
    ------------------------------------------------------------------------ */
 
-/* The card is a container, not a target. `color: inherit`, the underline reset,
-   the transition and the whole hover-and-focus pair went with the anchor: a
-   surface that lights up under the pointer promises one destination, and this
-   card has two. They are in the footer row and each answers for itself. */
+
 .invoices-entry {
   justify-content: space-between;
 }
@@ -4133,14 +4137,6 @@ a.breakdown-donut:focus-visible {
   text-decoration: none;
 }
 
-/* One of the two links in the footer row, and now one of the only two things on
-   this card that react to a pointer at all. Underline rather than a colour
-   shift, the way every other text link on this page answers. */
-.invoices-entry__action:hover,
-.invoices-entry__action:focus-visible {
-  text-decoration: underline;
-}
-
 .invoices-entry__chevron {
   font-size: .95rem;
   line-height: 1;
@@ -4168,7 +4164,6 @@ a.breakdown-donut:focus-visible {
 .action_buttons > .invoice_registration{
   font-size: var(--font-size-xs);
   padding: 0.1rem 0.38rem;
-  border-color: var(--brand-green);
   background: var(--grad-accent);
   border-radius: 9px;
 }
