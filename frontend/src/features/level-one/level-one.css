@@ -70,7 +70,7 @@
 
 .level-one-section__link:hover,
 .level-one-section__link:focus-visible {
-  text-decoration: underline;
+  filter: brightness(1.2);
 }
 
 .level-one-section__chevron {
@@ -314,7 +314,7 @@ a.vgroup__name {
 a.vgroup__name:hover,
 a.vgroup__name:focus-visible {
   color: var(--dash-actual);
-  text-decoration: underline;
+  filter: brightness(1.2);
 }
 
 /* --- cost that reaches no phase ---------------------------------------- */
