@@ -1,5 +1,6 @@
 import { element } from "../../shared/dom/elements.js";
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
+import { chevronIcon } from "../report-builder/report-icons.js";
 
 /**
  * The deepest few deviations, and a way to the table that holds them all.
@@ -58,7 +59,7 @@ function createVariancePanel(title, rows, valueKey, valueFormatter, baseHref, li
     const indicator = document.createElement("span");
     indicator.className = "finance-variance-card__indicator";
     indicator.setAttribute("aria-hidden", "true");
-    if (baseHref) indicator.textContent = "‹";
+    if (baseHref) indicator.append(chevronIcon("forward"));
     link.append(indicator);
     item.append(link);
     list.append(item);

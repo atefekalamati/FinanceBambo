@@ -31,29 +31,58 @@ const routes = [
 const widths = [1440, 1280, 1024, 900, 768, 600, 480, 390, 360];
 const port = 49333;
 const profile = await mkdtemp(join(tmpdir(), "bambo-layout-audit-"));
+// A CI runner has no usable Chrome sandbox and a small /dev/shm, and Chrome
+// simply never opens its debugging port there — which is what "DevTools endpoint
+// did not become ready" was. The flags that fix it should not be on by default
+// on a developer's machine, so the environment asks for them.
+const extraFlags = (process.env.CHROME_FLAGS ?? "").split(/\s+/).filter(Boolean);
+
 const chrome = spawn(chromePath, [
   "--headless=new",
   "--disable-gpu",
   "--no-first-run",
   "--no-default-browser-check",
+  ...extraFlags,
   `--remote-debugging-port=${port}`,
   `--user-data-dir=${profile}`,
   "about:blank",
-], { stdio: "ignore" });
+], { stdio: ["ignore", "ignore", "pipe"] });
+
+// Kept so a failure to start can say why. Discarded otherwise — Chrome is
+// chatty on stderr even when it is perfectly happy.
+let chromeStderr = "";
+chrome.stderr?.on("data", (chunk) => { chromeStderr += chunk; });
+let chromeExit = null;
+chrome.on("exit", (code, signal) => { chromeExit = signal ?? code; });
 
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function waitForDebugger() {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  // Thirty seconds, not five. A warm Chrome on a developer's machine answers in
+  // under a second, so the old 50 x 100ms was never reached locally — but a cold
+  // start on a loaded CI runner takes ten or more, and the audit failed there
+  // roughly every other run while passing every run here.
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (chromeExit !== null) {
+      throw new Error(`Chrome exited before its debugging port opened (${chromeExit}).
+${chromeStderr.trim()}`);
+    }
     try {
       const response = await fetch(`http://127.0.0.1:${port}/json/version`);
       if (response.ok) return;
     } catch {
       // Chrome is still starting.
     }
-    await delay(100);
+    await delay(250);
   }
-  throw new Error("Chrome DevTools endpoint did not become ready.");
+  throw new Error(
+    `Chrome DevTools endpoint did not become ready within 30s.
+` +
+    `path: ${chromePath}
+flags: ${extraFlags.join(" ") || "(none)"}
+${chromeStderr.trim()}`,
+  );
 }
 
 async function createPage(url) {

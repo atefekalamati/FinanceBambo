@@ -313,7 +313,7 @@
    Responsive progress feed
    -------------------------------------------------------------------------- */
 
-@media (max-width: 70rem) {
+@media (max-width: 80rem) {
   .progress-snapshot-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

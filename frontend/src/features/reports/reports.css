@@ -290,7 +290,7 @@
   }
 }
 
-@media (max-width: 23rem) {
+@media (max-width: 30rem) {
   .report-metrics {
     grid-template-columns: 1fr;
   }
