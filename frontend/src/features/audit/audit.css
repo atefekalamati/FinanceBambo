@@ -160,7 +160,7 @@
   gap: var(--space-sm);
 }
 
-@media (max-width: 70rem) {
+@media (max-width: 80rem) {
   .audit-filters {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

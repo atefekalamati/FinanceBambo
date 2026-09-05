@@ -55,7 +55,12 @@ export function createPricesSummary({ workspace = null, error = null } = {}) {
   rows.forEach((item) => {
     const record = document.createElement("tr");
     const name = element("td", "prices-summary__name");
-    name.append(element("span", "", item.resource?.title ?? "قلم بدون عنوان"));
+    // The column is a fixed share of the card and the cell clips rather than
+    // wrapping, so a name longer than its column is cut on screen. The title is
+    // where the whole of it stays.
+    const nameText = item.resource?.title ?? "قلم بدون عنوان";
+    name.title = nameText;
+    name.append(element("span", "", nameText));
     const price = element("td", "numeric prices-summary__price",
       formatTomanFromIrr(item.currentPrice.unitPriceIRR, { withCurrency: false }));
     // The table's own trend, not a second reading of it: same function, same

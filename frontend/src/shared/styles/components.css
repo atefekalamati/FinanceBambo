@@ -460,7 +460,7 @@
    Responsive shared components
    -------------------------------------------------------------------------- */
 
-@media (max-width: 70rem) {
+@media (max-width: 80rem) {
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

@@ -1,14 +1,39 @@
 /* --------------------------------------------------------------------------
-   Document reset
+   Document reset, kept inside the module
+   --------------------------------------------------------------------------
+   These were bare element selectors. Standalone that is harmless — the module
+   is the page. Mounted into the host's own document it is not: `a`, `button`,
+   `h1`, `p`, `select` and `img` would have restyled the host's own elements,
+   and `html`/`body` would have taken over the whole page's direction, font and
+   background.
+
+   Two scopes, and the difference between them is the whole point:
+
+   ELEMENT rules are scoped to what the module owns — its mount, plus the two
+   dialogs it opens on <body> rather than inside the mount. Add a third portal
+   and it belongs in this list.
+
+   PAGE rules (html, body) apply only when the module IS the page: standalone,
+   and inside an iframe, which is the same thing from the document's side. The
+   marker is the one bootstrap.js already writes — "standalone" when there is no
+   host context, "host" when there is — and index.html carries it in the markup
+   so it holds before any script runs.
+
+   Every scope is written with :where(), which contributes NOTHING to
+   specificity. `button` was (0,0,1) and stays (0,0,1). Written with :is() the
+   id inside would have made it (1,0,1) and silently outranked the rules that
+   override it everywhere else in this stylesheet.
    -------------------------------------------------------------------------- */
 
-*,
-*::before,
-*::after {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog),
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *,
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *::before,
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *::after {
   box-sizing: border-box;
 }
 
-html {
+/* The page itself — only when the module is the page. */
+html:has(> body[data-finance-runtime="standalone"]) {
   inline-size: 100%;
   min-block-size: 100%;
   direction: rtl;
@@ -17,7 +42,7 @@ html {
   color: var(--color-text-primary);
 }
 
-body {
+body[data-finance-runtime="standalone"] {
   inline-size: 100%;
   min-block-size: 100%;
   min-width: 20rem;
@@ -26,51 +51,53 @@ body {
   background: var(--color-surface-page);
 }
 
-img,
-svg {
+/* Mounted, the module carries its own type and direction rather than taking the
+   host's page: the host keeps its document, and this keeps its own reading. */
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) {
+  direction: rtl;
+  font-family: var(--font-fa);
+  color: var(--color-text-primary);
+  line-height: 1.75;
+}
+
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(img, svg) {
   display: block;
   max-inline-size: 100%;
 }
 
-button,
-input {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(button, input) {
   font: inherit;
 }
 
-button {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) button {
   border: none;
   background: none;
   cursor: pointer;
 }
 
-select,
-textarea {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(select, textarea) {
   font-family: inherit;
 }
 
-select option,
-select optgroup {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(select option, select optgroup) {
   color: var(--color-text-primary);
   background-color: var(--color-surface-page);
 }
 
-select option:disabled {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) select option:disabled {
   color: var(--color-text-muted);
 }
 
-a {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) a {
   color: inherit;
   text-decoration: none;
 }
 
-h1,
-h2,
-p {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(h1, h2, p) {
   margin-block-start: 0;
 }
 
-button,
-a {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(button, a) {
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -78,7 +105,7 @@ a {
    Accessibility and shared helpers
    -------------------------------------------------------------------------- */
 
-:focus-visible {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :focus-visible {
   outline: .1875rem solid var(--brand-teal);
   outline-offset: .1875rem;
 }
@@ -127,9 +154,9 @@ a {
    -------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *,
+  :where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *::before,
+  :where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *::after {
     scroll-behavior: auto !important;
     transition-duration: .01ms !important;
     animation-duration: .01ms !important;

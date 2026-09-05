@@ -1,7 +1,20 @@
-import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
+import {
+  createRequestState,
+  REQUEST_STATUS,
+} from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
-import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
-import { compactMoneyFromIrr, compactMoneyScale, formatCompactMoneyFromIrr, formatTomanFromIrr, irrToDisplayValue } from "../../shared/formatters/money.js";
+import {
+  formatBusinessDate,
+  formatDisplayNumber,
+  formatSystemDateTime,
+} from "../../shared/formatters/display.js";
+import {
+  compactMoneyFromIrr,
+  compactMoneyScale,
+  formatCompactMoneyFromIrr,
+  formatTomanFromIrr,
+  irrToDisplayValue,
+} from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { reportWarningText } from "../../shared/warnings/finance-warning-labels.js";
@@ -9,7 +22,10 @@ import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { createCombinationChart } from "../../shared/components/combination-chart.js";
 import { createCostCurveChart } from "../../shared/components/cost-curve-chart.js";
 import { buildCostCurve } from "../../shared/charts/cost-curve.js";
-import { buildMonthlyTrend, TREND_MODES } from "../../shared/reports/monthly-trend.js";
+import {
+  buildMonthlyTrend,
+  TREND_MODES,
+} from "../../shared/reports/monthly-trend.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
 import { createBreakdownChart } from "../../shared/components/breakdown-chart.js";
@@ -34,16 +50,48 @@ const BOARD_FIGURE_KEYS = Object.freeze([
 const SUMMARY_ITEMS = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
   ["actualCostIrr", "هزینه واقعی ثبت‌شده", "فقط اسناد مالی تأییدشده"],
-  ["actualCostPerSquareMeterIrr", "هزینه واقعی هر مترمربع", "براساس زیربنای کل پروژه"],
-  ["currentExecutedValueIrr", "ارزش روز کار انجام‌شده", "مقدار اجراشده با قیمت روز"],
-  ["remainingPhysicalCostIrr", "هزینه کار باقی‌مانده", "کار باقیمانده با قیمت روز"],
-  ["forecastFinalCostIrr", "پیش‌بینی هزینه نهایی", "هزینه واقعی به‌اضافه پول ادامه"],
-  ["forecastPerSquareMeterIrr", "پیش‌بینی هزینه هر مترمربع", "پیش‌بینی نهایی تقسیم بر زیربنا"],
-  ["moneyRequiredToContinueIrr", "بودجه موردنیاز تا تکمیل", "با لحاظ خرید ثبت‌شده مصالح"],
+  [
+    "actualCostPerSquareMeterIrr",
+    "هزینه واقعی هر مترمربع",
+    "براساس زیربنای کل پروژه",
+  ],
+  [
+    "currentExecutedValueIrr",
+    "ارزش روز کار انجام‌شده",
+    "مقدار اجراشده با قیمت روز",
+  ],
+  [
+    "remainingPhysicalCostIrr",
+    "هزینه کار باقی‌مانده",
+    "کار باقیمانده با قیمت روز",
+  ],
+  [
+    "forecastFinalCostIrr",
+    "پیش‌بینی هزینه نهایی",
+    "هزینه واقعی به‌اضافه پول ادامه",
+  ],
+  [
+    "forecastPerSquareMeterIrr",
+    "پیش‌بینی هزینه هر مترمربع",
+    "پیش‌بینی نهایی تقسیم بر زیربنا",
+  ],
+  [
+    "moneyRequiredToContinueIrr",
+    "بودجه موردنیاز تا تکمیل",
+    "با لحاظ خرید ثبت‌شده مصالح",
+  ],
 ]);
 
-const PRIMARY_SUMMARY_KEYS = new Set(["initialEstimateIrr", "actualCostIrr", "remainingPhysicalCostIrr", "forecastFinalCostIrr"]);
-const RELATED_SUMMARY_KEYS = new Set(["actualCostPerSquareMeterIrr", "forecastPerSquareMeterIrr"]);
+const PRIMARY_SUMMARY_KEYS = new Set([
+  "initialEstimateIrr",
+  "actualCostIrr",
+  "remainingPhysicalCostIrr",
+  "forecastFinalCostIrr",
+]);
+const RELATED_SUMMARY_KEYS = new Set([
+  "actualCostPerSquareMeterIrr",
+  "forecastPerSquareMeterIrr",
+]);
 
 /* The destinations of the گزارش مالی surface, in the order a reader wants them:
    the current report, the same report over a chosen period, the documents the
@@ -52,7 +100,11 @@ const RELATED_SUMMARY_KEYS = new Set(["actualCostPerSquareMeterIrr", "forecastPe
 function createSummaryCard(key, label, description, data) {
   const card = document.createElement("article");
   const unavailable = data?.[key] === null || data?.[key] === undefined;
-  const hierarchy = PRIMARY_SUMMARY_KEYS.has(key) ? "primary" : RELATED_SUMMARY_KEYS.has(key) ? "related" : "support";
+  const hierarchy = PRIMARY_SUMMARY_KEYS.has(key)
+    ? "primary"
+    : RELATED_SUMMARY_KEYS.has(key)
+      ? "primary"
+      : "support";
   card.className = `summary-card summary-card--${hierarchy}${unavailable ? " summary-card--unavailable" : ""}`;
   card.dataset.metric = key;
   const title = document.createElement("h2");
@@ -68,8 +120,16 @@ function createSummaryCard(key, label, description, data) {
 }
 
 const ANALYSIS_CHARTS = Object.freeze({
-  managerial: { label: "تجمیعی", title: "تصویر مدیریتی هزینه پروژه", description: "مقایسه هزینه‌های پروژه با خط مرجع برآورد اولیه" },
-  monthly: { label: "روند ماهانه", title: "روند ماهانه هزینه پروژه", description: "هزینه واقعی هر ماه در برابر برآورد همان ماه" },
+  managerial: {
+    label: "تجمیعی",
+    title: "تصویر مدیریتی هزینه پروژه",
+    description: "مقایسه هزینه‌های پروژه با خط مرجع برآورد اولیه",
+  },
+  monthly: {
+    label: "روند ماهانه",
+    title: "روند ماهانه هزینه پروژه",
+    description: "هزینه واقعی هر ماه در برابر برآورد همان ماه",
+  },
 });
 
 /**
@@ -77,7 +137,12 @@ const ANALYSIS_CHARTS = Object.freeze({
  * comparison is the default; the monthly trend is revealed by the switch in
  * this card's heading.
  */
-function createManagerialComparisonPanel(metrics, entries, monthly = null, { activeChart = "managerial", onChartChange = () => {} } = {}) {
+function createManagerialComparisonPanel(
+  metrics,
+  entries,
+  monthly = null,
+  { activeChart = "managerial", onChartChange = () => {} } = {},
+) {
   const section = document.createElement("section");
   section.className = "finance-analysis-card finance-managerial-comparison";
   const heading = document.createElement("div");
@@ -93,7 +158,10 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   const chart = document.createElement("div");
   chart.className = "managerial-combo-chart";
   chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", "مقایسه برآورد اولیه، هزینه واقعی، هزینه باقی‌مانده و پیش‌بینی نهایی");
+  chart.setAttribute(
+    "aria-label",
+    "مقایسه برآورد اولیه، هزینه واقعی، هزینه باقی‌مانده و پیش‌بینی نهایی",
+  );
   /**
    * Three bands stacked over one column set: the money, the bars, the labels.
    * Each bar used to sit in a grid of its own, so a label that wrapped to a
@@ -105,17 +173,21 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   const plot = document.createElement("div");
   plot.className = "managerial-combo-chart__plot";
   const valuesBand = document.createElement("div");
-  valuesBand.className = "managerial-combo-chart__band managerial-combo-chart__band--values";
+  valuesBand.className =
+    "managerial-combo-chart__band managerial-combo-chart__band--values";
   const barsBand = document.createElement("div");
-  barsBand.className = "managerial-combo-chart__band managerial-combo-chart__band--bars";
+  barsBand.className =
+    "managerial-combo-chart__band managerial-combo-chart__band--bars";
   const labelsBand = document.createElement("div");
-  labelsBand.className = "managerial-combo-chart__band managerial-combo-chart__band--labels";
+  labelsBand.className =
+    "managerial-combo-chart__band managerial-combo-chart__band--labels";
 
   entries.forEach((entry) => {
     // Each cell is its own inline-size container, which is what lets the money
     // inside it size itself against the width of its own column.
     const valueCell = document.createElement("div");
-    valueCell.className = "managerial-combo-chart__cell managerial-combo-chart__cell--value";
+    valueCell.className =
+      "managerial-combo-chart__cell managerial-combo-chart__cell--value";
     const value = createTomanDisplay(entry.value, { compact: true });
     value.classList.add("managerial-combo-chart__value");
     valueCell.append(value);
@@ -153,21 +225,38 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
    * is rescaled.
    */
   const largestIrr = entries.reduce((largest, entry) => {
-    const value = /^-?\d+$/.test(String(entry.value ?? "")) ? BigInt(entry.value) : 0n;
+    const value = /^-?\d+$/.test(String(entry.value ?? ""))
+      ? BigInt(entry.value)
+      : 0n;
     const magnitude = value < 0n ? -value : value;
     return magnitude > largest ? magnitude : largest;
   }, 0n);
   const ticks = buildValueTicks(largestIrr);
-  const tickScale = ticks.length ? compactMoneyScale(largestIrr.toString()) : null;
+  const tickScale = ticks.length
+    ? compactMoneyScale(largestIrr.toString())
+    : null;
 
   if (tickScale) {
     const guide = element("div", "managerial-combo-chart__scale");
     guide.setAttribute("aria-hidden", "true");
-    guide.append(element("span", "managerial-combo-chart__scale-unit", tickScale.unit));
+    // The unit belongs to the values row, not to the plot beneath it. Every band
+    // reserves the same strip for the guide, so putting it in the values band
+    // lands it in that strip on the same line as the figures — aligned because
+    // it is measured against the row it reads with, not offset until it looks
+    // right at one width.
+    const unit = element("span", "managerial-combo-chart__scale-unit", tickScale.unit);
+    unit.setAttribute("aria-hidden", "true");
+    valuesBand.append(unit);
     ticks.forEach((tick) => {
       const row = element("div", "managerial-combo-chart__scale-row");
       row.style.setProperty("--scale-size", `${tick.magnitude}%`);
-      row.append(element("span", "managerial-combo-chart__scale-value", tickScale.format(tick.valueIrr) ?? ""));
+      row.append(
+        element(
+          "span",
+          "managerial-combo-chart__scale-value",
+          tickScale.format(tick.valueIrr) ?? "",
+        ),
+      );
       guide.append(row);
     });
     barsBand.append(guide);
@@ -183,7 +272,10 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   baselineLabel.className = "managerial-combo-chart__reference";
   // Two deliberate lines: the chip is narrow so it can stand clear of the bars,
   // and letting the text find its own break would put it wherever it landed.
-  baselineLabel.append(element("span", "", "خط مرجع"), element("strong", "", "برآورد اولیه"));
+  baselineLabel.append(
+    element("span", "", "خط مرجع"),
+    element("strong", "", "برآورد اولیه"),
+  );
   baseline.append(baselineLabel);
 
   const initialEntry = entries.find((entry) => entry.key === "initial");
@@ -198,25 +290,45 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   // could not compute it. Reading that as zero would subtract the whole initial
   // estimate and announce a saving the project has not made, so an
   // uncomputable side is reported as uncomputable instead of being counted.
-  const exact = (value) => (/^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : null);
+  const exact = (value) =>
+    /^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : null;
   const initial = exact(metrics.initialEstimateIrr);
   const forecast = exact(metrics.forecastFinalCostIrr);
-  const deviation = initial === null || forecast === null ? null : forecast - initial;
-  const tone = deviation === null ? "unknown" : deviation > 0n ? "increase" : deviation < 0n ? "decrease" : "stable";
-  const label = deviation === null
-    ? "قابل محاسبه نیست"
-    : deviation > 0n ? "بیشتر از برآورد اولیه" : deviation < 0n ? "کمتر از برآورد اولیه" : "برابر با برآورد اولیه";
+  const deviation =
+    initial === null || forecast === null ? null : forecast - initial;
+  const tone =
+    deviation === null
+      ? "unknown"
+      : deviation > 0n
+        ? "increase"
+        : deviation < 0n
+          ? "decrease"
+          : "stable";
+  const label =
+    deviation === null
+      ? "قابل محاسبه نیست"
+      : deviation > 0n
+        ? "بیشتر از برآورد اولیه"
+        : deviation < 0n
+          ? "کمتر از برآورد اولیه"
+          : "برابر با برآورد اولیه";
   const summary = document.createElement("div");
   summary.className = `managerial-deviation managerial-deviation--${tone}`;
   const title = document.createElement("span");
   title.textContent = "انحراف پیش‌بینی نهایی";
   const value = document.createElement("strong");
   value.className = "numeric";
-  value.textContent = deviation === null || deviation === 0n
-    ? label
-    : `${formatCompactMoneyFromIrr((deviation < 0n ? -deviation : deviation).toString())} ${label}`;
-  if (deviation !== null && deviation !== 0n) value.title = formatTomanFromIrr((deviation < 0n ? -deviation : deviation).toString());
-  if (deviation === null) value.title = "پیش‌بینی هزینه نهایی یا برآورد اولیه در این گزارش محاسبه نشده است.";
+  value.textContent =
+    deviation === null || deviation === 0n
+      ? label
+      : `${formatCompactMoneyFromIrr((deviation < 0n ? -deviation : deviation).toString())} ${label}`;
+  if (deviation !== null && deviation !== 0n)
+    value.title = formatTomanFromIrr(
+      (deviation < 0n ? -deviation : deviation).toString(),
+    );
+  if (deviation === null)
+    value.title =
+      "پیش‌بینی هزینه نهایی یا برآورد اولیه در این گزارش محاسبه نشده است.";
   summary.append(title, value);
 
   const managerialPanel = element("div", "analysis-chart-panel");
@@ -239,7 +351,10 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
       button.className = `button button--small ${name === key ? "button--primary" : "button--ghost"}`;
     });
     headingTitle.textContent = ANALYSIS_CHARTS[key].title;
-    headingDescription.textContent = key === "monthly" ? monthly.description : ANALYSIS_CHARTS[key].description;
+    headingDescription.textContent =
+      key === "monthly"
+        ? monthly.description
+        : ANALYSIS_CHARTS[key].description;
     // The monthly chart measures zero while its panel is hidden, so it is
     // redrawn once the panel actually has a width.
     if (key === "monthly") monthly.chart?.resize();
@@ -248,17 +363,23 @@ function createManagerialComparisonPanel(metrics, entries, monthly = null, { act
   const switcher = element("div", "analysis-chart-switch");
   switcher.setAttribute("role", "group");
   switcher.setAttribute("aria-label", "انتخاب نمودار هزینه");
-  Object.entries(ANALYSIS_CHARTS).filter(([key]) => panels[key]).forEach(([key, meta]) => {
-    const button = element("button", "button button--small button--ghost", meta.label);
-    button.type = "button";
-    button.dataset.chart = key;
-    button.addEventListener("click", () => {
-      activate(key);
-      onChartChange(key);
+  Object.entries(ANALYSIS_CHARTS)
+    .filter(([key]) => panels[key])
+    .forEach(([key, meta]) => {
+      const button = element(
+        "button",
+        "button button--small button--ghost",
+        meta.label,
+      );
+      button.type = "button";
+      button.dataset.chart = key;
+      button.addEventListener("click", () => {
+        activate(key);
+        onChartChange(key);
+      });
+      buttons[key] = button;
+      switcher.append(button);
     });
-    buttons[key] = button;
-    switcher.append(button);
-  });
   heading.append(switcher);
   // Honour the page's remembered choice: switching the monthly mode repaints
   // the whole overview, and defaulting here would throw the reader back to the
@@ -298,11 +419,18 @@ const SNAPSHOT_SOURCE_LABELS = Object.freeze({
  * report endpoints accept a progressSnapshotId and rebuild the whole picture
  * against it. No finance arithmetic happens in this file.
  */
-function createSnapshotProvenance({ snapshots = [], selected, report, onSelect }) {
+function createSnapshotProvenance({
+  snapshots = [],
+  selected,
+  report,
+  onSelect,
+}) {
   if (!selected) return null;
   const section = element("section", "finance-snapshot-provenance");
   section.setAttribute("aria-label", "نسخه پیشرفت مبنای این محاسبه");
-  section.append(element("span", "finance-snapshot-provenance__lead", "مبنای محاسبه"));
+  section.append(
+    element("span", "finance-snapshot-provenance__lead", "مبنای محاسبه"),
+  );
 
   /**
    * The strip stays on one line at every width, so each fact carries a short
@@ -313,42 +441,86 @@ function createSnapshotProvenance({ snapshots = [], selected, report, onSelect }
    */
   const facts = element("dl", "finance-snapshot-provenance__facts");
   [
-    ["version", "نسخه", "نسخه", selected.version == null ? null : `${formatDisplayNumber(String(selected.version))}${selected.isLatest ? " (آخرین)" : ""}`],
-    ["date", "تاریخ گزارش نسخه", "تاریخ", formatBusinessDate(selected.reportingDate)],
-    ["source", "منبع", "منبع", SNAPSHOT_SOURCE_LABELS[selected.sourceType] ?? (selected.sourceType == null ? null : "منبع تعریف‌نشده")],
-    ["status", "وضعیت", "وضعیت", SNAPSHOT_STATUS_LABELS[selected.status] ?? "نامشخص"],
+    [
+      "version",
+      "نسخه",
+      "نسخه",
+      selected.version == null
+        ? null
+        : `${formatDisplayNumber(String(selected.version))}${selected.isLatest ? " (آخرین)" : ""}`,
+    ],
+    [
+      "date",
+      "تاریخ گزارش نسخه",
+      "تاریخ",
+      formatBusinessDate(selected.reportingDate),
+    ],
+    [
+      "source",
+      "منبع",
+      "منبع",
+      SNAPSHOT_SOURCE_LABELS[selected.sourceType] ??
+        (selected.sourceType == null ? null : "منبع تعریف‌نشده"),
+    ],
+    [
+      "status",
+      "وضعیت",
+      "وضعیت",
+      SNAPSHOT_STATUS_LABELS[selected.status] ?? "نامشخص",
+    ],
     ["file", "فایل مبدأ", "فایل", selected.sourceFileNameSafe ?? "—"],
-    ["imported", "ورود به سیستم", "ورود", formatSystemDateTime(selected.importedAt)],
-  ].filter(([, , , value]) => value != null).forEach(([key, label, shortLabel, value]) => {
-    const item = element("div", `finance-snapshot-provenance__fact finance-snapshot-provenance__fact--${key}`);
-    const term = element("dt");
-    term.append(
-      element("span", "finance-snapshot-provenance__label--full", label),
-      element("span", "finance-snapshot-provenance__label--short", shortLabel),
-    );
-    const definition = element("dd", "", value);
-    // Truncation hides characters, so the whole value stays reachable.
-    definition.title = value;
-    item.append(term, definition);
-    facts.append(item);
-  });
+    [
+      "imported",
+      "ورود به سیستم",
+      "ورود",
+      formatSystemDateTime(selected.importedAt),
+    ],
+  ]
+    .filter(([, , , value]) => value != null)
+    .forEach(([key, label, shortLabel, value]) => {
+      const item = element(
+        "div",
+        `finance-snapshot-provenance__fact finance-snapshot-provenance__fact--${key}`,
+      );
+      const term = element("dt");
+      term.append(
+        element("span", "finance-snapshot-provenance__label--full", label),
+        element(
+          "span",
+          "finance-snapshot-provenance__label--short",
+          shortLabel,
+        ),
+      );
+      const definition = element("dd", "", value);
+      // Truncation hides characters, so the whole value stays reachable.
+      definition.title = value;
+      item.append(term, definition);
+      facts.append(item);
+    });
   section.append(facts);
 
   // Only a ready snapshot can be reported on: the report endpoints refuse a
   // superseded one, so it is listed and disabled rather than silently failing.
-  const selectable = snapshots.filter((snapshot) => snapshot.status === "ready");
+  const selectable = snapshots.filter(
+    (snapshot) => snapshot.status === "ready",
+  );
   if (selectable.length > 1 && typeof onSelect === "function") {
     const picker = document.createElement("select");
     picker.className = "app-select finance-snapshot-provenance__picker";
     picker.setAttribute("aria-label", "انتخاب نسخه پیشرفت مبنای محاسبه");
-    picker.title = "با تغییر نسخه، محاسبه از سمت سرویس مالی دوباره انجام می‌شود.";
+    picker.title =
+      "با تغییر نسخه، محاسبه از سمت سرویس مالی دوباره انجام می‌شود.";
     snapshots.forEach((snapshot) => {
       const option = document.createElement("option");
       option.value = snapshot.progressSnapshotId;
-      const status = snapshot.status === "ready" ? "" : ` · ${SNAPSHOT_STATUS_LABELS[snapshot.status] ?? "نامشخص"}`;
+      const status =
+        snapshot.status === "ready"
+          ? ""
+          : ` · ${SNAPSHOT_STATUS_LABELS[snapshot.status] ?? "نامشخص"}`;
       option.textContent = `${formatBusinessDate(snapshot.reportingDate)}${status}`;
       option.disabled = snapshot.status !== "ready";
-      option.selected = snapshot.progressSnapshotId === selected.progressSnapshotId;
+      option.selected =
+        snapshot.progressSnapshotId === selected.progressSnapshotId;
       picker.append(option);
     });
     picker.addEventListener("change", () => onSelect(picker.value));
@@ -361,7 +533,11 @@ function createSnapshotProvenance({ snapshots = [], selected, report, onSelect }
   const answered = report?.progressSnapshotId;
   if (!answered || answered === selected.progressSnapshotId) return section;
 
-  const notice = element("p", "inline-notice finance-snapshot-provenance__notice", "سرویس مالی این ارقام را بر پایه نسخه دیگری محاسبه کرده است؛ نسخه انتخابی برای این تاریخ گزارش قابل استفاده نبود.");
+  const notice = element(
+    "p",
+    "inline-notice finance-snapshot-provenance__notice",
+    "سرویس مالی این ارقام را بر پایه نسخه دیگری محاسبه کرده است؛ نسخه انتخابی برای این تاریخ گزارش قابل استفاده نبود.",
+  );
   notice.setAttribute("role", "status");
   const group = document.createDocumentFragment();
   group.append(section, notice);
@@ -434,7 +610,15 @@ function createSettingsLink() {
   return link;
 }
 
-function renderFinanceHome(data, monthly = null, chartState = {}, provenance = null, cumulative = null, levelOne = null, prices = null) {
+function renderFinanceHome(
+  data,
+  monthly = null,
+  chartState = {},
+  provenance = null,
+  cumulative = null,
+  levelOne = null,
+  prices = null,
+) {
   const board = element("div", "finance-board");
 
   // The board had a full-width header over it carrying the page's name and two
@@ -456,11 +640,7 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   const basis = element("section", "finance-basis");
   if (provenance) basis.append(provenance);
   const basisMeta = element("div", "finance-basis__meta");
-  basisMeta.append(
-    toAreas,
-    toOperations,
-    createSettingsLink(),
-  );
+  basisMeta.append(toAreas, toOperations, createSettingsLink());
   basis.append(basisMeta);
 
   // ── row 1 — the main chart, the day prices, the cost mix ───────────────
@@ -470,7 +650,10 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   figures.setAttribute("aria-label", "شاخص‌های اصلی مالی پروژه");
   BOARD_FIGURE_KEYS.forEach((key) => {
     const item = SUMMARY_ITEMS.find(([itemKey]) => itemKey === key);
-    if (item) figures.append(createSummaryCard(item[0], item[1], item[2], data.metrics));
+    if (item)
+      figures.append(
+        createSummaryCard(item[0], item[1], item[2], data.metrics),
+      );
   });
 
   // The figures and the way into فاکتورها share one half of the row, so the
@@ -482,7 +665,12 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
   const rowMain = element("div", "finance-grid finance-grid--main");
   rowMain.append(
     lead,
-    createManagerialComparisonPanel(data.metrics, comparisons.management, monthly, chartState),
+    createManagerialComparisonPanel(
+      data.metrics,
+      comparisons.management,
+      monthly,
+      chartState,
+    ),
   );
 
   // ── row 2 — the phase report beside the report builder ─────────────────
@@ -511,7 +699,10 @@ function renderFinanceHome(data, monthly = null, chartState = {}, provenance = n
     curvePanel.append(cumulative.panel);
   }
   const insightCards = element("div", "finance-insight-cards");
-  insightCards.append(createPricesSummary(prices ?? {}), buildWarningsCard(data));
+  insightCards.append(
+    createPricesSummary(prices ?? {}),
+    buildWarningsCard(data),
+  );
   rowThird.append(curvePanel, insightCards);
 
   board.append(pageTitle, basis, rowMain, rowSecond, rowThird);
@@ -563,7 +754,9 @@ function buildWarningsCard(data) {
   } else {
     warnings.classList.add("finance-warnings--clear");
     const list = document.createElement("ul");
-    list.append(summaryRow("good", "برای محاسبات زنده فعلی هشداری ثبت نشده است."));
+    list.append(
+      summaryRow("good", "برای محاسبات زنده فعلی هشداری ثبت نشده است."),
+    );
     warnings.append(list);
   }
   return warnings;
@@ -577,18 +770,32 @@ const DIRECTION_LABELS = Object.freeze({
 
 function trendTooltip(point) {
   const panel = element("div", "combo-chart__tooltip-body");
-  panel.append(element("strong", "combo-chart__tooltip-title", point.fullLabel));
+  panel.append(
+    element("strong", "combo-chart__tooltip-title", point.fullLabel),
+  );
   const rows = element("dl", "combo-chart__tooltip-rows");
   const addRow = (label, value, valueClass = "numeric") => {
     const row = element("div");
     row.append(element("dt", "", label), element("dd", valueClass, value));
     rows.append(row);
   };
-  addRow("برآورد", point.estimateIrr === null ? "ثبت نشده" : formatCompactMoneyFromIrr(point.estimateIrr));
+  addRow(
+    "برآورد",
+    point.estimateIrr === null
+      ? "ثبت نشده"
+      : formatCompactMoneyFromIrr(point.estimateIrr),
+  );
   addRow("هزینه واقعی", formatCompactMoneyFromIrr(point.actualIrr));
   if (point.deviationIrr !== null) {
-    const percent = point.deviationPercent === null ? "" : ` · ${formatDisplayNumber(point.deviationPercent)}٪`;
-    addRow("انحراف", `${formatCompactMoneyFromIrr(point.deviationIrr)}${percent}`, `numeric combo-chart__deviation combo-chart__deviation--${point.direction}`);
+    const percent =
+      point.deviationPercent === null
+        ? ""
+        : ` · ${formatDisplayNumber(point.deviationPercent)}٪`;
+    addRow(
+      "انحراف",
+      `${formatCompactMoneyFromIrr(point.deviationIrr)}${percent}`,
+      `numeric combo-chart__deviation combo-chart__deviation--${point.direction}`,
+    );
     addRow("وضعیت", DIRECTION_LABELS[point.direction] ?? "—", "");
   }
   panel.append(rows);
@@ -605,12 +812,19 @@ function trendTable(view) {
   const body = document.createElement("tbody");
   view.points.forEach((point) => {
     const row = document.createElement("tr");
-    const deviation = point.deviationIrr === null
-      ? "—"
-      : `${formatCompactMoneyFromIrr(point.deviationIrr)}${point.deviationPercent === null ? "" : ` · ${formatDisplayNumber(point.deviationPercent)}٪`}`;
+    const deviation =
+      point.deviationIrr === null
+        ? "—"
+        : `${formatCompactMoneyFromIrr(point.deviationIrr)}${point.deviationPercent === null ? "" : ` · ${formatDisplayNumber(point.deviationPercent)}٪`}`;
     row.append(
       element("td", "", point.fullLabel),
-      element("td", "numeric", point.estimateIrr === null ? "ثبت نشده" : formatCompactMoneyFromIrr(point.estimateIrr)),
+      element(
+        "td",
+        "numeric",
+        point.estimateIrr === null
+          ? "ثبت نشده"
+          : formatCompactMoneyFromIrr(point.estimateIrr),
+      ),
       element("td", "numeric", formatCompactMoneyFromIrr(point.actualIrr)),
       element("td", "numeric", deviation),
     );
@@ -623,7 +837,10 @@ function trendTable(view) {
 
 function trendLegend() {
   const legend = element("ul", "breakdown-legend monthly-trend-legend");
-  [["actual", "هزینه واقعی ثبت‌شده"], ["initial", "برآورد ماهانه"]].forEach(([series, label]) => {
+  [
+    ["actual", "هزینه واقعی ثبت‌شده"],
+    ["initial", "برآورد ماهانه"],
+  ].forEach(([series, label]) => {
     const item = element("li", "", label);
     item.dataset.series = series;
     legend.append(item);
@@ -644,13 +861,29 @@ function createCostCurvePanel({ trend, trendError }) {
   panel.dataset.chart = "cumulative";
 
   if (trendError) {
-    panel.append(element("p", "inline-notice", formatApiErrorMessage(trendError, "دریافت روند تجمعی هزینه انجام نشد.")));
+    panel.append(
+      element(
+        "p",
+        "inline-notice",
+        formatApiErrorMessage(trendError, "دریافت روند تجمعی هزینه انجام نشد."),
+      ),
+    );
     return { panel, chart: null };
   }
 
-  const trendView = buildMonthlyTrend({ months: trend?.months ?? [], mode: TREND_MODES.CUMULATIVE });
+  const trendView = buildMonthlyTrend({
+    months: trend?.months ?? [],
+    mode: TREND_MODES.CUMULATIVE,
+  });
   if (trendView.isEmpty) {
-    panel.append(element("p", "inline-notice", trend?.unavailableReason ?? "هنوز فاکتور تأییدشده‌ای برای ساخت روند تجمعی ثبت نشده است."));
+    panel.append(
+      element(
+        "p",
+        "inline-notice",
+        trend?.unavailableReason ??
+          "هنوز فاکتور تأییدشده‌ای برای ساخت روند تجمعی ثبت نشده است.",
+      ),
+    );
     return { panel, chart: null };
   }
 
@@ -672,7 +905,13 @@ function createCostCurvePanel({ trend, trendError }) {
   panel.append(chart.element);
 
   if (view.hasPlan && view.planPartial) {
-    panel.append(element("p", "inline-notice", "برای بخشی از دوره‌ها برآورد ثبت نشده و منحنی برنامه در آن بازه‌ها کامل نیست."));
+    panel.append(
+      element(
+        "p",
+        "inline-notice",
+        "برای بخشی از دوره‌ها برآورد ثبت نشده و منحنی برنامه در آن بازه‌ها کامل نیست.",
+      ),
+    );
   }
   return { panel, chart };
 }
@@ -680,7 +919,10 @@ function createCostCurvePanel({ trend, trendError }) {
 /** Green fill for what was spent, dashed blue for what was planned. */
 function curveLegend() {
   const legend = element("ul", "breakdown-legend cost-curve-legend");
-  [["actual", "واقعی"], ["plan", "برنامه (هدف)"]].forEach(([series, label]) => {
+  [
+    ["actual", "واقعی"],
+    ["plan", "برنامه (هدف)"],
+  ].forEach(([series, label]) => {
     const item = element("li", "", label);
     item.dataset.series = series;
     legend.append(item);
@@ -702,13 +944,27 @@ function createMonthlyTrendPanel({ trend, trendError }) {
   const description = ANALYSIS_CHARTS.monthly.description;
 
   if (trendError) {
-    panel.append(element("p", "inline-notice", formatApiErrorMessage(trendError, "دریافت روند ماهانه هزینه انجام نشد.")));
+    panel.append(
+      element(
+        "p",
+        "inline-notice",
+        formatApiErrorMessage(
+          trendError,
+          "دریافت روند ماهانه هزینه انجام نشد.",
+        ),
+      ),
+    );
     return { panel, chart: null, description };
   }
 
-  const view = buildMonthlyTrend({ months: trend?.months ?? [], mode: TREND_MODES.PERIODIC });
+  const view = buildMonthlyTrend({
+    months: trend?.months ?? [],
+    mode: TREND_MODES.PERIODIC,
+  });
   if (view.isEmpty) {
-    const reason = trend?.unavailableReason ?? "هنوز فاکتور تأییدشده‌ای برای ساخت روند ماهانه ثبت نشده است.";
+    const reason =
+      trend?.unavailableReason ??
+      "هنوز فاکتور تأییدشده‌ای برای ساخت روند ماهانه ثبت نشده است.";
     panel.append(element("p", "inline-notice", reason));
     return { panel, chart: null, description };
   }
@@ -729,14 +985,30 @@ function createMonthlyTrendPanel({ trend, trendError }) {
   panel.append(chart.element);
 
   if (!view.hasEstimate) {
-    panel.append(element("p", "inline-notice", "برآورد ماهانه در دسترس نیست و فقط هزینه واقعی ثبت‌شده رسم شده است."));
+    panel.append(
+      element(
+        "p",
+        "inline-notice",
+        "برآورد ماهانه در دسترس نیست و فقط هزینه واقعی ثبت‌شده رسم شده است.",
+      ),
+    );
   } else if (view.estimatePartial) {
-    panel.append(element("p", "inline-notice", "برای بخشی از ماه‌ها برآورد ثبت نشده و خط برآورد در آن بازه‌ها پیوسته نیست."));
+    panel.append(
+      element(
+        "p",
+        "inline-notice",
+        "برای بخشی از ماه‌ها برآورد ثبت نشده و خط برآورد در آن بازه‌ها پیوسته نیست.",
+      ),
+    );
   }
   // A bar that is simply absent is indistinguishable from a month with no
   // documents at all, so the one case where that happens says so.
   if (view.hasBelowBaseline) {
-    const belowNotice = element("p", "inline-notice", "در برخی ماه‌ها مجموع اسناد ابطالی از اسناد ثبت‌شده بیشتر است و ستونی رسم نشده؛ مقدار دقیق در جدول همین بخش آمده است.");
+    const belowNotice = element(
+      "p",
+      "inline-notice",
+      "در برخی ماه‌ها مجموع اسناد ابطالی از اسناد ثبت‌شده بیشتر است و ستونی رسم نشده؛ مقدار دقیق در جدول همین بخش آمده است.",
+    );
     belowNotice.setAttribute("role", "status");
     panel.append(belowNotice);
   }
@@ -744,11 +1016,18 @@ function createMonthlyTrendPanel({ trend, trendError }) {
   return {
     panel,
     chart,
-    description: axisScale ? `${description} ارقام محور بر حسب ${axisScale.unit} است.` : description,
+    description: axisScale
+      ? `${description} ارقام محور بر حسب ${axisScale.unit} است.`
+      : description,
   };
 }
 
-export function createFinanceHomePage({ context = null, reportsAdapter, progressAdapter, pricesAdapter }) {
+export function createFinanceHomePage({
+  context = null,
+  reportsAdapter,
+  progressAdapter,
+  pricesAdapter,
+}) {
   // The deviation rows lead to this surface's own read-only tables now, so the
   // only thing left that crosses into امور مالی is the empty state's shortcut to
   // the progress versions — offered only to an account that may be there.
@@ -779,40 +1058,79 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
       snapshots = await progressAdapter.getSnapshots();
       // Only a ready snapshot can be reported on. Defaulting to snapshots[0]
       // would ask the Backend for a superseded one and be answered with a 404.
-      const reportable = snapshots.filter((snapshot) => snapshot.status === "ready");
+      const reportable = snapshots.filter(
+        (snapshot) => snapshot.status === "ready",
+      );
       if (!reportable.length) {
         state = createRequestState(REQUEST_STATUS.EMPTY);
       } else {
-        const latest = reportable.find((snapshot) => snapshot.progressSnapshotId === selectedSnapshotId) ?? reportable[0];
+        const latest =
+          reportable.find(
+            (snapshot) => snapshot.progressSnapshotId === selectedSnapshotId,
+          ) ?? reportable[0];
         selectedSnapshotId = latest.progressSnapshotId;
         // The trend is independent of the overview: a failure there must not
         // take the eight headline metrics down with it.
         const [report, monthly, rollup, workspace] = await Promise.all([
-          reportsAdapter.getOverview({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId }),
-          reportsAdapter.getMonthlyTrend({ reportingDate: latest.reportingDate }).then(
-            (value) => { trendError = null; return value; },
-            (error) => { trendError = error; return null; },
-          ),
+          reportsAdapter.getOverview({
+            reportingDate: latest.reportingDate,
+            progressSnapshotId: latest.progressSnapshotId,
+          }),
+          reportsAdapter
+            .getMonthlyTrend({ reportingDate: latest.reportingDate })
+            .then(
+              (value) => {
+                trendError = null;
+                return value;
+              },
+              (error) => {
+                trendError = error;
+                return null;
+              },
+            ),
           // Independent too: the phase report is not built on the service yet,
           // and its absence must not take the headline metrics down with it.
-          reportsAdapter.getWbsRollup({ reportingDate: latest.reportingDate, progressSnapshotId: latest.progressSnapshotId }).then(
-            (value) => { wbsError = null; return value; },
-            (error) => { wbsError = error; return null; },
-          ),
+          reportsAdapter
+            .getWbsRollup({
+              reportingDate: latest.reportingDate,
+              progressSnapshotId: latest.progressSnapshotId,
+            })
+            .then(
+              (value) => {
+                wbsError = null;
+                return value;
+              },
+              (error) => {
+                wbsError = error;
+                return null;
+              },
+            ),
           // The same workspace #/report-prices reads, through the same adapter.
           // The summary shows three of its rows; it computes nothing of its own.
           pricesAdapter.getPrices().then(
-            (value) => { priceError = null; return value; },
-            (error) => { priceError = error; return null; },
+            (value) => {
+              priceError = null;
+              return value;
+            },
+            (error) => {
+              priceError = error;
+              return null;
+            },
           ),
         ]);
         trend = monthly;
         wbsRollup = rollup;
         priceWorkspace = workspace;
-        state = report ? createRequestState(REQUEST_STATUS.SUCCESS, report) : createRequestState(REQUEST_STATUS.EMPTY);
+        state = report
+          ? createRequestState(REQUEST_STATUS.SUCCESS, report)
+          : createRequestState(REQUEST_STATUS.EMPTY);
       }
     } catch (error) {
-      state = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
+      state = createRequestState(
+        error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR,
+        null,
+        error,
+      );
     }
     paint();
   }
@@ -833,7 +1151,8 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
     const title = document.createElement("h1");
     title.textContent = "خلاصه مالی هنوز قابل محاسبه نیست";
     const message = document.createElement("p");
-    message.textContent = "برای محاسبه شاخص‌های مالی، حداقل یک نسخه پیشرفت پروژه لازم است. نسخه‌های پیشرفت در سربرگ امور مالی ثبت می‌شوند.";
+    message.textContent =
+      "برای محاسبه شاخص‌های مالی، حداقل یک نسخه پیشرفت پروژه لازم است. نسخه‌های پیشرفت در سربرگ امور مالی ثبت می‌شوند.";
     card.append(title, message);
     if (canOperate) {
       const link = document.createElement("a");
@@ -855,13 +1174,26 @@ export function createFinanceHomePage({ context = null, reportsAdapter, progress
       chart = built.chart;
       const provenance = createSnapshotProvenance({
         snapshots,
-        selected: snapshots.find((snapshot) => snapshot.progressSnapshotId === selectedSnapshotId) ?? null,
+        selected:
+          snapshots.find(
+            (snapshot) => snapshot.progressSnapshotId === selectedSnapshotId,
+          ) ?? null,
         report: data,
         onSelect: selectSnapshot,
       });
-      return renderFinanceHome(data, built, { activeChart, onChartChange: setActiveChart }, provenance, curve, levelOne, prices);
+      return renderFinanceHome(
+        data,
+        built,
+        { activeChart, onChartChange: setActiveChart },
+        provenance,
+        curve,
+        levelOne,
+        prices,
+      );
     };
-    root.replaceChildren(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    root.replaceChildren(
+      renderPageState(state, { renderContent, renderEmpty, onRetry: load }),
+    );
   }
 
   load();

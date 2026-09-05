@@ -276,7 +276,8 @@
 }
 
 /* Each tier gives up the fact that says least, in order. */
-@media (max-width: 70rem) {
+@media (max-width: 80rem) {
+
   .finance-snapshot-provenance__fact--imported {
     display: none;
   }
@@ -547,14 +548,14 @@
   position: absolute;
   z-index: -1;
   inset: 0;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--summary-accent) 12%, transparent), transparent 58%);
+  /* background: linear-gradient(135deg, color-mix(in srgb, var(--summary-accent) 12%, transparent), transparent 58%); */
   pointer-events: none;
 }
 
 .finance-home-page .summary-card--primary {
   min-block-size: 8.25rem;
   padding: 1rem 1.1rem;
-  box-shadow: var(--dash-shadow), var(--dash-inner), 0 0 1.25rem color-mix(in srgb, var(--summary-accent) 10%, transparent);
+  /* box-shadow: var(--dash-shadow), var(--dash-inner), 0 0 1.25rem color-mix(in srgb, var(--summary-accent) 10%, transparent); */
 }
 
 .finance-home-page .summary-card--primary:hover {
@@ -564,7 +565,6 @@
 .finance-home-page .summary-card--related {
   min-block-size: 5.4rem;
   padding: .7rem .9rem;
-  background: color-mix(in srgb, var(--app-card-navy) 92%, var(--summary-accent));
 }
 
 .finance-home-page .summary-card--support {
@@ -762,9 +762,6 @@
   margin-block-start: .6rem;
   padding: .65rem .9rem .25rem;
   border-radius: var(--radius-md);
-  background:
-    linear-gradient(180deg, rgb(120 145 205 / 5%), transparent 70%),
-    rgb(4 13 32 / 18%);
   overflow: visible;
 }
 
@@ -839,15 +836,24 @@
    same tracks, so a cell is always under the cell above it, and the label band
    is given a height in lines rather than taking one from its text. A
    breakpoint changes the variables; it never restates the layout. */
-.managerial-combo-chart__plot {
-  --managerial-columns: repeat(4, minmax(0, 1fr));
-  --managerial-gap: clamp(.3rem, 1vw, .75rem);
+/* The two strips the column band is inset by live here rather than on the plot
+   that uses them. The deviation strip has to start and end exactly where the
+   columns do, and it is the chart's sibling, not its descendant — read from the
+   plot it could never see them. This is the only element both are inside.
+
+   Everything else about the plot stays on the plot; only these two came up. */
+.analysis-chart-panel[data-chart="managerial"] {
   --managerial-reference-gutter: clamp(3.9rem, 7vw, 4.9rem);
   /* The strip the amount guide sits in, and how much of it is clear air between
      the numbers and the nearest column. The numbers keep the width they had;
      the gap is what grew, so the guide reads as its own thing beside the chart
      rather than as a label attached to the first bar. */
   --managerial-scale-gutter: clamp(3.55rem, 5.9vw, 4.5rem);
+}
+
+.managerial-combo-chart__plot {
+  --managerial-columns: repeat(4, minmax(0, 1fr));
+  --managerial-gap: clamp(.3rem, 1vw, .75rem);
   --managerial-scale-gap: .8rem;
   --managerial-label-lines: 3;
   --managerial-label-size: .76rem;
@@ -877,6 +883,12 @@
   position: relative;
   flex: 1 1 auto;
   min-block-size: 0;
+  /* A size container, so a column can be measured against the plot it stands
+     in — both its width and its height. `size` and not `inline-size` because
+     the height is the half that matters: the column width was the one thing in
+     this chart answering to neither, and a short plot with 52px columns is what
+     made the bars read as stubs. */
+  container-type: size;
 }
 
 /* Declared, not discovered: the band is exactly as tall as the lines it holds,
@@ -958,7 +970,14 @@
 .managerial-combo-chart__column {
   align-self: end;
   justify-self: center;
-  inline-size: clamp(1.65rem, 4vw, 3.25rem);
+  /* Was clamp(1.65rem, 4vw, 3.25rem) — measured 52px at 1920x1080, 1920x900,
+     1920x800, 1600x900 and 1440x900 alike, because 4vw clears the ceiling on
+     every desktop. A constant, while everything around it moved.
+
+     Now a share of its own cell, capped by a share of the plot's height, so it
+     narrows when the chart narrows AND when the row gets short. The floor keeps
+     it a bar rather than a hairline on a phone. */
+  inline-size: min(clamp(1rem, 34cqi, 2.4rem), 22cqh);
   margin-inline: auto;
   block-size: max(.25rem, var(--column-size));
   max-block-size: 100%;
@@ -1012,9 +1031,16 @@
   pointer-events: none;
 }
 
+/* The band is the unit's containing block, so the strip it sits in is the same
+   strip every band reserves, and it shares the row's baseline: the figures are
+   laid to the end of their cells, so the unit is laid to the end of the band. */
+.managerial-combo-chart__band--values {
+  position: relative;
+}
+
 .managerial-combo-chart__scale-unit {
   position: absolute;
-  inset-block-start: 0;
+  inset-block-end: 0;
   inset-inline-end: 0;
   inline-size: calc(var(--managerial-scale-gutter) - var(--managerial-scale-gap));
   color: var(--color-text-muted);
@@ -1080,10 +1106,7 @@
   filter: drop-shadow(0 0 .3rem color-mix(in srgb, var(--dash-plan) 72%, transparent));
 }
 
-@media (min-width: 64.01rem) {
-  .finance-insights {
-    grid-template-columns: minmax(0, 1.64fr) minmax(18rem, .76fr);
-  }
+@media (min-width: 64rem) {
 
   .managerial-combo-chart__plot {
     min-block-size: 17rem;
@@ -1217,6 +1240,23 @@ a.finance-variance-card__link:hover {
   line-height: 1;
 }
 
+/* The row keeps its indicator column whether or not there is anywhere to go, so
+   the glyph is the child and the column is the span around it. */
+.finance-variance-card__indicator svg {
+  flex: 0 0 auto;
+  /* Sized in em rather than px, so the `font-size` that used to draw the glyph
+     still sets how big it is — including where that size has responsive
+     overrides of its own, as the variance indicator's does. Nothing about the
+     size changed with the glyph; only what draws it. */
+  inline-size: 1em;
+  block-size: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .finance-warnings {
   margin-block: .75rem var(--space-lg);
   padding: .75rem 1rem;
@@ -1242,12 +1282,6 @@ a.finance-variance-card__link:hover {
   gap: var(--space-sm);
   margin-block-end: 0;
   padding-inline-start: 1.25rem;
-}
-
-.finance-warnings--clear {
-  border-color: rgb(34 197 94 / 30%);
-  border-inline-start-color: var(--dash-sev-good);
-  color: var(--dash-sev-good);
 }
 
 /* --------------------------------------------------------------------------
@@ -1569,7 +1603,7 @@ a.finance-variance-card__link:hover {
   text-align: start;
 }
 
-@media (max-width: 70rem) {
+@media (max-width: 80rem) {
   .finance-managerial-comparison .finance-analysis-card__heading h2 {
     font-size: .88rem;
     line-height: 1.4;
@@ -1761,20 +1795,13 @@ a.finance-variance-card__link:hover {
   }
 }
 
-@media (min-width: 48.01rem) and (max-width: 64rem) {
+@media (max-width: 64rem) {
   .finance-overview-layout {
     grid-template-columns: minmax(0, 7fr) minmax(13rem, 3fr);
   }
 
   .managerial-combo-chart {
     overflow: visible;
-  }
-}
-
-@media (min-width: 48.01rem) and (max-width: 70rem) {
-  .finance-risk-stack .finance-analysis-card,
-  .finance-risk-stack .finance-warnings {
-    overflow-y: auto;
   }
 }
 
@@ -1814,12 +1841,16 @@ a.finance-variance-card__link:hover {
     white-space: nowrap;
   }
 
-  .managerial-combo-chart__plot {
-    --managerial-gap: .2rem;
-    /* The reference chip is dropped at this width and gives its strip back to
-       the columns. The value guide keeps its own, narrowed to the numbers. */
+  /* The reference chip is dropped at this width and gives its strip back to
+     the columns. The value guide keeps its own, narrowed to the numbers.
+     On the panel, following the base declaration of the same two. */
+  .analysis-chart-panel[data-chart="managerial"] {
     --managerial-reference-gutter: 0rem;
     --managerial-scale-gutter: 2.9rem;
+  }
+
+  .managerial-combo-chart__plot {
+    --managerial-gap: .2rem;
     --managerial-scale-gap: .5rem;
     --managerial-label-lines: 3;
     --managerial-label-size: .58rem;
@@ -1892,7 +1923,7 @@ a.finance-variance-card__link:hover {
   }
 }
 
-@media (max-width: 26.5625rem) {
+@media (max-width: 30rem) {
   .finance-report-meta {
     font-size: .56rem;
     font-weight: 400;
@@ -2512,8 +2543,39 @@ a.finance-variance-card__link:hover {
 }
 
 .overview-card__link:hover,
-.overview-card__link:focus-visible {
-  text-decoration: underline;
+.overview-card__link:focus-visible ,
+.invoices-entry__action:hover,
+.invoices-entry__action:focus-visible,
+.finance-basis__link:hover,
+.finance-basis__link:focus-visible {
+  filter: brightness(1.2);
+}
+
+/* --- every way off the overview is one colour --------------------------
+   Five rules were colouring these, and they had drifted into four different
+   answers: the two in the basis bar were muted grey, «مشاهده همه» and the
+   variance chevron were --color-accent, and the two card links were
+   --dash-actual. Nothing distinguished them — all five do the same thing, which
+   is take the reader to another page — so they are named together here rather
+   than corrected one at a time and left to drift again.
+
+   `:is()` takes the weight of its strongest argument, so with the page class in
+   front this is (0,2,0) against the (0,1,0) of every rule it overrides, and it
+   wins wherever it sits in the file and whatever the import order becomes.
+   `.level-one-section__link` is styled in level-one.css and is reached the same
+   way.
+
+   Scoped to the overview on purpose: the same classes appear on the pages these
+   links lead to, where a link is not a way out of anywhere.
+   ------------------------------------------------------------------------ */
+.finance-home-page :is(
+  .finance-basis__link,
+  .invoices-entry__action,
+  .level-one-section__link,
+  .overview-card__link,
+  .finance-variance-card__indicator
+) {
+  color: var(--dash-sev-med);
 }
 
 /* --- rows -------------------------------------------------------------- */
@@ -2629,11 +2691,6 @@ a.finance-variance-card__link:hover {
   white-space: nowrap;
 }
 
-.finance-basis__link:hover,
-.finance-basis__link:focus-visible {
-  color: var(--color-accent);
-  text-decoration: underline;
-}
 
 .finance-page-header__actions {
   display: flex;
@@ -2677,10 +2734,34 @@ a.finance-variance-card__link:hover {
 }
 
 /* Long item names wrap rather than pushing the price out of the card. */
+/* Under `table-layout: fixed` the columns are measured from the first row and
+   nothing else — and the first row here is the header, which carried no widths
+   at all. The 44/32/24 below was written on the body cells, where fixed layout
+   never reads it, so the three columns were laid out as equal thirds and a long
+   item name pushed the price and the trend into each other.
+
+   Stated on the header cells, which is the row that decides. */
+.prices-summary__table th:nth-child(1) {
+  inline-size: 44%;
+}
+
+.prices-summary__table th:nth-child(2) {
+  inline-size: 32%;
+}
+
+.prices-summary__table th:nth-child(3) {
+  inline-size: 24%;
+}
+
+/* A name longer than its column is cut, not wrapped: the column is a fixed
+   share of a card that has no horizontal scroll, so anything that cannot be cut
+   has to come out of a neighbour. The full name stays in the title attribute. */
 .prices-summary__name {
   inline-size: 44%;
-  overflow-wrap: anywhere;
+  overflow: hidden;
   line-height: 1.5;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .prices-summary__price {
@@ -2846,6 +2927,14 @@ a.breakdown-donut:focus-visible {
   .finance-grid--main {
     grid-template-columns: 1fr;
   }
+
+  /* The row is the full width now rather than half of it, so the split inside
+     it goes even: four figures on one side, the way into فاکتورها on the other.
+     2fr 1fr was the answer to sharing half a row with a chart, and there is no
+     chart beside them here — it has moved to the row below. */
+  .finance-lead {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 36rem) {
@@ -2932,7 +3021,22 @@ a.breakdown-donut:focus-visible {
   /* The basis bar, then the three content rows. The heading above them is
      visually hidden and out of flow, so it takes no track — leaving one here
      for it would park an empty fifth of the board under the last row. */
-  grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  /* Desktop, 1280 and up. The weights are the host dashboard's own row
+     proportions, so the two boards read as one page rather than two that
+     happen to sit in the same frame. Measured on a 2650x1055 screen, its
+     container was 975.200 tall and its rows filled it:
+
+       row 1   308.213   (the container less the two rows below it)
+       row 2   349.375
+       row 3   317.612
+
+     Divided through by row one that is 1 : 1.134 : 1.030 — the form the ratio
+     has to take here, because the module's container is not the same height as
+     the dashboard's and a pixel copied across would land in the wrong place.
+
+     Every narrower range keeps the previous weights until its own layout is
+     specified; the override is in the 80rem block below. */
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1.134fr) minmax(0, 1.03fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -2946,7 +3050,14 @@ a.breakdown-donut:focus-visible {
 #finance-module-root:has(.finance-board) {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  block-size: 100dvh;
+  /* 100% of whatever holds this mount, not 100% of the window. Standalone that
+     is the page, and the shell rules at the foot of this file give the chain
+     from <html> down a definite height so the percentage resolves. Mounted in
+     the host it is the cell the module is given — which is the whole point:
+     dvh asks for the host's entire window and comes out taller than its own
+     cell by exactly the height of the host's chrome. Measured at 1920x1080 in
+     a 988px cell, the board was 1080 and the last row was cut by 92px. */
+  block-size: 100%;
   min-block-size: 34rem;
   padding: var(--board-gap, .55rem);
   overflow: hidden;
@@ -3155,6 +3266,34 @@ a.breakdown-donut:focus-visible {
    readable size and pretending otherwise costs the content.
    ------------------------------------------------------------------------ */
 
+/* --------------------------------------------------------------------------
+   Below the desktop range — held, not yet designed
+   --------------------------------------------------------------------------
+   The row weights on `.finance-board` above are the desktop answer. Every
+   narrower range keeps what the board had before that, so nothing under 1280
+   moved while the desktop layout was being set; each will be replaced as its
+   own layout is decided.
+
+   Its place in the file is the whole rule. It has to be below `.finance-board`
+   to beat it — same weight, so the later declaration wins, and written above it
+   this silently did nothing. It has to be above the 64rem block for the same
+   reason in the other direction: there the board lets go of its rows entirely
+   (`grid-template-rows: none`, `block-size: auto`), and from the foot of the
+   file this reimposed three fr tracks on a board that had just been released.
+   The tracks then split the stacked content 1.5 : 1.5 : 1 whatever the cards
+   needed — at 1024 the level-one card was held at 585px for 360px of chart and
+   carried 200px of empty air above its columns.
+
+   Between the two, both readings come out right and neither needs a floor on
+   the query: 1025 to 1280 takes the weights, 1024 and down keeps `none`.
+   ------------------------------------------------------------------------ */
+
+@media (max-width: 80rem) {
+  .finance-board {
+    grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 64rem) {
   #finance-module-root:has(.finance-board) {
     grid-template-rows: none;
@@ -3194,6 +3333,9 @@ a.breakdown-donut:focus-visible {
 
   .finance-board .level-one-section__note {
     display: block;
+  }
+  .finance-board .invoices-entry{
+    padding: 16px;
   }
 }
 
@@ -3476,6 +3618,10 @@ a.breakdown-donut:focus-visible {
   flex: 0 0 auto;
 }
 
+.finance-board .report-builder-section__cta:hover{
+  filter: brightness(1.07);
+}
+
 /* --- the chart panels' alternative tables ------------------------------- */
 
 /* Each trend panel carries a table saying in rows what its chart says in
@@ -3539,6 +3685,42 @@ a.breakdown-donut:focus-visible {
 
 .finance-board .finance-curve-card .analysis-chart-panel {
   min-block-size: 0;
+}
+
+/* --- the legend moves up beside the title ------------------------------
+   The card's height is the curve's height minus its chrome, and on a 1366 by
+   768 screen the chrome was 76px of 247 — a third of the card spent on a
+   title, a gap, and a two-word legend, leaving the curve 170px to be 653 wide
+   in. Row weight alone could not fix that without taking the height off the
+   two rows above.
+
+   The legend is a row of its own only because it is the panel's first child.
+   Lifted out of flow it sits in the header's empty half, where the managerial
+   card already keeps its own controls, and the 30px it was costing goes to the
+   plot: 170 -> 200 at 1366x768, 3.8:1 down to 3.3:1.
+
+   Scoped to the board because the panel is shared — the standalone curve page
+   builds the same panel and keeps its stacked legend. Absolute is safe here
+   because the header holds one short title and the legend two words; below
+   48rem the two are given their own lines again. */
+.finance-board .finance-curve-card {
+  position: relative;
+}
+
+.finance-board .finance-curve-card .cost-curve-legend {
+  position: absolute;
+  inset-block-start: var(--board-pad);
+  /* The title holds the inline start; the legend takes the end, which is the
+     side it already sat on when it had a row of its own. */
+  inset-inline-end: var(--board-pad);
+  margin-block-end: 0;
+}
+
+@media (max-width: 48rem) {
+  .finance-board .finance-curve-card .cost-curve-legend {
+    position: static;
+    margin-block-end: .65rem;
+  }
 }
 
 /* Four column labels in a 449px chart need a third line. Where the board has
@@ -3609,12 +3791,6 @@ a.breakdown-donut:focus-visible {
 .finance-board .finance-insight-cards > .finance-warnings p {
   font-size: var(--font-size-xs);
   line-height: 1.35;
-}
-
-/* The clear state keeps its green edge — that is the one thing about this card
-   that is still a notice. */
-.finance-board .finance-insight-cards > .finance-warnings--clear {
-  border-color: rgb(34 197 94 / 30%);
 }
 
 /* --- the four figures --------------------------------------------------
@@ -3774,13 +3950,26 @@ a.breakdown-donut:focus-visible {
    draws. In a card this narrow the line gets the room and the word sits under
    it rather than beside it, and both come down to the table's own scale. */
 .finance-board .prices-summary .price-trend {
+  /* prices.css floors this at 7rem, which is right for the wide table on the
+     prices page and is a hard 112px here. The trend column is 81px at 800 and
+     the cell could not hold what would not shrink, so the card carried 20px of
+     horizontal scroll — the column widths were never what caused it, and no
+     split of them could have fixed it: 112 is absolute and the table is not.
+
+     The svg is released with it. Its own `min-inline-size: auto` as a flex item
+     is a second floor behind the first. */
   min-inline-size: 0;
-  grid-template-columns: minmax(0, 1fr);
+  /* grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  justify-items: center;
+  justify-items: center; */
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: start;
+  align-items: start;
 }
 
 .finance-board .prices-summary .price-trend svg {
+  min-inline-size: 0;
   block-size: 1.1rem;
 }
 
@@ -3874,26 +4063,9 @@ a.breakdown-donut:focus-visible {
    beside a smaller one.
    ------------------------------------------------------------------------ */
 
-a.invoices-entry {
+
+.invoices-entry {
   justify-content: space-between;
-  color: inherit;
-  text-decoration: none;
-  transition:
-    border-color var(--duration-fast) var(--ease-standard),
-    background-color var(--duration-fast) var(--ease-standard);
-}
-
-a.invoices-entry:hover,
-a.invoices-entry:focus-visible {
-  border-color: color-mix(in srgb, var(--dash-actual, #00ac58) 45%, transparent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--dash-actual, #00ac58) 7%, transparent), transparent 60%),
-    var(--app-card-navy);
-}
-
-a.invoices-entry:focus-visible {
-  outline: 2px solid var(--dash-actual, #00ac58);
-  outline-offset: 2px;
 }
 
 .invoices-entry__head {
@@ -3954,13 +4126,619 @@ a.invoices-entry:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: .25rem;
-  margin-block-start: auto;
+  /* No `margin-block-start: auto` any more. It pushed this line to the foot of
+     the card while it was a direct child of the card's column; inside the
+     footer row it pushed it to the bottom of the line instead and left it 3px
+     under the button beside it. The card's own `space-between` is what puts the
+     row at the foot, and `align-items: center` on the row lines the two up. */
   color: var(--dash-actual, #00ac58);
   font-size: var(--font-size-xs);
   font-weight: 700;
+  text-decoration: none;
 }
 
 .invoices-entry__chevron {
   font-size: .95rem;
   line-height: 1;
+  flex: 0 0 auto;
+  /* Sized in em rather than px, so the `font-size` that used to draw the glyph
+     still sets how big it is — including where that size has responsive
+     overrides of its own, as the variance indicator's does. Nothing about the
+     size changed with the glyph; only what draws it. */
+  inline-size: 1em;
+  block-size: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.action_buttons{
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.action_buttons > .invoice_registration{
+  font-size: var(--font-size-xs);
+  padding: 0.1rem 0.38rem;
+  background: var(--grad-accent);
+  border-radius: 9px;
+}
+
+.action_buttons > .invoice_registration:hover{
+  filter: brightness(1.07)
+}
+
+
+/* --------------------------------------------------------------------------
+   The standalone shell's own height chain
+   --------------------------------------------------------------------------
+   Nothing between <html> and the mount carried a height, which is why the board
+   asked the window directly. It asks its container now, so the container has to
+   be something — but only here: every selector is keyed on the runtime marker
+   index.html puts on <body>, so a host that mounts the module owns its own
+   container's height and none of this can reach it.
+   ------------------------------------------------------------------------ */
+
+html:has(> body[data-finance-runtime]),
+body[data-finance-runtime] {
+  block-size: 100%;
+}
+
+body[data-finance-runtime] > #finance-app,
+body[data-finance-runtime] .app-workspace {
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+/* --------------------------------------------------------------------------
+   The cumulative chart, narrower than its card
+   --------------------------------------------------------------------------
+   Nothing sizes this chart directly: it is flex: 1 1 auto inside a panel that
+   is the same, so it takes whatever the card has — the card being one of the
+   two 1fr columns of row one. 753.6px at 1920x1080.
+
+   Four columns do not need all of it. Seventy per cent of what it had, centred
+   in what it no longer fills. The panel is a column flex, so the inline axis is
+   its cross axis: an explicit inline-size beats the stretch it would otherwise
+   get, and the auto margins centre what is left.
+
+   Keyed on the panel's own data-chart, so the monthly chart beside it is
+   untouched — that one has twelve columns and wants the whole width.
+   ------------------------------------------------------------------------ */
+
+.finance-board .analysis-chart-panel[data-chart="managerial"] {
+  --managerial-chart-inline: 70%;
+  /* What sits between the chart's edge and its column band on each side, other
+     than the two gutters: the chart's own padding-inline (.45rem) and the
+     plot's (.25rem). Named here because the deviation has to clear the same
+     distance and neither box is its own. */
+  --managerial-chart-inset: .7rem;
+}
+
+.finance-board .analysis-chart-panel[data-chart="managerial"] .managerial-combo-chart {
+  inline-size: var(--managerial-chart-inline);
+  margin-inline: auto;
+}
+
+/* --------------------------------------------------------------------------
+   1025 to 1280
+   --------------------------------------------------------------------------
+   Type first. The figure above each column measured 12.48px here, which is
+   --font-size-md exactly, and the label 9.28px, which is .58rem and on no rung
+   at all. Both are put on the board's own ladder a step below where they sat:
+   md -> sm for the figure, and 2xs for the label, the rung under the pair it
+   was sitting between. The figure's size was a container-query clamp before
+   this; a token is what was asked for, and at these widths the clamp was
+   pinned to its ceiling anyway.
+
+   Then the chart, which had 70% of a card that is narrower here than it is on
+   a monitor. 85% gives the four columns 331.8px of band at 1280 instead of
+   242.8 without letting them sprawl.
+
+   Last the deviation strip, which ran the full width of the panel while the
+   thing it describes ran down the middle of it. It now starts and ends exactly
+   where the column band does. Both margins are built from the same three
+   numbers the band is inset by, so the two cannot drift apart:
+
+     (100% - chart width) / 2      the chart's own auto margin
+     + --managerial-chart-inset    the chart's padding, and the plot's
+     + the gutter on that side     the reference chip's, or the guide's
+
+   The strip is a stretched item in a column flex, so setting both margins is
+   what sets its width.
+
+   This is the one query in the module with a floor as well as a ceiling. Every
+   other range is the base narrowed by a max-width, but the ranges under this
+   one have not been designed yet, and without a floor all three of these
+   reached them — 1024 and 800 were reading the smaller type before the floor
+   went on. A declaration inside a query that does not match is simply not
+   there, so the floor is what hands those widths back, and nothing here has to
+   be restated below to undo it.
+   ------------------------------------------------------------------------ */
+
+@media (min-width: 64rem) and (max-width: 80rem) {
+  .finance-board .analysis-chart-panel[data-chart="managerial"] {
+    --managerial-chart-inline: 85%;
+  }
+
+  .finance-board .managerial-combo-chart__plot {
+    --managerial-label-size: var(--font-size-2xs);
+  }
+
+  .finance-board .managerial-combo-chart__value {
+    font-size: var(--font-size-sm);
+  }
+
+  /* .finance-board
+    .analysis-chart-panel[data-chart="managerial"]
+    > .managerial-deviation {
+    margin-inline-start: calc(
+      (100% - var(--managerial-chart-inline)) / 2 +
+        var(--managerial-chart-inset) + var(--managerial-reference-gutter)
+    );
+    margin-inline-end: calc(
+      (100% - var(--managerial-chart-inline)) / 2 +
+        var(--managerial-chart-inset) + var(--managerial-scale-gutter)
+    );
+  } */
+}
+
+/* Under 425 the card is barely wider than the four columns, so there is no
+   surplus to give back — narrowing here would only crowd them. What gives
+   instead is the type and the columns themselves.
+
+   The label takes the value's own size through a variable both read, rather
+   than the same literal written twice: «set with the number on the column»
+   should stay true when either is next changed. */
+@media (max-width: 30rem) {
+  /* On __plot, not on the chart: that is where every other rule declares these,
+     including one on .finance-board with no query behind it, and a variable is
+     read from the nearest ancestor that sets it — a definition further out is
+     simply not seen. */
+  .managerial-combo-chart__plot,
+  .finance-board .managerial-combo-chart__plot {
+    /* A plain length, not the cqi clamp the value carries elsewhere: only the
+       value sits inside a query container (__cell), so the same clamp resolved
+       against a 17px column for one and against the viewport for the other —
+       7.36px beside 9.92px, from one expression. A fixed size is what makes
+       them actually equal. */
+    --managerial-value-size: .5rem;
+    --managerial-label-size: var(--managerial-value-size);
+    --managerial-label-leading: 1.25;
+  }
+
+  .managerial-combo-chart__value {
+    font-size: var(--managerial-value-size);
+  }
+
+  .managerial-combo-chart__value .money-display__unit {
+    font-size: clamp(.4rem, 6cqi, .52rem);
+  }
+
+  .managerial-combo-chart__column {
+    inline-size: clamp(1.1rem, 3.4vw, 1.9rem);
+  }
+
+  /* Under 480 the card is barely wider than its four columns, so it takes the
+     whole of it back. Through the variable the chart's width is read from, so
+     anything else placed against that width follows it here too. */
+  .finance-board .analysis-chart-panel[data-chart="managerial"] {
+    --managerial-chart-inline: 100%;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   769 to 1024
+   --------------------------------------------------------------------------
+   The board has let go of its height by here and the page scrolls, so nothing
+   in this range is a fight for room: what a card needs, it takes. The whole
+   range is written against that — no content compressed to make a row fit.
+
+   The last row was three cards across and the two beside the curve were 278 and
+   185 wide, which is not a table and a list so much as two columns of wrapped
+   words. It becomes two: the curve keeps its half, and the prices and the
+   warnings take the other half one above the other, a row each of equal height.
+   Both are then as wide as the curve is, which is what makes the price table
+   and the warning text readable — more than the type size does.
+
+   The row is given more height than it had. The curve was drawing into 154px
+   and reads as a flat line at that size; it is the surface that grows and the
+   card follows it.
+
+   Type comes down one rung across every section. The ramp is redefined rather
+   than a size at a time, so anything on this board reading a token moves with
+   it and nothing has to be listed here. The bottom rung is new — 2xs had none
+   below it to step onto.
+
+   At the end of the file because every rule here overrides one written for the
+   board further up, and at equal weight it is the later declaration that wins.
+   ------------------------------------------------------------------------ */
+
+/* Not bounded below: the two cards are better stacked at every width narrower
+   than this, and under 48rem they were being stacked already. */
+@media (max-width: 64rem) {
+  .finance-board .finance-insight-cards {
+    grid-template-columns: minmax(0, 1fr);
+    /* Two rows of one part each: equal height, whichever card holds more. */
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 64rem) {
+  .finance-board {
+    --font-size-lg: .78rem;
+    --font-size-md: .7rem;
+    --font-size-sm: .62rem;
+    --font-size-xs: .56rem;
+    --font-size-2xs: .5rem;
+  }
+
+  .finance-board .finance-curve-card .cost-curve__surface {
+    block-size: clamp(11rem, 27vh, 17rem);
+    max-block-size: 17rem;
+  }
+
+  /* Both caps come off. They held the last row to 20rem, which is under what
+     the curve now asks for and under what two stacked cards come to. The
+     curve's surface has a stated height of its own, so nothing here is left to
+     grow without an end. */
+  .finance-board .finance-curve-card,
+  .finance-board .finance-grid--insights > * {
+    max-block-size: none;
+  }
+
+  /* 44/32/24 gave the trend 78px at the bottom of this range, which is a
+     sparkline and a word in the space of a word. The name column is the one
+     that can afford to lose: it clips to an ellipsis by design and keeps the
+     whole title in the cell's own attribute, while the other two hold figures
+     that are only readable entire.
+
+     The three still come to 100 — under `table-layout: fixed` anything less is
+     shared out again by the browser and the split stops being the one written
+     here. */
+  .finance-board .prices-summary__table th:nth-child(1) {
+    inline-size: 34%;
+  }
+
+  .finance-board .prices-summary__table th:nth-child(2) {
+    inline-size: 33%;
+  }
+
+  .finance-board .prices-summary__table th:nth-child(3) {
+    inline-size: 33%;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   577 to 768
+   --------------------------------------------------------------------------
+   Four changes, and nothing else about the range moves.
+
+   The last row stops being two columns of 260px. The curve takes a row of its
+   own at the full width — twelve months in 260px was a line with no room to be
+   a shape — and the prices and the warnings come back up beside each other in
+   the row under it. Two cards of half the page beat two cards of a quarter of
+   it stacked.
+
+   The builder goes back to three chips across. report-builder.css drops it to
+   two at 48rem, which is right for the section on its own page and wrong in a
+   card that is the full width of the board here.
+
+   The four figures take their type down one rung from what it was in the range
+   above — the range's own tokens, redefined on the container, so the card's
+   heading, unit and money all move together and none of them is listed twice.
+
+   The basis bar comes down everywhere at once: its padding, its gaps, the
+   links, the settings control, and the 22rem the provenance strip was asking
+   for. That last one is what mattered. The strip is `flex: 1 1 22rem`, and 352
+   of basis plus the meta group's 212 does not fit in 549, so at 640 the bar
+   broke onto a second line and went from 52px tall to 79. The basis is the
+   width it needs here, not the width it needs on a monitor.
+   ------------------------------------------------------------------------ */
+
+@media (min-width: 36rem) and (max-width: 48rem) {
+  /* --- the last row: the curve alone, then the two cards beside it -------- */
+
+  .finance-board .finance-grid--insights {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-board .finance-insight-cards {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  /* --- three chips across ------------------------------------------------ */
+
+  /* `.finance-board` prefixed so this outranks report-builder.css's own 48rem
+     rule rather than depending on which sheet is imported last. */
+  .finance-board .report-builder-section__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* --- the four figures, a rung down ------------------------------------- */
+
+  .finance-board .finance-figures {
+    --font-size-xs: .5rem;
+    --font-size-2xs: .46rem;
+  }
+
+  .finance-board .finance-figures .summary-card__value {
+    font-size: clamp(.875rem, 1.5vw, 1.25rem);
+  }
+
+  /* --- the basis bar ----------------------------------------------------- */
+
+  .finance-board .finance-basis {
+    gap: .2rem .4rem;
+    padding: .2rem .4rem;
+  }
+
+  .finance-board .finance-basis > .finance-snapshot-provenance {
+    flex-basis: 15rem;
+    gap: .25rem;
+    font-size: clamp(.46rem, 1.35vw, .62rem);
+  }
+
+  .finance-board .finance-basis .finance-snapshot-provenance .app-select {
+    min-inline-size: 3.6rem;
+    padding-block: .05rem;
+    padding-inline: .2rem;
+  }
+
+  .finance-board .finance-basis__meta {
+    gap: .25rem;
+  }
+
+  .finance-board .finance-basis__link {
+    font-size: var(--font-size-xs);
+  }
+
+  .finance-board .finance-basis__link + .finance-basis__link {
+    margin-inline-start: .35rem;
+  }
+
+  .finance-board .finance-basis__link:last-of-type {
+    margin-inline-end: .15rem;
+  }
+
+  .finance-board .finance-basis .finance-project-settings-link {
+    min-block-size: 1.8rem;
+    min-inline-size: 1.8rem;
+    padding: .25rem;
+    border-radius: 50%;
+  }
+
+  .finance-board .finance-basis .finance-project-settings-link__icon {
+    inline-size: .95rem;
+    block-size: .95rem;
+  }
+
+  /* --- what each chart is allowed to become on a tall window ------------- */
+
+  /* The panel already stopped growing — at 24rem, which on a 1200px window is
+     384px of card and a tallest column of 260 standing 20 wide. A column that
+     much taller than it is wide reads as a stripe rather than a bar, and the
+     four of them stop being comparable at a glance. The ceiling comes down to
+     18rem: 288 of panel, 164 of column, and 700 and 900 tall windows are left
+     where they were because they never reached the old ceiling anyway.
+
+     Left on the panel rather than the managerial chart inside it, so the card
+     is the same height in both modes and the switch still moves nothing. */
+  .finance-board .finance-analysis-card .analysis-chart-panel {
+    block-size: clamp(13rem, 34vh, 18rem);
+  }
+
+  /* The curve went the other way. It has the full width of the board here — 625
+     of surface where it had 290 — against a height still capped at 12rem for
+     when it was one of two cards in a row. 625 by 180 is 3.5:1, which is the
+     flat line this range was meant to stop drawing.
+
+     Both caps above it come off with the floor: the card's own and the one on
+     every child of the insights row, either of which would hold the card at
+     20rem and give the surface back what it just gained. */
+  .finance-board .finance-curve-card .cost-curve__surface {
+    block-size: clamp(12rem, 26vh, 18rem);
+    max-block-size: 18rem;
+  }
+
+  .finance-board .finance-curve-card,
+  .finance-board .finance-grid--insights > * {
+    max-block-size: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   481 to 576
+   --------------------------------------------------------------------------
+   Row one stops being a row. The four figures come across the top in one line
+   of four equal columns, the managerial chart goes under them, and the way into
+   فاکتورها goes under that at the full width. Everything after it is already
+   one section per line.
+
+   That order is not the order they are written in. The figures and the invoices
+   card are both inside `.finance-lead`, and the chart is `.finance-lead`'s
+   sibling, so no amount of `order` on the row's own children could put the
+   chart between them. `display: contents` drops the wrapper's box and hands its
+   two children up to the row as grid items of its own; from there `order` is
+   enough. The wrapper carries no padding, background or border, so there is
+   nothing to lose by removing its box.
+
+   The type comes down a rung across the board, and the figures keep the extra
+   rung they were given in the range above — four cards in the width that held
+   two, and the heading of the widest of them is «هزینه واقعی هر مترمربع».
+   ------------------------------------------------------------------------ */
+
+@media (min-width: 30rem) and (max-width: 36rem) {
+  .finance-board {
+    --font-size-lg: .78rem;
+    --font-size-md: .7rem;
+    --font-size-sm: .62rem;
+    --font-size-xs: .56rem;
+    --font-size-2xs: .5rem;
+  }
+
+  /* --- row one, reordered ------------------------------------------------ */
+
+  .finance-board .finance-lead {
+    display: contents;
+  }
+
+  .finance-board .finance-grid--main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-board .finance-figures {
+    order: 1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .finance-board .finance-grid--main > .finance-managerial-comparison {
+    order: 2;
+  }
+
+  .finance-board .finance-lead > .invoices-entry {
+    order: 3;
+  }
+
+  /* --- and everything after it, one section per line --------------------- */
+
+  /* The last row was still the curve beside the two cards — 213px of chart for
+     twelve months. One column here, so the curve, the prices and the warnings
+     each take the width the sections above them take. The two cards were
+     already stacked inside their own column by the 64rem rule; giving that
+     column the whole width is all this needs. */
+  .finance-board .finance-grid--insights {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* --- the figures, a rung under the board's own ------------------------- */
+
+  .finance-board .finance-figures {
+    --font-size-xs: .46rem;
+    --font-size-2xs: .42rem;
+  }
+
+  .finance-board .finance-figures .summary-card__value {
+    font-size: clamp(.7rem, 2.2vw, .95rem);
+  }
+
+  /* --- the managerial chart gets the card it is standing in --------------- */
+
+  /* The figure above each column was breaking mid-number — «۶۲٫۹۳» over two
+     lines and its unit on a third, four lines in a band sized for two — and two
+     of the four labels were being clipped. Type alone could not fix either: the
+     cell was 22px wide.
+
+     It was 22 because the chart still held itself to 70% of a card that is now
+     the full width of the page, and the two gutters inside that are declared in
+     rem — 62 and 57 here — so they took 119 of the 281 the chart had kept, and
+     four columns divided what was left. At 100% the cells are wide enough for
+     the number to be a number, and the type comes down on top of that rather
+     than instead of it. */
+  .finance-board .analysis-chart-panel[data-chart="managerial"] {
+    --managerial-chart-inline: 100%;
+  }
+
+  .finance-board .managerial-combo-chart__value {
+    font-size: var(--font-size-2xs);
+  }
+
+  .finance-board .managerial-combo-chart__value .money-display__unit {
+    font-size: .44rem;
+  }
+
+  .finance-board .managerial-combo-chart__plot {
+    --managerial-label-size: .48rem;
+  }
+
+  /* The phase chart's own two sizes are literals in level-one.css — 12px for
+     the stage name and 10.5px for the figure over each bar — so they were the
+     only type on this board still set for a full-width page. Eight of the
+     nineteen names and two of the figures were being cut. On the board's own
+     ramp they are the size of everything around them. */
+  .finance-board .level-one-section .vgroup__name {
+    font-size: var(--font-size-2xs);
+  }
+
+  .finance-board .level-one-section .vbar em {
+    font-size: .46rem;
+  }
+
+  /* --- the basis bar, back onto one line ---------------------------------- */
+
+  /* It was 77px of two lines: the facts on the first at 8.32px, and on the
+     second a pair of 17px links standing beside a 40px square gear. Nothing in
+     it was too wide — the bar simply wrapped at the first opportunity, and the
+     one mechanism written for exactly this width never got to run. The file
+     name is `flex: 0 1 auto` with an ellipsis on its value, put there because
+     it is the one fact whose length nobody controls. Wrapping gave the bar a
+     second line instead, so the name never had to give anything up and the bar
+     paid for it in height.
+
+     `nowrap` hands that back. The provenance shrinks, the file name ellipses,
+     and the room the second line was taking goes to the type instead: the facts
+     come up off their 8.32px floor to 9.28, which is the difference between
+     small and unreadable. The gear comes down to the height of the links beside
+     it — it was the only thing in the bar setting a 40px line box. */
+  .finance-board .finance-basis {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: .3rem;
+    /* `nowrap` gives the bar a min-content width it did not have before — the
+       sum of what its items refuse to go under — and as a grid item its own
+       `min-width: auto` handed that straight to the board's track. The board
+       went from 434 to 466 at 481 and the page picked up 16px of sideways
+       scroll. Zero here lets the bar be the width of its row again, and the
+       shrinking happens where it was designed to: the file name. */
+    min-inline-size: 0;
+    padding: .25rem .45rem;
+  }
+
+  .finance-board .finance-basis > .finance-snapshot-provenance {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    gap: .3rem;
+    font-size: .58rem;
+  }
+
+  .finance-board .finance-basis .finance-snapshot-provenance .app-select {
+    min-inline-size: 3.2rem;
+    padding-block: 0;
+    padding-inline: .25rem;
+  }
+
+  .finance-board .finance-basis__meta {
+    flex: 0 0 auto;
+    gap: .25rem;
+    margin-inline-start: auto;
+  }
+
+  .finance-board .finance-basis__link {
+    font-size: .56rem;
+  }
+
+  .finance-board .finance-basis__link + .finance-basis__link {
+    margin-inline-start: .3rem;
+  }
+
+  .finance-board .finance-basis__link:last-of-type {
+    margin-inline-end: .1rem;
+  }
+
+  .finance-board .finance-basis .finance-project-settings-link {
+    min-block-size: 1.35rem;
+    min-inline-size: 1.35rem;
+    padding: .2rem;
+  }
+
+  .finance-board .finance-basis .finance-project-settings-link__icon {
+    inline-size: .8rem;
+    block-size: .8rem;
+  }
 }
