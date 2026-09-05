@@ -3886,6 +3886,74 @@ a.breakdown-donut:focus-visible {
   min-block-size: 0;
 }
 
+/* --- the mark behind a figure -------------------------------------------
+   The four cards were 30% text and 70% empty: 310 by 153 at 1920 for 52px of
+   type, and 171 by 166 at 1100 for 44. What fills that is a watermark of where
+   the number comes from — the baseline's document, the recorded cost's receipt,
+   the remaining work's phase structure, the rate's measured square.
+
+   Its colour is the column this figure is drawn as in the chart beside it:
+   plan, actual and remaining are three of that chart's four bars, and the card
+   and the bar are the same number. The rate is not in the chart and takes the
+   muted grey instead — which is the honest signal, because it is a rate and the
+   other three are sums.
+
+   Nothing here is a line. On a page carrying three real charts, a stroke that
+   rises or falls reads as data whatever it was drawn for.
+
+   Only where there is room: below 1024 the card is 45 to 66px tall and its text
+   fills it to within 6px, so the mark is dropped rather than shrunk.
+   ------------------------------------------------------------------------ */
+
+.finance-board .finance-figures > .summary-card {
+  position: relative;
+}
+
+.finance-board .summary-card__mark {
+  position: absolute;
+  /* The text is start-aligned, so the empty half is the end one. Whole rather
+     than bled past the edge: at -.7rem the card clipped a third off each mark
+     and they read as broken shapes instead of as texture. */
+  inset-block-end: .35rem;
+  inset-inline-end: .45rem;
+  inline-size: clamp(2.6rem, 38%, 4.4rem);
+  block-size: auto;
+  color: var(--summary-mark, var(--color-text-muted));
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .12;
+  pointer-events: none;
+}
+
+.finance-board .finance-figures > [data-metric="initialEstimateIrr"] {
+  --summary-mark: var(--dash-plan);
+}
+
+.finance-board .finance-figures > [data-metric="actualCostIrr"] {
+  --summary-mark: var(--dash-actual);
+}
+
+.finance-board .finance-figures > [data-metric="remainingPhysicalCostIrr"] {
+  --summary-mark: var(--brand-teal);
+}
+
+/* Below 1024 the card has 6 to 11px of slack. A watermark there sits under the
+   text rather than behind it. */
+@media (max-width: 64rem) {
+  .finance-board .summary-card__mark {
+    display: none;
+  }
+}
+
+@media print {
+  .finance-board .summary-card__mark {
+    display: none;
+  }
+}
+
 .finance-board .finance-figures > .summary-card {
   display: flex;
   flex-direction: column;

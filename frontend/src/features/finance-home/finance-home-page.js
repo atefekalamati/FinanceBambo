@@ -97,6 +97,15 @@ const RELATED_SUMMARY_KEYS = new Set([
    the current report, the same report over a chosen period, the documents the
    figures are built from, and how the amounts are displayed. */
 
+/* Keyed on the metric rather than on the card's position, so reordering the
+   four figures cannot put the wrong mark on a number. */
+const SUMMARY_MARKS = Object.freeze({
+  initialEstimateIrr: "estimateLines",
+  actualCostIrr: "invoices",
+  remainingPhysicalCostIrr: "levelOne",
+  actualCostPerSquareMeterIrr: "area",
+});
+
 function createSummaryCard(key, label, description, data) {
   const card = document.createElement("article");
   const unavailable = data?.[key] === null || data?.[key] === undefined;
@@ -116,6 +125,17 @@ function createSummaryCard(key, label, description, data) {
   unit.className = "summary-card__unit";
   unit.textContent = unavailable ? "داده مبنا موجود نیست" : description;
   card.append(title, value, unit);
+
+  /* A watermark naming where the figure comes from, not an ornament: the
+     baseline is a document, the recorded cost is a receipt, the remaining work
+     is the phase structure, and the rate is a measured square. Decorative to a
+     screen reader — the card already says all four in words. */
+  const mark = SUMMARY_MARKS[key];
+  if (mark) {
+    const glyph = reportIcon(mark);
+    glyph.setAttribute("class", "summary-card__mark");
+    card.append(glyph);
+  }
   return card;
 }
 
