@@ -4056,26 +4056,12 @@ a.breakdown-donut:focus-visible {
    beside a smaller one.
    ------------------------------------------------------------------------ */
 
-a.invoices-entry {
+/* The card is a container, not a target. `color: inherit`, the underline reset,
+   the transition and the whole hover-and-focus pair went with the anchor: a
+   surface that lights up under the pointer promises one destination, and this
+   card has two. They are in the footer row and each answers for itself. */
+.invoices-entry {
   justify-content: space-between;
-  color: inherit;
-  text-decoration: none;
-  transition:
-    border-color var(--duration-fast) var(--ease-standard),
-    background-color var(--duration-fast) var(--ease-standard);
-}
-
-a.invoices-entry:hover,
-a.invoices-entry:focus-visible {
-  border-color: color-mix(in srgb, var(--dash-actual, #00ac58) 45%, transparent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--dash-actual, #00ac58) 7%, transparent), transparent 60%),
-    var(--app-card-navy);
-}
-
-a.invoices-entry:focus-visible {
-  outline: 2px solid var(--dash-actual, #00ac58);
-  outline-offset: 2px;
 }
 
 .invoices-entry__head {
@@ -4136,10 +4122,23 @@ a.invoices-entry:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: .25rem;
-  margin-block-start: auto;
+  /* No `margin-block-start: auto` any more. It pushed this line to the foot of
+     the card while it was a direct child of the card's column; inside the
+     footer row it pushed it to the bottom of the line instead and left it 3px
+     under the button beside it. The card's own `space-between` is what puts the
+     row at the foot, and `align-items: center` on the row lines the two up. */
   color: var(--dash-actual, #00ac58);
   font-size: var(--font-size-xs);
   font-weight: 700;
+  text-decoration: none;
+}
+
+/* One of the two links in the footer row, and now one of the only two things on
+   this card that react to a pointer at all. Underline rather than a colour
+   shift, the way every other text link on this page answers. */
+.invoices-entry__action:hover,
+.invoices-entry__action:focus-visible {
+  text-decoration: underline;
 }
 
 .invoices-entry__chevron {
@@ -4158,6 +4157,26 @@ a.invoices-entry:focus-visible {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+.action_buttons{
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.action_buttons > .invoice_registration{
+  font-size: var(--font-size-xs);
+  padding: 0.1rem 0.38rem;
+  border-color: var(--brand-green);
+  background: var(--grad-accent);
+  border-radius: 9px;
+}
+
+.action_buttons > .invoice_registration:hover{
+  filter: brightness(1.07)
+}
+
 
 /* --------------------------------------------------------------------------
    The standalone shell's own height chain
