@@ -4558,4 +4558,118 @@ body[data-finance-runtime] .app-workspace {
   .finance-board .finance-figures .summary-card__value {
     font-size: clamp(.7rem, 2.2vw, .95rem);
   }
+
+  /* --- the managerial chart gets the card it is standing in --------------- */
+
+  /* The figure above each column was breaking mid-number — «۶۲٫۹۳» over two
+     lines and its unit on a third, four lines in a band sized for two — and two
+     of the four labels were being clipped. Type alone could not fix either: the
+     cell was 22px wide.
+
+     It was 22 because the chart still held itself to 70% of a card that is now
+     the full width of the page, and the two gutters inside that are declared in
+     rem — 62 and 57 here — so they took 119 of the 281 the chart had kept, and
+     four columns divided what was left. At 100% the cells are wide enough for
+     the number to be a number, and the type comes down on top of that rather
+     than instead of it. */
+  .finance-board .analysis-chart-panel[data-chart="managerial"] {
+    --managerial-chart-inline: 100%;
+  }
+
+  .finance-board .managerial-combo-chart__value {
+    font-size: var(--font-size-2xs);
+  }
+
+  .finance-board .managerial-combo-chart__value .money-display__unit {
+    font-size: .44rem;
+  }
+
+  .finance-board .managerial-combo-chart__plot {
+    --managerial-label-size: .48rem;
+  }
+
+  /* The phase chart's own two sizes are literals in level-one.css — 12px for
+     the stage name and 10.5px for the figure over each bar — so they were the
+     only type on this board still set for a full-width page. Eight of the
+     nineteen names and two of the figures were being cut. On the board's own
+     ramp they are the size of everything around them. */
+  .finance-board .level-one-section .vgroup__name {
+    font-size: var(--font-size-2xs);
+  }
+
+  .finance-board .level-one-section .vbar em {
+    font-size: .46rem;
+  }
+
+  /* --- the basis bar, back onto one line ---------------------------------- */
+
+  /* It was 77px of two lines: the facts on the first at 8.32px, and on the
+     second a pair of 17px links standing beside a 40px square gear. Nothing in
+     it was too wide — the bar simply wrapped at the first opportunity, and the
+     one mechanism written for exactly this width never got to run. The file
+     name is `flex: 0 1 auto` with an ellipsis on its value, put there because
+     it is the one fact whose length nobody controls. Wrapping gave the bar a
+     second line instead, so the name never had to give anything up and the bar
+     paid for it in height.
+
+     `nowrap` hands that back. The provenance shrinks, the file name ellipses,
+     and the room the second line was taking goes to the type instead: the facts
+     come up off their 8.32px floor to 9.28, which is the difference between
+     small and unreadable. The gear comes down to the height of the links beside
+     it — it was the only thing in the bar setting a 40px line box. */
+  .finance-board .finance-basis {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: .3rem;
+    /* `nowrap` gives the bar a min-content width it did not have before — the
+       sum of what its items refuse to go under — and as a grid item its own
+       `min-width: auto` handed that straight to the board's track. The board
+       went from 434 to 466 at 481 and the page picked up 16px of sideways
+       scroll. Zero here lets the bar be the width of its row again, and the
+       shrinking happens where it was designed to: the file name. */
+    min-inline-size: 0;
+    padding: .25rem .45rem;
+  }
+
+  .finance-board .finance-basis > .finance-snapshot-provenance {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    gap: .3rem;
+    font-size: .58rem;
+  }
+
+  .finance-board .finance-basis .finance-snapshot-provenance .app-select {
+    min-inline-size: 3.2rem;
+    padding-block: 0;
+    padding-inline: .25rem;
+  }
+
+  .finance-board .finance-basis__meta {
+    flex: 0 0 auto;
+    gap: .25rem;
+    margin-inline-start: auto;
+  }
+
+  .finance-board .finance-basis__link {
+    font-size: .56rem;
+  }
+
+  .finance-board .finance-basis__link + .finance-basis__link {
+    margin-inline-start: .3rem;
+  }
+
+  .finance-board .finance-basis__link:last-of-type {
+    margin-inline-end: .1rem;
+  }
+
+  .finance-board .finance-basis .finance-project-settings-link {
+    min-block-size: 1.35rem;
+    min-inline-size: 1.35rem;
+    padding: .2rem;
+  }
+
+  .finance-board .finance-basis .finance-project-settings-link__icon {
+    inline-size: .8rem;
+    block-size: .8rem;
+  }
 }
