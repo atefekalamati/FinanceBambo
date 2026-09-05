@@ -1240,6 +1240,23 @@ a.finance-variance-card__link:hover {
   line-height: 1;
 }
 
+/* The row keeps its indicator column whether or not there is anywhere to go, so
+   the glyph is the child and the column is the span around it. */
+.finance-variance-card__indicator svg {
+  flex: 0 0 auto;
+  /* Sized in em rather than px, so the `font-size` that used to draw the glyph
+     still sets how big it is — including where that size has responsive
+     overrides of its own, as the variance indicator's does. Nothing about the
+     size changed with the glyph; only what draws it. */
+  inline-size: 1em;
+  block-size: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .finance-warnings {
   margin-block: .75rem var(--space-lg);
   padding: .75rem 1rem;
@@ -4102,6 +4119,18 @@ a.invoices-entry:focus-visible {
 .invoices-entry__chevron {
   font-size: .95rem;
   line-height: 1;
+  flex: 0 0 auto;
+  /* Sized in em rather than px, so the `font-size` that used to draw the glyph
+     still sets how big it is — including where that size has responsive
+     overrides of its own, as the variance indicator's does. Nothing about the
+     size changed with the glyph; only what draws it. */
+  inline-size: 1em;
+  block-size: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* --------------------------------------------------------------------------

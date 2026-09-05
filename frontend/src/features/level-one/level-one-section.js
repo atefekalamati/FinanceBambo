@@ -3,6 +3,7 @@ import { formatCompactMoneyFromIrr, formatTomanFromIrr } from "../../shared/form
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { buildWbsView } from "../../shared/reports/wbs-rollup.js";
 import { createLevelOneChart } from "./level-one-chart.js";
+import { chevronIcon } from "../report-builder/report-icons.js";
 
 /**
  * گزارش مالی سطح ۱ on the report overview — a section of its own, not a card.
@@ -46,7 +47,9 @@ export function createLevelOneSection({ rollup, error = null }) {
   const finish = () => {
     const link = element("a", "level-one-section__link");
     link.href = "#/level-one";
-    link.append(document.createTextNode("مشاهده جزئیات مراحل"), element("span", "level-one-section__chevron", "‹"));
+    const chevron = chevronIcon("forward");
+    chevron.setAttribute("class", "level-one-section__chevron");
+    link.append(document.createTextNode("مشاهده جزئیات مراحل"), chevron);
     section.append(link);
     return section;
   };
