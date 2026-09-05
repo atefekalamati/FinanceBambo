@@ -4332,15 +4332,15 @@ body[data-finance-runtime] .app-workspace {
      shared out again by the browser and the split stops being the one written
      here. */
   .finance-board .prices-summary__table th:nth-child(1) {
-    inline-size: 36%;
+    inline-size: 34%;
   }
 
   .finance-board .prices-summary__table th:nth-child(2) {
-    inline-size: 32%;
+    inline-size: 33%;
   }
 
   .finance-board .prices-summary__table th:nth-child(3) {
-    inline-size: 32%;
+    inline-size: 33%;
   }
 }
 
@@ -4441,6 +4441,7 @@ body[data-finance-runtime] .app-workspace {
     min-block-size: 1.8rem;
     min-inline-size: 1.8rem;
     padding: .25rem;
+    border-radius: 50%;
   }
 
   .finance-board .finance-basis .finance-project-settings-link__icon {
@@ -4479,5 +4480,82 @@ body[data-finance-runtime] .app-workspace {
   .finance-board .finance-curve-card,
   .finance-board .finance-grid--insights > * {
     max-block-size: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   481 to 576
+   --------------------------------------------------------------------------
+   Row one stops being a row. The four figures come across the top in one line
+   of four equal columns, the managerial chart goes under them, and the way into
+   فاکتورها goes under that at the full width. Everything after it is already
+   one section per line.
+
+   That order is not the order they are written in. The figures and the invoices
+   card are both inside `.finance-lead`, and the chart is `.finance-lead`'s
+   sibling, so no amount of `order` on the row's own children could put the
+   chart between them. `display: contents` drops the wrapper's box and hands its
+   two children up to the row as grid items of its own; from there `order` is
+   enough. The wrapper carries no padding, background or border, so there is
+   nothing to lose by removing its box.
+
+   The type comes down a rung across the board, and the figures keep the extra
+   rung they were given in the range above — four cards in the width that held
+   two, and the heading of the widest of them is «هزینه واقعی هر مترمربع».
+   ------------------------------------------------------------------------ */
+
+@media (min-width: 30rem) and (max-width: 36rem) {
+  .finance-board {
+    --font-size-lg: .78rem;
+    --font-size-md: .7rem;
+    --font-size-sm: .62rem;
+    --font-size-xs: .56rem;
+    --font-size-2xs: .5rem;
+  }
+
+  /* --- row one, reordered ------------------------------------------------ */
+
+  .finance-board .finance-lead {
+    display: contents;
+  }
+
+  .finance-board .finance-grid--main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-board .finance-figures {
+    order: 1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .finance-board .finance-grid--main > .finance-managerial-comparison {
+    order: 2;
+  }
+
+  .finance-board .finance-lead > .invoices-entry {
+    order: 3;
+  }
+
+  /* --- and everything after it, one section per line --------------------- */
+
+  /* The last row was still the curve beside the two cards — 213px of chart for
+     twelve months. One column here, so the curve, the prices and the warnings
+     each take the width the sections above them take. The two cards were
+     already stacked inside their own column by the 64rem rule; giving that
+     column the whole width is all this needs. */
+  .finance-board .finance-grid--insights {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* --- the figures, a rung under the board's own ------------------------- */
+
+  .finance-board .finance-figures {
+    --font-size-xs: .46rem;
+    --font-size-2xs: .42rem;
+  }
+
+  .finance-board .finance-figures .summary-card__value {
+    font-size: clamp(.7rem, 2.2vw, .95rem);
   }
 }
