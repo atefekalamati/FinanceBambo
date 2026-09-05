@@ -1267,12 +1267,6 @@ a.finance-variance-card__link:hover {
   padding-inline-start: 1.25rem;
 }
 
-.finance-warnings--clear {
-  border-color: rgb(34 197 94 / 30%);
-  border-inline-start-color: var(--dash-sev-good);
-  color: var(--dash-sev-good);
-}
-
 /* --------------------------------------------------------------------------
    Cost breakdown chart and accessible table
    -------------------------------------------------------------------------- */
@@ -3749,12 +3743,6 @@ a.breakdown-donut:focus-visible {
   line-height: 1.35;
 }
 
-/* The clear state keeps its green edge — that is the one thing about this card
-   that is still a notice. */
-.finance-board .finance-insight-cards > .finance-warnings--clear {
-  border-color: rgb(34 197 94 / 30%);
-}
-
 /* --- the four figures --------------------------------------------------
    Four cards across the row's own half, each the same width and height as the
    others. They are `.summary-card`, the same component the report page draws,
@@ -4353,5 +4341,110 @@ body[data-finance-runtime] .app-workspace {
 
   .finance-board .prices-summary__table th:nth-child(3) {
     inline-size: 32%;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   577 to 768
+   --------------------------------------------------------------------------
+   Four changes, and nothing else about the range moves.
+
+   The last row stops being two columns of 260px. The curve takes a row of its
+   own at the full width — twelve months in 260px was a line with no room to be
+   a shape — and the prices and the warnings come back up beside each other in
+   the row under it. Two cards of half the page beat two cards of a quarter of
+   it stacked.
+
+   The builder goes back to three chips across. report-builder.css drops it to
+   two at 48rem, which is right for the section on its own page and wrong in a
+   card that is the full width of the board here.
+
+   The four figures take their type down one rung from what it was in the range
+   above — the range's own tokens, redefined on the container, so the card's
+   heading, unit and money all move together and none of them is listed twice.
+
+   The basis bar comes down everywhere at once: its padding, its gaps, the
+   links, the settings control, and the 22rem the provenance strip was asking
+   for. That last one is what mattered. The strip is `flex: 1 1 22rem`, and 352
+   of basis plus the meta group's 212 does not fit in 549, so at 640 the bar
+   broke onto a second line and went from 52px tall to 79. The basis is the
+   width it needs here, not the width it needs on a monitor.
+   ------------------------------------------------------------------------ */
+
+@media (min-width: 36rem) and (max-width: 48rem) {
+  /* --- the last row: the curve alone, then the two cards beside it -------- */
+
+  .finance-board .finance-grid--insights {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-board .finance-insight-cards {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  /* --- three chips across ------------------------------------------------ */
+
+  /* `.finance-board` prefixed so this outranks report-builder.css's own 48rem
+     rule rather than depending on which sheet is imported last. */
+  .finance-board .report-builder-section__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* --- the four figures, a rung down ------------------------------------- */
+
+  .finance-board .finance-figures {
+    --font-size-xs: .5rem;
+    --font-size-2xs: .46rem;
+  }
+
+  .finance-board .finance-figures .summary-card__value {
+    font-size: clamp(.875rem, 1.5vw, 1.25rem);
+  }
+
+  /* --- the basis bar ----------------------------------------------------- */
+
+  .finance-board .finance-basis {
+    gap: .2rem .4rem;
+    padding: .2rem .4rem;
+  }
+
+  .finance-board .finance-basis > .finance-snapshot-provenance {
+    flex-basis: 15rem;
+    gap: .25rem;
+    font-size: clamp(.46rem, 1.35vw, .62rem);
+  }
+
+  .finance-board .finance-basis .finance-snapshot-provenance .app-select {
+    min-inline-size: 3.6rem;
+    padding-block: .05rem;
+    padding-inline: .2rem;
+  }
+
+  .finance-board .finance-basis__meta {
+    gap: .25rem;
+  }
+
+  .finance-board .finance-basis__link {
+    font-size: var(--font-size-xs);
+  }
+
+  .finance-board .finance-basis__link + .finance-basis__link {
+    margin-inline-start: .35rem;
+  }
+
+  .finance-board .finance-basis__link:last-of-type {
+    margin-inline-end: .15rem;
+  }
+
+  .finance-board .finance-basis .finance-project-settings-link {
+    min-block-size: 1.8rem;
+    min-inline-size: 1.8rem;
+    padding: .25rem;
+  }
+
+  .finance-board .finance-basis .finance-project-settings-link__icon {
+    inline-size: .95rem;
+    block-size: .95rem;
   }
 }
