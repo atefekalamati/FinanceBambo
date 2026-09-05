@@ -3677,6 +3677,83 @@ a.breakdown-donut:focus-visible {
   }
 }
 
+/* --------------------------------------------------------------------------
+   Short windows: scroll rather than squeeze
+   --------------------------------------------------------------------------
+   Above 1024 the board is one screen — `block-size: 100%`, `overflow: hidden`,
+   three fr rows — so whatever height the window has is divided between them and
+   nothing is allowed to ask for more. That is the right answer while there is
+   enough height to divide. Below about 920 there is not, and the division stops
+   being a layout and becomes a squeeze: every card, every chart and every table
+   gives up the same proportion at once, so nothing looks broken and everything
+   looks cramped.
+
+   Under 920 the board lets go of the window the same way it already does under
+   1024, and the page scrolls. Nothing is compressed to fit; the sections keep
+   the heights their contents ask for.
+
+   The three charts are given stated heights here because they had none of their
+   own — each filled a row that no longer exists, and `100%` of an auto-height
+   parent is nothing at all.
+
+   Where it sits is load-bearing at both ends. It has to be after
+   `.finance-analysis-card .analysis-chart-panel { block-size: 100% }`, which
+   carries the same weight and was beating it on order alone — the panel stayed
+   158px tall with 17rem written for it. And it has to be before the 64rem block
+   that states these same heights for a narrow card: both match on a short
+   narrow window, a phone being 390 by 844, and there the narrow numbers are the
+   right ones.
+   ------------------------------------------------------------------------ */
+
+@media (min-width: 64rem) and (max-height: 920px) {
+  #finance-module-root:has(.finance-board) {
+    grid-template-rows: none;
+    block-size: auto;
+    min-block-size: 0;
+    overflow: visible;
+  }
+
+  #finance-module-root:has(.finance-board) > .finance-home-page {
+    grid-template-rows: none;
+    block-size: auto;
+  }
+
+  .finance-board {
+    grid-template-rows: none;
+    block-size: auto;
+    overflow: visible;
+  }
+
+  .finance-board .overview-card,
+  .finance-board .finance-grid > .finance-managerial-comparison,
+  .finance-board .finance-grid > .level-one-section,
+  .finance-board .finance-grid > .report-builder-section,
+  .finance-board .finance-figures > *,
+  .finance-board .finance-insight-cards > * {
+    block-size: auto;
+    overflow: visible;
+  }
+
+  /* Stated, because nothing above them states one any more. */
+  .finance-board .finance-analysis-card .analysis-chart-panel {
+    block-size: 17rem;
+  }
+
+  .finance-board .level-one-section {
+    --level-one-plot-height: 13rem;
+  }
+
+  .finance-board .finance-curve-card .cost-curve__surface {
+    block-size: 14rem;
+    max-block-size: none;
+  }
+
+  .finance-board .finance-curve-card,
+  .finance-board .finance-grid--insights > * {
+    max-block-size: none;
+  }
+}
+
 /* Row 3 stacks the curve above the three cards now, so the curve's own box is
    what has to give when the row is short. */
 .finance-board .finance-curve-card .cost-curve__surface {
@@ -4163,7 +4240,7 @@ a.breakdown-donut:focus-visible {
 
 .action_buttons > .invoice_registration{
   font-size: var(--font-size-xs);
-  padding: 0.1rem 0.38rem;
+  padding: 0.25rem 0.38rem;
   background: var(--grad-accent);
   border-radius: 9px;
 }
@@ -4265,6 +4342,21 @@ body[data-finance-runtime] .app-workspace {
     --managerial-chart-inline: 85%;
   }
 
+  /* The invoices card is a quarter of a row here — 164px at the bottom of this
+     range — and its two footer actions were sharing that side by side: 78px for
+     «ورود به بخش فاکتورها» and 68 for the button, both broken over two and three
+     lines with the chevron wedged between them. Stacked, each gets the whole
+     146 and reads as one line of text and one button. */
+  .finance-board .action_buttons {
+    flex-direction: column;
+    align-items: stretch;
+    gap: .3rem;
+  }
+
+  .finance-board .action_buttons > .invoice_registration {
+    text-align: center;
+  }
+
   .finance-board .managerial-combo-chart__plot {
     --managerial-label-size: var(--font-size-2xs);
   }
@@ -4273,18 +4365,7 @@ body[data-finance-runtime] .app-workspace {
     font-size: var(--font-size-sm);
   }
 
-  /* .finance-board
-    .analysis-chart-panel[data-chart="managerial"]
-    > .managerial-deviation {
-    margin-inline-start: calc(
-      (100% - var(--managerial-chart-inline)) / 2 +
-        var(--managerial-chart-inset) + var(--managerial-reference-gutter)
-    );
-    margin-inline-end: calc(
-      (100% - var(--managerial-chart-inline)) / 2 +
-        var(--managerial-chart-inset) + var(--managerial-scale-gutter)
-    );
-  } */
+  
 }
 
 /* Under 425 the card is barely wider than the four columns, so there is no
@@ -4366,6 +4447,7 @@ body[data-finance-runtime] .app-workspace {
     /* Two rows of one part each: equal height, whichever card holds more. */
     grid-template-rows: repeat(2, minmax(0, 1fr));
   }
+
 }
 
 @media (min-width: 48rem) and (max-width: 64rem) {
@@ -4973,5 +5055,13 @@ body[data-finance-runtime] .app-workspace {
   /* The card's one button. It was 14px, above the titles it sits under. */
   .finance-board .report-builder-section .button {
     font-size: 11px;
+  }
+
+  .finance-board .invoices-entry__tags{
+    padding: 2rem 0;
+  }
+
+  .finance-board .invoice_registration {
+    padding: .9rem;
   }
 }
