@@ -9,15 +9,14 @@ import { chevronIcon, reportIcon } from "../report-builder/report-icons.js";
  * rebuilt here. What this card owes the reader is a clear statement of what is
  * behind it and a target big enough to hit.
  *
- * The whole card is one anchor — the same shape the cost-mix card on this board
- * already uses — so the heading, the line under it and the footer are all part
- * of the link rather than decoration around a smaller one, and a keyboard
- * reaches it in a single stop.
+ * The card is a plain container and the links inside it are the links. It was
+ * one anchor around everything for a while, which made the whole surface react
+ * to a pointer — and once there were two places to go rather than one, a single
+ * target could no longer say which. The footer row carries both, and each
+ * answers for itself.
  */
 export function createInvoicesEntry({ href = "#/invoices" } = {}) {
-  const card = element("a", "overview-card invoices-entry");
-  card.href = href;
-  card.setAttribute("aria-label", "ورود به بخش فاکتورها — ثبت و مشاهده فاکتورهای پروژه");
+  const card = element("div", "overview-card invoices-entry");
 
   const head = element("header", "overview-card__head invoices-entry__head");
   const mark = element("span", "invoices-entry__mark");
@@ -27,8 +26,13 @@ export function createInvoicesEntry({ href = "#/invoices" } = {}) {
   head.append(mark, element("h2", "overview-card__title", "فاکتورها"));
   card.append(head);
 
-  card.append(element("p", "invoices-entry__lead",
-    "ثبت فاکتور جدید و مشاهده فهرست فاکتورها با وضعیت، فروشنده، مبلغ و جزئیات هر خط."));
+  card.append(
+    element(
+      "p",
+      "invoices-entry__lead",
+      "ثبت فاکتور جدید و مشاهده فهرست فاکتورها با وضعیت، فروشنده، مبلغ و جزئیات هر خط.",
+    ),
+  );
 
   const tags = element("ul", "invoices-entry__tags");
   ["ثبت فاکتور", "فهرست و وضعیت", "تأیید و ابطال"].forEach((label) => {
@@ -36,11 +40,28 @@ export function createInvoicesEntry({ href = "#/invoices" } = {}) {
   });
   card.append(tags);
 
-  const action = element("span", "invoices-entry__action");
+  const action_buttons = element("div", "action_buttons");
+  card.append(action_buttons);
+
+  // The card no longer carries the href, so this line is what goes to فاکتورها.
+  const action = element("a", "invoices-entry__action");
+  action.href = href;
+  action.setAttribute(
+    "aria-label",
+    "ورود به بخش فاکتورها — ثبت و مشاهده فاکتورهای پروژه",
+  );
   const actionChevron = chevronIcon("forward");
   actionChevron.setAttribute("class", "invoices-entry__chevron");
   action.append(document.createTextNode("ورود به بخش فاکتورها"), actionChevron);
-  card.append(action);
+  action_buttons.append(action);
+
+  const invoice_registration = element(
+    "a",
+    "invoice_registration",
+    "ثبت با تصویر یا صدا",
+  );
+  invoice_registration.href = "#/invoice-files";
+  action_buttons.append(invoice_registration);
 
   return card;
 }
