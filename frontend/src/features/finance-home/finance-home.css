@@ -4742,3 +4742,128 @@ body[data-finance-runtime] .app-workspace {
     block-size: .8rem;
   }
 }
+
+/* --------------------------------------------------------------------------
+   480 and down
+   --------------------------------------------------------------------------
+   One column the whole way, in a stated order: the four figures two across,
+   the managerial chart, the way into فاکتورها, the phase chart, the builder,
+   the curve, the prices, the warnings.
+
+   The basis bar stops being a card. At this width it holds four things — the
+   snapshot picker and the file it came from on the leading side, the two ways
+   off the page on the trailing one — and a bordered, shadowed panel around
+   four small controls is more box than content. Its background, border and
+   shadow go together: a border with nothing behind it reads as an unfinished
+   card rather than a deliberate one.
+
+   Two things are dropped rather than shrunk. The «تاریخ گزارش نسخه» fact says
+   what the picker beside it already shows, and the settings gear is the one
+   control here that is not on the list of what this bar carries at this width.
+   ------------------------------------------------------------------------ */
+
+@media (max-width: 30rem) {
+  /* --- the basis bar, unboxed -------------------------------------------- */
+
+  .finance-board .finance-basis {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: .3rem;
+    min-inline-size: 0;
+    padding: .1rem 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  .finance-board .finance-basis > .finance-snapshot-provenance {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    gap: .3rem;
+    font-size: .58rem;
+  }
+
+  /* The picker's auto margin pushed it away from the fact beside it, which was
+     right in a bar that had a middle to spare. Here the two belong together at
+     the leading edge and the links hold the other end. */
+  .finance-board .finance-basis .finance-snapshot-provenance .app-select {
+    min-inline-size: 3.2rem;
+    margin-inline-start: 0;
+    padding-block: 0;
+    padding-inline: .25rem;
+  }
+
+  .finance-board .finance-basis .finance-snapshot-provenance__fact--date {
+    display: none;
+  }
+
+  .finance-board .finance-basis .finance-project-settings-link {
+    display: none;
+  }
+
+  .finance-board .finance-basis__meta {
+    flex: 0 0 auto;
+    gap: .25rem;
+    margin-inline-start: auto;
+  }
+
+  .finance-board .finance-basis__link {
+    font-size: .56rem;
+  }
+
+  .finance-board .finance-basis__link + .finance-basis__link {
+    margin-inline-start: .3rem;
+  }
+
+  .finance-board .finance-basis__link:last-of-type {
+    margin-inline-end: 0;
+  }
+
+  /* --- the figures, two across ------------------------------------------- */
+
+  .finance-board .finance-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+
+  /* --- row one, in the order it is read ---------------------------------- */
+
+  /* Same reason as the range above: the figures and the invoices card are both
+     inside `.finance-lead` and the chart is its sibling, so the wrapper's box
+     has to go before `order` can put the chart between them. */
+  .finance-board .finance-lead {
+    display: contents;
+  }
+
+  .finance-board .finance-grid--main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-board .finance-figures {
+    order: 1;
+  }
+
+  .finance-board .finance-grid--main > .finance-managerial-comparison {
+    order: 2;
+  }
+
+  .finance-board .finance-lead > .invoices-entry {
+    order: 3;
+  }
+
+  /* --- the phase chart keeps the chart and drops the sentence ------------- */
+
+  .finance-board .level-one-section__note {
+    display: none;
+  }
+
+  /* --- the last three, one under the other -------------------------------- */
+
+  .finance-board .finance-grid--insights {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-board .finance-insight-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
