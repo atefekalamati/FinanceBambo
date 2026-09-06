@@ -84,6 +84,20 @@
   line-height: 1.45;
 }
 
+/* The host wraps the lead, the chips and the button in a card body and a
+   compact block. Those two are in the markup now, and `display: contents` keeps
+   the three where they were: direct participants in the section's own grid.
+
+   Without it the section would go from four rows to two, and every rule that
+   distributes this card's height across its children — the ones that give the
+   chip grid the room left over and hold the button at its natural size — would
+   be addressing a wrapper instead of the thing it was written for. Give either
+   wrapper a box when there is something to put on it. */
+.maker-body,
+.maker-body--compact {
+  display: contents;
+}
+
 .report-builder-section__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
