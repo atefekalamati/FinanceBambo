@@ -104,27 +104,35 @@
   gap: 6px;
 }
 
+/* The host's own chip, property for property, read off its computed style:
+   a column flex centred on both axes, .8px of border rather than 1, the primary
+   text colour rather than the secondary, and two transitions at .15s rather
+   than three at .12.
+
+   `overflow-wrap` goes back to normal with them. `anywhere` breaks a word
+   mid-letter to avoid an overflow; the host lets the word move to the next line
+   instead, and its chips are the same width as ours. */
 .report-builder-chip {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 3px;
-  justify-items: center;
-  align-content: center;
+  min-inline-size: 0;
   padding: 5px 4px;
-  border: 1px solid var(--color-border-subtle);
+  border: .8px solid var(--color-border-subtle);
   border-radius: 9px;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
   background: rgb(120 145 205 / 6%);
   font-family: inherit;
   font-size: 9.5px;
   font-weight: 600;
   line-height: 1.25;
   text-align: center;
-  overflow-wrap: anywhere;
   cursor: pointer;
   transition:
-    border-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard),
-    background-color var(--duration-fast) var(--ease-standard);
+    background-color .15s ease,
+    border-color .15s ease;
 }
 
 .report-builder-chip:hover,
