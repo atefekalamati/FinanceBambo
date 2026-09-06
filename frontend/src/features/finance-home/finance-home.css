@@ -3059,7 +3059,10 @@ a.breakdown-donut:focus-visible {
      a 988px cell, the board was 1080 and the last row was cut by 92px. */
   block-size: 100%;
   min-block-size: 34rem;
-  padding: var(--board-gap, .55rem);
+  /* No padding of its own any more. The board used to pull the mount in to
+     .55rem to spend the room on its rows; the mount's own inset is the one
+     number now, so there is a gap between this module and the host's chrome
+     whichever route is showing. */
   overflow: hidden;
 }
 
@@ -3311,7 +3314,6 @@ a.breakdown-donut:focus-visible {
     grid-template-rows: none;
     block-size: auto;
     min-block-size: 0;
-    padding: clamp(1rem, 3vw, 2.5rem);
     overflow: visible;
   }
 
