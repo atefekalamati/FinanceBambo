@@ -2508,6 +2508,7 @@ a.finance-variance-card__link:hover {
 .finance-grid > .finance-managerial-comparison,
 .finance-grid > .level-one-section,
 .finance-grid > .report-builder-section,
+.finance-grid > .finance-analysis-card
 .finance-insight-cards > * {
   display: flex;
   flex-direction: column;
@@ -3024,7 +3025,7 @@ a.breakdown-donut:focus-visible {
 .finance-board {
   /* One gap everywhere: between rows, between cards, inside cards. */
   --board-gap: .45rem;
-  --board-pad: .5rem;
+  --board-pad: .8rem;
 
   /* A compact type ramp for this page only. The tokens are the site's own;
      these are the values they take when a dashboard has to fit one screen. */
@@ -3132,7 +3133,7 @@ a.breakdown-donut:focus-visible {
   overflow: hidden;
 }
 
-/* Four blocks are given their own padding rather than the board's, so each has
+/* Five blocks are given their own padding rather than the board's, so each has
    the inset its own contents want. They come after the shared rule above and
    carry the same weight, so it is their order that makes them win — keep them
    here, below it. */
@@ -3146,7 +3147,7 @@ a.breakdown-donut:focus-visible {
 }
 
 .finance-board .finance-insight-cards > .prices-summary {
-  padding: 10px 12px;
+  padding: 16px;
 }
 
 .finance-board .finance-page-header {
@@ -3520,10 +3521,11 @@ a.breakdown-donut:focus-visible {
   flex: 0 0 auto;
 }
 
-/* Three cards to a third of a row leaves about 74px each. That is a heading and
-   two rows, so both are cut to what a line actually needs. */
+/* Both cards in this column take the board's 16, the same inset the managerial
+   and phase cards have. It was .35rem/.45rem from when three cards shared a
+   third of a row and each had about 74px to spend. */
 .finance-board .finance-insight-cards > * {
-  padding: .35rem .45rem;
+  padding: 16px;
   gap: .15rem;
 }
 
@@ -3914,7 +3916,7 @@ a.breakdown-donut:focus-visible {
    whatever the import order becomes. */
 .finance-board .finance-insight-cards > .finance-warnings {
   margin: 0;
-  padding: .35rem .45rem;
+  padding: 16px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--app-card-navy);
