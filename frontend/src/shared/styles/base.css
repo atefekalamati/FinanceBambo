@@ -125,21 +125,6 @@ body[data-finance-runtime="standalone"] {
   outline: none;
 }
 
-.skip-link {
-  position: fixed;
-  inset-block-start: var(--space-sm);
-  inset-inline-start: var(--space-sm);
-  z-index: var(--z-calendar-popup);
-  padding: var(--space-sm) var(--space-lg);
-  color: var(--color-text-inverse);
-  background: var(--color-text-primary);
-  transform: translateY(-150%);
-}
-
-.skip-link:focus {
-  transform: none;
-}
-
 .sr-only {
   position: absolute;
   inline-size: 1px;
