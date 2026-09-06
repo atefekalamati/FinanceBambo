@@ -252,7 +252,6 @@
 }
 
 .report-builder-dialog__body {
-  padding: 1.1rem;
   overflow-y: auto;
   max-block-size: calc(92vh - 4rem);
 }
@@ -573,9 +572,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  
 
-  
 
   .report-doc__chart-row {
     grid-template-columns: 6.5rem minmax(0, 1fr);
@@ -612,9 +609,7 @@
     break-inside: avoid;
   }
 
-  
 
-  
 
   
 
