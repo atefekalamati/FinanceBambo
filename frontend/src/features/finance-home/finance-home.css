@@ -4374,18 +4374,27 @@ a.breakdown-donut:focus-visible {
    --------------------------------------------------------------------------
    Nothing between <html> and the mount carried a height, which is why the board
    asked the window directly. It asks its container now, so the container has to
-   be something — but only here: every selector is keyed on the runtime marker
-   index.html puts on <body>, so a host that mounts the module owns its own
-   container's height and none of this can reach it.
+   be something — but only where the module IS the page.
+
+   The value matters, and reading only index.html is what hid that: the marker
+   is written twice. index.html hardcodes "standalone", and bootstrap.js
+   overwrites it on every start — "standalone" when there is no host context,
+   "host" when there is. Matched on presence alone, `body[data-finance-runtime]`
+   was true in both, so mounted, this set `block-size: 100%` on the HOST's html
+   and body. A host page whose own stylesheet asked for 2400px measured 800.
+
+   That is the one thing HOST_STYLE_CONTRACT_FA.md names outright — the scroll
+   belongs to the host's container — and base.css had it right all along by
+   matching the value. These four now do the same.
    ------------------------------------------------------------------------ */
 
-html:has(> body[data-finance-runtime]),
-body[data-finance-runtime] {
+html:has(> body[data-finance-runtime="standalone"]),
+body[data-finance-runtime="standalone"] {
   block-size: 100%;
 }
 
-body[data-finance-runtime] > #finance-app,
-body[data-finance-runtime] .app-workspace {
+body[data-finance-runtime="standalone"] > #finance-app,
+body[data-finance-runtime="standalone"] .app-workspace {
   block-size: 100%;
   min-block-size: 0;
 }
