@@ -300,7 +300,6 @@
 }
 
 @media (max-width: 48rem) {
-  
 
 }
 
@@ -1401,9 +1400,7 @@ a.finance-variance-card__link:hover {
     line-height: 1.5;
   }
 
-  
 
-  
 
   
 
@@ -1414,15 +1411,11 @@ a.finance-variance-card__link:hover {
     padding: var(--space-md);
   }
 
-  
+
 
   
 
-  
 
-  
-
-  
 
   
 
@@ -1467,7 +1460,6 @@ a.finance-variance-card__link:hover {
     border-radius: 50%;
   }
 
-  
 
   .managerial-combo-chart {
     overflow: visible;
@@ -1503,7 +1495,6 @@ a.finance-variance-card__link:hover {
     font-size: .6rem;
   }
 
-  
 
   .finance-variance-card .finance-analysis-card__heading h2 {
     font-size: .76rem;
@@ -1543,7 +1534,6 @@ a.finance-variance-card__link:hover {
 }
 
 @media (max-width: 64rem) {
-  
 
   .managerial-combo-chart {
     overflow: visible;
@@ -1633,18 +1623,14 @@ a.finance-variance-card__link:hover {
 
   .managerial-combo-chart__value {
     gap: .08rem;
-    font-size: clamp(.5rem, 11cqi, .6rem);
   }
 
   .managerial-combo-chart__value .money-display__unit {
-    font-size: clamp(.46rem, 9cqi, .54rem);
   }
 
   .managerial-combo-chart__column {
-    inline-size: clamp(1.1rem, 6vw, 1.5rem);
   }
 
-  
 
   .breakdown-legend {
     display: flex;
@@ -1666,19 +1652,14 @@ a.finance-variance-card__link:hover {
 }
 
 @media (max-width: 30rem) {
-  
 
   
 
-  
+
 
   
 
-  
 
-  
-
-  
 
   
 
@@ -1729,7 +1710,6 @@ a.finance-variance-card__link:hover {
 }
 
 .analysis-chart-switch {
-  flex: 0 0 auto;
 }
 
 .analysis-chart-switch {
@@ -2362,7 +2342,6 @@ a.finance-variance-card__link:hover {
    them takes a different width because its text ran longer. */
 .finance-insight-cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-md);
   align-items: stretch;
   min-inline-size: 0;
@@ -2791,7 +2770,6 @@ a.breakdown-donut:focus-visible {
 
 .finance-board .finance-insight-cards {
   gap: var(--board-gap);
-  grid-template-rows: minmax(0, 1fr);
   min-block-size: 0;
 }
 
@@ -2951,7 +2929,6 @@ a.breakdown-donut:focus-visible {
 /* --- the day prices ----------------------------------------------------- */
 
 .finance-board .prices-summary__table td {
-  padding-block: .28rem;
 }
 
 /* --- the insight cards -------------------------------------------------- */
@@ -2960,13 +2937,11 @@ a.breakdown-donut:focus-visible {
 }
 
 .finance-board .finance-warnings ul {
-  margin: 0;
   min-block-size: 0;
   overflow: hidden;
 }
 
 .finance-board .finance-warnings li {
-  line-height: 1.45;
 }
 
 /* --- the donut ---------------------------------------------------------- */
@@ -3064,7 +3039,6 @@ a.breakdown-donut:focus-visible {
    row. On the board they take a shorter label band and tighter gaps; the four
    columns, the guide and every figure stay exactly as they are. */
 .finance-board .managerial-combo-chart {
-  margin-block-start: .25rem;
   padding: .3rem .45rem .1rem;
   overflow: hidden;
 }
@@ -3077,7 +3051,6 @@ a.breakdown-donut:focus-visible {
 }
 
 .finance-board .managerial-deviation {
-  padding: .25rem .45rem;
   font-size: var(--font-size-xs);
 }
 
@@ -3089,11 +3062,9 @@ a.breakdown-donut:focus-visible {
 
 .finance-board .finance-analysis-card__heading {
   align-items: center;
-  gap: var(--board-gap);
 }
 
 .finance-board .finance-analysis-card__heading h2 {
-  font-size: var(--font-size-md);
 }
 
 /* A short viewport keeps the three rows and their weights: the board is still
@@ -3125,7 +3096,6 @@ a.breakdown-donut:focus-visible {
 }
 
 .finance-board .managerial-combo-chart__band--bars {
-  min-block-size: 4.5rem;
 }
 
 /* The deviation cards carry a ranked list and a link per row. On the board the
@@ -3142,8 +3112,6 @@ a.breakdown-donut:focus-visible {
 }
 
 .finance-board .finance-variance-card li {
-  padding-block: .12rem;
-  line-height: 1.3;
 }
 
 .finance-board .finance-variance-card a,
@@ -3167,10 +3135,8 @@ a.breakdown-donut:focus-visible {
 
 .finance-board .finance-variance-card__link {
   display: flex;
-  align-items: baseline;
   gap: .3rem;
   min-inline-size: 0;
-  padding: .1rem 0;
 }
 
 .finance-board .finance-variance-card__link > :first-child {
@@ -3201,13 +3167,11 @@ a.breakdown-donut:focus-visible {
 
 .finance-board .finance-insight-cards h2 {
   margin: 0;
-  font-size: var(--font-size-sm);
   line-height: 1.3;
 }
 
 .finance-board .finance-variance-card__link {
   padding: 0;
-  line-height: 1.35;
 }
 
 .finance-board .finance-variance-card li {
@@ -3221,17 +3185,14 @@ a.breakdown-donut:focus-visible {
 /* The item name and the chevron carry their own sizes, so the compact ramp
    never reached them and each row stayed 39px tall in a 74px card. */
 .finance-board .finance-variance-card__link > :first-child {
-  font-size: var(--font-size-sm);
   line-height: 1.35;
 }
 
 .finance-board .finance-variance-card__link .numeric {
-  font-size: var(--font-size-xs);
 }
 
 .finance-board .finance-variance-card__indicator {
   font-size: var(--font-size-md);
-  line-height: 1;
 }
 
 /* The columns are laid out from the baseline up, which makes each group only as
@@ -3275,7 +3236,6 @@ a.breakdown-donut:focus-visible {
 .finance-board .finance-variance-card__link {
   align-items: center;
   font-size: var(--font-size-xs);
-  line-height: 1.3;
 }
 
 .finance-board .finance-variance-card ol,
@@ -3306,7 +3266,6 @@ a.breakdown-donut:focus-visible {
 }
 
 .finance-board .finance-variance-card ol {
-  gap: .05rem;
 }
 
 .finance-board .finance-variance-card li,
@@ -3537,7 +3496,6 @@ a.breakdown-donut:focus-visible {
    rather than cutting the label. */
 @media (max-width: 64rem) {
   .finance-board .managerial-combo-chart__plot {
-    --managerial-label-lines: 3;
   }
 }
 
@@ -4211,7 +4169,6 @@ body[data-finance-runtime="standalone"] .app-workspace {
     font-size: var(--font-size-sm);
   }
 
-  
 }
 
 /* Under 425 the card is barely wider than the four columns, so there is no
