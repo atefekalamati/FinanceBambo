@@ -3108,7 +3108,7 @@ a.breakdown-donut:focus-visible {
    carry the same weight, so it is their order that makes them win — keep them
    here, below it. */
 .finance-board .finance-grid > .report-builder-section {
-  padding: 11px 14px 12px;
+  padding: 22px 28px 24px;
 }
 
 .finance-board .finance-grid > .level-one-section,
@@ -3766,11 +3766,12 @@ a.breakdown-donut:focus-visible {
 
   /* 13rem here made row two grow as the window shrank: at 921 tall the row is
      265, and crossing into this block it jumped to 354, because the released
-     rows are auto and this plot is what sets the phase card's height. 7.5rem
-     lands the row within a pixel of where it was on the other side of the
-     boundary, so nothing grows as the window gets shorter. */
+     rows are auto and this plot is what sets the phase card's height.
+
+     The plot and the row move together one for one — 7.5rem gave 266 and 8.5
+     gave 282 — so 8.375rem is the 280 the row is asked for here. */
   .finance-board .level-one-section {
-    --level-one-plot-height: 7.5rem;
+    --level-one-plot-height: 8.375rem;
   }
 
   .finance-board .finance-curve-card .cost-curve__surface {
