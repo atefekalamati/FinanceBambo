@@ -3218,6 +3218,18 @@ a.breakdown-donut:focus-visible {
   gap: 6px;
   align-content: center;
   min-block-size: 0;
+  padding: 6px 14px 11px;
+}
+
+
+.finance-board .report-builder-section__head{
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 0 5px;
+  margin-bottom: 14px;
 }
 
 .finance-board .report-builder-chip {
@@ -3986,9 +3998,29 @@ a.breakdown-donut:focus-visible {
    like a caption with three lines of air around it, so the amount is set to the
    card rather than to the board's smallest step, and its label and note sit
    under it at the sizes the rest of the board uses. */
+/* The heading wears its own series colour, running from the start edge and
+   spent by the end of the word.
+
+   `align-self: start` is what makes that possible: the card is a column flex, so
+   the heading was stretching the full width and a gradient across it would have
+   ended in the middle of empty card rather than at the end of the text. Shrunk
+   to its content, the box is the word, and the fade lands where the word does.
+   `to left` rather than a logical keyword because gradients have none — and
+   this module is RTL throughout, so left is the end.
+
+   The text goes up from muted to secondary: on a tinted ground the muted grey
+   was carrying too little contrast. */
 .finance-board .finance-figures .summary-card h2 {
+  align-self: start;
   margin: 0;
-  color: var(--color-text-muted);
+  padding: clamp(.04rem, .7%, .16rem) clamp(.22rem, 2.6%, .55rem);
+  border-radius: .3rem;
+  background-image: linear-gradient(
+    to left,
+    color-mix(in srgb, var(--summary-mark, var(--color-text-muted)) 34%, transparent),
+    transparent
+  );
+  color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
   font-weight: 700;
   line-height: 1.35;
@@ -4001,7 +4033,7 @@ a.breakdown-donut:focus-visible {
   margin: clamp(.06rem, 1.7%, .32rem) 0;
   font-size: clamp(1rem, 1.5vw, 1.45rem);
   font-weight: 900;
-  line-height: 1.1;
+  line-height: 2;
 }
 
 .finance-board .finance-figures .summary-card__unit {
