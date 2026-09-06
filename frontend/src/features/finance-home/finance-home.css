@@ -95,15 +95,6 @@
   margin: 0;
 }
 
-/* Groups the report caption with the settings link so the heading keeps two
-   children and lands at the two ends of the row. */
-.section-heading__trailing {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  min-inline-size: 0;
-}
-
 .finance-project-settings-link {
   display: inline-flex;
   flex: 0 0 auto;
@@ -308,72 +299,9 @@
   }
 }
 
-.finance-overview-panel {
-  position: relative;
-  padding: .25rem .9rem .9rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background:
-    radial-gradient(circle at 100% 0, rgb(0 172 88 / 9%), transparent 34%),
-    var(--app-card-navy);
-  box-shadow: var(--dash-shadow), var(--dash-inner);
-  overflow: hidden;
-}
-
-/* This heading keeps its row at every width, because the settings link has to
-   stay opposite the block it configures. The shared rule turns .section-heading
-   into a column below 36rem, which would drop the link underneath the title;
-   here the title block takes the room that is left, the report caption gives
-   way first, and the link holds its size at the far end. */
-.finance-overview-panel .section-heading {
-  flex-wrap: nowrap;
-  align-items: center;
-  flex-direction: row;
-  gap: var(--space-sm);
-  padding-inline-start: .25rem;
-}
-
-.finance-overview-panel .section-heading > div:first-child {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-}
-
-.finance-overview-panel .section-heading__trailing {
-  flex: 0 1 auto;
-  justify-content: flex-end;
-  min-inline-size: 0;
-}
-
-/* The caption repeats the reporting date the provenance strip states just
-   below, so it is the part that yields when the row runs short. */
-.finance-overview-panel .finance-report-meta {
-  min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 @media (max-width: 48rem) {
-  .finance-overview-panel .finance-report-meta {
-    display: none;
-  }
-}
+  
 
-.finance-overview-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(18rem, .75fr);
-  align-items: stretch;
-  gap: var(--finance-section-gap);
-}
-
-.finance-overview-layout .finance-managerial-comparison {
-  --finance-chart-card-block: 27rem;
-  display: flex;
-  flex-direction: column;
-  block-size: var(--finance-chart-card-block);
-  /* A panel must fit the declared height by shrinking its own type and
-     spacing; nothing here may scroll or spill. */
-  overflow: hidden;
 }
 
 .finance-managerial-comparison .finance-analysis-card__heading {
@@ -431,97 +359,6 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-.finance-supplementary-summary {
-  display: flex;
-  flex-direction: column;
-  min-inline-size: 0;
-  block-size: 100%;
-  overflow: hidden;
-  padding: .85rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--app-card-navy);
-  box-shadow: var(--dash-shadow), var(--dash-inner);
-}
-
-.finance-supplementary-summary__heading {
-  padding-block-end: .7rem;
-  border-block-end: 1px solid var(--color-border-subtle);
-}
-
-.finance-supplementary-summary__heading span {
-  color: var(--color-accent);
-  font-size: .68rem;
-}
-
-.finance-supplementary-summary__heading h2 {
-  margin: .15rem 0 0;
-  font-size: var(--font-size-md);
-}
-
-.finance-supplementary-summary__heading p {
-  margin: .2rem 0 0;
-  color: var(--color-text-muted);
-  font-size: .7rem;
-  line-height: 1.55;
-}
-
-.finance-supplementary-summary__list {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  align-items: stretch;
-  gap: .45rem;
-  margin-block-start: .6rem;
-}
-
-.finance-supplementary-summary__list > .summary-card {
-  flex: 1 1 0;
-  min-block-size: 0;
-  inline-size: 100%;
-}
-
-.finance-home-page .finance-supplementary-summary .summary-card--compact {
-  display: block;
-  min-block-size: 0;
-  padding: .6rem .7rem;
-  border-color: transparent;
-  background: rgb(120 145 205 / 5%);
-  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
-}
-
-.finance-home-page .finance-supplementary-summary .summary-card--compact::after {
-  content: none;
-}
-
-.finance-home-page .finance-supplementary-summary .summary-card--compact:hover {
-  transform: none;
-  border-color: transparent;
-  background: rgb(120 145 205 / 5%);
-}
-
-.finance-home-page .finance-supplementary-summary .summary-card--compact h2 {
-  margin: 0;
-  font-size: .72rem;
-  font-weight: 700;
-}
-
-.finance-home-page .finance-supplementary-summary .summary-card--compact .summary-card__value {
-  margin: .35rem 0 .15rem;
-  font-size: .88rem;
-  font-weight: 900;
-}
-
-.finance-home-page .finance-supplementary-summary .summary-card--compact .summary-card__unit {
-  display: block;
-  color: var(--color-text-muted);
-  font-size: .64rem;
-}
-
-.finance-supplementary-summary .money-display {
-  gap: .25rem;
 }
 
 .finance-home-page .summary-grid {
@@ -646,40 +483,6 @@
 .finance-home-page .summary-card__unit {
   display: block;
   line-height: 1.45;
-}
-
-/* --------------------------------------------------------------------------
-   Overview hierarchy
-   -------------------------------------------------------------------------- */
-
-.finance-insights {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(18rem, .75fr);
-  align-items: stretch;
-  gap: var(--finance-section-gap);
-  margin-block: 0;
-}
-
-.finance-insights .finance-breakdown,
-.finance-insights .finance-warnings {
-  min-inline-size: 0;
-  margin-block: 0;
-}
-
-.finance-risk-stack {
-  display: grid;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  gap: var(--finance-section-gap);
-  min-inline-size: 0;
-  min-block-size: 0;
-}
-
-.finance-risk-stack .finance-analysis-card,
-.finance-risk-stack .finance-warnings {
-  min-inline-size: 0;
-  min-block-size: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .finance-home-page .work-area-grid {
@@ -1192,14 +995,6 @@
   padding-inline-start: 1.4rem;
 }
 
-.finance-risk-stack .finance-variance-card {
-  padding-block: .75rem;
-}
-
-.finance-risk-stack .finance-variance-card ol {
-  margin-block-start: .5rem;
-}
-
 .finance-variance-card li {
   border-block-end: 1px solid var(--color-border-subtle);
 }
@@ -1262,14 +1057,6 @@ a.finance-variance-card__link:hover {
   padding: .75rem 1rem;
   border-radius: var(--radius-md);
   background: var(--app-card-navy);
-}
-
-.finance-insights .finance-warnings {
-  display: flex;
-  flex-direction: column;
-  min-block-size: 6.5rem;
-  border: 1px solid var(--color-border);
-  box-shadow: var(--dash-shadow), var(--dash-inner);
 }
 
 .finance-warnings h2 {
@@ -1614,18 +1401,12 @@ a.finance-variance-card__link:hover {
     line-height: 1.5;
   }
 
-  .finance-insights {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  
 
-  .finance-risk-stack {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: none;
-  }
+  
 
-  .finance-risk-stack .finance-warnings {
-    grid-column: 1 / -1;
-  }
+  
+
 }
 
 @media (max-width: 48rem) {
@@ -1633,45 +1414,17 @@ a.finance-variance-card__link:hover {
     padding: var(--space-md);
   }
 
-  .finance-overview-layout {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
+  
 
-  .finance-overview-layout .finance-managerial-comparison {
-    padding: .65rem 0 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-  }
+  
 
-  .finance-supplementary-summary {
-    block-size: auto;
-    padding: .7rem 0 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-  }
+  
 
-  .finance-supplementary-summary__heading {
-    display: none;
-  }
+  
 
-  .finance-supplementary-summary__list {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: .45rem;
-    margin-block-start: 0;
-    padding-block-start: .7rem;
-    border-block-start: 1px solid var(--color-border-subtle);
-  }
+  
 
-  .finance-home-page .finance-supplementary-summary .summary-card--compact {
-    min-block-size: 5rem;
-    padding: .6rem;
-  }
+  
 
   .finance-breakdown {
     padding: .6rem .65rem;
@@ -1714,10 +1467,7 @@ a.finance-variance-card__link:hover {
     border-radius: 50%;
   }
 
-  .finance-risk-stack .finance-analysis-card,
-  .finance-risk-stack .finance-warnings {
-    overflow-y: visible;
-  }
+  
 
   .managerial-combo-chart {
     overflow: visible;
@@ -1753,9 +1503,7 @@ a.finance-variance-card__link:hover {
     font-size: .6rem;
   }
 
-  .finance-risk-stack .finance-variance-card {
-    padding: .6rem .7rem;
-  }
+  
 
   .finance-variance-card .finance-analysis-card__heading h2 {
     font-size: .76rem;
@@ -1767,8 +1515,7 @@ a.finance-variance-card__link:hover {
     line-height: 1.55;
   }
 
-  .finance-variance-card ol,
-  .finance-risk-stack .finance-variance-card ol {
+  .finance-variance-card ol {
     gap: .2rem;
     margin-block-start: .35rem;
     padding-inline-start: 1rem;
@@ -1796,9 +1543,7 @@ a.finance-variance-card__link:hover {
 }
 
 @media (max-width: 64rem) {
-  .finance-overview-layout {
-    grid-template-columns: minmax(0, 7fr) minmax(13rem, 3fr);
-  }
+  
 
   .managerial-combo-chart {
     overflow: visible;
@@ -1899,10 +1644,7 @@ a.finance-variance-card__link:hover {
     inline-size: clamp(1.1rem, 6vw, 1.5rem);
   }
 
-  .finance-supplementary-summary__list {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  
 
   .breakdown-legend {
     display: flex;
@@ -1924,47 +1666,21 @@ a.finance-variance-card__link:hover {
 }
 
 @media (max-width: 30rem) {
-  .finance-report-meta {
-    font-size: .56rem;
-    font-weight: 400;
-    line-height: 1.45;
-    opacity: .68;
-  }
+  
 
-  .finance-home-page .finance-supplementary-summary .summary-card--compact {
-    min-block-size: 4.25rem;
-    padding: .45rem;
-  }
+  
 
-  .finance-home-page .finance-supplementary-summary .summary-card--compact h2 {
-    font-size: .58rem;
-    font-weight: 600;
-    line-height: 1.45;
-  }
+  
 
-  .finance-home-page .finance-supplementary-summary .summary-card--compact .summary-card__value {
-    margin-block: .2rem .1rem;
-    font-size: .72rem;
-    line-height: 1.35;
-  }
+  
 
-  .finance-home-page .finance-supplementary-summary .summary-card--compact .summary-card__unit {
-    font-size: .52rem;
-    line-height: 1.45;
-    opacity: .72;
-  }
+  
 
-  .finance-supplementary-summary .money-display {
-    gap: .12rem;
-  }
+  
 
-  .finance-risk-stack {
-    gap: .45rem;
-  }
+  
 
-  .finance-risk-stack .finance-variance-card {
-    padding: .5rem;
-  }
+  
 
   .finance-variance-card .finance-analysis-card__heading h2 {
     font-size: .66rem;
@@ -2656,8 +2372,7 @@ a.finance-variance-card__link:hover {
   block-size: 100%;
 }
 
-.finance-insight-cards .finance-warnings h2,
-.finance-insight-cards .finance-variance-panel h2 {
+.finance-insight-cards .finance-warnings h2 {
   margin: 0;
   font-size: var(--font-size-md);
 }
@@ -2719,14 +2434,6 @@ a.finance-variance-card__link:hover {
   font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
-}
-
-
-.finance-page-header__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-sm);
 }
 
 /* --- the cumulative curve card ----------------------------------------- */
@@ -2802,20 +2509,6 @@ a.finance-variance-card__link:hover {
 .prices-summary__trend {
   inline-size: 24%;
 }
-
-.trend-chip {
-  display: inline-block;
-  padding: .1rem .4rem;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-2xs, .62rem);
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.trend-chip[data-direction="up"] { background: rgb(229 72 77 / 14%); color: var(--dash-sev-crit); }
-.trend-chip[data-direction="down"] { background: rgb(33 192 122 / 14%); color: var(--dash-actual); }
-.trend-chip[data-direction="flat"],
-.trend-chip[data-direction="none"] { background: rgb(148 163 184 / 14%); color: var(--color-text-muted); }
 
 /* --- cost mix, as a ring ------------------------------------------------ */
 
@@ -2987,22 +2680,6 @@ a.breakdown-donut:focus-visible {
   .prices-summary__table {
     font-size: var(--font-size-2xs, .62rem);
   }
-}
-
-/* --- the key figures, across the page ----------------------------------- */
-
-.finance-supplementary-summary--strip {
-  block-size: auto;
-}
-
-.finance-supplementary-summary--strip .finance-supplementary-summary__list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: var(--space-sm);
-}
-
-.finance-supplementary-summary--strip .finance-supplementary-summary__list > .summary-card {
-  flex: 0 0 auto;
 }
 
 /* Three across inside their own half of the row. */
@@ -3257,7 +2934,6 @@ a.breakdown-donut:focus-visible {
   min-block-size: 0;
 }
 
-
 .finance-board .report-builder-section__head{
   flex: 0 0 auto;
   display: flex;
@@ -3279,22 +2955,17 @@ a.breakdown-donut:focus-visible {
 }
 
 /* --- the insight cards -------------------------------------------------- */
-
-.finance-board .finance-warnings,
-.finance-board .finance-variance-panel {
+.finance-board .finance-warnings {
   gap: .25rem;
 }
 
-.finance-board .finance-warnings ul,
-.finance-board .finance-variance-panel ol,
-.finance-board .finance-variance-panel ul {
+.finance-board .finance-warnings ul {
   margin: 0;
   min-block-size: 0;
   overflow: hidden;
 }
 
-.finance-board .finance-warnings li,
-.finance-board .finance-variance-panel li {
+.finance-board .finance-warnings li {
   line-height: 1.45;
 }
 
@@ -3480,7 +3151,6 @@ a.breakdown-donut:focus-visible {
   padding-block: 0;
 }
 
-.finance-board .finance-variance-card__footer,
 .finance-board .finance-variance-card p {
   display: none;
 }
@@ -4309,7 +3979,6 @@ a.breakdown-donut:focus-visible {
    beside a smaller one.
    ------------------------------------------------------------------------ */
 
-
 .invoices-entry {
   justify-content: space-between;
 }
@@ -4417,7 +4086,6 @@ a.breakdown-donut:focus-visible {
 .action_buttons > .invoice_registration:hover{
   filter: brightness(1.07)
 }
-
 
 /* --------------------------------------------------------------------------
    The standalone shell's own height chain

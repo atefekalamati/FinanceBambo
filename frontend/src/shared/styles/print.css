@@ -18,7 +18,6 @@
     display: block;
   }
 
-  .skip-link,
   .button {
     display: none !important;
   }
@@ -165,12 +164,8 @@
     margin-block-end: 3mm;
   }
 
-  .period-report-header__facts {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 2mm;
-    padding-block-start: 2mm;
-    border-block-start: none;
-  }
+  
+
 
   /* On paper the cards would waste a page; the table they exist alongside says
      the same thing in a quarter of the space, so it comes out of hiding. */

@@ -320,26 +320,6 @@
   white-space: nowrap;
 }
 
-/* `hidden` has to win over the display the badge is given, or a category with
-   nothing chosen still shows an empty disc. */
-.report-builder-group__badge[hidden] {
-  display: none;
-}
-
-.report-builder-group__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-inline-size: 1.3rem;
-  block-size: 1.3rem;
-  padding-inline: .3rem;
-  border-radius: var(--radius-pill);
-  color: var(--color-surface-canvas);
-  background: var(--brand-teal);
-  font-size: .66rem;
-  font-weight: 800;
-}
-
 /* Points at the row while it is closed and turns down when it opens, so the
    control says which way it is about to move. */
 .report-builder-group__chevron {
@@ -452,63 +432,6 @@
 .report-doc {
   display: grid;
   gap: var(--space-md);
-}
-
-.report-doc__cover {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md);
-  padding: 1.2rem 1.4rem;
-  border-radius: var(--radius-md);
-  color: #fff;
-  background: linear-gradient(-100deg, #0f3d2e 0%, #10233f 55%, #101d33 100%);
-}
-
-.report-doc__brand {
-  display: grid;
-  gap: .1rem;
-  justify-items: start;
-  padding-inline-start: 1rem;
-  border-inline-start: 1px solid rgb(255 255 255 / 22%);
-}
-
-.report-doc__brand strong {
-  font-size: 1.05rem;
-  font-weight: 800;
-}
-
-.report-doc__brand small {
-  color: rgb(255 255 255 / 72%);
-  font-size: .64rem;
-}
-
-.report-doc__cover-copy h1 {
-  margin: 0 0 .5rem;
-  font-size: clamp(1.15rem, 2.4vw, 1.5rem);
-}
-
-.report-doc__cover-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .3rem .9rem;
-  margin: 0;
-  font-size: .7rem;
-}
-
-.report-doc__cover-facts > div {
-  display: flex;
-  align-items: baseline;
-  gap: .3em;
-}
-
-.report-doc__cover-facts dt {
-  color: rgb(255 255 255 / 68%);
-}
-
-.report-doc__cover-facts dd {
-  margin: 0;
-  font-weight: 700;
 }
 
 .report-doc__section {
@@ -650,16 +573,9 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .report-doc__cover {
-    flex-direction: column-reverse;
-    align-items: flex-start;
-    padding: .9rem 1rem;
-  }
+  
 
-  .report-doc__brand {
-    padding-inline-start: 0;
-    border-inline-start: 0;
-  }
+  
 
   .report-doc__chart-row {
     grid-template-columns: 6.5rem minmax(0, 1fr);
@@ -696,20 +612,11 @@
     break-inside: avoid;
   }
 
-  .report-doc__cover + .report-doc__section {
-    break-before: auto;
-  }
+  
 
-  .report-doc__cover {
-    color: #000;
-    background: none;
-    border: 1px solid #999;
-  }
+  
 
-  .report-doc__cover-facts dt,
-  .report-doc__brand small {
-    color: #444;
-  }
+  
 
   .report-builder-page__header,
   .report-builder-section {
