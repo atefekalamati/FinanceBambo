@@ -2528,6 +2528,35 @@ a.finance-variance-card__link:hover {
   gap: var(--space-sm);
 }
 
+/* --- one size for every card title -------------------------------------
+   The six section titles on the board were 9.92 to 14.4px — «قیمت‌های روز» at
+   9.92 beside «هزینه هر مرحله» at 14.4, with nothing about either card to
+   explain it. They take the host's own .9rem/700/primary.
+
+   Size and colour only. Weight was already 700 everywhere and every one of the
+   six already had `margin: 0`, so nothing here moves a box: the heads keep the
+   padding, gaps and structure they have.
+
+   `nowrap` with an ellipsis comes with it, and it is the part that protects the
+   spacing rather than changing it — all six are one line today, and at the
+   larger size a title that wrapped would make its head taller.
+
+   `:is()` takes the weight of its strongest argument, so this is (0,3,1): above
+   the per-card sizes that remain, and above notices.css's own (0,2,1), which is
+   what was painting the warnings title in the secondary colour. */
+.finance-board :is(
+  .overview-card__title,
+  .finance-analysis-card__heading h2,
+  .level-one-section .section-heading h2,
+  .finance-warnings h2
+) {
+  color: var(--color-text-primary);
+  font-size: .9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .overview-card__title {
   margin: 0;
   font-size: var(--font-size-md);
