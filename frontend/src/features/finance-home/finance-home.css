@@ -3059,10 +3059,7 @@ a.breakdown-donut:focus-visible {
      a 988px cell, the board was 1080 and the last row was cut by 92px. */
   block-size: 100%;
   min-block-size: 34rem;
-  /* No padding of its own any more. The board used to pull the mount in to
-     .55rem to spend the room on its rows; the mount's own inset is the one
-     number now, so there is a gap between this module and the host's chrome
-     whichever route is showing. */
+  padding: var(--board-gap, .55rem);
   overflow: hidden;
 }
 
@@ -3216,12 +3213,13 @@ a.breakdown-donut:focus-visible {
 /* The host's own card carries both: a line saying what the builder does, and
    the «i» beside the heading. Neither is hidden here any more. */
 
+/* `flex: 0 0 auto`, not `1 1 auto`. Absorbing the card's spare height was what
+   put a 250px hole between the last chip and the button; the host's chips and
+   button sit one under the other and the slack is at the foot of the card. */
 .finance-board .report-builder-section__grid {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   gap: 6px;
-  align-content: center;
   min-block-size: 0;
-  padding: 6px 14px 11px;
 }
 
 
@@ -3314,6 +3312,7 @@ a.breakdown-donut:focus-visible {
     grid-template-rows: none;
     block-size: auto;
     min-block-size: 0;
+    padding: clamp(1rem, 3vw, 2.5rem);
     overflow: visible;
   }
 
@@ -3621,9 +3620,16 @@ a.breakdown-donut:focus-visible {
 /* Six chips and the button have to share the card's height. The grid was
    centring them, so the second row slid under the button instead of the rows
    sharing what was left. */
+/* The chips keep the height they ask for, the way the host's do — 39.5px, not
+   the 94 they were stretched to. `grid-auto-rows: minmax(0, 1fr)` was sharing
+   the card's spare height between the two rows, which made a chip nearly two
+   and a half times the height of the word inside it.
+
+   The grid still takes the space left over in the card, so the rows sit at its
+   start and the slack falls between the last chip and the button — which is
+   where the host leaves it too. */
 .finance-board .report-builder-section__grid {
-  align-content: stretch;
-  grid-auto-rows: minmax(0, 1fr);
+  align-content: start;
   overflow: hidden;
 }
 
