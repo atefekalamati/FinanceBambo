@@ -3764,8 +3764,13 @@ a.breakdown-donut:focus-visible {
     block-size: 17rem;
   }
 
+  /* 13rem here made row two grow as the window shrank: at 921 tall the row is
+     265, and crossing into this block it jumped to 354, because the released
+     rows are auto and this plot is what sets the phase card's height. 7.5rem
+     lands the row within a pixel of where it was on the other side of the
+     boundary, so nothing grows as the window gets shorter. */
   .finance-board .level-one-section {
-    --level-one-plot-height: 13rem;
+    --level-one-plot-height: 7.5rem;
   }
 
   .finance-board .finance-curve-card .cost-curve__surface {
