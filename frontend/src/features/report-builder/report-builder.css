@@ -806,10 +806,7 @@
   min-block-size: 0;
   overflow-y: auto;
   padding-inline-end: .15rem;
-}
 
-/* Only one of the two is on screen, so they share the same track. */
-.report-builder-cats,
-.report-builder-level2 {
+  /* Only one of the two is on screen, so they share the same track. */
   grid-row: 4;
 }

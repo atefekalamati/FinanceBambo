@@ -564,28 +564,6 @@ html[data-theme="light"] .form-field textarea {
   inline-size: 14%;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-@media (max-width: 64rem) {
-  
-
-}
-
-@media (max-width: 30rem) {
-  
-
-}
-
 .settings-empty {
   max-inline-size: 44rem;
 }

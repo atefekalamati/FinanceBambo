@@ -299,10 +299,6 @@
   }
 }
 
-@media (max-width: 48rem) {
-
-}
-
 .finance-managerial-comparison .finance-analysis-card__heading {
   flex: 0 0 auto;
 }
@@ -911,16 +907,13 @@
 @media (min-width: 64rem) {
 
   .managerial-combo-chart__plot {
+    --managerial-label-lines: 2;
+    --managerial-label-size: .86rem;
     min-block-size: 17rem;
   }
 
   .managerial-combo-chart__value {
     font-size: clamp(.78rem, 8cqi, .95rem);
-  }
-
-  .managerial-combo-chart__plot {
-    --managerial-label-lines: 2;
-    --managerial-label-size: .86rem;
   }
 
   .managerial-combo-chart__label {
@@ -1400,8 +1393,6 @@ a.finance-variance-card__link:hover {
     line-height: 1.5;
   }
 
-
-
   
 
 }
@@ -1411,11 +1402,7 @@ a.finance-variance-card__link:hover {
     padding: var(--space-md);
   }
 
-
-
   
-
-
 
   
 
@@ -1460,7 +1447,6 @@ a.finance-variance-card__link:hover {
     border-radius: 50%;
   }
 
-
   .managerial-combo-chart {
     overflow: visible;
   }
@@ -1494,7 +1480,6 @@ a.finance-variance-card__link:hover {
     gap: .15rem;
     font-size: .6rem;
   }
-
 
   .finance-variance-card .finance-analysis-card__heading h2 {
     font-size: .76rem;
@@ -1625,13 +1610,6 @@ a.finance-variance-card__link:hover {
     gap: .08rem;
   }
 
-  .managerial-combo-chart__value .money-display__unit {
-  }
-
-  .managerial-combo-chart__column {
-  }
-
-
   .breakdown-legend {
     display: flex;
     gap: .2rem .55rem;
@@ -1654,12 +1632,6 @@ a.finance-variance-card__link:hover {
 @media (max-width: 30rem) {
 
   
-
-
-
-  
-
-
 
   
 
@@ -1707,9 +1679,6 @@ a.finance-variance-card__link:hover {
 .finance-managerial-comparison .finance-analysis-card__heading > div:first-child {
   flex: 1 1 11rem;
   min-inline-size: 0;
-}
-
-.analysis-chart-switch {
 }
 
 .analysis-chart-switch {
@@ -2530,12 +2499,10 @@ a.breakdown-donut:focus-visible {
   inset: 0;
   border-radius: 50%;
   background: var(--ring, conic-gradient(var(--color-border) 0 100%));
-}
 
-/* The hole is cut out of the ring rather than covered with a disc: the card
-   behind it is a gradient, and a flat patch of one colour would sit on it as a
-   visible smudge. */
-.breakdown-donut__arc {
+  /* The hole is cut out of the ring rather than covered with a disc: the card
+     behind it is a gradient, and a flat patch of one colour would sit on it as
+     a visible smudge. */
   -webkit-mask: radial-gradient(circle, transparent 55%, #000 56%);
   mask: radial-gradient(circle, transparent 55%, #000 56%);
 }
@@ -2926,11 +2893,6 @@ a.breakdown-donut:focus-visible {
   min-block-size: 0;
 }
 
-/* --- the day prices ----------------------------------------------------- */
-
-.finance-board .prices-summary__table td {
-}
-
 /* --- the insight cards -------------------------------------------------- */
 .finance-board .finance-warnings {
   gap: .25rem;
@@ -2939,9 +2901,6 @@ a.breakdown-donut:focus-visible {
 .finance-board .finance-warnings ul {
   min-block-size: 0;
   overflow: hidden;
-}
-
-.finance-board .finance-warnings li {
 }
 
 /* --- the donut ---------------------------------------------------------- */
@@ -3064,9 +3023,6 @@ a.breakdown-donut:focus-visible {
   align-items: center;
 }
 
-.finance-board .finance-analysis-card__heading h2 {
-}
-
 /* A short viewport keeps the three rows and their weights: the board is still
    two columns of three rows here, so it is still the arrangement those weights
    describe. Only below 64rem, where every row collapses to one column, does the
@@ -3095,9 +3051,6 @@ a.breakdown-donut:focus-visible {
   min-block-size: 2.1em;
 }
 
-.finance-board .managerial-combo-chart__band--bars {
-}
-
 /* The deviation cards carry a ranked list and a link per row. On the board the
    rows lose their padding and their leading, not their entries — the list is
    already a top-N with the full table one click away, and dropping a row here
@@ -3109,9 +3062,6 @@ a.breakdown-donut:focus-visible {
 .finance-board .finance-variance-card ol,
 .finance-board .finance-variance-card ul {
   gap: .15rem;
-}
-
-.finance-board .finance-variance-card li {
 }
 
 .finance-board .finance-variance-card a,
@@ -3188,9 +3138,6 @@ a.breakdown-donut:focus-visible {
   line-height: 1.35;
 }
 
-.finance-board .finance-variance-card__link .numeric {
-}
-
 .finance-board .finance-variance-card__indicator {
   font-size: var(--font-size-md);
 }
@@ -3263,9 +3210,6 @@ a.breakdown-donut:focus-visible {
    taking a line of their own. */
 .finance-board .level-one-section .vbars {
   gap: .2rem;
-}
-
-.finance-board .finance-variance-card ol {
 }
 
 .finance-board .finance-variance-card li,
@@ -3488,14 +3432,6 @@ a.breakdown-donut:focus-visible {
   .finance-board .finance-curve-card .cost-curve-legend {
     position: static;
     margin-block-end: .65rem;
-  }
-}
-
-/* Four column labels in a 449px chart need a third line. Where the board has
-   released its rows there is height to give them one, so the band takes it
-   rather than cutting the label. */
-@media (max-width: 64rem) {
-  .finance-board .managerial-combo-chart__plot {
   }
 }
 
