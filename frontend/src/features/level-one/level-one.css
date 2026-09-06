@@ -8,7 +8,6 @@
 .level-one-page,
 .level-one-section {
   --level-one-plot-height: clamp(9rem, 22vw, 13rem);
-  --level-one-name-band: 2.7rem;
 }
 
 .level-one-page {

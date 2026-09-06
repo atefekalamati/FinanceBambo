@@ -284,9 +284,7 @@
   .finance-snapshot-provenance__fact--source {
     display: none;
   }
-}
 
-@media (max-width: 36rem) {
   /* The leading label is context the section's own accessible name already
      carries, and the labels fall back to their short forms. */
   .finance-snapshot-provenance__lead,
@@ -361,7 +359,6 @@
 }
 
 .finance-home-page .summary-card {
-  --summary-accent: var(--brand-teal);
   min-block-size: 6.75rem;
   padding: .85rem 1rem;
   isolation: isolate;
@@ -380,14 +377,12 @@
   position: absolute;
   z-index: -1;
   inset: 0;
-  /* background: linear-gradient(135deg, color-mix(in srgb, var(--summary-accent) 12%, transparent), transparent 58%); */
   pointer-events: none;
 }
 
 .finance-home-page .summary-card--primary {
   min-block-size: 8.25rem;
   padding: 1rem 1.1rem;
-  /* box-shadow: var(--dash-shadow), var(--dash-inner), 0 0 1.25rem color-mix(in srgb, var(--summary-accent) 10%, transparent); */
 }
 
 .finance-home-page .summary-card--primary:hover {
@@ -402,38 +397,6 @@
 .finance-home-page .summary-card--support {
   min-block-size: 5.4rem;
   padding: .7rem .9rem;
-}
-
-.finance-home-page .summary-card[data-metric="initialEstimateIrr"] {
-  --summary-accent: var(--dash-plan);
-}
-
-.finance-home-page .summary-card[data-metric="actualCostIrr"] {
-  --summary-accent: var(--dash-actual);
-}
-
-.finance-home-page .summary-card[data-metric="actualCostPerSquareMeterIrr"] {
-  --summary-accent: var(--dash-actual);
-}
-
-.finance-home-page .summary-card[data-metric="currentExecutedValueIrr"] {
-  --summary-accent: var(--brand-teal);
-}
-
-.finance-home-page .summary-card[data-metric="remainingPhysicalCostIrr"] {
-  --summary-accent: var(--dash-sev-med);
-}
-
-.finance-home-page .summary-card[data-metric="forecastFinalCostIrr"] {
-  --summary-accent: var(--brand-green);
-}
-
-.finance-home-page .summary-card[data-metric="forecastPerSquareMeterIrr"] {
-  --summary-accent: var(--brand-green);
-}
-
-.finance-home-page .summary-card[data-metric="moneyRequiredToContinueIrr"] {
-  --summary-accent: var(--dash-sev-med);
 }
 
 .finance-home-page .summary-card h2 {
@@ -1627,9 +1590,7 @@ a.finance-variance-card__link:hover {
   .finance-home-page .work-area-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-}
 
-@media (max-width: 30rem) {
 
   
 
@@ -1947,9 +1908,7 @@ a.finance-variance-card__link:hover {
   .monthly-trend-table {
     min-inline-size: 0;
   }
-}
 
-@media print {
   .breakdown-table-wrapper {
     max-block-size: none;
     overflow: visible;
