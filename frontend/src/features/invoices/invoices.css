@@ -114,31 +114,31 @@
   min-inline-size: 0;
   min-block-size: 3.25rem;
   padding: .4rem .3rem;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: rgb(120 145 205 / 5%);
-  color: inherit;
+  border: 1px solid color-mix(in srgb, var(--summary-tone) 30%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--summary-tone) 9%, transparent);
+  color: var(--summary-tone);
   font: inherit;
   text-align: center;
   cursor: pointer;
-  transition: border-color .15s ease, background-color .15s ease;
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
 }
 
 .invoice-summary-item:hover {
-  border-color: var(--color-border);
-  background: rgb(120 145 205 / 10%);
+  border-color: color-mix(in srgb, var(--summary-tone) 55%, transparent);
+  background: color-mix(in srgb, var(--summary-tone) 16%, transparent);
 }
 
-/* The pressed one is the view you are in. It is marked by its own tone rather
-   than by a colour of its own, so the four stay told apart the way they already
-   were. */
+/* Pressed, the tone stops being an outline and becomes the chip: filled, white
+   lettering, lit from its own colour. The chips are the status pills of the
+   table wearing the same clothes, so the view you are in reads at a glance. */
 .invoice-summary-item[aria-pressed="true"] {
   border-color: var(--summary-tone);
-  background: rgb(120 145 205 / 12%);
-}
-
-.invoice-summary-item[aria-pressed="true"] .invoice-summary-item__label {
-  color: var(--color-text-primary);
+  background: var(--summary-tone);
+  color: #fff;
+  box-shadow:
+    0 0 .5rem color-mix(in srgb, var(--summary-tone) 65%, transparent),
+    0 0 1.35rem color-mix(in srgb, var(--summary-tone) 32%, transparent);
 }
 
 .invoice-summary-item--pending {
@@ -155,13 +155,13 @@
 
 .invoice-summary-item__label {
   min-inline-size: 0;
-  color: var(--color-text-muted);
+  color: inherit;
   font-size: .72rem;
   line-height: 1.5;
 }
 
 .invoice-summary-item__value {
-  color: var(--summary-tone);
+  color: inherit;
   font-size: 1rem;
 }
 
@@ -355,8 +355,10 @@
   inline-size: 19%;
 }
 
-.invoices-table :is(th, td)[data-col="status"],
-.invoices-table :is(th, td)[data-col="lineCount"] {
+/* The whole table centres, across and down, rather than two columns of it. The
+   .numeric cells keep their ltr direction and isolation -- only where the text
+   sits changes. */
+.invoices-table :is(th, td) {
   text-align: center;
   vertical-align: middle;
 }
@@ -412,10 +414,9 @@
    fits. The duplicate flag always takes its own line. */
 .invoice-table-identity {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: .3rem var(--space-sm);
-  min-inline-size: 0;
 }
 
 .invoice-table-identity > strong {
@@ -753,10 +754,11 @@
     font-size: var(--font-size-sm);
   }
 
-  /* A finger needs more than a pointer does, and this is the only control in
-     the row. The dialog's own close button is already this size. */
+  /* A finger needs more than a pointer does. It needs less than it did when the
+     button was propping the row open, though -- from here down the row is as
+     tall as what is in it, and the control steps down with the type. */
   .invoices-table [data-col="identity"] .button {
-    min-block-size: 2.5rem;
+    min-block-size: 2.2rem;
   }
 
   /* Long records push the head off the top of a phone-height dialog, and with it
@@ -834,6 +836,7 @@
   }
 
   .invoices-table [data-col="identity"] .button {
+    min-block-size: 2rem;
     padding: .25rem .35rem;
     font-size: .62rem;
   }
@@ -931,6 +934,7 @@
   }
 
   .invoices-table [data-col="identity"] .button {
+    min-block-size: 1.85rem;
     padding: .22rem .3rem;
     font-size: .58rem;
   }
