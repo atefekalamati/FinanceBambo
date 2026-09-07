@@ -26,24 +26,44 @@ function getInvoiceEffect(invoice) {
   return { tone: "positive", label: "اثر افزاینده", description: "این سند در هزینه واقعی پروژه اثر افزاینده دارد." };
 }
 
-function renderInvoiceListSummary(items) {
-  const counts = items.reduce((summary, invoice) => {
-    summary.total += 1;
-    if (invoice.invoiceStatus === "awaitingConfirmation") summary.awaiting += 1;
-    if (["confirmed", "voided", "corrected"].includes(invoice.invoiceStatus)) summary.effective += 1;
-    if (invoice.duplicateWarning) summary.warning += 1;
-    return summary;
-  }, { total: 0, awaiting: 0, effective: 0, warning: 0 });
+/* The four ways this list is read, and now the only filter it has. Three of them
+   are a status the server already filters on; the fourth has no server filter --
+   /invoices takes page, pageSize, query, status, source and a date range, and
+   nothing about duplicates -- so that one is picked out of the loaded set. */
+const INVOICE_VIEWS = Object.freeze([
+  { key: "all", label: "کل فاکتورها", tone: "neutral" },
+  { key: "awaiting", label: "در انتظار تأیید", tone: "pending", status: "awaitingConfirmation" },
+  { key: "confirmed", label: "تأییدشده", tone: "positive", status: "confirmed" },
+  { key: "duplicates", label: "نیازمند بررسی تکرار", tone: "warning", duplicates: true },
+]);
+
+/** The most the list endpoint will return in one page, and so the most this can
+ *  count exactly. `totalItems` is the project's real total either way. */
+const SUMMARY_PAGE_SIZE = 200;
+
+function countInvoiceViews(items, totalItems) {
+  return {
+    all: totalItems,
+    awaiting: items.filter((invoice) => invoice.invoiceStatus === "awaitingConfirmation").length,
+    confirmed: items.filter((invoice) => invoice.invoiceStatus === "confirmed").length,
+    duplicates: items.filter((invoice) => invoice.duplicateWarning).length,
+  };
+}
+
+function renderInvoiceListSummary(counts, activeKey, onSelect) {
   const section = element("section", "invoice-list-summary");
-  section.setAttribute("aria-label", "خلاصه وضعیت فاکتورهای نمایش‌داده‌شده");
-  [
-    ["نمایش در این صفحه", counts.total, "neutral"],
-    ["در انتظار تأیید", counts.awaiting, "pending"],
-    ["اسناد مالی مؤثر", counts.effective, "positive"],
-    ["نیازمند بررسی تکرار", counts.warning, "warning"],
-  ].forEach(([label, value, tone]) => {
-    const item = element("article", `invoice-summary-item invoice-summary-item--${tone}`);
-    item.append(element("span", "invoice-summary-item__label", label), element("strong", "invoice-summary-item__value numeric", formatDisplayNumber(String(value))));
+  section.setAttribute("aria-label", "فیلتر فاکتورها بر اساس وضعیت");
+  INVOICE_VIEWS.forEach((view) => {
+    const item = element("button", `invoice-summary-item invoice-summary-item--${view.tone}`);
+    item.type = "button";
+    item.dataset.view = view.key;
+    const active = view.key === activeKey;
+    item.setAttribute("aria-pressed", String(active));
+    item.append(
+      element("span", "invoice-summary-item__label", view.label),
+      element("strong", "invoice-summary-item__value numeric", formatDisplayNumber(String(counts[view.key] ?? 0))),
+    );
+    item.addEventListener("click", () => onSelect(view.key));
     section.append(item);
   });
   return section;
@@ -644,7 +664,12 @@ function renderTable(items, onDetail, visible) {
 export function createInvoicesPage({ context, adapter }) {
   const root = element("div", "invoices-page");
   let state = createRequestState(REQUEST_STATUS.LOADING);
-  const filters = { query: "", status: "", source: "", page: 1, pageSize: 50 };
+  const filters = { status: "", page: 1, pageSize: 50 };
+  // Which chip is pressed, and the counts behind all four. The counts describe
+  // the project, not the current view, so they are read once per data change and
+  // left alone while the reader moves between chips.
+  let activeView = "all";
+  let summary = null;
   // Lives with the page, not with a render: paint() replaces the whole tree on
   // every load, so a choice held inside a render would last until the next filter.
   const visibleColumns = defaultVisibleColumns();
@@ -652,16 +677,43 @@ export function createInvoicesPage({ context, adapter }) {
   const detailMessage = element("div", "form-message invoice-detail-message");
   detailMessage.setAttribute("aria-live", "assertive");
 
-  async function load() {
+  async function load({ refreshCounts = false } = {}) {
     state = createRequestState(REQUEST_STATUS.LOADING);
     paint();
     try {
-      const data = await adapter.getInvoices(filters);
+      if (refreshCounts || summary === null) {
+        const everything = await adapter.getInvoices({ status: "", page: 1, pageSize: SUMMARY_PAGE_SIZE });
+        summary = {
+          items: everything.items,
+          counts: countInvoiceViews(everything.items, everything.totalItems),
+          capped: everything.totalItems > everything.items.length,
+        };
+      }
+      // The duplicate view is assembled here rather than asked for, because the
+      // endpoint cannot answer it. One page, because the set it draws from is one
+      // page -- pagination that promised more would be promising the untrue.
+      const view = INVOICE_VIEWS.find((entry) => entry.key === activeView);
+      let data;
+      if (view?.duplicates) {
+        const flagged = summary.items.filter((invoice) => invoice.duplicateWarning);
+        data = { items: flagged, page: 1, pageSize: Math.max(flagged.length, 1), totalItems: flagged.length, totalPages: 1 };
+      } else {
+        data = await adapter.getInvoices(filters);
+      }
       state = createRequestState(data.totalItems ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, data);
     } catch (error) {
       state = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
     }
     paint();
+  }
+
+  function selectView(key) {
+    if (key === activeView) return;
+    activeView = key;
+    const view = INVOICE_VIEWS.find((entry) => entry.key === key);
+    filters.status = view?.status ?? "";
+    filters.page = 1;
+    load();
   }
 
   async function showDetail(invoiceId, trigger) {
@@ -703,7 +755,7 @@ export function createInvoicesPage({ context, adapter }) {
         onCorrective: (confirmedInvoice, detailDialog) => {
           const opener = getDialogOpener(detailDialog);
           detailDialog.close();
-          const correctiveDialog = createInvoiceWizard({ adapter, onSaved: load, mode: "corrective", originalInvoice: confirmedInvoice });
+          const correctiveDialog = createInvoiceWizard({ adapter, onSaved: () => load({ refreshCounts: true }), mode: "corrective", originalInvoice: confirmedInvoice });
           root.append(correctiveDialog);
           correctiveDialog.addEventListener("close", () => correctiveDialog.remove(), { once: true });
           showAccessibleDialog(correctiveDialog, { opener });
@@ -731,7 +783,7 @@ export function createInvoicesPage({ context, adapter }) {
       const create = element("button", "button button--primary", "ثبت فاکتور دستی");
       create.type = "button";
       create.addEventListener("click", () => {
-        const dialog = createInvoiceWizard({ adapter, onSaved: () => { filters.page = 1; load(); } });
+        const dialog = createInvoiceWizard({ adapter, onSaved: () => { filters.page = 1; load({ refreshCounts: true }); } });
         root.append(dialog);
         dialog.addEventListener("close", () => dialog.remove(), { once: true });
         showAccessibleDialog(dialog);
@@ -751,31 +803,6 @@ export function createInvoicesPage({ context, adapter }) {
     return header;
   }
 
-  function renderFilters() {
-    const form = element("form", "invoice-filters");
-    const search = element("input", "app-input");
-    search.type = "search";
-    search.placeholder = "شماره، فروشنده یا توضیح";
-    search.value = filters.query;
-    search.setAttribute("aria-label", "جست‌وجوی فاکتور");
-    const status = element("select", "app-select");
-    status.setAttribute("aria-label", "فیلتر وضعیت فاکتور");
-    status.append(option("", "همه وضعیت‌ها"), ...Object.entries(STATUS_LABELS).map(([value, label]) => option(value, label)));
-    status.value = filters.status;
-    const source = element("select", "app-select");
-    source.setAttribute("aria-label", "فیلتر منبع فاکتور");
-    source.append(option("", "همه منابع"), ...Object.entries(SOURCE_LABELS).map(([value, label]) => option(value, label)));
-    source.value = filters.source;
-    const submit = element("button", "button button--primary", "اعمال فیلتر");
-    submit.type = "submit";
-    const reset = element("button", "button button--ghost", "پاک‌کردن");
-    reset.type = "button";
-    reset.addEventListener("click", () => { Object.assign(filters, { query: "", status: "", source: "", page: 1 }); load(); });
-    form.addEventListener("submit", (event) => { event.preventDefault(); Object.assign(filters, { query: search.value, status: status.value, source: source.value, page: 1 }); load(); });
-    form.append(search, status, source, submit, reset);
-    return form;
-  }
-
   function renderContent(data) {
     const section = element("section", "invoices-section");
     const heading = element("div", "invoice-list-heading");
@@ -792,7 +819,6 @@ export function createInvoicesPage({ context, adapter }) {
     );
     heading.append(element("div", "", ""), meta);
     heading.firstElementChild.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
-    const summary = renderInvoiceListSummary(data.items);
     const table = renderTable(data.items, showDetail, visibleColumns);
     const pagination = element("nav", "invoice-pagination");
     pagination.setAttribute("aria-label", "صفحه‌بندی فاکتورها");
@@ -806,7 +832,7 @@ export function createInvoicesPage({ context, adapter }) {
     next.disabled = data.page >= data.totalPages;
     next.addEventListener("click", () => { filters.page = data.page + 1; load(); });
     pagination.append(previous, label, next);
-    section.append(heading, detailMessage, summary, table, pagination);
+    section.append(heading, detailMessage, table, pagination);
     return section;
   }
 
@@ -817,7 +843,10 @@ export function createInvoicesPage({ context, adapter }) {
   }
 
   function paint() {
-    root.replaceChildren(renderHeader(), renderFilters(), renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    const parts = [renderHeader()];
+    if (summary) parts.push(renderInvoiceListSummary(summary.counts, activeView, selectView));
+    parts.push(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    root.replaceChildren(...parts);
   }
 
   load();
