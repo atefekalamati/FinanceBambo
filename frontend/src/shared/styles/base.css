@@ -110,19 +110,19 @@ body[data-finance-runtime="standalone"] {
   outline-offset: .1875rem;
 }
 
-.skip-link {
-  position: fixed;
-  inset-block-start: var(--space-sm);
-  inset-inline-start: var(--space-sm);
-  z-index: var(--z-calendar-popup);
-  padding: var(--space-sm) var(--space-lg);
-  color: var(--color-text-inverse);
-  background: var(--color-text-primary);
-  transform: translateY(-150%);
-}
+/* The mount is `tabindex="-1"` — not reachable by Tab, only by script, and
+   bootstrap focuses it after every route change so the reader is moved to the
+   new page. That focus was drawing the browser's own ring, a near-white
+   `#eeeeee auto 1px` around the whole module. The rule above never reached it:
+   it is written with a descendant combinator and matches what is inside the
+   mount, not the mount.
 
-.skip-link:focus {
-  transform: none;
+   No keyboard user can land here, so the ring tells nobody anything — the live
+   region beside it is what announces the change. Anything inside that can take
+   focus keeps its own. */
+#finance-module-root[tabindex="-1"]:focus,
+#finance-module-root[tabindex="-1"]:focus-visible {
+  outline: none;
 }
 
 .sr-only {
