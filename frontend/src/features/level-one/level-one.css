@@ -8,7 +8,6 @@
 .level-one-page,
 .level-one-section {
   --level-one-plot-height: clamp(9rem, 22vw, 13rem);
-  --level-one-name-band: 2.7rem;
 }
 
 .level-one-page {
@@ -416,24 +415,6 @@ a.vgroup__name:focus-visible {
 .level-one-breakdown__share {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
-}
-
-/* --- narrow ------------------------------------------------------------ */
-
-@media (max-width: 48rem) {
-  .level-one-chart__row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 6.5rem);
-    row-gap: .4rem;
-  }
-
-  .level-one-chart__bars {
-    grid-column: 1 / -1;
-    order: 3;
-  }
-
-  .level-one-chart__figure {
-    justify-items: end;
-  }
 }
 
 /* --- exact amounts ------------------------------------------------------ */
