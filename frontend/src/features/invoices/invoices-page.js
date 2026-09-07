@@ -631,7 +631,6 @@ function renderTable(items, onDetail, visible) {
     const row = document.createElement("tr");
     const identity = element("div", "invoice-table-identity");
     identity.append(element("strong", "", invoice.invoiceNumber));
-    if (invoice.duplicateWarning) identity.append(element("span", "invoice-table-warning", "نیازمند بررسی تکرار"));
     // The same control as before, in the cell that carries the number rather than
     // in a column of its own: the two travel together, so the way into an invoice
     // is still on screen when the table is scrolled sideways.
@@ -640,9 +639,15 @@ function renderTable(items, onDetail, visible) {
     action.setAttribute("aria-label", `جزئیات فاکتور ${invoice.invoiceNumber}`);
     action.addEventListener("click", (event) => onDetail(invoice.invoiceId, event.currentTarget));
     identity.append(action);
+    // The duplicate flag is the cell's, not the row's: a third thing inside that
+    // row would have to share the width the number and the button need. It sits
+    // under them instead, as their sibling.
+    const identityCell = document.createDocumentFragment();
+    identityCell.append(identity);
+    if (invoice.duplicateWarning) identityCell.append(element("span", "invoice-table-warning", "نیازمند بررسی تکرار"));
     const status = element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "نامشخص");
     const content = {
-      identity,
+      identity: identityCell,
       date: formatBusinessDate(invoice.invoiceDate),
       vendor: invoice.vendorName,
       source: SOURCE_LABELS[invoice.source] ?? "نامشخص",

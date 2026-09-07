@@ -425,24 +425,25 @@
   gap: .3rem var(--space-sm);
 }
 
+/* An invoice number is an identifier, so it does not break: "ف-017" split over
+   two lines as "ف-0" and "17" is a different string to read. It sets the cell's
+   floor instead, and the column is as wide as it has to be. */
 .invoice-table-identity > strong {
-  min-inline-size: 0;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 /* Last on screen, second in the DOM: the row reads "number, needs review, open"
    to anything that follows source order, while the eye still gets the number and
    the way in on one line -- which is what keeps a flagged row the height of an
    unflagged one. */
+/* Its own line under the number and the button, not a third thing competing
+   with them for the width of a frozen column. */
 .invoice-table-warning {
-  order: 1;
-  flex-basis: 100%;
-}
-
-.invoice-table-warning {
-  inline-size: fit-content;
+  display: block;
+  margin-block-start: .2rem;
   color: var(--dash-sev-med);
   font-size: .65rem;
+  text-align: right;
   line-height: 1.4;
 }
 
@@ -776,7 +777,7 @@
      button was propping the row open, though -- from here down the row is as
      tall as what is in it, and the control steps down with the type. */
   .invoices-table [data-col="identity"] .button {
-    min-block-size: 2.2rem;
+    min-block-size: 2rem;
   }
 
   /* Long records push the head off the top of a phone-height dialog, and with it
@@ -803,7 +804,6 @@
     align-items: flex-start;
     flex-direction: column;
   }
-
 
   .invoice-pagination {
     display: grid;
