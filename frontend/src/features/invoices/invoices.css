@@ -451,6 +451,8 @@
   overflow: auto;
 }
 
+/* The wizard wears this class too, and its head is still a heading beside a
+   close button -- one row. Only the detail dialog stacks. */
 .invoice-detail-dialog__head {
   display: flex;
   align-items: flex-start;
@@ -459,14 +461,33 @@
   margin-block-end: var(--space-xl);
 }
 
-.invoice-detail-dialog__head h2 {
-  margin: 0 0 var(--space-sm);
+.invoice-detail-dialog .invoice-detail-dialog__head {
+  display: grid;
+  /* named rather than left to default: the shared rule above sets a flex
+     justify-content, which on a grid would shrink the single track to its
+     content and leave both rows huddled against the reading edge */
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: var(--space-sm);
 }
 
-.invoice-detail-dialog__head-actions {
+/* One rule for both rows -- the title beside the way out, the status beside the
+   way to paper. They are the same shape, so they are the same selector. */
+.invoice-detail-dialog__head-row {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  justify-content: space-between;
+  gap: var(--space-lg);
+  min-inline-size: 0;
+}
+
+.invoice-detail-dialog__head-row h2 {
+  min-inline-size: 0;
+  margin: 0;
+}
+
+.invoice-detail-dialog__head h2 {
+  margin: 0 0 var(--space-sm);
 }
 
 .invoice-detail-grid {
@@ -631,9 +652,24 @@
 }
 
 @media (max-width: 48rem) {
-  .invoice-filters,
-  .invoice-detail-grid {
+  .invoice-filters {
     grid-template-columns: 1fr;
+  }
+
+  /* The facts stay two abreast rather than becoming a column of full-width
+     bands: a phone has enough width for two of these once they are sized for
+     one, and stacking them turned ten facts into ten screens of scrolling. */
+  .invoice-detail-grid__item {
+    gap: .15rem;
+    padding: var(--space-sm);
+  }
+
+  .invoice-detail-grid__item dt {
+    font-size: .65rem;
+  }
+
+  .invoice-detail-grid__item dd {
+    font-size: var(--font-size-sm);
   }
 
   /* A finger needs more than a pointer does, and this is the only control in
@@ -646,13 +682,22 @@
     min-block-size: 2.5rem;
   }
 
-  /* Long records push the head off the top of a phone-height dialog, and with
-     it the only way out. It stays. */
-  .invoice-detail-dialog__head {
+  /* Long records push the head off the top of a phone-height dialog, and with it
+     the only way out. It stays -- and it stays flush: the dialog gives up its own
+     block-start padding so nothing sits above the band, and the head takes that
+     padding on itself and spreads past the dialog's side padding, so the band
+     reaches both edges instead of floating in a gutter. */
+  .invoice-detail-dialog {
+    padding-block-start: 0;
+  }
+
+  .invoice-detail-dialog .invoice-detail-dialog__head {
     position: sticky;
     z-index: 1;
     inset-block-start: 0;
-    padding-block-end: var(--space-sm);
+    margin-block-end: var(--space-lg);
+    margin-inline: calc(-1 * var(--space-xl));
+    padding: var(--space-xl) var(--space-xl) var(--space-sm);
     background: var(--color-surface-canvas);
   }
 
@@ -661,7 +706,7 @@
   }
 
   .invoice-list-heading,
-  .invoice-detail-dialog__head {
+  .invoice-wizard .invoice-detail-dialog__head {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -712,6 +757,14 @@
   .invoice-detail-dialog {
     inline-size: calc(100% - 1rem);
     max-block-size: calc(100dvh - 1rem);
+    /* the shorthand above put the block-start padding back; the pinned head
+       carries it instead, so the band still starts at the dialog's own edge */
+    padding-block-start: 0;
+  }
+
+  .invoice-detail-dialog .invoice-detail-dialog__head {
+    margin-inline: calc(-1 * var(--space-lg));
+    padding: var(--space-lg) var(--space-lg) var(--space-sm);
   }
 
   .invoice-wizard {
@@ -818,7 +871,6 @@
     font-size: 12pt;
   }
 
-  .invoice-detail-dialog__head-actions,
   .invoice-detail-actions,
   .invoice-print-button,
   .dialog-close {

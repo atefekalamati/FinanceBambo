@@ -308,21 +308,24 @@ function renderDetail(invoice, { canEdit, currentUserId, project, onSubmit, onCo
   });
   letterhead.classList.add("report-header--print-only");
   dialog.append(letterhead);
+  // Two rows, one rule between them: the title against the way out, then the
+  // status against the way to paper. Both rows carry the same class, so what
+  // governs the spacing of one governs the other.
   const head = element("header", "invoice-detail-dialog__head");
-  const heading = element("div");
+  const titleRow = element("div", "invoice-detail-dialog__head-row");
   const title = element("h2", "", `جزئیات فاکتور ${invoice.invoiceNumber}`);
   title.id = "invoice-detail-title";
-  heading.append(title, element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "وضعیت نامشخص"));
   const close = element("button", "dialog-close", "×");
   close.type = "button";
   close.setAttribute("aria-label", "بستن جزئیات فاکتور");
   close.addEventListener("click", () => dialog.close());
-  const headActions = element("div", "invoice-detail-dialog__head-actions");
+  titleRow.append(title, close);
+  const metaRow = element("div", "invoice-detail-dialog__head-row");
   const print = element("button", "button button--ghost invoice-print-button", "چاپ فاکتور");
   print.type = "button";
   print.addEventListener("click", () => window.print());
-  headActions.append(print, close);
-  head.append(heading, headActions);
+  metaRow.append(element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "وضعیت نامشخص"), print);
+  head.append(titleRow, metaRow);
 
   const metadata = element("dl", "invoice-detail-grid");
   [
