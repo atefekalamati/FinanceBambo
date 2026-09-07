@@ -17,6 +17,8 @@ import { validatePriceVersion } from "./prices-validation.js";
 import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition, validateUnitConversion } from "./unit-conversions-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
+import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+  from "../../shared/components/data-table.js";
 
 const SCOPE_LABELS = Object.freeze({ organization: "پایه سازمان", project: "اختصاصی پروژه" });
 
@@ -433,41 +435,51 @@ function createPriceDialog(adapter, currentPrices, onSaved) {
   return dialog;
 }
 
-function renderCurrentPrices(items, history, focusResourceId = "") {
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table current-prices-table");
-  table.append(element("caption", "sr-only", "فهرست قیمت روز اقلام پروژه"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  const displayCurrency = getDisplayCurrencyLabel();
-  ["قلم هزینه", "واحد پایه", `قیمت پایه سازمان (${displayCurrency})`, `قیمت اختصاصی پروژه (${displayCurrency})`, `قیمت روز (${displayCurrency})`, "روند", "منبع قیمت", "تاریخ اعتبار"].forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  items.forEach((item) => {
-    const row = document.createElement("tr");
-    if (focusResourceId && item.resource.resourceId === focusResourceId) {
-      row.classList.add("deep-link-target");
-      row.tabIndex = -1;
-    }
-    const resource = document.createElement("td");
-    resource.append(element("strong", "", item.resource.title), element("small", "table-subtext numeric", item.resource.code));
-    const currentScope = item.currentPrice ? SCOPE_LABELS[item.currentPrice.scope] : "بدون قیمت";
-    row.append(
-      resource,
-      element("td", "", formatUnitLabel(item.resource.baseUnit)),
-      element("td", "numeric", item.organizationPrice ? formatTomanFromIrr(item.organizationPrice.unitPriceIRR, { withCurrency: false }) : "—"),
-      element("td", "numeric", item.projectPrice ? formatTomanFromIrr(item.projectPrice.unitPriceIRR, { withCurrency: false }) : "—"),
-      element("td", "numeric price-current", item.currentPrice ? formatTomanFromIrr(item.currentPrice.unitPriceIRR, { withCurrency: false }) : "ثبت نشده"),
-      element("td", "", ""),
-      element("td", "", currentScope),
-      element("td", "", item.currentPrice ? formatBusinessDate(item.currentPrice.effectiveFrom) : "—"),
-    );
-    row.children[5].append(createPriceTrend(item, history));
-    body.append(row);
+/* The columns of the day-price list. Labels carry the display currency, so they
+   are built per render rather than frozen at module load. */
+function currentPriceColumns() {
+  const currency = getDisplayCurrencyLabel();
+  return [
+    { key: "identity", label: "قلم هزینه", tier: IDENTITY },
+    { key: "unit", label: "واحد پایه", tier: SECONDARY, keepOnTablet: true },
+    { key: "organization", label: `قیمت پایه سازمان (${currency})`, tier: SECONDARY, cellClass: "numeric" },
+    { key: "project", label: `قیمت اختصاصی پروژه (${currency})`, tier: SECONDARY, cellClass: "numeric" },
+    { key: "current", label: `قیمت روز (${currency})`, tier: PRIMARY, cellClass: "numeric price-current" },
+    { key: "trend", label: "روند", tier: PRIMARY },
+    { key: "scope", label: "منبع قیمت", tier: SECONDARY, keepOnTablet: true },
+    { key: "effectiveFrom", label: "تاریخ اعتبار", tier: SECONDARY },
+  ];
+}
+
+function renderCurrentPrices(items, history, focusResourceId = "", columns, visible) {
+  return createDataTable({
+    className: "current-prices-table",
+    caption: "فهرست قیمت روز اقلام پروژه",
+    scrollLabel: "جدول قیمت روز اقلام",
+    columns,
+    rows: items,
+    visible,
+    rowAttributes: (item) => (focusResourceId && item.resource.resourceId === focusResourceId
+      ? { className: "deep-link-target", tabIndex: -1 }
+      : null),
+    cells: (item) => {
+      // No .data-table-identity here: that class is a flex row, and this cell is a
+      // title with its code stacked under it -- .table-subtext is display: block
+      // and was doing that before this table moved onto the component.
+      const identity = document.createDocumentFragment();
+      identity.append(element("strong", "", item.resource.title), element("small", "table-subtext numeric", item.resource.code));
+      return {
+        identity,
+        unit: formatUnitLabel(item.resource.baseUnit),
+        organization: item.organizationPrice ? formatTomanFromIrr(item.organizationPrice.unitPriceIRR, { withCurrency: false }) : "—",
+        project: item.projectPrice ? formatTomanFromIrr(item.projectPrice.unitPriceIRR, { withCurrency: false }) : "—",
+        current: item.currentPrice ? formatTomanFromIrr(item.currentPrice.unitPriceIRR, { withCurrency: false }) : "ثبت نشده",
+        trend: createPriceTrend(item, history),
+        scope: item.currentPrice ? SCOPE_LABELS[item.currentPrice.scope] : "بدون قیمت",
+        effectiveFrom: item.currentPrice ? formatBusinessDate(item.currentPrice.effectiveFrom) : "—",
+      };
+    },
   });
-  table.append(head, body);
-  wrapper.append(table);
-  return wrapper;
 }
 
 function renderPriceFilters(filters, onApply, onReset) {
@@ -600,6 +612,10 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
   const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let listFilters = { query: "", scope: "all" };
+  // Lives with the page: paint() rebuilds the tree, so a choice held inside a
+  // render would last only until the next filter.
+  const priceColumns = currentPriceColumns();
+  const visiblePriceColumns = defaultVisibleColumns(priceColumns);
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
@@ -696,10 +712,24 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
     const filters = renderPriceFilters(listFilters, (next) => { listFilters = next; paint(); }, () => { listFilters = { query: "", scope: "all" }; paint(); });
     const current = element("section", "prices-section prices-section--current");
     const currentHeading = element("div", "prices-section-heading");
-    currentHeading.append(element("div", "", ""), element("span", "section-count numeric", `${formatDisplayNumber(String(filteredPrices.length))} قلم`));
+    const currentMeta = element("div", "prices-section-heading__meta");
+    currentMeta.append(
+      element("span", "section-count numeric", `${formatDisplayNumber(String(filteredPrices.length))} قلم`),
+      createColumnControl({
+        name: "current-prices",
+        columns: priceColumns,
+        visible: visiblePriceColumns,
+        onToggle: (key, on) => {
+          if (on) visiblePriceColumns.add(key);
+          else visiblePriceColumns.delete(key);
+          applyColumnVisibility(root.querySelector(".current-prices-table"), key, on);
+        },
+      }),
+    );
+    currentHeading.append(element("div", "", ""), currentMeta);
     currentHeading.firstElementChild.append(element("h2", "", "قیمت روز اقلام"), element("p", "prices-section__hint", `قیمت‌ها به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند و نمودار کوچک، روند تغییرات هر قلم را نشان می‌دهد.`));
     current.append(currentHeading, filters);
-    if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history, focusResourceId));
+    if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history, focusResourceId, priceColumns, visiblePriceColumns));
     else current.append(element("div", "state-card price-filter-empty", "قلمی مطابق فیلترهای انتخاب‌شده پیدا نشد."));
     const history = element("section", "prices-section");
     history.append(element("h2", "", "تاریخچه قیمت‌ها"), element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."), renderHistory(workspace.history, workspace.currentPrices));
