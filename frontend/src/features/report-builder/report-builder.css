@@ -13,13 +13,6 @@
   box-shadow: var(--dash-shadow), var(--dash-inner);
 }
 
-.report-builder-section__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
 /* The mark and the words are one line, the way the host writes this heading —
    an SVG in a block-level heading otherwise sits on a line of its own. */
 .report-builder-section__title,
@@ -590,9 +583,6 @@
    rather than as one of a set of things to pick from, and the set is the point.
    What gives way at this width is the type and the padding, not the shape. */
 @media (max-width: 30rem) {
-  .report-builder-section {
-    padding: .8rem .7rem .9rem;
-  }
 
   .report-builder-section__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -611,7 +601,7 @@
 
 
 
-  
+
 
   .report-builder-page__header,
   .report-builder-section {

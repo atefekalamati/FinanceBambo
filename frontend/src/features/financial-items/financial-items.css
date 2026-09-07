@@ -165,16 +165,6 @@
   border-radius: var(--radius-sm);
 }
 
-.resources-disclosure__heading {
-  min-inline-size: 0;
-  flex: 1 1 auto;
-}
-
-.resources-disclosure__heading p {
-  max-inline-size: 100%;
-  overflow-wrap: break-word;
-}
-
 .resources-disclosure__meta {
   display: flex;
   align-items: center;
@@ -278,10 +268,6 @@
 
 .estimate-lines-table :is(th, td):nth-child(7) {
   inline-size: 12%;
-}
-
-.line-actions {
-  white-space: nowrap;
 }
 
 .line-actions .table-action + .table-action {

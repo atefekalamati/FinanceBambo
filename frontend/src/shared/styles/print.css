@@ -160,11 +160,11 @@
 
   .period-report-header {
     padding-block-end: 2mm;
-    border-block-end: 0.4pt solid #000;
+    border-block-end: .4pt solid #000;
     margin-block-end: 3mm;
   }
 
-  
+
 
 
   /* On paper the cards would waste a page; the table they exist alongside says
@@ -190,7 +190,7 @@
 
   .period-invoice-total {
     padding: 1.5mm 2mm;
-    border: 0.4pt solid #000;
+    border: .4pt solid #000;
     background: none;
   }
 }
