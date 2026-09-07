@@ -135,11 +135,6 @@
   overflow-wrap: anywhere;
 }
 
-.uploaded-file-card__note,
-.file-list-empty {
-  color: var(--color-text-muted);
-}
-
 .uploaded-file-card__actions {
   display: flex;
   flex-wrap: wrap;

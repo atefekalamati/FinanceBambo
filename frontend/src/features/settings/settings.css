@@ -590,11 +590,6 @@ html[data-theme="light"] .form-field textarea {
     flex-wrap: wrap;
   }
 
-  .form-field--wide,
-  .form-actions {
-    grid-column: auto;
-  }
-
   .settings-card {
     padding: .8rem;
   }
