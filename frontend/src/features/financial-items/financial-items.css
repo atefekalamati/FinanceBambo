@@ -259,10 +259,6 @@
   inline-size: 12%;
 }
 
-.line-actions {
-  white-space: nowrap;
-}
-
 .line-actions .table-action + .table-action {
   margin-inline-start: .35rem;
 }

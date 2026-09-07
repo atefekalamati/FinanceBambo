@@ -167,10 +167,6 @@
   min-inline-size: 42rem;
 }
 
-.variance-direction {
-  white-space: nowrap;
-}
-
 .variance-direction--increase {
   color: var(--dash-sev-med);
 }

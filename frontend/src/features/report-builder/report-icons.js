@@ -45,6 +45,10 @@ const PATHS = Object.freeze({
   alert: ["M12 7.5v5.5", "M12 16.5h.01"],
   /* گزارش سطح ۱ — a hierarchy */
   levelOne: ["M12 3v4", "M6 21v-6", "M18 21v-6", "M6 15h12v-4H6z", "M12 7v4"],
+  /* A measured square: the outline and two corner brackets. Deliberately not a
+     line of any kind — on a page of charts, a stroke that rises or falls reads
+     as data whatever it was drawn for. */
+  area: ["M4 4h16v16H4z", "M4 14h6v6", "M14 4h6v6"],
 });
 
 const FALLBACK = PATHS.overview;
