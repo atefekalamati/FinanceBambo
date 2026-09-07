@@ -92,9 +92,30 @@ class LiveReport:
     progress_quality: dict
 
 
-def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions, gross_area):
+def _calculation_status(missing_price_count, missing_conversion_count, progress_quality):
+    """"complete" only when nothing the figures depend on was missing.
+
+    Prices and unit conversions were always counted. PROGRESS was not, and that was the
+    bug: the report could call itself complete while `progressQuality.complete` was false
+    in the same payload -- announcing that figures built on lines whose executed quantity
+    nobody could measure were final. A reader had no reason to look at the second field.
+
+    The vocabulary is unchanged (`complete` / `incomplete`), because every consumer of
+    this field is typed to those two; only the honesty of the answer changes.
+    """
+    if missing_price_count or missing_conversion_count:
+        return "incomplete"
+    return "complete" if progress_quality.get("complete", True) else "incomplete"
+
+
+def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions, gross_area,
+                          corroborate_identity=False):
     warnings = []
-    pairing = ProgressPairing(assignments, assignment_keys)
+    # `corroborate_identity` is set for a feed whose rows belong to a Finance source
+    # version. Estimate lines carry identifiers from whatever schedule created them and
+    # record no provenance, so against a NEW source a lone integer match is a collision
+    # as often as a mapping; requiring both identifiers is what makes "mapped" mean it.
+    pairing = ProgressPairing(assignments, assignment_keys, corroborate_identity)
     conversion_by_key = {(row["source_unit"], row["target_unit"], row["dimension"]): Decimal(row["factor"]) for row in conversions}
     purchased_by_line = {}
     purchased_by_resource = {}
@@ -280,8 +301,15 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         breakdown[kind]["calculationStatus"] = "incomplete" if excluded_lines_by_type[kind] or kind in missing_conversion_types else "complete"
     forecast = actual_total + money_required
     area = None if gross_area is None else Decimal(gross_area)
+    # Lines whose executed quantity nobody could measure -- unmapped, or mapped to a row
+    # that states no usable quantity. Their executed value is UNKNOWN, and a sum with an
+    # unknown term is not a lower bound a reader can use, it is a number that looks final.
+    # So the figures resting on it go unavailable, exactly as one missing price already
+    # makes them: the per-line warnings above already declare these metrics affected, and
+    # this is what makes that declaration true instead of decorative.
+    progress_unknown=progress_quality["unmappedLineCount"]+progress_quality["missingCount"]
     incomplete_metric_keys=[]
-    if missing_price_count or missing_conversion_count:
+    if missing_price_count or missing_conversion_count or progress_unknown:
         incomplete_metric_keys=["currentExecutedValueIrr","remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr","forecastPerSquareMeterIrr"]
     if area is None or area <= 0:
         actual_per_area = forecast_per_area = None
@@ -290,12 +318,12 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     else:
         actual_per_area = money(actual_total / area);forecast_per_area = money(forecast / area)
     metrics = {"initialEstimateIrr":money(initial_total),"actualCostIrr":money(actual_total),
-        "currentExecutedValueIrr":None if missing_price_count else money(current_executed),
-        "remainingPhysicalCostIrr":None if missing_price_count else money(remaining_physical_cost),
-        "moneyRequiredToContinueIrr":None if missing_price_count or missing_conversion_count else money(money_required),
-        "forecastFinalCostIrr":None if missing_price_count or missing_conversion_count else money(forecast),
+        "currentExecutedValueIrr":None if missing_price_count or progress_unknown else money(current_executed),
+        "remainingPhysicalCostIrr":None if missing_price_count or progress_unknown else money(remaining_physical_cost),
+        "moneyRequiredToContinueIrr":None if missing_price_count or missing_conversion_count or progress_unknown else money(money_required),
+        "forecastFinalCostIrr":None if missing_price_count or missing_conversion_count or progress_unknown else money(forecast),
         "actualCostPerSquareMeterIrr":actual_per_area,
-        "forecastPerSquareMeterIrr":None if missing_price_count or missing_conversion_count else forecast_per_area}
+        "forecastPerSquareMeterIrr":None if missing_price_count or missing_conversion_count or progress_unknown else forecast_per_area}
     price_variances.sort(key=lambda item:abs(item["varianceIrr"]),reverse=True)
     quantity_variances.sort(key=lambda item:abs(item["varianceQuantity"]),reverse=True)
     total_impact = sum(abs(item["varianceIrr"]) for item in price_variances) + sum(abs(item["remainingPhysicalCostIrr"] or ZERO) for item in quantity_variances)
@@ -303,4 +331,4 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         item["impactSharePercent"] = None if total_impact == 0 or not item["priceAvailable"] else (abs(item["varianceIrr"]) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     for item in quantity_variances:
         item["impactSharePercent"] = None if total_impact == 0 or not item["priceAvailable"] else (abs(item["remainingPhysicalCostIrr"] or ZERO) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-    return LiveReport(metrics,list(breakdown.values()),price_variances[:10],quantity_variances[:10],price_variances,quantity_variances,warnings,"incomplete" if missing_price_count or missing_conversion_count else "complete",incomplete_metric_keys,missing_price_count,len(excluded_estimate_line_ids),excluded_estimate_line_ids,progress_quality)
+    return LiveReport(metrics,list(breakdown.values()),price_variances[:10],quantity_variances[:10],price_variances,quantity_variances,warnings,_calculation_status(missing_price_count,missing_conversion_count,progress_quality),incomplete_metric_keys,missing_price_count,len(excluded_estimate_line_ids),excluded_estimate_line_ids,progress_quality)

@@ -19,14 +19,16 @@ class PsycopgFinanceResourcesRepository:
     def _resource(row):
         return FinanceResource(row["id"], row["organization_id"], row["project_id"],
             row["resource_type"], row["code"], row["title"], row["base_unit"], row["dimension"],
-            row["external_resource_id"], row["created_by"], row["created_at"])
+            row["external_resource_id"], row["created_by"], row["created_at"],
+            row.get("source_resource_uid"))
 
     @staticmethod
     def _line(row, revisions=()):
         return EstimateLine(row["id"], row["organization_id"], row["project_id"], row["resource_id"],
             row["activity_external_id"], row["assignment_external_id"], row["original_quantity"],
             row["revised_quantity"], row["original_unit_price_irr"], row["source"], row["created_by"], row["created_at"],
-            row.get("current_revision",0)+1,tuple(revisions),row.get("activity_title"),row.get("wbs_code"))
+            row.get("current_revision",0)+1,tuple(revisions),row.get("activity_title"),row.get("wbs_code"),
+            row.get("source_assignment_uid"),row.get("source_task_uid"))
 
     async def list_resources(self, scope):
         async with self._connection.cursor(row_factory=dict_row) as c:
@@ -87,41 +89,37 @@ class PsycopgFinanceResourcesRepository:
         return [self._line(line,grouped[line["id"]]) for line in lines]
 
     async def list_task_resource_mappings(self, scope, page=1, page_size=100):
-        """The CURRENT MPP task links of this project's finance resources. Read-only.
+        """This project's optional MSP-task links, as the bridge states them. Read-only.
 
-        Scoped through finance_resources -- the map table itself carries no tenant keys
-        by design (three columns), so the JOIN to a scope-filtered finance_resources IS
-        the scoping. Restricted to the project's LATEST snapshot: every import writes a
-        fresh set of task rows, so without the restriction the list would mix each
-        superseded generation with the current one and the totals would lie. Reading
-        msp_tasks here is sanctioned by 0009 itself -- the map's foreign key made
-        msp_tasks a hard precondition of this table, so the tables cannot exist apart.
-        Task DETAILS still come only from the Core feed.
+        Scoped through finance_resources -- the map carries no tenant keys by design
+        (three columns), so the JOIN to a scope-filtered finance_resources IS the scoping.
+
+        NO CORE TABLE IS READ HERE. Finance does not query `msp_tasks`, `msp_snapshots` or
+        `msp_task_metrics`: the bridge is optional integration metadata, not the path
+        Finance uses to obtain MPP values, and a Finance deployment must answer this
+        endpoint whether or not Core's tables exist. `taskId` is returned as the opaque
+        identifier the bridge stores; resolving it to a task is Core's business, and a
+        caller that wants task detail asks Core for it.
         """
         offset = (max(page, 1) - 1) * page_size
-        current = """
-                SELECT map.id, map.task_id, map.resource_id,
-                       resource.code AS resource_code, resource.title AS resource_title,
-                       resource.external_resource_id
+        scoped = """
                   FROM finance_task_resource_map AS map
-                  JOIN msp_tasks AS task ON task.id = map.task_id
                   JOIN finance_resources AS resource ON resource.id = map.resource_id
                  WHERE resource.organization_id = %s AND resource.project_id = %s
                    AND resource.deleted_at IS NULL
-                   AND task.snapshot_id = (SELECT max(current.id)
-                                             FROM msp_snapshots AS current
-                                            WHERE current.project_id = %s)
         """
         async with self._connection.cursor(row_factory=dict_row) as c:
-            await c.execute(current + """
+            await c.execute("""
+                SELECT map.id, map.task_id, map.resource_id,
+                       resource.code AS resource_code, resource.title AS resource_title,
+                       resource.external_resource_id
+            """ + scoped + """
                  ORDER BY map.task_id, resource.code
                  LIMIT %s OFFSET %s
-            """, (scope.organization_id, scope.project_id, scope.project_id,
-                  page_size, offset))
+            """, (scope.organization_id, scope.project_id, page_size, offset))
             rows = await c.fetchall()
-            await c.execute("SELECT count(*) AS n FROM (" + current + ") AS page",
-                            (scope.organization_id, scope.project_id,
-                             scope.project_id))
+            await c.execute("SELECT count(*) AS n " + scoped,
+                            (scope.organization_id, scope.project_id))
             total = (await c.fetchone())["n"]
         return rows, total
 

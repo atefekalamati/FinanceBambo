@@ -1,4 +1,5 @@
 import { csvDocument, csvFileNamePart, csvRow } from "../../shared/exports/csv.js";
+import { activityLabel, canonicalWbs } from "./financial-items-presentation.js";
 
 /**
  * The estimate as a spreadsheet.
@@ -27,12 +28,16 @@ const HEADER = Object.freeze([
   "منبع",
 ]);
 
+// The values `estimate_lines.source` actually holds. The previous keys
+// (imported/manual/revised) matched none of them, so every «منبع» cell in the
+// export fell through to the raw machine string.
 const SOURCE = Object.freeze({
-  imported: "ورود از فایل",
-  manual: "ثبت دستی",
-  revised: "اصلاح‌شده",
+  progress_feed: "برنامه زمان‌بندی",
+  excel_import: "ورود از اکسل",
+  manual_entry: "ثبت دستی",
 });
 
+// The export prints the same one WBS value the table does.
 export function buildEstimateLinesCsv({ lines = [], resources = [] } = {}) {
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
   const rows = [csvRow(HEADER)];
@@ -43,8 +48,8 @@ export function buildEstimateLinesCsv({ lines = [], resources = [] } = {}) {
     const revised = isGeneralCost ? line.revisedAmount : line.revisedQuantity;
     rows.push(csvRow([
       line.activityExternalId,
-      line.wbsCode,
-      line.activityTitle,
+      canonicalWbs(line),
+      activityLabel(line),
       resource?.code,
       resource?.title,
       isGeneralCost ? "هزینه عمومی" : "قلم مقداری",

@@ -47,6 +47,11 @@ class ResourceResponse(ResourceCreate):
     id: UUID
     created_by: UUID
     created_at: datetime
+    #: Additive and optional: an existing client that ignores it is unaffected. It exists
+    #: because nothing else in this response distinguishes an item read from the current
+    #: schedule from one a legacy seed created -- `externalResourceId` carries a task uid
+    #: on historical rows and cannot answer that question.
+    source_resource_uid: int | None = None
 
     @classmethod
     def from_domain(cls, value: FinanceResource):
@@ -101,6 +106,11 @@ class EstimateLineResponse(EstimateLineCreate):
     id: UUID
     activity_title: str | None = None
     wbs_code: str | None = None
+    #: Additive and optional. Without these a client cannot tell a line read from the
+    #: current schedule from one a legacy seed wrote, and would have to infer it from
+    #: `assignmentExternalId` -- free text that holds the same digits by accident.
+    source_assignment_uid: int | None = None
+    source_task_uid: int | None = None
     revised_quantity: Decimal | None
     created_by: UUID
     created_at: datetime

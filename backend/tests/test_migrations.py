@@ -42,11 +42,17 @@ HOST_REFERENCE = revision("0006_progress_snapshot_host_reference")
 MSP_RESOURCES = revision("0007_msp_resources_and_assignments")
 PRICE_INTELLIGENCE = revision("0008_price_intelligence")
 TASK_RESOURCE_MAP = revision("0009_finance_task_resource_map")
+TASK_METRICS = revision("0010_msp_task_metrics")
+FINANCE_MPP = revision("0011_finance_mpp_source")
+MPP_ROW_FIELDS = revision("0012_finance_mpp_row_fields")
+MPP_IDENTITY = revision("0013_finance_mpp_source_identity")
 
 #: The chain, oldest first. Order is part of the contract: 0004 backfills rows that 0001
 #: created, and 0005 alters a table 0001 defined.
 CHAIN = (CORE, CONFIRMATION, LINKED, REPORT, SOURCE, HOST_REFERENCE, MSP_RESOURCES,
-         PRICE_INTELLIGENCE, TASK_RESOURCE_MAP)
+         PRICE_INTELLIGENCE, TASK_RESOURCE_MAP, TASK_METRICS,
+         FINANCE_MPP, MPP_ROW_FIELDS,
+         MPP_IDENTITY)
 
 #: Revision id to the rest of its filename, so a test can find a revision's source.
 MODULE_SUFFIX = {"0001": "finance_core", "0002": "invoice_confirmation",
@@ -55,7 +61,11 @@ MODULE_SUFFIX = {"0001": "finance_core", "0002": "invoice_confirmation",
                  "0006": "progress_snapshot_host_reference",
                  "0007": "msp_resources_and_assignments",
                  "0008": "price_intelligence",
-                 "0009": "finance_task_resource_map"}
+                 "0009": "finance_task_resource_map",
+                 "0010": "msp_task_metrics",
+                 "0011": "finance_mpp_source",
+                 "0012": "finance_mpp_row_fields",
+                 "0013": "finance_mpp_source_identity"}
 
 TABLES = (
     "finance_project_settings",
@@ -268,17 +278,18 @@ class AlembicChainTests(unittest.TestCase):
 
     def test_the_chain_is_linear_and_in_the_historical_order(self):
         self.assertEqual(
-            ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"],
+            ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009",
+             "0010", "0011", "0012", "0013"],
             [module.revision for module in CHAIN])
         expected_parents = [None, "0001", "0002", "0003", "0004", "0005", "0006", "0007",
-                            "0008"]
+                            "0008", "0009", "0010", "0011", "0012"]
         self.assertEqual(expected_parents, [module.down_revision for module in CHAIN])
 
     def test_there_is_exactly_one_head(self):
         # A second head means two branches of schema history and an ambiguous "latest".
         revisions = {module.revision for module in CHAIN}
         parents = {module.down_revision for module in CHAIN} - {None}
-        self.assertEqual({"0009"}, revisions - parents)
+        self.assertEqual({"0013"}, revisions - parents)
 
     def test_every_revision_file_is_named_for_the_revision_it_declares(self):
         for path in sorted(VERSIONS.glob("*.py")):
@@ -294,7 +305,10 @@ class AlembicChainTests(unittest.TestCase):
              "0004_report_snapshot_payload", "0005_progress_snapshot_source_type",
              "0006_progress_snapshot_host_reference",
              "0007_msp_resources_and_assignments", "0008_price_intelligence",
-             "0009_finance_task_resource_map"],
+             "0009_finance_task_resource_map", "0010_msp_task_metrics",
+             "0011_finance_mpp_source",
+             "0012_finance_mpp_row_fields",
+             "0013_finance_mpp_source_identity"],
             sorted(path.stem for path in VERSIONS.glob("*.py")))
 
     def test_every_revision_runs_both_directions(self):

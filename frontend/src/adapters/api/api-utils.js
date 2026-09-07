@@ -17,9 +17,15 @@ export function mapResource(value) {
     baseUnit: value.baseUnit ?? null,
     dimension: value.dimension ?? null,
     externalResourceId: value.externalResourceId ?? null,
+    sourceResourceUid: value.sourceResourceUid ?? null,
     createdBy: value.createdBy,
     createdAt: value.createdAt,
-    source: value.externalResourceId ? "progress_feed" : "manual_entry",
+    /* Read from `sourceResourceUid`, not `externalResourceId`. The old rule had the label
+       exactly backwards on this data: legacy seed rows carry an externalResourceId (an MSP
+       TASK uid) and were labelled "progress_feed", while the items actually read from the
+       schedule carry none and were labelled "manual_entry". Only sourceResourceUid says
+       where an item came from. */
+    source: value.sourceResourceUid != null ? "progress_feed" : "manual_entry",
   };
 }
 

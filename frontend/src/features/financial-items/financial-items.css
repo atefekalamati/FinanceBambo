@@ -321,6 +321,31 @@
   background: rgb(0 136 151 / 10%);
 }
 
+/* One activity's items read as one block: a rule above the first row of each,
+   and the repeated name shown once. The rows stay separate rows -- nothing is
+   merged and no cell spans -- so a narrow screen and a screen reader both keep
+   working. */
+.estimate-lines-table tbody tr.estimate-lines-table__block > td {
+  border-block-start: 1px solid var(--color-border-strong, rgb(148 163 184 / 35%));
+}
+
+.estimate-lines-table tbody tr.estimate-lines-table__block:first-child > td {
+  border-block-start: 0;
+}
+
+.activity-cell--continued {
+  padding-block: .2rem;
+}
+
+/* Says which rows the table is not showing. Quiet, and above the table it
+   qualifies, because a reader who misses it reads a partial table as a whole one. */
+.table-note {
+  margin-block: 0 .6rem;
+  color: var(--color-text-muted);
+  font-size: .78rem;
+  line-height: 1.7;
+}
+
 .table-subtext {
   display: block;
   margin-block-start: .15rem;

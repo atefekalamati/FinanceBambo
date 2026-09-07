@@ -13,6 +13,16 @@ class PsycopgLiveReportRepository:
                 (scope.organization_id,scope.project_id,host_snapshot_id))
             return await cursor.fetchone()
 
+    async def progress_reference_for_snapshot(self,scope,progress_snapshot_id):
+        """The stored reference for one Finance source version, if any. Read-only."""
+        from .progress import REFERENCE_COLUMNS
+        async with self.db.cursor(row_factory=dict_row) as cursor:
+            await cursor.execute(
+                "SELECT %s FROM progress_snapshot_refs WHERE organization_id=%%s "
+                "AND project_id=%%s AND progress_snapshot_id=%%s" % REFERENCE_COLUMNS,
+                (scope.organization_id,scope.project_id,progress_snapshot_id))
+            return await cursor.fetchone()
+
     async def ensure_progress_reference(self,scope,value):
         """The same idempotent write the progress repository uses, not a second copy."""
         from .progress import ensure_progress_reference

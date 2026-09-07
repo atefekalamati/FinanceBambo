@@ -406,7 +406,13 @@ class MppImportService:
                               task["percent_work_complete"],
                               task["physical_percent_complete"],
                               task["baseline_start"], task["baseline_finish"],
-                              task["text1"], Jsonb({"summary": task["summary"]})))
+                              task["text1"],
+                              # The complete raw column set the file states, keyed by the
+                              # planner's own alias, so a column nobody has mapped yet is
+                              # preserved rather than lost. The typed subset also lands in
+                              # msp_task_metrics below.
+                              Jsonb({"summary": task["summary"],
+                                     "raw_fields": task.get("raw_fields") or {}})))
                         row_id = (await cursor.fetchone())["id"]
                         if task["uid"] is not None:
                             task_row_ids[task["uid"]] = row_id

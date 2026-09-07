@@ -66,7 +66,7 @@ class LiveReportDomainTests(unittest.TestCase):
         ]
         assignments = [
             {"assignmentExternalId": "a-m", "actualQuantity": "4", "task": {}},
-            {"assignmentExternalId": "a-l", "actualWork": "2", "task": {}},
+            {"assignmentExternalId": "a-l", "actualWork": "2","resourceType":"labor", "task": {}},
         ]
         report = calculate_live_report(estimates, invoices, assignments,
                                        [{"source_unit": "box", "target_unit": "each", "dimension": "count", "factor": "2"}], "10")
@@ -373,7 +373,9 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
         scope = SimpleNamespace(organization_id=organization_id, project_id="sample_site_01", actor_user_id=UUID(int=8), locale="en")
         repository = SnapshotRepository()
         issued_at = __import__("datetime").datetime(2026,8,2,tzinfo=__import__("datetime").timezone.utc)
-        service = FinanceLiveReportService(repository, Provider(organization_id, scope.project_id), lambda:UUID(int=10), lambda:issued_at)
+        # A measured feed row, so every metric is a number and the frozen copy has eight
+        # figures to freeze. With no progress the dependent five are (correctly) None.
+        service = FinanceLiveReportService(repository, AssignmentProvider(organization_id, scope.project_id), lambda:UUID(int=10), lambda:issued_at)
         response = await service.issue(scope,date(2026,8,2),SNAPSHOT)
         dto = ReportSnapshotReference(**response)
         self.assertTrue(dto.immutable)
@@ -397,7 +399,7 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_live_and_issued_metrics_match_then_live_changes_without_rewriting_snapshot(self):
         organization_id=UUID("40000000-0000-4000-8000-000000000001")
         scope=SimpleNamespace(organization_id=organization_id,project_id="sample_site_01",actor_user_id=UUID(int=8))
-        repository=SnapshotRepository();service=FinanceLiveReportService(repository,Provider(organization_id,scope.project_id),lambda:UUID(int=10))
+        repository=SnapshotRepository();service=FinanceLiveReportService(repository,AssignmentProvider(organization_id,scope.project_id),lambda:UUID(int=10))
         live_at_issue=await service.live(scope,date(2026,8,2),SNAPSHOT)
         await service.issue(scope,date(2026,8,2),SNAPSHOT)
         self.assertEqual({key:format(value,"f") for key,value in live_at_issue["metrics"].items() if value is not None},repository.value["calculated_metrics"])
@@ -554,19 +556,25 @@ class WorkAsQuantityTests(unittest.TestCase):
 
     def test_work_sourced_progress_moves_no_figure_at_all(self):
         measured = self._report({"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}})
-        effort = self._report({"assignmentExternalId": "a-1", "actualWork": "4", "task": {}})
+        effort = self._report({"assignmentExternalId": "a-1", "actualWork": "4","resourceType":"labor", "task": {}})
         # The constraint this whole change was made under: clarify the data, decide nothing.
         # Every metric, every breakdown row and every variance figure is identical.
         self.assertEqual(measured.metrics, effort.metrics)
         self.assertEqual(measured.breakdown, effort.breakdown)
-        self.assertEqual(measured.calculation_status, effort.calculation_status)
+        # The VALUES are untouched -- clarifying the data decides nothing. What does
+        # change is the report's claim about itself: a figure built on reported effort is
+        # not a complete calculation, and saying "complete" beside
+        # progressQuality.complete=false was the contradiction this fixes.
+        self.assertEqual("complete", measured.calculation_status)
+        self.assertEqual("incomplete", effort.calculation_status)
+        self.assertFalse(effort.progress_quality["complete"])
         self.assertEqual([row["executedQuantity"] for row in measured.quantity_variances],
                          [row["executedQuantity"] for row in effort.quantity_variances])
         self.assertEqual(Decimal("400"), effort.metrics["currentExecutedValueIrr"])
 
     def test_the_same_report_says_which_of_the_two_it_was(self):
         measured = self._report({"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}})
-        effort = self._report({"assignmentExternalId": "a-1", "actualWork": "4", "task": {}})
+        effort = self._report({"assignmentExternalId": "a-1", "actualWork": "4","resourceType":"labor", "task": {}})
         self.assertEqual(("measured_quantity", "work_effort"),
                          (measured.quantity_variances[0]["measurementType"],
                           effort.quantity_variances[0]["measurementType"]))
@@ -578,7 +586,7 @@ class WorkAsQuantityTests(unittest.TestCase):
                          [w["code"] for w in effort.warnings if w["code"].startswith("PROGRESS_")])
 
     def test_the_warning_points_at_the_line_and_names_what_it_reaches(self):
-        report = self._report({"assignmentExternalId": "a-1", "actualWork": "4", "task": {}})
+        report = self._report({"assignmentExternalId": "a-1", "actualWork": "4","resourceType":"labor", "task": {}})
         warning = next(w for w in report.warnings if w["code"] == "PROGRESS_WORK_NOT_QUANTITY")
         self.assertEqual((str(MATERIAL_LINE), str(MATERIAL), "mat"),
                          (warning["estimateLineId"], warning["resourceId"], warning["resourceCode"]))
@@ -588,7 +596,7 @@ class WorkAsQuantityTests(unittest.TestCase):
                          warning["affectedMetricKeys"])
 
     def test_the_counter_is_a_subset_of_assignment_actual_and_forces_incomplete(self):
-        report = self._report({"assignmentExternalId": "a-1", "actualWork": "4", "task": {}})
+        report = self._report({"assignmentExternalId": "a-1", "actualWork": "4","resourceType":"labor", "task": {}})
         quality = report.progress_quality
         # Counted in both places on purpose: one line, one assignment actual, and that
         # actual was effort. A reader comparing the two sees "all of them" rather than
@@ -605,7 +613,7 @@ class WorkAsQuantityTests(unittest.TestCase):
         # the quantity, and the warning must not fire for it or every equipment line in the
         # project would carry one.
         report = self._report({"assignmentExternalId": "a-1", "actualQuantity": "4",
-                               "actualWork": "4", "task": {}})
+                               "actualWork": "4","resourceType":"labor", "task": {}})
         self.assertEqual("measured_quantity", report.quantity_variances[0]["measurementType"])
         self.assertEqual(0, report.progress_quality["workAsQuantityCount"])
         self.assertNotIn("PROGRESS_WORK_NOT_QUANTITY", {w["code"] for w in report.warnings})
@@ -622,7 +630,7 @@ class WorkAsQuantityTests(unittest.TestCase):
         # The DTOs forbid extras, so a key added here and not there turns every report
         # containing it into a 500 at response validation. That has happened once already,
         # to deviationQuantity on QUANTITY_OVERRUN.
-        report = self._report({"assignmentExternalId": "a-1", "actualWork": "4", "task": {}})
+        report = self._report({"assignmentExternalId": "a-1", "actualWork": "4","resourceType":"labor", "task": {}})
         for row in report.quantity_variances:
             QuantityVariance(**row)
         for row in report.price_variances:
@@ -718,50 +726,71 @@ class ProgressStateTests(unittest.TestCase):
                 report = self._report(line, assignments)
                 self.assertIn(report.quantity_variances[0]["progressStatus"], PROGRESS_STATUSES)
 
-    def test_naming_the_state_moved_no_financial_figure(self):
+    def test_each_state_produces_the_money_it_is_entitled_to(self):
         """The four states, with the money each one produces spelled out.
 
-        Three of the four score executed 0 and therefore produce identical metrics; the
-        measured case is the only one that differs, and it differs because it measured
-        something. Hardcoded rather than compared, so a change in what an absent
-        measurement does to the money fails here with the old numbers on screen.
+        Decided 2026-09-05. A measured zero is complete data and produces numbers. The
+        three states in which nothing was measured produce NO figure for the metrics that
+        rest on executed quantity -- not zero: None, named in incompleteMetricKeys, with
+        the report calling itself incomplete. What can be stated without a measurement,
+        the estimate and the invoiced actuals, still is. Hardcoded rather than compared,
+        so a change in what an absence does to the money fails here with the numbers on
+        screen.
         """
-        absent = {"initialEstimateIrr": Decimal("1000"), "actualCostIrr": Decimal("0"),
-                  "currentExecutedValueIrr": Decimal("0"),
-                  "remainingPhysicalCostIrr": Decimal("1000"),
-                  "moneyRequiredToContinueIrr": Decimal("1000"),
-                  "forecastFinalCostIrr": Decimal("1000"),
-                  "actualCostPerSquareMeterIrr": Decimal("0"),
-                  "forecastPerSquareMeterIrr": Decimal("100")}
+        measured_zero = {"initialEstimateIrr": Decimal("1000"), "actualCostIrr": Decimal("0"),
+                         "currentExecutedValueIrr": Decimal("0"),
+                         "remainingPhysicalCostIrr": Decimal("1000"),
+                         "moneyRequiredToContinueIrr": Decimal("1000"),
+                         "forecastFinalCostIrr": Decimal("1000"),
+                         "actualCostPerSquareMeterIrr": Decimal("0"),
+                         "forecastPerSquareMeterIrr": Decimal("100")}
+        unknown = {"initialEstimateIrr": Decimal("1000"), "actualCostIrr": Decimal("0"),
+                   "currentExecutedValueIrr": None, "remainingPhysicalCostIrr": None,
+                   "moneyRequiredToContinueIrr": None, "forecastFinalCostIrr": None,
+                   "actualCostPerSquareMeterIrr": Decimal("0"),
+                   "forecastPerSquareMeterIrr": None}
         for label, line, assignments in (
                 ("empty assignment", self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}]),
                 ("broken reference", self._line("a-missing", activity="ACT-1"), []),
-                ("activity gap", self._line(None, activity="ACT-missing"), []),
-                ("measured zero", self._line("a-1"),
-                 [{"assignmentExternalId": "a-1", "actualQuantity": "0", "task": {}}])):
+                ("activity gap", self._line(None, activity="ACT-missing"), [])):
             with self.subTest(label):
-                self.assertEqual(absent, self._report(line, assignments).metrics)
+                report = self._report(line, assignments)
+                self.assertEqual(unknown, report.metrics)
+                self.assertEqual("incomplete", report.calculation_status)
+                self.assertIn("forecastFinalCostIrr", report.incomplete_metric_keys)
+        zero = self._report(self._line("a-1"),
+                            [{"assignmentExternalId": "a-1", "actualQuantity": "0", "task": {}}])
+        self.assertEqual(measured_zero, zero.metrics)
+        self.assertEqual("complete", zero.calculation_status)
         measured = self._report(self._line("a-1"),
                                 [{"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}}])
         self.assertEqual(Decimal("400"), measured.metrics["currentExecutedValueIrr"])
         self.assertEqual(Decimal("600"), measured.metrics["remainingPhysicalCostIrr"])
 
-    def test_an_absence_is_still_reported_as_included_in_the_calculation(self):
-        """Pins today's behaviour, which is the open decision rather than a fix.
+    def test_an_absence_makes_the_dependent_metrics_unavailable_without_excluding_the_line(self):
+        """Decided 2026-09-05: unknown progress is reported as unknown, never as zero.
 
-        The line scores 0 and stays in every metric: excludedFromCalculation is False and
-        the line is absent from excludedEstimateLineIds. Whether an unknown quantity should
-        instead be excluded changes currentExecutedValueIrr, remainingPhysicalCostIrr and
-        forecastFinalCostIrr on live reports, so it is not decided here. This test exists so
-        that decision cannot be taken by accident.
+        The line is NOT excluded -- excludedFromCalculation stays False and the line is
+        absent from excludedEstimateLineIds, because nothing about the estimate is wrong;
+        the measurement is what is missing. What changes is the claim the report makes: a
+        forecast summed over a term nobody measured is not a forecast, so the metrics that
+        rest on executed quantity are None and named in incompleteMetricKeys, and the
+        report calls itself incomplete. The earlier behaviour scored the line at zero and
+        presented 1000 as a number; that was the conservative option while the policy was
+        open, and the policy is now closed the other way.
         """
         report = self._report(self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}])
         warning = next(w for w in report.warnings if w["code"] == "PROGRESS_MISSING")
         self.assertFalse(warning["excludedFromCalculation"])
         self.assertEqual([], report.excluded_estimate_line_ids)
         self.assertEqual(0, report.excluded_estimate_line_count)
-        # And the metric is a number, not None -- it is presented, and qualified elsewhere.
-        self.assertEqual(Decimal("1000"), report.metrics["forecastFinalCostIrr"])
+        self.assertIsNone(report.metrics["forecastFinalCostIrr"])
+        self.assertIsNone(report.metrics["currentExecutedValueIrr"])
+        self.assertIn("forecastFinalCostIrr", report.incomplete_metric_keys)
+        self.assertEqual("incomplete", report.calculation_status)
+        # What can be stated without a measurement still is stated.
+        self.assertEqual(Decimal("1000"), report.metrics["initialEstimateIrr"])
+        self.assertEqual(1, report.progress_quality["missingCount"])
     def test_a_fallback_is_not_reported_as_a_measurement(self):
         """The gap this vocabulary closes: both of these reached a source.
 
@@ -779,7 +808,7 @@ class ProgressStateTests(unittest.TestCase):
                 {"plannedQuantity": "10", "assignmentWorkCompletePercent": "40"}, "fallback"),
             "derived from the task percent": (
                 {"plannedQuantity": "10", "task": {"taskProgressPercent": "40"}}, "fallback"),
-            "taken from reported effort": ({"actualWork": "4"}, "fallback"),
+            "taken from reported effort": ({"actualWork": "4","resourceType":"labor"}, "fallback"),
         }
         for label, (fields, expected) in cases.items():
             with self.subTest(label):
@@ -793,7 +822,7 @@ class ProgressStateTests(unittest.TestCase):
         # same conclusion, so the mapping lives in one table rather than at each call site.
         for fields, measurement, status in (
                 ({"actualQuantity": "4"}, "measured_quantity", "measured"),
-                ({"actualWork": "4"}, "work_effort", "fallback"),
+                ({"actualWork": "4","resourceType":"labor"}, "work_effort", "fallback"),
                 ({"plannedQuantity": "10", "task": {"taskProgressPercent": "40"}},
                  "derived_from_percent", "fallback")):
             with self.subTest(measurement):
@@ -863,7 +892,7 @@ class WarningStructureTests(unittest.TestCase):
     def test_the_work_effort_code_is_covered_too(self):
         # It needs an effort-only assignment, which the fixture above cannot also carry.
         row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1")
-        report = calculate_live_report([row], [], [{"assignmentExternalId": "a-1", "actualWork": "4", "task": {}}], [], "10")
+        report = calculate_live_report([row], [], [{"assignmentExternalId": "a-1", "actualWork": "4","resourceType":"labor", "task": {}}], [], "10")
         warning = next(w for w in report.warnings if w["code"] == "PROGRESS_WORK_NOT_QUANTITY")
         self.assertEqual(set(WARNING_KEYS) | {"progressStatus"}, set(warning))
         ReportWarning(**warning)

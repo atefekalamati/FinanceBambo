@@ -12,7 +12,8 @@ from ..domain import wbs as wbs_tree
 from ..domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT,monthly_report
 from ..domain.persian_calendar import persian_month_window
 from ..domain.reports import calculate_live_report
-from ..domain.progress import (apply_progress_overrides,reference_from_header,
+from ..domain.progress import (finance_version_id,
+    apply_progress_overrides,reference_from_header,
  snapshot_assignments,snapshot_metadata)
 from ..adapters.ports import supports_current_snapshot
 from ..domain.errors import FinanceDomainError
@@ -116,6 +117,18 @@ class FinanceLiveReportService:
         """
         value=await self._current_reference_value(scope,reporting_date)
         if value is None:return None
+        if value.host_snapshot_id is None:
+            # One of Finance's own source versions. Its identity is the version UUID, which
+            # the provider answers to directly, so an UNPINNED read still resolves -- the
+            # descriptor carries that UUID where a Core snapshot would carry a host id.
+            existing=getattr(self.repo,"progress_reference_for_snapshot",None)
+            if existing is not None:
+                row=await existing(scope,value.progress_snapshot_id)
+                if row is not None:return self._descriptor(row)
+            return {"progress_snapshot_ref_id":None,
+                    "progress_snapshot_id":value.progress_snapshot_id,
+                    "host_snapshot_id":None,
+                    "reporting_date":value.reporting_date}
         existing=getattr(self.repo,"progress_reference_for_host",None)
         if existing is not None:
             row=await existing(scope,value.host_snapshot_id)
@@ -170,7 +183,12 @@ class FinanceLiveReportService:
                    if hasattr(self.repo,"latest_overrides")
                    and snapshot.get("progress_snapshot_ref_id") is not None else [])
         effective_feed={**feed,"assignments":apply_progress_overrides(snapshot_assignments(feed),overrides,snapshot["progress_snapshot_id"])}
-        report=calculate_live_report(data["estimates"],data["invoices"],effective_feed.get("assignments",[]),data["conversions"],data["gross_area"])
+        # A Finance source version is a source these estimate lines were never recorded
+        # against, so its pairing must be corroborated rather than accidental. A Core
+        # snapshot keeps the historical rule: those lines WERE seeded from a Core schedule.
+        header=effective_feed.get("snapshot") if isinstance(effective_feed,dict) else None
+        report=calculate_live_report(data["estimates"],data["invoices"],effective_feed.get("assignments",[]),data["conversions"],data["gross_area"],
+            corroborate_identity=finance_version_id(header) is not None)
         return report,data,snapshot,effective_feed
 
     async def live(self,scope,reporting_date:date,progress_snapshot_id=None):

@@ -37,6 +37,41 @@ from typing import Protocol
 _JVM_BOOT_LOCK = threading.Lock()
 
 
+#: The custom Task columns this schedule convention carries, keyed by the planner's
+#: ALIAS -- never by the raw ``NumberN`` index, which is not stable: the same meaning
+#: ("ضریب وزنی ریالی") lands on Number18 in one file and could land elsewhere in the
+#: next. The alias is what the planner named the column, so the alias is the contract.
+#: ``kind`` says how to read it. Every one of these is a TASK-level field (verified: the
+#: file carries no custom Resource or Assignment fields).
+TASK_METRIC_ALIASES = {
+    "آحجام هرآیتم": ("item_quantity", "number"),
+    "احجام کاری": ("work_volume", "number"),
+    "حجم انجام شده": ("done_volume", "number"),
+    "حجم اولیه": ("initial_volume", "number"),
+    "درصد احجام کاری": ("work_volume_percent", "number"),
+    "ضریب وزنی زمانی": ("weight_time", "number"),
+    "ضریب وزنی ریالی": ("weight_rial", "number"),
+    "ضریب وزنی مبنا": ("weight_base", "number"),
+    "درصد وزنی": ("weight_percent", "number"),
+    "WF زمانی": ("wf_time", "number"),
+    "WF ریالی": ("wf_rial", "number"),
+    "WF فیزیکی": ("wf_physical", "number"),
+    "پیشرفت واقعی": ("actual_progress", "number"),
+    "درصد پیشرفت واقعی": ("actual_progress_percent", "number"),
+    "پیشرفت فیزیکی": ("physical_progress", "number"),
+    "پیشرفت برنامه ای": ("planned_progress", "number"),
+    "درصد پیشرفت برنامه ای جزء": ("planned_progress_component", "number"),
+    "اختلاف پیشرفت": ("progress_variance", "number"),
+    "تاریخ شروع": ("jalali_start", "text"),
+    "تاریخ پایان": ("jalali_finish", "text"),
+    "احجام": ("item_quantity_text", "text"),
+}
+
+#: The stable metric keys, in a fixed order -- the importer's column list depends on it.
+TASK_METRIC_KEYS = [key for key, _ in TASK_METRIC_ALIASES.values()] + [
+    "task_cost", "task_actual_cost", "task_fixed_cost"]
+
+
 class MppReaderError(RuntimeError):
     code = "MPP_PARSE_FAILED"
 
@@ -196,6 +231,61 @@ class MpxjMppReader:
         except Exception:                                     # noqa: BLE001
             return _number(rate)
 
+    @staticmethod
+    def _task_alias_fields(project):
+        """``{alias: FieldType}`` for every aliased TASK custom field in THIS file.
+
+        Built per file, not per JVM: aliases live in the project, and which ``NumberN``
+        an alias sits on is a property of the file. Only TASK-class fields are taken --
+        a resource or assignment alias with the same text would otherwise collide.
+        """
+        fields = {}
+        try:
+            for custom in project.getCustomFields():
+                alias = custom.getAlias()
+                if not alias:
+                    continue
+                field_type = custom.getFieldType()
+                try:
+                    if str(field_type.getFieldTypeClass()) != "TASK":
+                        continue
+                except Exception:                             # noqa: BLE001
+                    continue
+                fields[str(alias).strip()] = field_type
+        except Exception:                                     # noqa: BLE001
+            return {}
+        return fields
+
+    def _task_metrics(self, task, alias_fields):
+        """The finance-relevant custom columns of one task, plus its raw source set.
+
+        Returns ``(metrics, raw)``. ``metrics`` carries the stable typed keys the
+        importer writes to ``msp_task_metrics``; ``raw`` carries EVERY aliased value the
+        file states, keyed by the planner's own column name, for ``raw_fields_json`` --
+        so a column nobody has mapped yet is preserved rather than lost. A value the file
+        does not state is ``None`` here and NULL downstream: absent is never zero.
+        """
+        metrics = {key: None for key in TASK_METRIC_KEYS}
+        raw = {}
+        for alias, field_type in alias_fields.items():
+            try:
+                value = task.get(field_type)
+            except Exception:                                 # noqa: BLE001
+                value = None
+            if value is None:
+                continue
+            raw[alias] = str(value)
+            mapped = TASK_METRIC_ALIASES.get(alias)
+            if mapped is not None:
+                key, kind = mapped
+                metrics[key] = _number(value) if kind == "number" else _text(value)
+        # Task-level cost is a standard field, not a custom one, but it is a Task
+        # attribute the finance side reads, so it travels with the task metrics.
+        metrics["task_cost"] = _number(task.getCost())
+        metrics["task_actual_cost"] = _number(task.getActualCost())
+        metrics["task_fixed_cost"] = _number(task.getFixedCost())
+        return metrics, raw
+
     # ---------------------------------------------------------------------------- read
     def read(self, file_path) -> ParsedMppProject:
         self._load()
@@ -211,8 +301,11 @@ class MpxjMppReader:
         properties = project.getProjectProperties()
         warnings = []
 
+        alias_fields = self._task_alias_fields(project)
+
         tasks = []
         for task in project.getTasks():
+            metrics, raw_fields = self._task_metrics(task, alias_fields)
             tasks.append({
                 # Identity, in the documented preference order GUID > UID > ID. All three
                 # are stored; note that on the reference schedule the UID was measured
@@ -239,6 +332,11 @@ class MpxjMppReader:
                 # The custom activity-code convention. Read because Core stores text1;
                 # which field REALLY carries a code is host configuration downstream.
                 "text1": _text(task.getText(1)),
+                # The custom finance columns of this task, read by alias. ``metrics`` is
+                # the typed set (msp_task_metrics); ``raw_fields`` is every aliased value
+                # the file states (msp_tasks.raw_fields_json).
+                "metrics": metrics,
+                "raw_fields": raw_fields,
             })
 
         resources = []

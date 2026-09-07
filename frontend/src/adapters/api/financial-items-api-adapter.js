@@ -1,23 +1,42 @@
 import { financeBase, formDataWithFile, jsonOptions, mapImportPreview, mapResource } from "./api-utils.js";
 import { compareDecimalStrings } from "../../shared/validation/decimal-validation.js";
 import { setUnitRegistry } from "../../features/prices/unit-conversions-validation.js";
+import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 
 /**
  * `estimate_lines` has no activity_title or wbs_code column and the read models
  * return null for both, because the activity catalogue belongs to the host
  * project module. The title is therefore joined here from /activities.
  */
-function mapLine(value, resources, activities = []) {
+function mapLine(value, resources, activities = [], currentPrices = new Map()) {
   const resource = resources.find((item) => item.resourceId === value.resourceId);
   const general = resource?.type === "general_cost";
   const activity = activities.find((item) => item.activityExternalId === value.activityExternalId);
+  const baseline = general ? value.originalUnitPriceIrr : value.originalQuantity;
   return {
     lineId: value.id,
     activityExternalId: value.activityExternalId,
-    taskExternalId: activity?.taskExternalId ?? value.activityExternalId,
+    // The schedule identity, read from the fields that carry it. Null on a line
+    // nobody read from a schedule, which is how the page tells the two apart.
+    sourceAssignmentUid: value.sourceAssignmentUid ?? null,
+    sourceTaskUid: value.sourceTaskUid ?? null,
+    // The activity's cost in the schedule -- the activity's, not this item's.
+    mppTaskCostIrr: activity?.mppTaskCostIrr ?? null,
+    // The price a person entered for this item today, if anyone has. Separate
+    // from the schedule's cost above and from the frozen original below; the
+    // three are different numbers and are never derived from one another.
+    currentUnitPriceIRR: currentPrices.get(value.resourceId) ?? null,
+    // Null when the catalogue does not name a task. The previous fallback put the
+    // activity's WBS code in a field named for a task uid, which is a different
+    // identity: anything ordering or joining by it was reading the wrong key.
+    taskExternalId: activity?.taskExternalId ?? null,
     assignmentExternalId: value.assignmentExternalId,
-    activityTitle: value.activityTitle || activity?.title || value.activityExternalId || "فعالیت بدون عنوان",
-    wbsCode: value.wbsCode || activity?.wbsCode || "—",
+    // Null, not the id and not a placeholder: an activity whose title the
+    // catalogue does not carry has no title, and saying so is the presentation
+    // layer's job. Substituting the external id here is what printed a WBS code
+    // where a title belongs.
+    activityTitle: value.activityTitle || activity?.title || null,
+    wbsCode: value.wbsCode || activity?.wbsCode || null,
     resourceId: value.resourceId,
     originalQuantity: general ? null : value.originalQuantity,
     revisedQuantity: general ? null : value.revisedQuantity,
@@ -35,20 +54,49 @@ function mapLine(value, resources, activities = []) {
       actorId: revision.createdBy,
       actorName: null,
       occurredAt: revision.createdAt,
-      isOverrun: compareDecimalStrings(revision.newQuantity, general ? value.originalUnitPriceIrr : value.originalQuantity) > 0,
+      // No baseline, no overrun. Comparing against a null original read it as
+      // zero, which made every revision on a schedule line an overrun.
+      isOverrun: baseline == null
+        ? false
+        : compareDecimalStrings(revision.newQuantity, baseline) > 0,
     })),
   };
+}
+
+/** The service caps a page at 200 and this project has more activities than
+ *  that. Reading one page dropped every activity past the cap, and each line
+ *  belonging to a dropped activity lost its title and its WBS code — so the
+ *  whole catalogue is read, page by page, as the service paginates it. */
+const ACTIVITY_PAGE_SIZE = 200;
+const ACTIVITY_PAGE_LIMIT = 50;
+
+async function fetchAllActivities(client, base) {
+  const items = [];
+  let page = 1;
+  let totalPages = 1;
+  while (page <= totalPages && page <= ACTIVITY_PAGE_LIMIT) {
+    const payload = await client.request(`${base}/activities?status=active&page=${page}&pageSize=${ACTIVITY_PAGE_SIZE}`);
+    items.push(...(payload.items ?? []));
+    totalPages = Number(payload.totalPages) || 1;
+    page += 1;
+  }
+  return { items };
 }
 
 export function createApiFinancialItemsAdapter(context, client) {
   const base = financeBase(context);
   let resourceCache = [];
   async function getWorkspace() {
-    const [resourcePayload, linePayload, activityPayload, unitPayload] = await Promise.all([
+    const asOfDate = getTehranTodayIso();
+    const [resourcePayload, linePayload, activityPayload, unitPayload, currentPayload] = await Promise.all([
       client.request(`${base}/resources`),
       client.request(`${base}/estimate-lines`),
-      client.request(`${base}/activities?status=active&page=1&pageSize=200`),
+      fetchAllActivities(client, base),
       client.request(`${base}/unit-registry`),
+      // The same endpoint and the same as-of date the قیمت روز page reads, so the
+      // two pages cannot disagree about what today's price is. The selection rule
+      // stays where it already lives; nothing here re-implements it.
+      client.request(`${base}/prices/current?asOf=${encodeURIComponent(asOfDate)}`),
     ]);
     const resources = resourcePayload.map(mapResource);
     resourceCache = resources;
@@ -57,9 +105,13 @@ export function createApiFinancialItemsAdapter(context, client) {
       taskExternalId: item.taskExternalId,
       title: item.title,
       wbsCode: item.wbsCode,
+      mppTaskCostIrr: item.mppTaskCostIrr ?? null,
       status: item.status,
     }));
-    const estimateLines = linePayload.map((line) => mapLine(line, resources, activities));
+    const currentPrices = new Map((currentPayload ?? [])
+      .filter((item) => item.currentPriceIrr !== null && item.currentPriceIrr !== undefined)
+      .map((item) => [item.resourceId, item.currentPriceIrr]));
+    const estimateLines = linePayload.map((line) => mapLine(line, resources, activities, currentPrices));
     const unitRegistry = (unitPayload.items ?? []).filter((item) => item.active).map((item) => ({
       code: item.code,
       label: item.labelFa,

@@ -15,7 +15,7 @@ class ProgressTests(unittest.TestCase):
   base={"plannedQuantity":"20","actualQuantity":None,"assignmentWorkCompletePercent":"25","task":{"taskProgressPercent":"40"},"manualOverride":None}
   self.assertEqual((Decimal("5"),"assignment_work_percent"),consumed_quantity(base))
   self.assertEqual((Decimal("7"),"assignment_actual"),consumed_quantity({**base,"actualQuantity":"7"}))
-  self.assertEqual((Decimal("6"),"assignment_actual"),consumed_quantity({**base,"actualWork":"6"}))
+  self.assertEqual((Decimal("6"),"assignment_actual"),consumed_quantity({**base,"actualWork":"6","resourceType":"labor"}))
   self.assertEqual((Decimal("8"),"task_progress_fallback"),consumed_quantity({**base,"assignmentWorkCompletePercent":None}))
  def test_resolution_exposes_source_quality_and_warnings_without_inventing_quantity(self):
   base={"plannedQuantity":"20","actualQuantity":None,"assignmentWorkCompletePercent":None,"task":{"taskProgressPercent":"40"},"manualOverride":None}
@@ -100,7 +100,7 @@ class MeasurementTypeTests(unittest.TestCase):
  def test_each_branch_declares_a_known_measurement_type(self):
   cases={"manual_override":({"manualOverride":self.OVERRIDE},"stated_quantity"),
    "assignment_actual":({"actualQuantity":"7"},"measured_quantity"),
-   "assignment_work":({"actualWork":"6"},"work_effort"),
+   "assignment_work":({"actualWork":"6","resourceType":"labor"},"work_effort"),
    "assignment_work_percent":({"assignmentWorkCompletePercent":"25"},"derived_from_percent"),
    "task_progress_fallback":({"task":{"taskProgressPercent":"40"}},"derived_from_percent")}
   for label,(patch,expected) in cases.items():
@@ -109,7 +109,7 @@ class MeasurementTypeTests(unittest.TestCase):
     self.assertEqual(expected,resolved["measurement_type"])
     self.assertIn(resolved["measurement_type"],MEASUREMENT_TYPES)
  def test_work_effort_keeps_its_value_and_loses_its_claim_to_confidence(self):
-  resolved=resolve_progress_quantity({**self.BASE,"actualWork":"6"})
+  resolved=resolve_progress_quantity({**self.BASE,"actualWork":"6","resourceType":"labor"})
   # The number is untouched -- deciding what hours mean in kilograms is a product
   # decision, and this module does not make it.
   self.assertEqual((Decimal("6"),Decimal("6")),(resolved["computed_quantity"],resolved["effective_quantity"]))
@@ -123,7 +123,7 @@ class MeasurementTypeTests(unittest.TestCase):
  def test_reported_work_beside_a_measured_quantity_raises_nothing(self):
   # An equipment assignment priced by the hour reports both. Precedence takes the measured
   # value, so the warning must stay silent; firing here would put one on every such row.
-  resolved=resolve_progress_quantity({**self.BASE,"actualQuantity":"7","actualWork":"6"})
+  resolved=resolve_progress_quantity({**self.BASE,"actualQuantity":"7","actualWork":"6","resourceType":"labor"})
   self.assertEqual(("measured_quantity",[]),(resolved["measurement_type"],resolved["warnings"]))
  def test_the_new_warning_does_not_displace_the_task_fallback_warning(self):
   resolved=resolve_progress_quantity({**self.BASE,"task":{"taskProgressPercent":"40"}})
@@ -131,12 +131,12 @@ class MeasurementTypeTests(unittest.TestCase):
  def test_a_feed_warning_carries_only_a_code_and_a_message(self):
   # The progress feed's per-assignment warnings are bare dicts read by code, and the
   # frontend keys off `code` alone. A third key here would be a shape the UI never reads.
-  resolved=resolve_progress_quantity({**self.BASE,"actualWork":"6"})
+  resolved=resolve_progress_quantity({**self.BASE,"actualWork":"6","resourceType":"labor"})
   self.assertEqual([{"code","message"}],[set(w) for w in resolved["warnings"]])
  def test_consumed_quantity_still_answers_in_two_parts(self):
   # services/progress.py records an override baseline from this tuple; widening it would
   # break that caller for no gain, since it never needed the measurement kind.
-  self.assertEqual((Decimal("6"),"assignment_actual"),consumed_quantity({**self.BASE,"actualWork":"6"}))
+  self.assertEqual((Decimal("6"),"assignment_actual"),consumed_quantity({**self.BASE,"actualWork":"6","resourceType":"labor"}))
 
 class FeedMeasurementTests(unittest.IsolatedAsyncioTestCase):
  """The per-assignment feed carries the same distinction the report does.
@@ -148,7 +148,7 @@ class FeedMeasurementTests(unittest.IsolatedAsyncioTestCase):
   async def get_snapshot(self,organization_id,project_id,snapshot_id):
    return {"snapshot":{"organizationId":organization_id,"projectId":project_id,"progressSnapshotId":snapshot_id},
     "assignments":[{"assignmentExternalId":"AS1","actualQuantity":"7","manualOverride":None,"task":{"activityCode":"A1"}},
-     {"assignmentExternalId":"AS2","actualWork":"6","manualOverride":None,"task":{"activityCode":"A2"}},
+     {"assignmentExternalId":"AS2","actualWork":"6","resourceType":"labor","manualOverride":None,"task":{"activityCode":"A2"}},
      {"assignmentExternalId":"AS3","manualOverride":None,"task":{"activityCode":"A3"}}]}
  def service(self):return ProgressService(Repo(),self.Source(),id_factory=lambda:UUID(int=4),clock=lambda:AT)
  async def test_each_row_says_what_kind_of_number_it_reports(self):

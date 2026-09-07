@@ -101,7 +101,8 @@ class OutputMappingTests(unittest.TestCase):
         # Validated by the real schema, not by hand: that is what the service does, and
         # `ApiModel` forbids extra keys, so `text`/`provider` passed through would fail.
         parsed = ProviderExtractionResult.model_validate(payload)
-        self.assertEqual(1, len(parsed.fields))
+        # Raw text is always FIRST and always present; structured candidates are added
+        # beside it, never instead of it, so a reviewer can always see what was read.
         field = parsed.fields[0]
         self.assertEqual(RAW_TEXT_KEY, field.key)
         self.assertEqual("جمع کل ۶۴٬۰۰۰٬۰۰۰ ریال", field.extracted_value)
@@ -113,8 +114,11 @@ class OutputMappingTests(unittest.TestCase):
                                 "language": "fa", "provider": "whisper"})
         payload = run(VoiceExtractionAdapter(provider).extract(MP3, {}))
         parsed = ProviderExtractionResult.model_validate(payload)
-        self.assertEqual([RAW_TEXT_KEY], [f.key for f in parsed.fields])
+        # A spoken note carries no labelled field and no table, so the parser adds only
+        # its verdict -- there is nothing to structure and nothing is invented.
+        self.assertEqual(RAW_TEXT_KEY, parsed.fields[0].key)
         self.assertEqual("پانصد کیلوگرم میلگرد", parsed.fields[0].extracted_value)
+        self.assertNotIn("items", [f.key for f in parsed.fields])
 
     def test_the_provider_metadata_is_not_smuggled_into_the_contract(self):
         """`language`, `provider`, `model` and the rest have no place in a draft field.
@@ -149,15 +153,21 @@ class OutputMappingTests(unittest.TestCase):
                 self.assertAlmostEqual(expected, parsed.fields[0].confidence, places=4)
 
     def test_no_invoice_value_is_ever_invented(self):
-        """The adapter must not parse a quantity or a price out of the text.
+        """Structured fields come from evidence, never from a judgement about a number.
 
-        Deciding which number is the quantity and which is the total is a judgement, and a
-        wrong one is indistinguishable from a right one once it fills a field.
+        The parser reads labelled fields and a HEADED table. This text has neither: two
+        loose numbers and no column header. Deciding which is a quantity and which a total
+        is exactly the judgement the adapter must not make.
         """
         payload = run(ImageExtractionAdapter(FakeOCR(
             {"text": "مقدار ۵۰۰ کیلوگرم\nجمع کل 425000000 ریال", "confidence": 0.9}
         )).extract(JPEG, {}))
-        self.assertEqual([RAW_TEXT_KEY], [f["key"] for f in payload["fields"]])
+        keys = [f["key"] for f in payload["fields"]]
+        self.assertIn(RAW_TEXT_KEY, keys)
+        self.assertNotIn("items", keys, "no column header, so no item may be built")
+        values = {f["key"]: f["extractedValue"] for f in payload["fields"]}
+        self.assertEqual("TOTAL_UNVERIFIABLE", values["validationStatus"],
+                         "a total with no items to reconcile stays unverified")
 
 
 class FileHandlingTests(unittest.TestCase):
