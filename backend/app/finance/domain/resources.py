@@ -68,6 +68,11 @@ class FinanceResource:
     external_resource_id: str | None
     created_by: UUID
     created_at: datetime
+    #: The MPP Resource UID this item was read from, or None when it was not read from a
+    #: schedule. This is the ONLY field that says so: `external_resource_id` holds a legacy
+    #: value on this database -- MSP task uids written by an old seed -- so anything
+    #: deciding "did this come from the current file?" must read this and not that.
+    source_resource_uid: int | None = None
 
     def with_changes(self, **changes):
         return replace(self, **changes)
@@ -91,6 +96,12 @@ class EstimateLine:
     revisions: tuple = ()
     activity_title: str | None = None
     wbs_code: str | None = None
+    #: The MPP Assignment and Task this line was read from, or None when it was not read
+    #: from a schedule. `assignment_external_id` is not these: it is free text that merely
+    #: happens to hold the same digits today, and a reader deciding "is this line part of
+    #: the current schedule?" must not depend on a coincidence.
+    source_assignment_uid: int | None = None
+    source_task_uid: int | None = None
 
     def with_revised_quantity(self, quantity: Decimal | None):
         return replace(self, revised_quantity=quantity)

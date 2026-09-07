@@ -96,6 +96,113 @@ resolve-شدهٔ نهایی داخل ریشهٔ resolve-شده** باشد: `..`�
 - `parser_engine` از نسخهٔ واقعی mpxj نصب‌شده و JVM در حال اجرا ساخته می‌شود
   (provenance ثبت می‌شود، تایپ نمی‌شود).
 
+
+## ۵-الف. ستون‌های سفارشی Task و جدول `msp_task_metrics` (Migration 0010)
+
+زمان‌بندی این مجموعه روی **هر Task** ستون‌های سفارشی نگه می‌دارد که پایهٔ Rollup مالی‌اند.
+تا 0010 هیچ‌کدام خوانده نمی‌شدند.
+
+**دسته‌بندی بر اساس Entity واقعی MPXJ** (تأییدشده با probe روی فایل):
+هر ۲۲ فیلد سفارشی این فایل **Task-level** است؛ روی Resource و Assignment هیچ فیلد سفارشی
+وجود ندارد. پس:
+
+| Entity | مقصد |
+|---|---|
+| Task استاندارد | `msp_tasks` — **بدون هیچ ستون جدید** |
+| Task سفارشی + Cost | **`msp_task_metrics`** (typed، ۲۸ ستون) |
+| raw / نگاشت‌نشده | `msp_tasks.raw_fields_json` |
+| کمیت Resource | `msp_resources.resource_quantity` |
+| کمیت Assignment | `msp_resource_assignments.*_quantity` |
+| Bridge | دست‌نخورده — همان ۳ ستون |
+
+**خواندن با alias، نه با شمارهٔ Number.** برنامه‌ریز ستون را نام‌گذاری کرده
+(«ضریب وزنی ریالی»)؛ اینکه در کدام `NumberN` بنشیند بین فایل‌ها پایدار نیست. نگاشت در
+`TASK_METRIC_ALIASES` است و ستون‌های جدول به **معنا** نام دارند.
+
+**نگاشت اصلی:** آحجام هرآیتم→`item_quantity` · ضریب وزنی ریالی/زمانی/مبنا→
+`weight_rial/weight_time/weight_base` · پیشرفت واقعی→`actual_progress` · درصد پیشرفت
+واقعی→`actual_progress_percent` · پیشرفت فیزیکی/برنامه‌ای→`physical_progress`/
+`planned_progress` · احجام کاری/اولیه/انجام‌شده→`work_volume`/`initial_volume`/
+`done_volume` · WF زمانی/ریالی/فیزیکی→`wf_*` · Cost→`task_cost`/`task_actual_cost`/
+`task_fixed_cost` · تاریخ‌های جلالی→`jalali_start`/`jalali_finish`.
+
+**اثر روی محاسبات مالی (تأییدشده روی داده واقعی):**
+1. `taskProgressPercent` حالا **درصد پیشرفت واقعیِ خودِ برنامه‌ریز** را ترجیح می‌دهد؛
+   صفر همچنان «سکوت» است و به عدد محاسباتی غیرصفر راه می‌دهد (همان قاعدهٔ پیشرفت فیزیکی).
+2. feed سطح-Task حالا `plannedQuantity` را از **آحجام هرآیتم** می‌گیرد. پیش از این همیشه
+   NULL بود و مسیر محاسباتی `plannedQuantity × taskProgressPercent` اصلاً اجرا نمی‌شد.
+   واحد عمداً NULL می‌ماند چون فایل برای این ستون واحدی نمی‌گوید.
+3. بلوک `metrics` روی هر ردیف feed، وزن‌ها/پیشرفت‌ها/Cost را در اختیار Finance می‌گذارد
+   **بدون Duplicate**؛ Finance مالک این داده نیست و فقط می‌خواند.
+
+**snapshot بدون metric** (وارداتِ پیش از 0010) `metrics: null` می‌گیرد — «چیزی نگفته» با
+«صفر» یکی نیست.
+
+**قدم عملیاتی باقی‌مانده:** برای اینکه *گزارش* روی import جدید ساخته شود، باید یک
+`progress_snapshot_refs` به آن snapshot اشاره کند. این تصمیم داده/دوره است و منطق
+نسبت‌دهی خودکارِ دوره در repo وجود ندارد — اختراع نشد.
+
+
+## ۵-ب. استقلال Finance از MSP — نسخهٔ ۲۰۲۶-۰۹-۰۵ (Migration 0011)
+
+**قاعدهٔ معماری:** Finance برای خواندن مقادیر MPP به هیچ‌یک از `msp_tasks`، `msp_snapshots`،
+`msp_resource_assignments`، `msp_task_metrics`، `progress_snapshot_refs→msp_*` یا
+`finance_task_resource_map` **وابسته نیست**. یک خواننده (`MpxjMppReader`)، یک مسیر
+(`MPP_IMPORT_ROOT`)، و هر مصرف‌کننده با ذخیره‌سازی خودش:
+
+```
+MPP → MPP_IMPORT_ROOT → MpxjMppReader → فیلدهای نرمال
+        ├─ MSP/Core : MppImportService → msp_*
+        └─ Finance  : FinanceMppSyncService → finance_mpp_source_versions + finance_mpp_rows
+                      └─ FinanceRowsProgressProvider → محاسبات و گزارش
+        Bridge (finance_task_resource_map): اختیاری، فقط وقتی هر دو طرف باشند؛ منبع داده نیست.
+```
+
+**ذخیره‌سازی متعلق به Finance (0011).**
+- `finance_mpp_source_versions`: یک ردیف به ازای هر **محتوای متمایز فایل** (SHA-256). همان
+  بایت‌ها = همان نسخه (sync بدون نوشتن)؛ بایت جدید = نسخهٔ جدید؛ تاریخچه می‌ماند. مسیر فایل ذخیره
+  نمی‌شود (از ENV می‌آید).
+- `finance_mpp_rows`: ردیف‌های موردنیاز Finance با **شناسه‌های خودِ MPP**
+  (`source_task_uid` / `source_assignment_uid` / `source_resource_uid`)؛ نام تسک، WBS، نام
+  منبع، `quantity` (قابل NULL)، `quantity_unit`، ضرایب وزنی، معیارهای پیشرفت، Cost. هیچ
+  `msp_tasks.id`، `snapshot_id` یا شناسهٔ Bridge در آن نیست.
+- `msp_task_metrics` **حذف شد** (نویسنده داشت، خوانندهٔ MSP نداشت؛ فقط برای اتصال نادرست
+  Finance↔Core ساخته شده بود). Downgrade آن را بازمی‌سازد.
+
+**یک قاعدهٔ Quantity برای Finance** (`coreint/finance_quantity.py`):
+Quantity فقط وقتی وجود دارد که برنامه‌ریز ستونی را با نام مصوب نام‌گذاری کرده باشد
+(`quantity` / «مقدار» / «مقدار مالی») — تطبیق با **نام**، نه شمارهٔ `NumberN`. فایل فعلی
+۲۲ ستون سفارشی دارد و **هیچ‌کدام مصوب نیست** → `quantity = NULL` در هر ۷۲۷ ردیف. Work،
+Duration، Cost، درصدها، «آحجام هرآیتم» و مقدار Material خودِ MPXJ **Quantity نیستند**.
+همین قاعده هم در ذخیره‌سازی و هم در feed اعمال می‌شود تا دو جدول دربارهٔ یک عدد اختلاف نکنند
+(اختلاف قبلی همان چیزی بود که ۸۴ میلیارد ریال «ارزش اجراشده» ساختگی تولید کرد).
+
+**مسیر خواندن گزارش** (`devhost._progress_provider(finance, core)`):
+۱) `FinanceRowsProgressProvider` (روی `finance_mpp_rows`، شناسه = UUID نسخهٔ Finance،
+`hostSnapshotId = null`) وقتی `MPP_IMPORT_ROOT` تنظیم باشد؛ ۲) Core فقط اگر
+`FINANCE_CORE_PROGRESS=on` (برای snapshotهای تاریخی)؛ ۳) seed. `MppFileProgressProvider`
+موتور sync است نه مسیر خواندن.
+
+**Sync صریح:** `POST /api/projects/{id}/finance/mpp-sync` با مجوز `finance.edit` +
+`periodic_tick()` روی `finance_project_settings` (نه `projects` میزبان). Idempotent با sha؛
+یک تراکنش؛ شکست = هیچ نسخه‌ای باقی نمی‌ماند.
+
+**Reference با دو هویت:** `progress_snapshot_refs` یا با `host_snapshot_id` (Core) نام‌گذاری
+می‌شود یا با `progress_snapshot_id` (UUID نسخهٔ Finance؛ ایندکس یکتا موجود است).
+
+**معنای گزارش وقتی پیشرفت نامعلوم است (تصمیم ۲۰۲۶-۰۹-۰۵):** هر خط بدون اندازه‌گیری
+(unmapped یا missing) پنج متریک وابسته به مقدار اجراشده را **NULL** می‌کند و در
+`incompleteMetricKeys` می‌نویسد؛ `calculationStatus = incomplete`؛ خط حذف نمی‌شود؛
+`initialEstimateIrr` و `actualCostIrr` همچنان محاسبه می‌شوند. صفرِ اندازه‌گیری‌شده همچنان عدد
+است. Work فقط برای `labor`/`equipment` می‌تواند Quantity باشد، هرگز برای Material.
+
+**یافتهٔ داده (بدون تغییر داده):** ۱۲۰ منبع/خط مالی seed‌شده، متعلق به «Project1» (ساختمان
+تراس، snapshot ۳۸/۴۰) هستند و فایلی که با نام `terrace.mpp` استیج شده، پروژهٔ **پل** است:
+۱۲۰/۱۲۰ شناسه در snapshot ۳۸، ۳/۱۲۰ در snapshot ۴۵ (تصادفی)، ۰/۱۲۰ تطبیق دوعاملی
+(assignment uid + WBS). شناسه‌های estimate با trigger `finance_guard_estimate_original`
+**تغییرناپذیرند**؛ نگاشت قطعی وجود ندارد و اختراع نشد. تصمیم عملیاتی باز: استیج‌کردن
+زمان‌بندی خودِ ساختمان یا بازتولید seed مالی از `finance_mpp_rows` فایل موردنظر.
+
 ## ۶. جدول `finance_task_resource_map` (Migration 0009)
 
 دقیقاً سه ستون: `id uuid PK`، `task_id bigint NOT NULL`، `resource_id uuid NOT NULL`؛

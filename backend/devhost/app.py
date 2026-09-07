@@ -49,6 +49,11 @@ from app.finance.services.resources import FinanceResourcesService
 from app.finance.services.settings import FinanceSettingsService
 
 from coreint.activities import CoreProjectActivityProvider
+from coreint.finance_activities import FinanceRowsActivityProvider
+from coreint.finance_mpp_mapping import FinanceMppMappingService
+from coreint.finance_mpp_sync import FinanceMppSyncService
+from coreint.finance_progress import FinanceRowsProgressProvider
+from coreint.mpp_reader import MpxjMppReader
 from coreint.progress import CoreProgressSnapshotProvider
 from coreint.security import (CoreAuthContextAssembler, CoreRbacPermissionAuthorizer,
                               CoreScopeAuthorizer)
@@ -182,6 +187,74 @@ def core_identity(default_user, organization_id, project_id):
     return identity
 
 
+class FirstAvailableProgressProvider:
+    """Ask each source in turn; the first that has the snapshot answers.
+
+    Composition, not dependency. The FILE is asked first because it is the source of
+    truth for what the schedule says now. Core is asked second and only if the host
+    wired it, so a report issued months ago against a snapshot whose file has since been
+    replaced still resolves. A Finance-only deployment has one source in this list and
+    behaves exactly as if this class were not here.
+    """
+
+    def __init__(self, sources):
+        self._sources = [source for source in sources if source is not None]
+
+    async def current_snapshot(self, organization_id, project_id, as_of=None):
+        for source in self._sources:
+            try:
+                found = await source.current_snapshot(organization_id, project_id, as_of)
+            except Exception:                                  # noqa: BLE001
+                # A source that cannot answer (no file staged, Core unreachable) must not
+                # stop the next one; the LAST source's failure is still raised below.
+                continue
+            if found is not None:
+                return found
+        return None
+
+    async def get_snapshot(self, organization_id, project_id, snapshot_id):
+        for source in self._sources:
+            try:
+                found = await source.get_snapshot(organization_id, project_id, snapshot_id)
+            except Exception:                                  # noqa: BLE001
+                continue
+            if found is not None:
+                return found
+        return None
+
+
+def _progress_provider(finance=None, core=None):
+    """Which adapter answers "how far along is this project?".
+
+    The order encodes the architecture rather than a preference:
+
+    1. FINANCE'S OWN ROWS, whenever a schedule root is configured. `finance_mpp_sync` has
+       read the file into `finance_mpp_source_versions` / `finance_mpp_rows`, and a report
+       reads those back -- persisted, reproducible, and needing no MSP table and no JVM
+       at request time. The file provider is the sync engine, not the read path.
+    2. Core's MSP tables, when the host asks for them (`FINANCE_CORE_PROGRESS`). Still the
+       right answer for a snapshot pinned historically whose file is long gone.
+    3. The fixtures, so a host with neither still starts and says so.
+
+    `MPP_IMPORT_ROOT` is the one switch for the MPP feature on both sides: it is what the
+    sync reads from, and its presence is what turns the Finance-owned read path on.
+    """
+    root = mpp_import_root()
+    rows_source = (FinanceRowsProgressProvider(finance, activity_code_fields=ACTIVITY_CODE_FIELDS)
+                   if root and finance is not None else None)
+    core_source = (CoreProgressSnapshotProvider(core, activity_code_fields=ACTIVITY_CODE_FIELDS)
+                   if core is not None and core_progress_enabled() else None)
+    configured = [source for source in (rows_source, core_source) if source is not None]
+    if len(configured) == 1:
+        # One source needs no composition, and wrapping it would only hide which adapter
+        # a host actually installed from anything inspecting the wiring.
+        return configured[0]
+    if configured:
+        return FirstAvailableProgressProvider(configured)
+    return SeededProgressSnapshotProvider(seed.ORGANIZATION_ID, seed.PROJECT_ID,
+                                          seed.PROGRESS_SNAPSHOTS, seed.IMPORTER_ID)
+
+
 def wire(application: FastAPI, connection, storage_root: Path, core=None) -> None:
     """Populate application.state exactly as INTEGRATION_GUIDE_FA.md requires.
 
@@ -217,13 +290,15 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
         #
         # Both adapters are given ACTIVITY_CODE_FIELDS from one constant rather than two
         # literals: the two must agree, and two literals are how they stop agreeing.
-        progress_provider = (
-            CoreProgressSnapshotProvider(core, activity_code_fields=ACTIVITY_CODE_FIELDS)
-            if core_progress_enabled()
-            else SeededProgressSnapshotProvider(seed.ORGANIZATION_ID, seed.PROJECT_ID,
-                                                seed.PROGRESS_SNAPSHOTS, seed.IMPORTER_ID))
-        activity_provider = CoreProjectActivityProvider(
-            core, activity_code_fields=ACTIVITY_CODE_FIELDS)
+        progress_provider = _progress_provider(connection, core)
+        # The activity catalogue follows the progress source. When Finance reads its own
+        # rows, the stages come from those same rows -- otherwise `by_wbs` would be the
+        # one report still needing msp_tasks, and a Finance-only deployment could compute
+        # every figure except the one broken down by stage.
+        activity_provider = (FinanceRowsActivityProvider(connection)
+                             if mpp_import_root()
+                             else CoreProjectActivityProvider(
+                                 core, activity_code_fields=ACTIVITY_CODE_FIELDS))
 
     storage = LocalFileStorage(storage_root)
 
@@ -313,16 +388,26 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
             import psycopg as _psycopg
             from psycopg.rows import dict_row as _dict_row
             from coreint.mpp_import import MppImportService
-            from coreint.mpp_reader import MpxjMppReader
 
             def _mpp_connection():
                 return _psycopg.AsyncConnection.connect(
                     dsn, autocommit=True, row_factory=_dict_row)
 
+            reader = MpxjMppReader(java_home=mpp_java_home())
             application.state.mpp_import_service = MppImportService(
-                _mpp_connection, MpxjMppReader(java_home=mpp_java_home()),
+                _mpp_connection, reader,
                 import_root=root, max_size_mb=mpp_max_file_size_mb())
             print("mpp import CONFIGURED: root is set; POST /api/projects/{id}/mpp-imports")
+            # The Finance half of the same file, into Finance's own tables. Same reader,
+            # same root, its own persistence: a Finance-only host runs this alone.
+            application.state.finance_mpp_sync_service = FinanceMppSyncService(
+                _mpp_connection, reader,
+                import_root=root, max_size_mb=mpp_max_file_size_mb())
+            print("finance mpp sync CONFIGURED; POST /api/projects/{id}/finance/mpp-sync")
+            # Turning those rows into financial records, and the one decision the file
+            # cannot make: whether a WORK resource is labour or equipment.
+            application.state.finance_mpp_mapping_service = FinanceMppMappingService(
+                _mpp_connection)
 
             if mpp_import_enabled():
                 interval = mpp_import_interval_minutes() * 60
@@ -339,6 +424,13 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
                                        for o in outcomes])
                         except Exception as error:  # noqa: BLE001 -- the loop must survive
                             print("mpp periodic import failed:", error)
+                        try:
+                            synced = await application.state.finance_mpp_sync_service.periodic_tick()
+                            if synced:
+                                print("finance mpp periodic sync:",
+                                      [(o.get("projectId"), o.get("status")) for o in synced])
+                        except Exception as error:  # noqa: BLE001 -- the loop must survive
+                            print("finance mpp periodic sync failed:", error)
 
                 periodic = asyncio.create_task(_periodic())
                 print(f"mpp periodic import ENABLED every {interval // 60} minutes")
@@ -449,6 +541,105 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
             return JSONResponse(status_code=_IMPORT_STATUS.get(refused.code, 422),
                                 content={"error": {"code": refused.code,
                                                    "message": str(refused)}})
+
+    @application.post("/api/projects/{projectId}/finance/mpp-sync", status_code=201)
+    async def run_finance_mpp_sync(projectId: str, request: Request):
+        """Read a schedule file into Finance's own tables. Idempotent.
+
+        Finance's write permission, not MSP's: this touches only Finance-owned tables and
+        must work on a host with no MSP module at all.
+
+        The body may name a `fileName` INSIDE the configured root -- an operator stages a
+        schedule under whatever name it arrived with, and the project it belongs to is a
+        separate fact. Absent, the project's own `<projectId>.mpp` is read. Either way the
+        path gate resolves the name against MPP_IMPORT_ROOT and refuses anything that
+        escapes it, so the body chooses a file, never a directory.
+        """
+        from fastapi import HTTPException
+        from fastapi.responses import JSONResponse
+        from coreint.finance_mpp_sync import FinanceMppSyncRefused
+        context = await _mpp_guard(request, projectId, "finance.edit")
+        service = getattr(request.app.state, "finance_mpp_sync_service", None)
+        if service is None:
+            raise HTTPException(503, "Finance MPP sync is not configured on this host "
+                                     "(set MPP_IMPORT_ROOT)")
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 -- an empty body means "the project's own file"
+            pass
+        if not isinstance(body, dict):
+            body = {}          # a JSON scalar or array is not a request, it is an accident
+        file_name = body.get("fileName") or None
+        refresh = bool(body.get("refresh"))
+        try:
+            return await service.sync(str(context.organization_id), projectId,
+                                      actor_user_id=context.user_id,
+                                      refresh=refresh,
+                                      file_name=str(file_name) if file_name else None)
+        except FinanceMppSyncRefused as refused:
+            return JSONResponse(status_code=_IMPORT_STATUS.get(refused.code, 422),
+                                content={"error": {"code": refused.code,
+                                                   "message": str(refused)}})
+
+    def _mapping_service(request: Request):
+        from fastapi import HTTPException
+        service = getattr(request.app.state, "finance_mpp_mapping_service", None)
+        if service is None:
+            raise HTTPException(503, "Finance MPP mapping is not configured on this host "
+                                     "(set MPP_IMPORT_ROOT)")
+        return service
+
+    @application.get("/api/projects/{projectId}/finance/mpp-work-resources")
+    async def unclassified_work_resources(projectId: str, request: Request):
+        """WORK resources nobody has decided about yet, commonest first.
+
+        MS Project says only "WORK"; Finance separates labour from equipment. Nothing in
+        the file distinguishes them, so this lists what is waiting on a person rather than
+        letting anything guess. `fileUnit` is MS Project's `initials` -- usually the first
+        letter of the name -- reported so a reader can see it is not a unit.
+        """
+        context = await _mpp_guard(request, projectId, "finance.view")
+        return {"items": await _mapping_service(request).list_unclassified(
+            str(context.organization_id), projectId)}
+
+    @application.post("/api/projects/{projectId}/finance/mpp-work-resources/{sourceResourceUid}")
+    async def classify_work_resource(projectId: str, sourceResourceUid: int,
+                                     request: Request):
+        """Record one decision about one WORK resource, then re-run the mapping.
+
+        The decision is stored as the Finance resource itself -- its type beside its
+        source identity -- so re-running the mapping matches it and builds the estimate
+        lines that were waiting on it. Repeating the request changes nothing.
+        """
+        from fastapi.responses import JSONResponse
+        from coreint.finance_mpp_mapping import FinanceMppClassificationRefused
+        context = await _mpp_guard(request, projectId, "finance.edit")
+        service = _mapping_service(request)
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 -- an absent body is a request with no decision
+            pass
+        if not isinstance(body, dict):
+            body = {}
+        try:
+            decision = await service.classify(
+                str(context.organization_id), projectId, sourceResourceUid,
+                body.get("resourceType"), body.get("baseUnit"),
+                actor_user_id=context.user_id)
+        except FinanceMppClassificationRefused as refused:
+            return JSONResponse(status_code=422,
+                                content={"error": {"code": refused.code,
+                                                   "message": str(refused)}})
+        mapped = None
+        if decision["status"] == "classified":
+            version = await service.current_version_id(str(context.organization_id), projectId)
+            if version is not None:
+                mapped = await service.map_source_version(
+                    str(context.organization_id), projectId, version,
+                    actor_user_id=context.user_id)
+        return {"decision": decision, "mapping": mapped}
 
     @application.get("/api/projects/{projectId}/mpp-imports/latest")
     async def latest_mpp_import(projectId: str, request: Request):

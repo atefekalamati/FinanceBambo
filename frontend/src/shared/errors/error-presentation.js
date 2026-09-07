@@ -28,7 +28,32 @@ function normalizeDetail(detail, index) {
   return field ? `${String(field)}: ${message}` : `خطای ${index + 1}: ${message}`;
 }
 
+/* Everything the API throws is an ApiError carrying a status and a code. Anything else
+   reaching here came from OUR code while rendering what the API successfully returned —
+   and telling the reader to "check the network" about a request that returned 200 sends
+   them to look in the wrong place, and offers a retry button that can only fail the same
+   way. Such a fault is named for what it is and is not retryable. */
+function isApiError(error) {
+  return error?.name === "ApiError" || error?.status !== undefined || error?.code !== undefined;
+}
+
+const DISPLAY_FAULT = Object.freeze({
+  title: "نمایش اطلاعات انجام نشد",
+  fallback: "اطلاعات از سرویس دریافت شد اما نمایش آن با خطا روبه‌رو شد. این مشکل با تلاش دوباره برطرف نمی‌شود.",
+  retryable: false,
+});
+
 export function presentApiError(error) {
+  if (error && !isApiError(error)) {
+    return Object.freeze({
+      title: DISPLAY_FAULT.title,
+      message: DISPLAY_FAULT.fallback,
+      retryable: false,
+      code: "CLIENT_RENDER_ERROR",
+      requestId: null,
+      details: [],
+    });
+  }
   const status = Number(error?.status) || 0;
   const code = String(error?.code || "UNKNOWN_ERROR");
   const preset = CODE_PRESENTATION[code] ?? STATUS_PRESENTATION[status] ?? {

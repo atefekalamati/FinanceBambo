@@ -106,12 +106,13 @@ SNAPSHOT_COLUMNS = """
 """
 
 TASKS = """
-    SELECT id, uid, guid, task_id, name, wbs, outline_number, outline_level,
-           start, finish, percent_complete, percent_work_complete,
-           physical_percent_complete, text1
-    FROM msp_tasks
-    WHERE snapshot_id = %(snapshot_id)s
-    ORDER BY outline_number NULLS LAST, id
+    SELECT task.id, task.uid, task.guid, task.task_id, task.name, task.wbs,
+           task.outline_number, task.outline_level, task.start, task.finish,
+           task.percent_complete, task.percent_work_complete,
+           task.physical_percent_complete, task.text1
+    FROM msp_tasks AS task
+    WHERE task.snapshot_id = %(snapshot_id)s
+    ORDER BY task.outline_number NULLS LAST, task.id
 """
 
 
@@ -248,8 +249,17 @@ def task_progress(task):
     gained is not silently reporting a whole project as unstarted. When both are zero the
     answer is zero either way, which is the common case and is unaffected.
     """
+    # The planner's OWN statement wins when the schedule carries one. "درصد پیشرفت واقعی"
+    # is a custom column the planners maintain deliberately, beside the two MS Project
+    # computes; where it exists it is the measured answer and the computed ones only
+    # approximate it. It obeys the same zero-is-silence rule as physical progress: the
+    # column reads 0 on untouched tasks too, so a zero yields to a non-zero computed
+    # figure rather than reporting an advanced schedule as unstarted.
+    stated = task["actual_progress_percent"] if "actual_progress_percent" in task else None
     physical = task["physical_percent_complete"]
     duration = task["percent_complete"]
+    if stated is not None and stated != 0:
+        return stated
     if physical is None:
         return duration
     if physical == 0 and duration is not None and duration != 0:
@@ -257,14 +267,54 @@ def task_progress(task):
     return physical
 
 
+
+#: The custom Task columns the feed carries, feed key -> row key. Named for the meaning
+#: the planner gave the column, never for the `NumberN` slot MS Project happened to use.
+TASK_METRIC_FIELDS = (
+    ("itemQuantity", "item_quantity"),
+    ("weightRial", "weight_rial"),
+    ("weightTime", "weight_time"),
+    ("weightBase", "weight_base"),
+    ("actualProgress", "actual_progress"),
+    ("actualProgressPercent", "actual_progress_percent"),
+    ("physicalProgress", "physical_progress"),
+    ("plannedProgress", "planned_progress"),
+    ("progressVariance", "progress_variance"),
+    ("taskCost", "task_cost"),
+)
+
+
+def task_metrics(task):
+    """The schedule's own per-task figures, or None when the snapshot has none.
+
+    None rather than a dict of nulls: a snapshot imported before these columns were read
+    states nothing at all, and "nothing" and "all zero" are different claims. Values
+    travel as decimal strings for the same reason every other number here does.
+    """
+    if "item_quantity" not in task:
+        return None
+    values = {key: _decimal(task[column]) for key, column in TASK_METRIC_FIELDS}
+    if all(value is None for value in values.values()):
+        return None
+    values["jalaliStart"] = task["jalali_start"] if "jalali_start" in task else None
+    values["jalaliFinish"] = task["jalali_finish"] if "jalali_finish" in task else None
+    return values
+
 def task_row(task, activity_code_fields=ACTIVITY_CODE_FIELDS):
     """One task as a progress-feed row.
 
-    Every resource and quantity field is null, because Core states none of them. See the
-    module docstring: this is the adapter reporting what it has rather than deriving what
-    it does not.
+    Every RESOURCE field is null: a task row names no resource, and inventing one would be
+    the derivation this adapter exists to avoid. The quantity fields are null too unless
+    the schedule states the task's own item quantity, which this convention keeps in a
+    custom column and the file-backed provider supplies.
     """
     progress = task_progress(task)
+    metrics = task_metrics(task)
+    # The task's OWN physical quantity ("آحجام هرآیتم"), when the schedule states one.
+    # No quantity on a task row. A custom planning column ("item quantity") is not a
+    # column the planners approved for pricing, and it does not become one because an
+    # earlier reading called it item_quantity. The only quantity Finance may price is an
+    # approved one, and that arrives on assignment rows through the shared quantity rule.
     return {
         "assignmentExternalId": None,
         "resourceExternalId": None,
@@ -287,6 +337,11 @@ def task_row(task, activity_code_fields=ACTIVITY_CODE_FIELDS):
             "taskProgressPercent": _percent(progress),
             "taskStart": task["start"],
             "taskFinish": task["finish"],
+            # The planners' own columns, present only when the SOURCE of this row
+            # supplies them. The file-backed provider does; this database-backed one
+            # deliberately does not, because Finance must not depend on Core's
+            # `msp_task_metrics` for MPP values -- it reads the file itself instead.
+            "metrics": task_metrics(task),
         },
         "manualOverride": None,
     }
@@ -297,8 +352,16 @@ def _decimal(value):
 
     None stays None. A quantity nobody reported is not a quantity of zero, and this is the
     last place that distinction could be lost before it reaches the report.
+
+    A float goes through `str` first. `Decimal(3538.11)` is the exact binary value --
+    3538.11000000000012732925824820995330810546875 -- and that string would travel into a
+    financial report as if the schedule had stated 41 digits. psycopg hands back `Decimal`
+    for a numeric column, so this is a guard rather than the normal path, but it is the
+    kind of guard whose absence is only noticed in a report nobody can reconcile.
     """
-    return None if value is None else format(Decimal(value), "f")
+    if value is None:
+        return None
+    return format(Decimal(str(value) if isinstance(value, float) else value), "f")
 
 
 def assignment_row(row, activity_code_fields=ACTIVITY_CODE_FIELDS):

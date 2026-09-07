@@ -9,23 +9,34 @@ REFERENCE_COLUMNS = ("id,organization_id,project_id,progress_snapshot_id,source_
 
 
 async def ensure_progress_reference(db, scope, value):
-    """Return the Finance reference for a Core snapshot, creating it only if absent.
+    """Return the Finance reference for a progress snapshot, creating it only if absent.
 
     Idempotent by lookup **and** by constraint. The lookup handles the ordinary repeat; the
     ON CONFLICT handles two requests racing, which is not exotic -- two people opening the
-    report page at once is enough. `ux_progress_snapshot_refs_host_snapshot` is what makes
-    the second one a no-op rather than a duplicate reference, and the row is read back
-    afterwards so both callers get the reference that actually won.
+    report page at once is enough. The row is read back afterwards so both callers get the
+    reference that actually won.
+
+    TWO IDENTITIES, ONE TABLE. A snapshot from MSP/Core is named by `host_snapshot_id`, and
+    `ux_progress_snapshot_refs_host_snapshot` keeps that unique. A snapshot from Finance's
+    own persisted rows has NO host id -- there is no MSP snapshot to refer to -- and is
+    named by `progress_snapshot_id`, the Finance source-version UUID, which the table's
+    (organization_id, project_id, progress_snapshot_id) key keeps unique. The branch below
+    is that distinction and nothing else: which column is the identity.
 
     The table rejects UPDATE by trigger, so there is deliberately no upsert-and-modify path:
     an existing reference is returned untouched. That is the point of a pinned reference --
     if it could change, nothing pinned to it would be reproducible.
     """
+    hosted = value.host_snapshot_id is not None
+    where = ("host_snapshot_id=%s" if hosted else "progress_snapshot_id=%s")
+    key = value.host_snapshot_id if hosted else value.progress_snapshot_id
+    conflict = ("ON CONFLICT (organization_id,project_id,host_snapshot_id) "
+                "WHERE host_snapshot_id IS NOT NULL DO NOTHING" if hosted else
+                "ON CONFLICT (organization_id,project_id,progress_snapshot_id) DO NOTHING")
+    lookup = ("SELECT %s FROM progress_snapshot_refs WHERE organization_id=%%s AND project_id=%%s "
+              "AND %s" % (REFERENCE_COLUMNS, where))
     async with db.cursor(row_factory=dict_row) as cursor:
-        await cursor.execute(
-            "SELECT %s FROM progress_snapshot_refs WHERE organization_id=%%s AND project_id=%%s "
-            "AND host_snapshot_id=%%s" % REFERENCE_COLUMNS,
-            (scope.organization_id, scope.project_id, value.host_snapshot_id))
+        await cursor.execute(lookup, (scope.organization_id, scope.project_id, key))
         existing = await cursor.fetchone()
         if existing is not None:
             return existing
@@ -33,17 +44,12 @@ async def ensure_progress_reference(db, scope, value):
             "INSERT INTO progress_snapshot_refs(id,organization_id,project_id,progress_snapshot_id,"
             "source_file_version_id,source_file_name_safe,reporting_date,snapshot_status,"
             "imported_by,imported_at,source_type,host_snapshot_id,host_file_version_id) "
-            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-            "ON CONFLICT (organization_id,project_id,host_snapshot_id) "
-            "WHERE host_snapshot_id IS NOT NULL DO NOTHING",
+            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) " + conflict,
             (value.id, value.organization_id, value.project_id, value.progress_snapshot_id,
              value.source_file_version_id, value.source_file_name_safe, value.reporting_date,
              value.snapshot_status, value.imported_by, value.imported_at, value.source_type,
              value.host_snapshot_id, value.host_file_version_id))
-        await cursor.execute(
-            "SELECT %s FROM progress_snapshot_refs WHERE organization_id=%%s AND project_id=%%s "
-            "AND host_snapshot_id=%%s" % REFERENCE_COLUMNS,
-            (scope.organization_id, scope.project_id, value.host_snapshot_id))
+        await cursor.execute(lookup, (scope.organization_id, scope.project_id, key))
         return await cursor.fetchone()
 
 

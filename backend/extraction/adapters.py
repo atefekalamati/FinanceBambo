@@ -28,6 +28,7 @@ to invent a number.
 """
 
 import asyncio
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -40,9 +41,28 @@ from pathlib import Path
 #: filled field either way. So nothing is parsed here: the text is handed over whole, a
 #: person reads it, and the invoice is theirs.
 #:
-#: Structured fields are a later, separate piece of work with its own tests. It belongs
-#: after a real Persian invoice has been measured, not before.
+#: Structured fields are now parsed beside it -- deterministically, from the recognised
+#: text and nothing else, by `invoice_parser`. They are ADDED to the raw text, never
+#: instead of it: a reviewer must always be able to see what the recogniser actually read.
+#: A field the text does not support is absent rather than blank, and nothing here creates
+#: or confirms an invoice.
+from .invoice_parser import parse_invoice
+
+LOG = logging.getLogger("extraction.adapters")
+
 RAW_TEXT_KEY = "rawText"
+
+#: Structured keys, in the order a reviewer reads them. The value of `items` is a list of
+#: plain dicts; `ExtractionFieldDto.extracted_value` is `Any`, so no schema change is
+#: needed to carry them.
+STRUCTURED_KEYS = ("invoiceNumber", "invoiceDate", "supplierName", "buyerName",
+                   "items", "totalAmount", "currency", "validationStatus",
+                   "parserWarnings")
+
+#: What the parser's certainty is worth as a confidence number. The recogniser's own
+#: confidence is about characters; this is about the reading of them, and the two are
+#: multiplied so a crisp scan of an ambiguous layout is not reported as certain.
+PARSER_CERTAINTY = {"EXACT": 1.0, "AMBIGUOUS": 0.5, "NOT_FOUND": 0.0}
 
 #: Byte signatures -> extension. The suffix is not cosmetic: PaddleOCR and Whisper both
 #: choose a decoder from it, and a temporary file called `.tmp` is simply refused.
@@ -95,8 +115,62 @@ def _as_contract(result):
     # The column is 0..1 and the schema enforces it. A provider that reported something
     # outside that range is clamped rather than allowed to fail the whole extraction.
     confidence = min(1.0, max(0.0, confidence))
-    return {"fields": [{"key": RAW_TEXT_KEY, "extractedValue": text,
-                        "confidence": confidence, "editedByUser": False}]}
+    fields = [{"key": RAW_TEXT_KEY, "extractedValue": text,
+               "confidence": confidence, "editedByUser": False}]
+    fields.extend(_structured_fields(text, confidence))
+    return {"fields": fields}
+
+
+def _decimal_text(value):
+    """A parsed number as an exact string. Never a float: these are money."""
+    return None if value is None else format(value, "f")
+
+
+def _structured_fields(text, ocr_confidence):
+    """The parser's candidates as contract fields, or nothing when it read nothing.
+
+    A field is emitted only where the parser says EXACT -- an ambiguous reading is carried
+    in `parserWarnings` for the reviewer instead of pre-filling a form with a number the
+    document did not clearly state. Parsing never raises into the extraction: a text this
+    parser cannot handle must still deliver its raw text.
+    """
+    try:
+        parsed = parse_invoice(text)
+    except Exception:                                          # noqa: BLE001
+        LOG.exception("invoice parsing failed; raw text is still delivered")
+        return []
+    emitted = []
+
+    def add(key, value, certainty):
+        if value is None:
+            return
+        emitted.append({"key": key, "extractedValue": value,
+                        "confidence": min(1.0, max(0.0, ocr_confidence
+                                                   * PARSER_CERTAINTY.get(certainty, 0.0))),
+                        "editedByUser": False})
+
+    for key, candidate in (("invoiceNumber", parsed.invoice_number),
+                           ("invoiceDate", parsed.invoice_date),
+                           ("supplierName", parsed.supplier_name),
+                           ("buyerName", parsed.buyer_name),
+                           ("currency", parsed.currency)):
+        if candidate.found:
+            add(key, candidate.value, candidate.certainty)
+    if parsed.total_amount.found:
+        add("totalAmount", _decimal_text(parsed.total_amount.value),
+            parsed.total_amount.certainty)
+    if parsed.items:
+        add("items", [{"name": item.name,
+                       "quantity": _decimal_text(item.quantity),
+                       "unit": item.unit,
+                       "unitPrice": _decimal_text(item.unit_price),
+                       "amount": _decimal_text(item.amount),
+                       "warnings": [dict(warning) for warning in item.warnings]}
+                      for item in parsed.items], "EXACT")
+    add("validationStatus", parsed.validation_status, "EXACT")
+    if parsed.warnings:
+        add("parserWarnings", [dict(warning) for warning in parsed.warnings], "EXACT")
+    return emitted
 
 
 class _TemporaryUpload:

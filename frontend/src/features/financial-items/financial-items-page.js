@@ -15,12 +15,7 @@ import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
-
-const SOURCE_LABELS = Object.freeze({
-  progress_feed: "پیشرفت اجرایی",
-  excel_import: "اکسل",
-  manual_entry: "ورود دستی",
-});
+import { ABSENT, activityBlockStarts, activityLabel, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
   const wrapper = element("div", "form-field");
@@ -603,7 +598,8 @@ function createRevisionDialog(adapter, line, resource, onSaved) {
 function createRevisionHistoryDialog(line, resource) {
   const dialog = createDialog("تاریخچه اصلاحات ردیف برآورد");
   const identity = element("div", "revision-identity");
-  identity.append(element("strong", "", `${line.activityTitle} · ${resource.title}`), element("small", "numeric", `${line.wbsCode} · ${resource.code}`));
+  identity.append(element("strong", "", `${activityLabel(line)} · ${resourceLabel(resource)}`),
+                  element("small", "numeric", `${canonicalWbs(line)} · ${resource?.code ?? ABSENT}`));
   dialog.append(identity);
   if (!line.revisions.length) {
     dialog.append(element("div", "inline-notice", "برای این ردیف هنوز اصلاحی ثبت نشده و آخرین مقدار برآورد با مقدار اولیه برابر است."));
@@ -625,7 +621,9 @@ function createRevisionHistoryDialog(line, resource) {
   return dialog;
 }
 
-function renderResourceTable(resources) {
+function renderResourceTable(resources, withheld = null) {
+  const fragment = document.createDocumentFragment();
+  if (withheld) fragment.append(element("p", "table-note", withheld));
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table items-table");
   table.append(element("caption", "sr-only", "فهرست اقلام مالی"));
@@ -643,26 +641,39 @@ function renderResourceTable(resources) {
       element("td", "", resource.title),
       typeCell,
       element("td", "numeric", formatUnitLabel(resource.baseUnit)),
-      element("td", "", SOURCE_LABELS[resource.source] ?? "منبع تعریف‌نشده"),
+      element("td", "", resourceSourceLabel(resource)),
     );
     body.append(row);
   });
   table.append(head, body);
   wrapper.append(table);
-  return wrapper;
+  fragment.append(wrapper);
+  return fragment;
 }
 
-function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, focusResourceId = "", focusEstimateLineId = "" }) {
+function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "" }) {
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
+  const fragment = document.createDocumentFragment();
+  if (withheld) fragment.append(element("p", "table-note", withheld));
   const wrapper = element("div", "table-scroll");
   const table = element("table", "data-table estimate-lines-table");
   table.append(element("caption", "sr-only", "ریز برآورد پروژه"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  ["ساختار شکست کار / فعالیت", "قلم هزینه", "واحد", "مقدار برآورد اولیه", "آخرین مقدار برآورد", "منبع", "عملیات"].forEach((label) => header.append(element("th", "", label)));
+  // Three money columns, deliberately three. «هزینه MSP فعالیت» is what the
+  // schedule says the activity costs; «قیمت اولیه» is the unit price this line
+  // was estimated at and never changes; «قیمت روز» is the price in force today.
+  // None is computed from another, and an empty one means unknown, not zero.
+  ["ساختار شکست کار / فعالیت", "قلم هزینه", "واحد", "مقدار برآورد اولیه", "آخرین مقدار برآورد",
+   "هزینه MSP فعالیت", "قیمت اولیه", "قیمت روز", "منبع", "عملیات"]
+    .forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
-  lines.forEach((line) => {
+  // Every item of one activity in one block, the blocks in WBS order. The table
+  // is read down the فعالیت column, so an activity whose five items land in five
+  // places cannot be read at all -- and that is what insertion order gave.
+  const opensBlock = activityBlockStarts(lines);
+  lines.forEach((line, index) => {
     const resource = resourceMap.get(line.resourceId);
     const isGeneralCost = resource?.type === "general_cost";
     const original = isGeneralCost ? line.originalAmount : line.originalQuantity;
@@ -676,12 +687,26 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
       row.classList.add("deep-link-target");
       row.tabIndex = -1;
     }
-    const activityCell = document.createElement("td");
-    activityCell.append(element("strong", "", line.activityTitle), element("small", "table-subtext numeric", `${line.wbsCode} · ${line.activityExternalId}`));
+    // The activity column names the activity and the cost item column names the
+    // cost item. Neither ever supplies the other's missing value.
+    const activityCell = element("td", opensBlock[index] ? "" : "activity-cell--continued");
+    if (opensBlock[index]) row.classList.add("estimate-lines-table__block");
+    // The name is in the row either way. On a continuation row it is spoken and
+    // not shown: a reader who has just read it does not need it five more times,
+    // and a screen reader announcing a lone quantity would have lost the subject.
+    const naming = opensBlock[index] ? "" : "sr-only";
+    activityCell.append(element("strong", naming, activityLabel(line)),
+                        element("small", `table-subtext numeric ${naming}`, canonicalWbs(line)));
     const resourceCell = document.createElement("td");
-    resourceCell.append(element("strong", "", resource?.title ?? "—"), element("small", "table-subtext numeric", resource?.code ?? "—"));
+    resourceCell.append(element("strong", "", resourceLabel(resource)), element("small", "table-subtext numeric", resource?.code ?? ABSENT));
     const revisedCell = element("td", `numeric ${changed ? "value-changed" : ""}`, isGeneralCost ? formatTomanFromIrr(revised, { withCurrency: false }) : formatDisplayNumber(revised));
     if (changed) revisedCell.append(element("span", "change-badge", "اصلاح‌شده"));
+    // The schedule's figure belongs to the activity, so it is written once per
+    // block beside the activity it describes. Spoken on every row all the same:
+    // a row read on its own must not be missing the number it belongs under.
+    const scheduleCost = element("td", "numeric");
+    scheduleCost.append(element("span", opensBlock[index] ? "" : "sr-only",
+                                formatTomanFromIrr(scheduleCostOf(line), { withCurrency: false })));
     const actionsCell = element("td", "line-actions");
     const history = element("button", "table-action", "تاریخچه");
     history.type = "button";
@@ -699,14 +724,18 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
       element("td", "numeric", isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit)),
       element("td", "numeric", isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original)),
       revisedCell,
-      element("td", "", SOURCE_LABELS[line.source] ?? "منبع تعریف‌نشده"),
+      scheduleCost,
+      element("td", "numeric", formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false })),
+      element("td", "numeric", formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false })),
+      element("td", "", sourceLabel(line)),
       actionsCell,
     );
     body.append(row);
   });
   table.append(head, body);
   wrapper.append(table);
-  return wrapper;
+  fragment.append(wrapper);
+  return fragment;
 }
 
 /**
@@ -776,7 +805,18 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
     return card;
   }
 
-  function renderContent(workspace) {
+  function renderContent(fullWorkspace) {
+    // Everything below reads the presented workspace, so the table, the counts,
+    // the pickers and the export agree on one set of rows. `fullWorkspace` still
+    // holds the withheld rows; they are hidden here, not removed from anywhere.
+    const visibleResources = selectVisibleResources(fullWorkspace.resources);
+    const visibleLines = selectEstimateRows(fullWorkspace.estimateLines, fullWorkspace.resources);
+    // Sorted once, here, so the table and the export are the same document in
+    // two formats rather than two orderings of one dataset.
+    const orderedLines = sortEstimateRows(visibleLines.rows, fullWorkspace.resources);
+    const workspace = { ...fullWorkspace, resources: visibleResources.rows, estimateLines: orderedLines };
+    const linesWithheld = withheldRowsNotice(visibleLines);
+    const resourcesWithheld = withheldRowsNotice({ hiddenLegacyCount: visibleResources.hiddenLegacyCount });
     const fragment = document.createDocumentFragment();
     const counts = new Map(RESOURCE_TYPES.map((type) => [type.value, 0]));
     workspace.resources.forEach((resource) => counts.set(resource.type, (counts.get(resource.type) ?? 0) + 1));
@@ -844,7 +884,7 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
     resourceHead.append(element("div", "", ""), resourceMeta);
     resourceHead.firstElementChild.append(element("h2", "", "فهرست اقلام پروژه"), element("p", "", "فهرست چهار نوع قلم هزینه و واحد پایه هر قلم"));
     const resourcesContent = element("div", "resources-disclosure__content");
-    resourcesContent.append(renderResourceTable(workspace.resources), stats);
+    resourcesContent.append(renderResourceTable(workspace.resources, resourcesWithheld), stats);
     resourcesSection.append(resourceHead, resourcesContent);
 
     const linesSection = element("section", "items-section");
@@ -855,6 +895,7 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
     linesHead.firstElementChild.append(element("h2", "", "ریز برآورد پروژه"), element("p", "", "هر ردیف، مقدار برآوردشده یک قلم هزینه را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا برآورد، اصلاحات و پیشرفت هر فعالیت مستقل و قابل پیگیری بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت روز و فاکتورهای تأییدشده محاسبه می‌شوند."));
     linesSection.append(linesHead, renderEstimateLineTable(workspace.estimateLines, workspace.resources, {
       canEdit,
+      withheld: linesWithheld,
       focusResourceId,
       focusEstimateLineId,
       onRevise: (line, resource) => {

@@ -6,7 +6,12 @@ from pydantic import Field,field_serializer,field_validator
 from .base import ApiModel
 from .numeric import strict_decimal,strict_optional_decimal
 class ProgressSnapshotResponse(ApiModel):
- organization_id:UUID;project_id:str;progress_snapshot_id:UUID;source_file_name_safe:str;imported_at:datetime;imported_by:UUID;status:Literal["ready","superseded"];reporting_date:date
+ organization_id:UUID;project_id:str;progress_snapshot_id:UUID;source_file_name_safe:str;imported_at:datetime
+ # Optional since the Finance-owned file source: a snapshot read from a schedule file
+ # by a timer has no importer, and inventing a user id to fill a required field would
+ # put a person's name on work nobody did. A Core-ingested reference always has one.
+ imported_by:UUID|None=None
+ status:Literal["ready","superseded"];reporting_date:date
  # Optional since revision 0006. A reference ingested from Core has no Finance-side file
  # identifier to record, and inventing a UUID would look like a Host reference while being
  # nothing of the kind. Rows that predate 0006 still carry theirs.

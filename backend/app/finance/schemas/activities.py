@@ -1,9 +1,10 @@
 """Project activity API DTOs consumed through host/progress adapters."""
 
+from decimal import Decimal
 from typing import Literal
 
 from .base import ApiModel
-from pydantic import Field, field_validator
+from pydantic import Field, field_serializer, field_validator
 
 
 class ActivityCreate(ApiModel):
@@ -24,6 +25,16 @@ class ActivityResponse(ApiModel):
     title: str
     wbs_code: str | None = None
     status: Literal["active", "inactive"] = "active"
+    #: Additive and optional: the schedule's own cost for this task, in rials. It is NOT a
+    #: Finance price and NOT an item cost -- a Finance price lives in `price_versions` and
+    #: is entered by a person. A provider that reads no schedule leaves it None.
+    mpp_task_cost_irr: Decimal | None = None
+
+    @field_serializer("mpp_task_cost_irr")
+    def serialize_cost(self, value: Decimal | None):
+        # As a string, like every other money field: a large rial figure sent as a JSON
+        # number is rounded by the reader before anyone can object.
+        return None if value is None else format(value, "f")
 
 
 class ActivityListResponse(ApiModel):

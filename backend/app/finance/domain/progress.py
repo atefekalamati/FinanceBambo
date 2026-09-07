@@ -64,6 +64,23 @@ PROGRESS_FALLBACK="fallback"
 MEASUREMENT_STATUS={"measured_quantity":PROGRESS_MEASURED,"stated_quantity":PROGRESS_MEASURED,
  "derived_from_percent":PROGRESS_FALLBACK,"work_effort":PROGRESS_FALLBACK}
 
+#: Resource kinds whose own unit IS time, so reported hours are a quantity in that unit.
+TIME_BASED_RESOURCE_TYPES = ("labor", "equipment")
+
+
+def _work_is_a_quantity(a):
+    """Whether reported work may stand in as this resource's executed quantity.
+
+    Only for a resource the source EXPLICITLY calls labour or equipment. For a material,
+    hours are not kilograms and never were: multiplying 48 crane-hours by the price of a
+    kilogram of rebar produces a number that looks like money and means nothing. An
+    unclassified resource is not treated as time-based either -- "we do not know" is not
+    the same claim as "it is measured in hours", and guessing here is exactly how the
+    wrong unit reaches a report.
+    """
+    return a.get("resourceType") in TIME_BASED_RESOURCE_TYPES
+
+
 def resolve_progress_quantity(a):
  warnings=[]
  o=a.get("manualOverride")
@@ -75,12 +92,14 @@ def resolve_progress_quantity(a):
  if a.get("actualQuantity") is not None:
   value=Decimal(a["actualQuantity"])
   return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_actual","measurement_type":"measured_quantity","progress_status":MEASUREMENT_STATUS["measured_quantity"],"quality":Decimal("1"),"warnings":warnings}
- if a.get("actualWork") is not None:
-  # Effort, taken as a quantity without any unit reconciliation. See the module docstring:
-  # the value is unchanged, the metadata around it is not.
+ if a.get("actualWork") is not None and _work_is_a_quantity(a):
+  # Hours, for a resource whose OWN unit is time. Labour and equipment are billed by the
+  # hour, so "48 hours executed" is a quantity in that resource's unit and the arithmetic
+  # downstream is sound. The quality stays below a measured quantity because the source
+  # still never restated it as one.
   value=Decimal(a["actualWork"])
   return {"computed_quantity":value,"effective_quantity":value,"source_method":"assignment_actual","measurement_type":"work_effort","progress_status":MEASUREMENT_STATUS["work_effort"],"quality":WORK_AS_QUANTITY_QUALITY,
-   "warnings":[{"code":"PROGRESS_WORK_NOT_QUANTITY","message":"Executed quantity was taken from reported work effort; the source stated no measured quantity in the resource's unit."}]}
+   "warnings":[{"code":"PROGRESS_WORK_NOT_QUANTITY","message":"Executed quantity was taken from reported work effort on a time-based resource; the source stated no measured quantity."}]}
  planned=a.get("plannedQuantity")
  if planned is not None and a.get("assignmentWorkCompletePercent") is not None:
   value=Decimal(planned)*Decimal(a["assignmentWorkCompletePercent"])/100
@@ -176,13 +195,26 @@ class ProgressPairing:
  previous versions built plain dicts.
  """
 
- __slots__=("_by_assignment","_by_activity")
+ __slots__=("_by_assignment","_by_activity","_activity_of","_corroborate")
 
- def __init__(self,rows,keys):
-  self._by_assignment={};self._by_activity={}
+ def __init__(self,rows,keys,corroborate=False):
+  """`corroborate` demands that a match agree on BOTH identifiers, when both are stated.
+
+  Off by default, which is the rule every existing caller relies on: the assignment id is
+  the more specific claim and wins on its own. It is turned on for a feed whose rows come
+  from a Finance source version the estimate lines were never recorded against -- see
+  `calculate_live_report`. There, an assignment id is a bare integer from someone else's
+  schedule, and bare integers collide: measured on the real data, five estimate lines
+  matched a bridge assignment by id alone and twenty-two more matched by WBS alone, while
+  requiring BOTH to agree left zero. Those twenty-seven were pairing "rebar for the piers"
+  with "wall plastering" on the strength of a shared number.
+  """
+  self._by_assignment={};self._by_activity={};self._activity_of={};self._corroborate=corroborate
   for row in rows:
    assignment_external_id,activity_external_id=keys(row)
-   if assignment_external_id:self._by_assignment[assignment_external_id]=row
+   if assignment_external_id:
+    self._by_assignment[assignment_external_id]=row
+    self._activity_of[assignment_external_id]=activity_external_id
    if activity_external_id:self._by_activity[activity_external_id]=row
 
  def match(self,assignment_external_id,activity_external_id):
@@ -194,14 +226,52 @@ class ProgressPairing:
   lookup of whatever the line claimed.
   """
   paired=self._by_assignment.get(assignment_external_id)
-  if paired is not None:return paired
+  if paired is not None and not self._contradicted(assignment_external_id,activity_external_id):
+   return paired
+  if self._corroborate:
+   # A lone activity match is the weaker claim of the two, and in corroboration mode a
+   # claim that could not survive the stronger test is not promoted to the answer.
+   return None
   return self._by_activity.get(activity_external_id)
+
+ def _contradicted(self,assignment_external_id,activity_external_id):
+  """Whether the activity codes disagree about a pair the assignment ids matched.
+
+  Only consulted in corroboration mode, and only when BOTH sides state an activity: with
+  nothing to contradict, the assignment id stands on its own exactly as it always has.
+  """
+  if not self._corroborate or not activity_external_id:return False
+  known=self._activity_of.get(assignment_external_id)
+  if not known:return False
+  return str(known).strip()!=str(activity_external_id).strip()
 
 
 #: Keys a host feed header uses for the Core identifiers. Named here so the adapter, the
 #: repository and the tests cannot disagree about the spelling.
 HOST_SNAPSHOT_KEY = "hostSnapshotId"
 HOST_FILE_VERSION_KEY = "hostFileVersionId"
+
+def finance_version_id(metadata):
+    """The Finance source-version UUID this header names, or None.
+
+    A header describes one of Finance's OWN persisted source versions when it names no
+    Core snapshot and carries a `sourceFileVersionId` equal to its `progressSnapshotId`:
+    the version is its own identity. Deliberately not keyed on `sourceType` -- that field
+    names the KIND of file (a Project file either way) and its vocabulary is closed by the
+    API schema, so overloading it would have meant either a schema change or a lie.
+    """
+    if metadata.get(HOST_SNAPSHOT_KEY) is not None:
+        return None
+    try:
+        version = UUID(str(metadata.get("sourceFileVersionId")))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    try:
+        if UUID(str(metadata.get("progressSnapshotId"))) != version:
+            return None
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return version
 
 
 class HostReferenceInvalid(ValueError):
@@ -316,10 +386,15 @@ def reference_from_header(metadata, scope, new_id, now, fallback_reporting_date=
             or metadata.get("projectId") != scope.project_id):
         return None
     host_snapshot_id, host_file_version_id = host_reference(metadata)
-    # Without a Core identifier there is nothing to be idempotent about, and a reference
-    # that cannot name what it refers to is worse than no reference at all.
+    version_id = None
     if host_snapshot_id is None:
-        return None
+        # Without a Core identifier there is nothing to be idempotent about -- unless the
+        # header is one of Finance's own source versions, whose identity is the version
+        # UUID it carries. Any other header naming no identifier is nothing to pin to: a
+        # reference that cannot name what it refers to is worse than no reference at all.
+        version_id = finance_version_id(metadata)
+        if version_id is None:
+            return None
     reporting_date = reference_reporting_date(metadata.get("reportingDate"),
                                               fallback_reporting_date)
     if reporting_date is None:
@@ -334,14 +409,22 @@ def reference_from_header(metadata, scope, new_id, now, fallback_reporting_date=
         return None
     return ProgressReference(
         id=new_id(), organization_id=scope.organization_id, project_id=scope.project_id,
-        progress_snapshot_id=new_id(), host_snapshot_id=host_snapshot_id,
+        # A Core snapshot gets a Finance-minted opaque id; a Finance source version IS its
+        # own id, and the provider answers to exactly that value.
+        progress_snapshot_id=version_id or new_id(),
+        host_snapshot_id=host_snapshot_id,
         host_file_version_id=host_file_version_id,
+        source_file_version_id=version_id,
         source_file_name_safe=metadata.get("sourceFileNameSafe") or "",
         reporting_date=reporting_date,
         snapshot_status=metadata.get("status") or "ready",
         imported_by=imported_by,
         imported_at=metadata.get("importedAt") or now(),
-        source_type=metadata.get("sourceType"))
+        # The column's vocabulary names the KIND of source file; a Finance version of a
+        # Microsoft Project file is still a Microsoft Project file. Provenance is carried by
+        # host_snapshot_id IS NULL and source_file_version_id, not by a new source_type.
+        source_type=("microsoft_project" if version_id is not None
+                     else metadata.get("sourceType")))
 
 
 def _override_payload(row,snapshot_id):

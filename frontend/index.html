@@ -1,5 +1,10 @@
 <!doctype html>
-<html lang="fa" dir="rtl" data-theme="dark">
+<!-- The page ground is painted inline so the first frame is already dark.
+     The stylesheet sets it too, from --color-surface-page, but a link element
+     is fetched before it applies: until then the browser paints its own white
+     canvas, which is the flash this removes. The literal matches the dark
+     token in tokens.css; change both together. -->
+<html lang="fa" dir="rtl" data-theme="dark" style="background:#0a1120">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,7 +13,7 @@
   <link rel="icon" type="image/svg+xml" href="./public/assets/images/Logo Sign.svg">
   <link rel="stylesheet" href="./src/shared/styles/index.css">
 </head>
-<body data-finance-runtime="standalone">
+<body data-finance-runtime="standalone" style="background:#0a1120">
   <div id="finance-app" class="app-shell">
     <section class="app-workspace">
       <div id="finance-live-region" class="sr-only" role="status" aria-live="polite"></div>

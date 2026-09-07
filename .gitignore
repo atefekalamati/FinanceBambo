@@ -32,3 +32,7 @@ Thumbs.db
 # A backup is the whole finance dataset in one file. It never belongs in version control,
 # and the rehearsal that produces it is meant to be repeatable, not archived.
 backend/.release-validation/
+
+# Local database backups and dumps (never committed)
+backups/
+*.dump

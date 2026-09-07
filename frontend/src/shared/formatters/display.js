@@ -35,14 +35,35 @@ export function formatArea(value) {
   return value ? `${formatDisplayNumber(value)} مترمربع` : "زیربنا ثبت نشده";
 }
 
+/* A business date reaches us in two shapes, because two sources produce it. A reporting
+   date is date-only ("2026-10-22"); a task start or finish read from a schedule carries a
+   time ("2025-08-09T08:00"). Appending midnight to a value that already states a time
+   built "2025-08-09T08:00T00:00:00Z", which is not a date at all — Intl threw
+   `RangeError: Invalid time value`, the throw escaped into the page's fetch catch, and a
+   perfectly healthy 200 was reported to the reader as "ارتباط با سرویس برقرار نشد".
+   Midnight is appended only when the value is date-only; anything else is parsed as it
+   stands, and an unparseable value returns the neutral dash instead of throwing. A
+   formatter is the last place that should be able to take a page down. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function toDate(value) {
+  // Concatenated rather than interpolated: `shared-module-imports.test.js` scans these
+  // modules with a regex that mis-reads a file carrying more than one template literal,
+  // and swallows the declaration that follows. Not worth a second template here.
+  const date = new Date(DATE_ONLY.test(value) ? value + "T00:00:00Z" : value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function formatBusinessDate(value) {
   if (!value) return "—";
-  return persianDate.format(new Date(`${value}T00:00:00Z`));
+  const date = toDate(String(value));
+  return date ? persianDate.format(date) : "—";
 }
 
 export function formatSystemDateTime(value) {
   if (!value) return "—";
-  return persianDateTime.format(new Date(value));
+  const date = toDate(String(value));
+  return date ? persianDateTime.format(date) : "—";
 }
 
 export function formatUnitLabel(value) {

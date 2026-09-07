@@ -67,6 +67,7 @@ test("maps canonical estimate revision history and general cost amount", async (
       if (path.endsWith("/resources")) return [{ id: "resource-1", type: "general_cost", code: "GEN-1", title: "مجوز", baseUnit: null, dimension: null }];
       if (path.endsWith("/estimate-lines")) return [{ id: "line-1", resourceId: "resource-1", activityExternalId: "A-1", assignmentExternalId: null, originalQuantity: null, revisedQuantity: "1200000", originalUnitPriceIrr: "1000000", source: "manual_entry", revision: 2, revisions: [{ id: "revision-1", revision: 2, previousQuantity: "1000000", newQuantity: "1200000", reason: "اصلاح", createdBy: "user-1", createdAt: "2026-08-10T08:00:00Z" }] }];
       if (path.includes("/activities?")) return { items: [{ activityExternalId: "A-1", taskExternalId: "task-1", title: "عملیات", wbsCode: "1", status: "active" }] };
+      if (path.includes("/prices/current?")) return [];
       if (path.endsWith("/unit-registry")) return { items: [] };
       throw new Error(`unexpected path: ${path}`);
     },
@@ -90,6 +91,7 @@ test("sends general cost amount only in canonical money field", async () => {
       if (path.endsWith("/estimate-lines") && !options) return [];
       if (path.endsWith("/estimate-lines") && options?.method === "POST") return {};
       if (path.includes("/activities?")) return { items: [] };
+      if (path.includes("/prices/current?")) return [];
       if (path.endsWith("/unit-registry")) return { items: [] };
       throw new Error(`unexpected path: ${path}`);
     },
@@ -112,6 +114,7 @@ test("uses activity and unit registry APIs and omits client-provided dimension",
       if (path.endsWith("/estimate-lines")) return [];
       if (path.includes("/activities?")) return { items: [{ activityExternalId: "A-2", title: "دیوارچینی", wbsCode: "3.2", status: "active" }] };
       if (path.endsWith("/activities") && options?.method === "POST") return { activityExternalId: "A-3", title: "نازک‌کاری", wbsCode: "4.1", status: "active" };
+      if (path.includes("/prices/current?")) return [];
       if (path.endsWith("/unit-registry")) return { items: [{ code: "kg", labelFa: "کیلوگرم", dimension: "mass", dimensionLabelFa: "جرم", decimalPrecision: 4, active: true }] };
       throw new Error(`unexpected path: ${path}`);
     },
