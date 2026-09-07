@@ -100,25 +100,26 @@
    screen is their size, not their number. */
 .invoice-list-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-sm);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: .3rem;
 }
 
 .invoice-summary-item {
   --summary-tone: var(--color-text-muted);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
+  flex-direction: column;
+  justify-content: center;
+  gap: .1rem;
   min-inline-size: 0;
   min-block-size: 3.25rem;
-  padding: .65rem .75rem;
+  padding: .4rem .3rem;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
   background: rgb(120 145 205 / 5%);
   color: inherit;
   font: inherit;
-  text-align: start;
+  text-align: center;
   cursor: pointer;
   transition: border-color .15s ease, background-color .15s ease;
 }
@@ -656,18 +657,75 @@
 
 }
 
+/* The frozen column costs the scrolled ones whatever it takes. From a tablet
+   down it takes less, and the type comes down with it, so the columns it leaves
+   room for stay readable rather than merely present. */
+@media (max-width: 64rem) {
+  .invoices-table :is(th, td) {
+    padding: .6rem .55rem;
+  }
+
+  .invoices-table th {
+    font-size: .7rem;
+  }
+
+  .invoices-table td {
+    font-size: .78rem;
+  }
+
+  .invoices-table :is(th, td)[data-col="identity"] {
+    inline-size: 10%;
+  }
+
+  .invoices-table [data-col="identity"] .button {
+    padding: .28rem .45rem;
+    font-size: .68rem;
+  }
+}
+
 @media (max-width: 48rem) {
-  /* Four across a narrow screen only works if each stops being a row. The label
-     goes over the number and both centre, which is the shape that survives a
-     62px column at 320. */
+  .invoices-table :is(th, td) {
+    padding: .5rem .45rem;
+  }
+
+  .invoices-table th {
+    font-size: .64rem;
+  }
+
+  .invoices-table td {
+    font-size: .72rem;
+  }
+
+  .invoices-table :is(th, td)[data-col="identity"] {
+    inline-size: 9%;
+  }
+
+  /* Narrower columns need less table to sit in, so the floor comes down with
+     them -- the same content, less of it spent scrolling past. */
+  .invoices-table {
+    min-inline-size: 60rem;
+  }
+
+  .invoices-table[data-columns="6"] {
+    min-inline-size: 50rem;
+  }
+
+  .invoices-table[data-columns="5"] {
+    min-inline-size: 40rem;
+  }
+
+  .invoices-table[data-columns="4"] {
+    min-inline-size: 31rem;
+  }
+
+  .invoices-table[data-columns="3"] {
+    min-inline-size: 23rem;
+  }
+
+  /* Six across a narrow screen is the whole reason the type steps down. */
   .invoice-summary-item {
-    align-items: stretch;
-    flex-direction: column;
-    justify-content: center;
-    gap: .1rem;
     min-block-size: 2.75rem;
-    padding: .4rem .3rem;
-    text-align: center;
+    padding: .35rem .2rem;
   }
 
   .invoice-summary-item__label {
@@ -763,20 +821,34 @@
 }
 
 @media (max-width: 36rem) {
-  .invoice-list-summary {
-    gap: var(--space-xs);
+  .invoices-table :is(th, td) {
+    padding: .45rem .35rem;
+  }
+
+  .invoices-table th {
+    font-size: .6rem;
+  }
+
+  .invoices-table td {
+    font-size: .68rem;
+  }
+
+  .invoices-table [data-col="identity"] .button {
+    padding: .25rem .35rem;
+    font-size: .62rem;
   }
 
   .invoice-summary-item {
-    padding: .35rem .2rem;
+    padding: .3rem .15rem;
   }
 
   .invoice-summary-item__label {
-    font-size: .58rem;
+    font-size: .52rem;
+    line-height: 1.3;
   }
 
   .invoice-summary-item__value {
-    font-size: .8rem;
+    font-size: .74rem;
   }
 
   .invoices-section,
@@ -837,6 +909,30 @@
      tighter floor keeps the words and shortens the scroll. */
   .invoice-lines-table {
     min-inline-size: 40rem;
+  }
+}
+
+/* Under 480 every column is paying for the frozen one. The last step down. */
+@media (max-width: 30rem) {
+  .invoices-table :is(th, td) {
+    padding: .4rem .28rem;
+  }
+
+  .invoices-table th {
+    font-size: .56rem;
+  }
+
+  .invoices-table td {
+    font-size: .64rem;
+  }
+
+  .invoices-table :is(th, td)[data-col="identity"] {
+    inline-size: 8%;
+  }
+
+  .invoices-table [data-col="identity"] .button {
+    padding: .22rem .3rem;
+    font-size: .58rem;
   }
 }
 
