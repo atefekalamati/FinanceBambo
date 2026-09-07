@@ -32,8 +32,10 @@ function getInvoiceEffect(invoice) {
    nothing about duplicates -- so that one is picked out of the loaded set. */
 const INVOICE_VIEWS = Object.freeze([
   { key: "all", label: "کل فاکتورها", tone: "neutral" },
+  { key: "draft", label: "پیش‌نویس", tone: "neutral", status: "draft" },
   { key: "awaiting", label: "در انتظار تأیید", tone: "pending", status: "awaitingConfirmation" },
   { key: "confirmed", label: "تأییدشده", tone: "positive", status: "confirmed" },
+  { key: "corrected", label: "اصلاح‌شده", tone: "warning", status: "corrected" },
   { key: "duplicates", label: "نیازمند بررسی تکرار", tone: "warning", duplicates: true },
 ]);
 
@@ -42,10 +44,13 @@ const INVOICE_VIEWS = Object.freeze([
 const SUMMARY_PAGE_SIZE = 200;
 
 function countInvoiceViews(items, totalItems) {
+  const withStatus = (status) => items.filter((invoice) => invoice.invoiceStatus === status).length;
   return {
     all: totalItems,
-    awaiting: items.filter((invoice) => invoice.invoiceStatus === "awaitingConfirmation").length,
-    confirmed: items.filter((invoice) => invoice.invoiceStatus === "confirmed").length,
+    draft: withStatus("draft"),
+    awaiting: withStatus("awaitingConfirmation"),
+    confirmed: withStatus("confirmed"),
+    corrected: withStatus("corrected"),
     duplicates: items.filter((invoice) => invoice.duplicateWarning).length,
   };
 }
