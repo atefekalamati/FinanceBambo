@@ -456,16 +456,6 @@
   transform: translateX(50%) translateY(0);
 }
 
-/* --------------------------------------------------------------------------
-   Responsive shared components
-   -------------------------------------------------------------------------- */
-
-@media (max-width: 80rem) {
-  .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 48rem) {
   .work-area-grid {
     grid-template-columns: 1fr;
@@ -478,9 +468,6 @@
 }
 
 @media (max-width: 36rem) {
-  .summary-grid {
-    grid-template-columns: 1fr;
-  }
 
   .section-heading {
     align-items: flex-start;

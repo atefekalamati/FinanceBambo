@@ -22,14 +22,16 @@
    region empty. A cap set from inside the module can only ever disagree with
    the frame around it. `margin-inline: auto` stays for the case where a host
    hands us a region wider than we are asked to be. */
+/* One inset for the mount, at every width and on every route. The host has no
+   plan for what state `main` is in, so the module cannot assume a gap between
+   itself and whatever the host puts above and beside it — a top bar, a rail, or
+   nothing at all. It carries its own.
+
+   Bigger at the block end than at the start: the host's own `main.app-main`
+   does the same, 24 / 16 / 48, because what sits under a page is the fold and
+   what sits over it is a bar. */
 #finance-module-root {
   inline-size: 100%;
   margin-inline: auto;
-  padding: clamp(1rem, 3vw, 2.5rem);
-}
-
-@media (max-width: 30rem) {
-  #finance-module-root {
-    padding-inline: .75rem;
-  }
+  padding: 16px 16px 40px;
 }

@@ -8,10 +8,6 @@
   gap: var(--space-xl);
 }
 
-.progress-readonly-notice {
-  line-height: 1.9;
-}
-
 .progress-snapshots-section,
 .progress-metadata,
 .progress-feed-section {

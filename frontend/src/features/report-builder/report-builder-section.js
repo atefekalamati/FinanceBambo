@@ -28,11 +28,11 @@ export function createReportBuilderSection({ onBuild }) {
   info.title = "هر بخشی که انتخاب کنید یک فصل شماره‌دار از سند نهایی می‌شود.";
   head.append(title, info);
 
-  const lead = element("p", "report-builder-section__lead", "گزارش اختصاصی خود را با انتخاب بخش‌های موردنیاز بسازید.");
+  const lead = element("p", "maker-sub report-builder-section__lead", "گزارش اختصاصی خود را با انتخاب بخش‌های موردنیاز بسازید.");
 
-  const grid = element("div", "report-builder-section__grid");
+  const grid = element("div", "chips report-builder-section__grid");
   featuredReports().forEach((report) => {
-    const chip = element("button", "report-builder-chip");
+    const chip = element("button", "chip report-builder-chip");
     chip.type = "button";
     chip.title = report.summary;
     const icon = reportIcon(report.key);
@@ -43,13 +43,23 @@ export function createReportBuilderSection({ onBuild }) {
     grid.append(chip);
   });
 
-  const cta = element("button", "button button--primary report-builder-section__cta");
+  const cta = element("button", "app-btn maker-btn button button--primary report-builder-section__cta");
   cta.type = "button";
   const ctaStar = sparkIcon();
   ctaStar.setAttribute("class", "report-builder-panel__star");
   cta.append(ctaStar, document.createTextNode(" ساخت گزارش اختصاصی"));
   cta.addEventListener("click", () => openReportBuilder({ preselected: [], onBuild }));
 
-  section.append(head, lead, grid, cta);
+  /* The host's own nesting: a card body, and a compact block inside it holding
+     the line of text, the chips and the button. Both wrappers are
+     `display: contents` in CSS, so the three keep the section's own grid and
+     nothing about the layout moved — the structure is here for when the body
+     wants a box of its own, not instead of what is drawn today. */
+  const body = element("div", "dash-card__body maker-body");
+  const compact = element("div", "maker-body--compact");
+  compact.append(lead, grid, cta);
+  body.append(compact);
+
+  section.append(head, body);
   return section;
 }

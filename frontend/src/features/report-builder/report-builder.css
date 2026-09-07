@@ -13,13 +13,6 @@
   box-shadow: var(--dash-shadow), var(--dash-inner);
 }
 
-.report-builder-section__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
 /* The mark and the words are one line, the way the host writes this heading —
    an SVG in a block-level heading otherwise sits on a line of its own. */
 .report-builder-section__title,
@@ -84,33 +77,55 @@
   line-height: 1.45;
 }
 
+/* The host wraps the lead, the chips and the button in a card body and a
+   compact block. Those two are in the markup now, and `display: contents` keeps
+   the three where they were: direct participants in the section's own grid.
+
+   Without it the section would go from four rows to two, and every rule that
+   distributes this card's height across its children — the ones that give the
+   chip grid the room left over and hold the button at its natural size — would
+   be addressing a wrapper instead of the thing it was written for. Give either
+   wrapper a box when there is something to put on it. */
+.maker-body,
+.maker-body--compact {
+  display: contents;
+}
+
 .report-builder-section__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
+/* The host's own chip, property for property, read off its computed style:
+   a column flex centred on both axes, .8px of border rather than 1, the primary
+   text colour rather than the secondary, and two transitions at .15s rather
+   than three at .12.
+
+   `overflow-wrap` goes back to normal with them. `anywhere` breaks a word
+   mid-letter to avoid an overflow; the host lets the word move to the next line
+   instead, and its chips are the same width as ours. */
 .report-builder-chip {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 3px;
-  justify-items: center;
-  align-content: center;
+  min-inline-size: 0;
   padding: 5px 4px;
-  border: 1px solid var(--color-border-subtle);
+  border: .8px solid var(--color-border-subtle);
   border-radius: 9px;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
   background: rgb(120 145 205 / 6%);
   font-family: inherit;
   font-size: 9.5px;
   font-weight: 600;
   line-height: 1.25;
   text-align: center;
-  overflow-wrap: anywhere;
   cursor: pointer;
   transition:
-    border-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard),
-    background-color var(--duration-fast) var(--ease-standard);
+    background-color .15s ease,
+    border-color .15s ease;
 }
 
 .report-builder-chip:hover,
@@ -230,7 +245,6 @@
 }
 
 .report-builder-dialog__body {
-  padding: 1.1rem;
   overflow-y: auto;
   max-block-size: calc(92vh - 4rem);
 }
@@ -296,26 +310,6 @@
   font-size: .68rem;
   font-weight: 700;
   white-space: nowrap;
-}
-
-/* `hidden` has to win over the display the badge is given, or a category with
-   nothing chosen still shows an empty disc. */
-.report-builder-group__badge[hidden] {
-  display: none;
-}
-
-.report-builder-group__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-inline-size: 1.3rem;
-  block-size: 1.3rem;
-  padding-inline: .3rem;
-  border-radius: var(--radius-pill);
-  color: var(--color-surface-canvas);
-  background: var(--brand-teal);
-  font-size: .66rem;
-  font-weight: 800;
 }
 
 /* Points at the row while it is closed and turns down when it opens, so the
@@ -430,63 +424,6 @@
 .report-doc {
   display: grid;
   gap: var(--space-md);
-}
-
-.report-doc__cover {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md);
-  padding: 1.2rem 1.4rem;
-  border-radius: var(--radius-md);
-  color: #fff;
-  background: linear-gradient(-100deg, #0f3d2e 0%, #10233f 55%, #101d33 100%);
-}
-
-.report-doc__brand {
-  display: grid;
-  gap: .1rem;
-  justify-items: start;
-  padding-inline-start: 1rem;
-  border-inline-start: 1px solid rgb(255 255 255 / 22%);
-}
-
-.report-doc__brand strong {
-  font-size: 1.05rem;
-  font-weight: 800;
-}
-
-.report-doc__brand small {
-  color: rgb(255 255 255 / 72%);
-  font-size: .64rem;
-}
-
-.report-doc__cover-copy h1 {
-  margin: 0 0 .5rem;
-  font-size: clamp(1.15rem, 2.4vw, 1.5rem);
-}
-
-.report-doc__cover-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .3rem .9rem;
-  margin: 0;
-  font-size: .7rem;
-}
-
-.report-doc__cover-facts > div {
-  display: flex;
-  align-items: baseline;
-  gap: .3em;
-}
-
-.report-doc__cover-facts dt {
-  color: rgb(255 255 255 / 68%);
-}
-
-.report-doc__cover-facts dd {
-  margin: 0;
-  font-weight: 700;
 }
 
 .report-doc__section {
@@ -628,16 +565,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .report-doc__cover {
-    flex-direction: column-reverse;
-    align-items: flex-start;
-    padding: .9rem 1rem;
-  }
 
-  .report-doc__brand {
-    padding-inline-start: 0;
-    border-inline-start: 0;
-  }
 
   .report-doc__chart-row {
     grid-template-columns: 6.5rem minmax(0, 1fr);
@@ -655,9 +583,6 @@
    rather than as one of a set of things to pick from, and the set is the point.
    What gives way at this width is the type and the padding, not the shape. */
 @media (max-width: 30rem) {
-  .report-builder-section {
-    padding: .8rem .7rem .9rem;
-  }
 
   .report-builder-section__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -674,20 +599,9 @@
     break-inside: avoid;
   }
 
-  .report-doc__cover + .report-doc__section {
-    break-before: auto;
-  }
 
-  .report-doc__cover {
-    color: #000;
-    background: none;
-    border: 1px solid #999;
-  }
 
-  .report-doc__cover-facts dt,
-  .report-doc__brand small {
-    color: #444;
-  }
+
 
   .report-builder-page__header,
   .report-builder-section {
@@ -882,10 +796,7 @@
   min-block-size: 0;
   overflow-y: auto;
   padding-inline-end: .15rem;
-}
 
-/* Only one of the two is on screen, so they share the same track. */
-.report-builder-cats,
-.report-builder-level2 {
+  /* Only one of the two is on screen, so they share the same track. */
   grid-row: 4;
 }
