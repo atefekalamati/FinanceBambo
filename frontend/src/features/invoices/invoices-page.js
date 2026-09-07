@@ -520,30 +520,117 @@ function createVoidInvoiceDialog({ invoice, adapter, onSaved }) {
   return dialog;
 }
 
-function renderTable(items, onDetail) {
-  const wrapper = element("div", "table-scroll");
+/* The columns this list has always shown, in the order it has always shown them.
+   `tier` decides nothing on a wide screen -- it only picks what a narrow one
+   starts with. Every column stays reachable from the column control and every
+   value stays in the detail dialog, so nothing is lost to a small viewport. */
+const INVOICE_COLUMNS = Object.freeze([
+  { key: "identity", label: "شماره", tier: "identity" },
+  { key: "date", label: "تاریخ", tier: "secondary" },
+  { key: "vendor", label: "فروشنده یا ارائه‌دهنده", tier: "primary" },
+  { key: "source", label: "منبع", tier: "secondary" },
+  { key: "status", label: "وضعیت", tier: "primary" },
+  { key: "lineCount", label: "تعداد ردیف", tier: "secondary" },
+  { key: "amount", label: "مبلغ نهایی", tier: "primary" },
+]);
+
+/** Columns a narrow screen starts with. Uses the module's own breakpoints -- 36rem
+ *  is where this page's filters go to one column, 64rem where the board does. */
+function defaultVisibleColumns() {
+  const matches = (query) => typeof window.matchMedia === "function" && window.matchMedia(query).matches;
+  if (matches("(max-width: 36rem)")) return new Set(INVOICE_COLUMNS.filter((column) => column.tier !== "secondary").map((column) => column.key));
+  if (matches("(max-width: 64rem)")) return new Set(INVOICE_COLUMNS.filter((column) => !["source", "lineCount"].includes(column.key)).map((column) => column.key));
+  return new Set(INVOICE_COLUMNS.map((column) => column.key));
+}
+
+/** Show or hide one column. Header and body cells move together, which is what
+ *  keeps the two aligned -- neither can be toggled without the other. */
+function applyColumnVisibility(table, key, visible) {
+  if (!table) return;
+  table.querySelectorAll(`:is(th, td)[data-col="${key}"]`).forEach((cell) => { cell.hidden = !visible; });
+}
+
+function renderColumnControl(visible, onToggle) {
+  const container = element("div", "invoice-columns");
+  const panel = element("div", "invoice-columns__panel");
+  panel.id = "invoice-columns-panel";
+  panel.hidden = true;
+  const toggle = element("button", "button button--ghost button--small invoice-columns__toggle", "ستون‌ها");
+  toggle.type = "button";
+  toggle.setAttribute("aria-controls", panel.id);
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.addEventListener("click", () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+  });
+  const set = element("fieldset", "invoice-columns__set");
+  set.append(element("legend", "", "ستون‌های قابل نمایش"));
+  // The identity column is not offered: the number and the way into the invoice
+  // are how a row is identified at all, so they are not the reader's to remove.
+  INVOICE_COLUMNS.filter((column) => column.tier !== "identity").forEach((column) => {
+    const option = element("label", "invoice-columns__option");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.value = column.key;
+    box.checked = visible.has(column.key);
+    box.addEventListener("change", () => onToggle(column.key, box.checked));
+    option.append(box, element("span", "", column.label));
+    set.append(option);
+  });
+  panel.append(set);
+  container.append(toggle, panel);
+  return container;
+}
+
+function renderTable(items, onDetail, visible) {
+  const wrapper = element("div", "table-scroll invoices-table-scroll");
+  // The same affordance the comparison table uses: a named region the keyboard
+  // can reach and scroll, rather than a pane only a pointer can move.
+  wrapper.setAttribute("role", "region");
+  wrapper.setAttribute("aria-label", "جدول فاکتورها");
+  wrapper.tabIndex = 0;
   const table = element("table", "data-table invoices-table");
+  table.dataset.columns = String(visible.size);
   table.append(tableCaption("فهرست فاکتورهای پروژه"));
-  const thead = tableHead(["شماره", "تاریخ", "فروشنده یا ارائه‌دهنده", "منبع", "وضعیت", "تعداد ردیف", "مبلغ نهایی", ["", "عملیات"]]);
+  const thead = tableHead(INVOICE_COLUMNS.map((column) => column.label));
+  [...thead.querySelectorAll("th")].forEach((cell, index) => {
+    cell.dataset.col = INVOICE_COLUMNS[index].key;
+    cell.hidden = !visible.has(INVOICE_COLUMNS[index].key);
+  });
   const tbody = document.createElement("tbody");
   items.forEach((invoice) => {
     const row = document.createElement("tr");
     const identity = element("div", "invoice-table-identity");
     identity.append(element("strong", "", invoice.invoiceNumber));
     if (invoice.duplicateWarning) identity.append(element("span", "invoice-table-warning", "نیازمند بررسی تکرار"));
-    const action = element("button", "button button--small button--ghost", "جزئیات");
+    // The same control as before, in the cell that carries the number rather than
+    // in a column of its own: the two travel together, so the way into an invoice
+    // is still on screen when the table is scrolled sideways.
+    const action = element("button", "button button--small button--ghost invoice-detail-button", "جزئیات");
     action.type = "button";
+    action.setAttribute("aria-label", `جزئیات فاکتور ${invoice.invoiceNumber}`);
     action.addEventListener("click", (event) => onDetail(invoice.invoiceId, event.currentTarget));
-    row.append(
-      element("td", "", ""), element("td", "", formatBusinessDate(invoice.invoiceDate)),
-      element("td", "", invoice.vendorName), element("td", "", SOURCE_LABELS[invoice.source] ?? "نامشخص"),
-      element("td", "", ""), element("td", "numeric", formatDisplayNumber(String(invoice.lineCount))),
-      element("td", "numeric", formatTomanFromIrr(invoice.finalAmountIRR)),
-      element("td", "", ""),
-    );
-    row.children[0].append(identity);
-    row.children[4].append(element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "نامشخص"));
-    row.children[7].append(action);
+    identity.append(action);
+    const status = element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "نامشخص");
+    const content = {
+      identity,
+      date: formatBusinessDate(invoice.invoiceDate),
+      vendor: invoice.vendorName,
+      source: SOURCE_LABELS[invoice.source] ?? "نامشخص",
+      status,
+      lineCount: formatDisplayNumber(String(invoice.lineCount)),
+      amount: formatTomanFromIrr(invoice.finalAmountIRR),
+    };
+    INVOICE_COLUMNS.forEach((column) => {
+      const value = content[column.key];
+      const numeric = ["lineCount", "amount"].includes(column.key) ? "numeric" : "";
+      const cell = element("td", numeric, typeof value === "string" ? value : "");
+      cell.dataset.col = column.key;
+      if (typeof value !== "string") cell.append(value);
+      cell.hidden = !visible.has(column.key);
+      row.append(cell);
+    });
     tbody.append(row);
   });
   table.append(thead, tbody);
@@ -555,6 +642,9 @@ export function createInvoicesPage({ context, adapter }) {
   const root = element("div", "invoices-page");
   let state = createRequestState(REQUEST_STATUS.LOADING);
   const filters = { query: "", status: "", source: "", page: 1, pageSize: 50 };
+  // Lives with the page, not with a render: paint() replaces the whole tree on
+  // every load, so a choice held inside a render would last until the next filter.
+  const visibleColumns = defaultVisibleColumns();
   const canCreate = capabilitiesFor(context).writeFinance;
   const detailMessage = element("div", "form-message invoice-detail-message");
   detailMessage.setAttribute("aria-live", "assertive");
@@ -686,10 +776,21 @@ export function createInvoicesPage({ context, adapter }) {
   function renderContent(data) {
     const section = element("section", "invoices-section");
     const heading = element("div", "invoice-list-heading");
-    heading.append(element("div", "", ""), element("span", "section-count numeric", `${formatDisplayNumber(String(data.totalItems))} فاکتور`));
+    const meta = element("div", "invoice-list-heading__meta");
+    meta.append(
+      element("span", "section-count numeric", `${formatDisplayNumber(String(data.totalItems))} فاکتور`),
+      renderColumnControl(visibleColumns, (key, on) => {
+        if (on) visibleColumns.add(key);
+        else visibleColumns.delete(key);
+        const table = root.querySelector(".invoices-table");
+        applyColumnVisibility(table, key, on);
+        if (table) table.dataset.columns = String(visibleColumns.size);
+      }),
+    );
+    heading.append(element("div", "", ""), meta);
     heading.firstElementChild.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
     const summary = renderInvoiceListSummary(data.items);
-    const table = renderTable(data.items, showDetail);
+    const table = renderTable(data.items, showDetail, visibleColumns);
     const pagination = element("nav", "invoice-pagination");
     pagination.setAttribute("aria-label", "صفحه‌بندی فاکتورها");
     const previous = element("button", "button button--ghost", "صفحه قبل");
