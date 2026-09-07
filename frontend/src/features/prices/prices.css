@@ -56,6 +56,13 @@
   font-size: var(--font-size-sm);
 }
 
+.prices-section-heading__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
 .prices-section-heading {
   display: flex;
   align-items: flex-start;
@@ -115,10 +122,6 @@
    Price tables
    -------------------------------------------------------------------------- */
 
-.current-prices-table {
-  min-inline-size: 78rem;
-}
-
 .price-history-table {
   min-inline-size: 58rem;
 }
@@ -131,26 +134,27 @@
   min-inline-size: 68rem;
 }
 
-.current-prices-table :is(th, td):nth-child(1) {
-  inline-size: 16%;
-}
-
-.current-prices-table :is(th, td):nth-child(2) {
+/* Named rather than counted, because a column can be put away now and every
+   nth-child after it would shift. The floor and the pinned column are the
+   component's; these widths are this table's. The identity column's width is
+   the component's too -- a rule here would weigh the same as its media queries
+   and, being read later, would win the whole ladder. */
+.current-prices-table :is(th, td)[data-col="unit"] {
   inline-size: 8%;
 }
 
-.current-prices-table :is(th, td):nth-child(3),
-.current-prices-table :is(th, td):nth-child(4),
-.current-prices-table :is(th, td):nth-child(5) {
+.current-prices-table :is(th, td)[data-col="organization"],
+.current-prices-table :is(th, td)[data-col="project"],
+.current-prices-table :is(th, td)[data-col="current"] {
   inline-size: 13%;
 }
 
-.current-prices-table :is(th, td):nth-child(6) {
+.current-prices-table :is(th, td)[data-col="trend"] {
   inline-size: 14%;
 }
 
-.current-prices-table :is(th, td):nth-child(7),
-.current-prices-table :is(th, td):nth-child(8) {
+.current-prices-table :is(th, td)[data-col="scope"],
+.current-prices-table :is(th, td)[data-col="effectiveFrom"] {
   inline-size: 11%;
 }
 
