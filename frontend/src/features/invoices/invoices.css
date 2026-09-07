@@ -8,7 +8,6 @@
   gap: var(--space-xl);
 }
 
-.invoice-filters,
 .invoices-section {
   min-inline-size: 0;
   padding: var(--space-xl);
@@ -16,13 +15,6 @@
   border-radius: var(--radius-lg);
   background: var(--app-card-navy);
   box-shadow: var(--dash-shadow), var(--dash-inner);
-}
-
-.invoice-filters {
-  display: grid;
-  grid-template-columns: minmax(14rem, 2fr) repeat(2, minmax(10rem, 1fr)) auto auto;
-  gap: var(--space-sm);
-  align-items: center;
 }
 
 .invoice-list-heading {
@@ -103,11 +95,13 @@
   margin-block-end: var(--space-lg);
 }
 
+/* Four abreast at every width, because they are one comparison: the four
+   numbers only mean anything against each other. What changes on a narrow
+   screen is their size, not their number. */
 .invoice-list-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-sm);
-  margin-block-end: var(--space-lg);
 }
 
 .invoice-summary-item {
@@ -122,6 +116,28 @@
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
   background: rgb(120 145 205 / 5%);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+.invoice-summary-item:hover {
+  border-color: var(--color-border);
+  background: rgb(120 145 205 / 10%);
+}
+
+/* The pressed one is the view you are in. It is marked by its own tone rather
+   than by a colour of its own, so the four stay told apart the way they already
+   were. */
+.invoice-summary-item[aria-pressed="true"] {
+  border-color: var(--summary-tone);
+  background: rgb(120 145 205 / 12%);
+}
+
+.invoice-summary-item[aria-pressed="true"] .invoice-summary-item__label {
+  color: var(--color-text-primary);
 }
 
 .invoice-summary-item--pending {
@@ -634,26 +650,33 @@
    -------------------------------------------------------------------------- */
 
 @media (max-width: 80rem) {
-  .invoice-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .invoice-filters input {
-    grid-column: 1 / -1;
-  }
-
   .invoice-detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .invoice-list-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 48rem) {
-  .invoice-filters {
-    grid-template-columns: 1fr;
+  /* Four across a narrow screen only works if each stops being a row. The label
+     goes over the number and both centre, which is the shape that survives a
+     62px column at 320. */
+  .invoice-summary-item {
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: center;
+    gap: .1rem;
+    min-block-size: 2.75rem;
+    padding: .4rem .3rem;
+    text-align: center;
+  }
+
+  .invoice-summary-item__label {
+    font-size: .62rem;
+    line-height: 1.35;
+  }
+
+  .invoice-summary-item__value {
+    font-size: .85rem;
   }
 
   /* The facts stay two abreast rather than becoming a column of full-width
@@ -678,10 +701,6 @@
     min-block-size: 2.5rem;
   }
 
-  .invoice-filters :is(input, select, .button) {
-    min-block-size: 2.5rem;
-  }
-
   /* Long records push the head off the top of a phone-height dialog, and with it
      the only way out. It stays -- and it stays flush: the dialog gives up its own
      block-start padding so nothing sits above the band, and the head takes that
@@ -699,10 +718,6 @@
     margin-inline: calc(-1 * var(--space-xl));
     padding: var(--space-xl) var(--space-xl) var(--space-sm);
     background: var(--color-surface-canvas);
-  }
-
-  .invoice-filters input {
-    grid-column: auto;
   }
 
   .invoice-list-heading,
@@ -748,7 +763,22 @@
 }
 
 @media (max-width: 36rem) {
-  .invoice-filters,
+  .invoice-list-summary {
+    gap: var(--space-xs);
+  }
+
+  .invoice-summary-item {
+    padding: .35rem .2rem;
+  }
+
+  .invoice-summary-item__label {
+    font-size: .58rem;
+  }
+
+  .invoice-summary-item__value {
+    font-size: .8rem;
+  }
+
   .invoices-section,
   .invoice-detail-dialog {
     padding: var(--space-lg);
@@ -795,10 +825,6 @@
     grid-template-columns: 1fr;
   }
 
-  .invoice-list-summary {
-    grid-template-columns: 1fr;
-  }
-
   /* The heading stacks here, so the count and the column control go with it
      rather than being squeezed against the title. */
   .invoice-list-heading__meta {
@@ -820,7 +846,6 @@
     margin: 6mm;
   }
 
-  .invoice-filters,
   .invoice-pagination,
   .invoices-table .button {
     display: none !important;
