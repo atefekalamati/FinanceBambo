@@ -25,10 +25,14 @@
   margin-block-end: var(--space-xl);
 }
 
+/* The chips and the column control share this row: the filter at one end, the
+   control over what it shows at the other. */
 .invoice-list-heading__meta {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-sm);
+  flex: 1 1 auto;
   min-inline-size: 0;
 }
 
@@ -102,6 +106,8 @@
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: .3rem;
+  flex: 0 1 auto;
+  min-inline-size: 0;
 }
 
 .invoice-summary-item {
@@ -110,10 +116,9 @@
   align-items: center;
   flex-direction: column;
   justify-content: center;
-  gap: .1rem;
+  gap: .05rem;
   min-inline-size: 0;
-  min-block-size: 3.25rem;
-  padding: .4rem .3rem;
+  padding: .2rem .4rem;
   border: 1px solid color-mix(in srgb, var(--summary-tone) 30%, transparent);
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--summary-tone) 9%, transparent);
@@ -135,7 +140,7 @@
 .invoice-summary-item[aria-pressed="true"] {
   border-color: var(--summary-tone);
   background: var(--summary-tone);
-  color: #fff;
+  color: #14122e;
   box-shadow:
     0 0 .5rem color-mix(in srgb, var(--summary-tone) 65%, transparent),
     0 0 1.35rem color-mix(in srgb, var(--summary-tone) 32%, transparent);
@@ -156,13 +161,14 @@
 .invoice-summary-item__label {
   min-inline-size: 0;
   color: inherit;
-  font-size: .72rem;
-  line-height: 1.5;
+  font-size: .6rem;
+  line-height: 1.3;
 }
 
 .invoice-summary-item__value {
   color: inherit;
-  font-size: 1rem;
+  font-size: .74rem;
+  line-height: 1.2;
 }
 
 /* --------------------------------------------------------------------------
@@ -682,6 +688,19 @@
     padding: .28rem .45rem;
     font-size: .68rem;
   }
+
+  /* Six chips and the column control stop fitting on one line here. At 320 that
+     had left 25px a chip and the labels ran into each other; at 769 it left 55,
+     narrower than a phone gives them. The row is still one row and still
+     space-between -- it is just allowed a second line, and the chips take the
+     first one whole. */
+  .invoice-list-heading__meta {
+    flex-wrap: wrap;
+  }
+
+  .invoice-list-summary {
+    flex: 1 1 100%;
+  }
 }
 
 @media (max-width: 48rem) {
@@ -725,8 +744,7 @@
 
   /* Six across a narrow screen is the whole reason the type steps down. */
   .invoice-summary-item {
-    min-block-size: 2.75rem;
-    padding: .35rem .2rem;
+    padding: .18rem .2rem;
   }
 
   .invoice-summary-item__label {
@@ -786,6 +804,7 @@
     flex-direction: column;
   }
 
+
   .invoice-pagination {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -842,7 +861,7 @@
   }
 
   .invoice-summary-item {
-    padding: .3rem .15rem;
+    padding: .15rem .12rem;
   }
 
   .invoice-summary-item__label {
