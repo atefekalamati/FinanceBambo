@@ -12,11 +12,36 @@
    -------------------------------------------------------------------------- */
 
 .data-table--pinned {
-  /* The width the columns need. Fewer columns need less, so the floor steps
-     down with them -- otherwise putting a column away would leave the same
-     sideways scroll behind and the control would look like it did nothing. */
+  /* The width the columns need, about 11rem each. Fewer columns need less, so
+     the floor steps down with them -- otherwise putting a column away would
+     leave the same sideways scroll behind and the control would look like it
+     did nothing. */
   min-inline-size: 78rem;
   table-layout: auto;
+}
+
+.data-table--pinned[data-columns="12"] {
+  min-inline-size: 132rem;
+}
+
+.data-table--pinned[data-columns="11"] {
+  min-inline-size: 121rem;
+}
+
+.data-table--pinned[data-columns="10"] {
+  min-inline-size: 110rem;
+}
+
+.data-table--pinned[data-columns="9"] {
+  min-inline-size: 99rem;
+}
+
+.data-table--pinned[data-columns="8"] {
+  min-inline-size: 88rem;
+}
+
+.data-table--pinned[data-columns="7"] {
+  min-inline-size: 78rem;
 }
 
 .data-table--pinned[data-columns="6"] {
@@ -71,6 +96,63 @@
   min-block-size: 2rem;
   padding: .3rem .55rem;
   font-size: .72rem;
+}
+
+/* --- folded groups ------------------------------------------------------
+   A summary row per parent, its members underneath until pressed. The whole
+   row is a press target; the button inside the identity cell is what states
+   the state and what the keyboard reaches. */
+
+.data-table__group {
+  cursor: pointer;
+}
+
+.data-table__group:hover :is(th, td) {
+  background: rgb(120 145 205 / 6%);
+}
+
+.data-table__disclosure {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  inline-size: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.data-table__disclosure::before {
+  content: "⌄";
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  line-height: 1;
+  transition: transform .15s ease;
+}
+
+.data-table__group--open .data-table__disclosure::before {
+  transform: rotate(180deg);
+}
+
+.data-table__disclosure-name {
+  display: grid;
+  min-inline-size: 0;
+}
+
+.data-table__disclosure-count {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  white-space: nowrap;
+}
+
+/* A member row reads as belonging to the row above it rather than as a peer. */
+.data-table__child > :is(th, td) {
+  background: rgb(3 8 20 / 18%);
 }
 
 /* --- the column control ------------------------------------------------- */

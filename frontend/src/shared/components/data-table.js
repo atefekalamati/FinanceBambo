@@ -92,7 +92,94 @@ export function createColumnControl({ name, columns, visible, onToggle, label = 
  * string or a node. A key it leaves out renders an empty cell, which is a cell
  * with nothing in it rather than a column out of step with its header.
  */
-export function createDataTable({ caption, scrollLabel, className = "", columns, rows, cells, rowAttributes, visible }) {
+/**
+ * One summary row per group, its members folded underneath until pressed.
+ *
+ * Where several rows belong to one parent -- items of an activity, lines of a
+ * document -- reading them flat means reading the parent's name once and then
+ * five rows that do not say what they belong to. Folded, the table is a list of
+ * parents; opened, one parent's rows appear under it in the same columns.
+ *
+ * The press target is a real button inside the identity cell, so it is reachable
+ * by keyboard and states what it did. The rest of the row delegates to it, so a
+ * pointer can press anywhere along it.
+ */
+function appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible, group }) {
+  const order = [];
+  const members = new Map();
+  rows.forEach((row) => {
+    const key = String(group.key(row));
+    if (!members.has(key)) { members.set(key, []); order.push(key); }
+    members.get(key).push(row);
+  });
+
+  order.forEach((key, index) => {
+    const mine = members.get(key);
+    const summary = document.createElement("tr");
+    summary.className = "data-table__group";
+    summary.dataset.group = key;
+    const content = group.cells(mine, key);
+    const toggle = element("button", "data-table__disclosure");
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", "false");
+    // Wrapped, so a name and the code under it stay stacked rather than becoming
+    // two flex items side by side.
+    const name = element("span", "data-table__disclosure-name");
+    name.append(content.identity ?? document.createTextNode(key));
+    toggle.append(name);
+    toggle.append(element("span", "data-table__disclosure-count",
+      `${mine.length} ${group.countLabel ?? "قلم"}`));
+
+    columns.forEach((column) => {
+      const value = column.key === "identity" ? toggle : content[column.key];
+      const cell = element("td", column.cellClass ?? "", typeof value === "string" ? value : "");
+      cell.dataset.col = column.key;
+      if (value != null && typeof value !== "string") cell.append(value);
+      cell.hidden = !visible.has(column.key);
+      summary.append(cell);
+    });
+    body.append(summary);
+
+    const children = mine.map((row) => {
+      const tr = document.createElement("tr");
+      tr.className = "data-table__child";
+      tr.dataset.group = key;
+      tr.hidden = true;
+      const extra = rowAttributes ? rowAttributes(row) : null;
+      if (extra?.className) tr.classList.add(...extra.className.split(" "));
+      if (extra?.tabIndex !== undefined) tr.tabIndex = extra.tabIndex;
+      const values = cells(row);
+      columns.forEach((column) => {
+        const value = values[column.key];
+        const cell = element("td", column.cellClass ?? "", typeof value === "string" ? value : "");
+        cell.dataset.col = column.key;
+        if (value != null && typeof value !== "string") cell.append(value);
+        cell.hidden = !visible.has(column.key);
+        tr.append(cell);
+      });
+      body.append(tr);
+      return tr;
+    });
+
+    const setOpen = (open) => {
+      toggle.setAttribute("aria-expanded", String(open));
+      summary.classList.toggle("data-table__group--open", open);
+      children.forEach((child) => { child.hidden = !open; });
+    };
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setOpen(toggle.getAttribute("aria-expanded") !== "true");
+    });
+    // Anywhere along the row, but not on a control that means something else.
+    summary.addEventListener("click", (event) => {
+      if (event.target.closest("button, a, input, select")) return;
+      setOpen(toggle.getAttribute("aria-expanded") !== "true");
+    });
+    void index;
+  });
+}
+
+export function createDataTable({ caption, scrollLabel, className = "", columns, rows, cells, rowAttributes, visible, group }) {
   const scroll = element("div", "table-scroll data-table-scroll");
   // The same affordance the comparison chart's table uses: a named region the
   // keyboard can reach and scroll, not a pane only a pointer can move.
@@ -111,7 +198,8 @@ export function createDataTable({ caption, scrollLabel, className = "", columns,
   });
 
   const body = document.createElement("tbody");
-  rows.forEach((row) => {
+  if (group) appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible, group });
+  else rows.forEach((row) => {
     const tr = document.createElement("tr");
     const extra = rowAttributes ? rowAttributes(row) : null;
     if (extra?.className) tr.className = extra.className;
