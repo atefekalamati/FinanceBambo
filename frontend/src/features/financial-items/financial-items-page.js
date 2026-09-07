@@ -15,6 +15,8 @@ import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
+import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+  from "../../shared/components/data-table.js";
 import { ABSENT, activityBlockStarts, activityLabel, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
@@ -651,90 +653,102 @@ function renderResourceTable(resources, withheld = null) {
   return fragment;
 }
 
-function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "" }) {
+/* The ten columns of ریز برآورد. Three of them are money and they are three on
+   purpose: «هزینه MSP فعالیت» is what the schedule says the activity costs,
+   «قیمت اولیه» is the unit price this line was estimated at and never changes,
+   «قیمت روز» is the price in force today. None is computed from another and an
+   empty one means unknown, not zero. */
+function estimateLineColumns() {
+  return [
+    { key: "identity", label: "ساختار شکست کار / فعالیت", tier: IDENTITY },
+    { key: "resource", label: "قلم هزینه", tier: PRIMARY },
+    { key: "unit", label: "واحد", tier: SECONDARY, cellClass: "numeric" },
+    { key: "originalQuantity", label: "مقدار برآورد اولیه", tier: SECONDARY, cellClass: "numeric" },
+    { key: "revisedQuantity", label: "آخرین مقدار برآورد", tier: PRIMARY, cellClass: "numeric" },
+    { key: "scheduleCost", label: "هزینه MSP فعالیت", tier: SECONDARY, keepOnTablet: true, cellClass: "numeric" },
+    { key: "originalPrice", label: "قیمت اولیه", tier: SECONDARY, cellClass: "numeric" },
+    { key: "currentPrice", label: "قیمت روز", tier: PRIMARY, cellClass: "numeric" },
+    { key: "source", label: "منبع", tier: SECONDARY },
+    { key: "actions", label: "عملیات", tier: SECONDARY, keepOnTablet: true, cellClass: "line-actions" },
+  ];
+}
+
+function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible }) {
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
   const fragment = document.createDocumentFragment();
   if (withheld) fragment.append(element("p", "table-note", withheld));
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table estimate-lines-table");
-  table.append(element("caption", "sr-only", "ریز برآورد پروژه"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  // Three money columns, deliberately three. «هزینه MSP فعالیت» is what the
-  // schedule says the activity costs; «قیمت اولیه» is the unit price this line
-  // was estimated at and never changes; «قیمت روز» is the price in force today.
-  // None is computed from another, and an empty one means unknown, not zero.
-  ["ساختار شکست کار / فعالیت", "قلم هزینه", "واحد", "مقدار برآورد اولیه", "آخرین مقدار برآورد",
-   "هزینه MSP فعالیت", "قیمت اولیه", "قیمت روز", "منبع", "عملیات"]
-    .forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  // Every item of one activity in one block, the blocks in WBS order. The table
-  // is read down the فعالیت column, so an activity whose five items land in five
-  // places cannot be read at all -- and that is what insertion order gave.
-  const opensBlock = activityBlockStarts(lines);
-  lines.forEach((line, index) => {
-    const resource = resourceMap.get(line.resourceId);
-    const isGeneralCost = resource?.type === "general_cost";
-    const original = isGeneralCost ? line.originalAmount : line.originalQuantity;
-    const revised = isGeneralCost ? line.revisedAmount : line.revisedQuantity;
-    const changed = original !== revised;
-    const row = document.createElement("tr");
-    const isTarget = focusEstimateLineId
-      ? line.lineId === focusEstimateLineId
-      : Boolean(focusResourceId && line.resourceId === focusResourceId);
-    if (isTarget) {
-      row.classList.add("deep-link-target");
-      row.tabIndex = -1;
-    }
-    // The activity column names the activity and the cost item column names the
-    // cost item. Neither ever supplies the other's missing value.
-    const activityCell = element("td", opensBlock[index] ? "" : "activity-cell--continued");
-    if (opensBlock[index]) row.classList.add("estimate-lines-table__block");
-    // The name is in the row either way. On a continuation row it is spoken and
-    // not shown: a reader who has just read it does not need it five more times,
-    // and a screen reader announcing a lone quantity would have lost the subject.
-    const naming = opensBlock[index] ? "" : "sr-only";
-    activityCell.append(element("strong", naming, activityLabel(line)),
-                        element("small", `table-subtext numeric ${naming}`, canonicalWbs(line)));
-    const resourceCell = document.createElement("td");
-    resourceCell.append(element("strong", "", resourceLabel(resource)), element("small", "table-subtext numeric", resource?.code ?? ABSENT));
-    const revisedCell = element("td", `numeric ${changed ? "value-changed" : ""}`, isGeneralCost ? formatTomanFromIrr(revised, { withCurrency: false }) : formatDisplayNumber(revised));
-    if (changed) revisedCell.append(element("span", "change-badge", "اصلاح‌شده"));
-    // The schedule's figure belongs to the activity, so it is written once per
-    // block beside the activity it describes. Spoken on every row all the same:
-    // a row read on its own must not be missing the number it belongs under.
-    const scheduleCost = element("td", "numeric");
-    scheduleCost.append(element("span", opensBlock[index] ? "" : "sr-only",
-                                formatTomanFromIrr(scheduleCostOf(line), { withCurrency: false })));
-    const actionsCell = element("td", "line-actions");
-    const history = element("button", "table-action", "تاریخچه");
-    history.type = "button";
-    history.addEventListener("click", () => onHistory(line, resource));
-    actionsCell.append(history);
-    if (canEdit) {
-      const revise = element("button", "table-action table-action--primary", "اصلاح مقدار");
-      revise.type = "button";
-      revise.addEventListener("click", () => onRevise(line, resource));
-      actionsCell.append(revise);
-    }
-    row.append(
-      activityCell,
-      resourceCell,
-      element("td", "numeric", isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit)),
-      element("td", "numeric", isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original)),
-      revisedCell,
-      scheduleCost,
-      element("td", "numeric", formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false })),
-      element("td", "numeric", formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false })),
-      element("td", "", sourceLabel(line)),
-      actionsCell,
-    );
-    body.append(row);
-  });
-  table.append(head, body);
-  wrapper.append(table);
-  fragment.append(wrapper);
+
+  fragment.append(createDataTable({
+    className: "estimate-lines-table",
+    caption: "ریز برآورد پروژه",
+    scrollLabel: "جدول ریز برآورد پروژه",
+    columns,
+    rows: lines,
+    visible,
+    rowAttributes: (line) => {
+      const isTarget = focusEstimateLineId
+        ? line.lineId === focusEstimateLineId
+        : Boolean(focusResourceId && line.resourceId === focusResourceId);
+      return isTarget ? { className: "deep-link-target", tabIndex: -1 } : null;
+    },
+    // One row per activity, its items folded underneath. Read flat, the activity
+    // was named once and then five rows said nothing about what they belonged to.
+    group: {
+      key: (line) => canonicalWbs(line) + "|" + activityLabel(line),
+      countLabel: "قلم",
+      cells: (rows) => {
+        const first = rows[0];
+        const name = document.createDocumentFragment();
+        name.append(element("strong", "", activityLabel(first)),
+                    element("small", "table-subtext numeric", canonicalWbs(first)));
+        return {
+          identity: name,
+          // The schedule's figure belongs to the activity, so it is written on
+          // the activity's own row rather than repeated down its items.
+          scheduleCost: formatTomanFromIrr(scheduleCostOf(first), { withCurrency: false }),
+        };
+      },
+    },
+    cells: (line) => {
+      const resource = resourceMap.get(line.resourceId);
+      const isGeneralCost = resource?.type === "general_cost";
+      const original = isGeneralCost ? line.originalAmount : line.originalQuantity;
+      const revised = isGeneralCost ? line.revisedAmount : line.revisedQuantity;
+
+      const resourceCell = document.createDocumentFragment();
+      resourceCell.append(element("strong", "", resourceLabel(resource)),
+                          element("small", "table-subtext numeric", resource?.code ?? ABSENT));
+
+      const revisedCell = element("span", original !== revised ? "value-changed" : "",
+        isGeneralCost ? formatTomanFromIrr(revised, { withCurrency: false }) : formatDisplayNumber(revised));
+      if (original !== revised) revisedCell.append(element("span", "change-badge", "اصلاح‌شده"));
+
+      const actions = document.createDocumentFragment();
+      const history = element("button", "table-action", "تاریخچه");
+      history.type = "button";
+      history.addEventListener("click", () => onHistory(line, resource));
+      actions.append(history);
+      if (canEdit) {
+        const revise = element("button", "table-action table-action--primary", "اصلاح مقدار");
+        revise.type = "button";
+        revise.addEventListener("click", () => onRevise(line, resource));
+        actions.append(revise);
+      }
+
+      return {
+        identity: "",
+        resource: resourceCell,
+        unit: isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit),
+        originalQuantity: isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original),
+        revisedQuantity: revisedCell,
+        scheduleCost: "",
+        originalPrice: formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false }),
+        currentPrice: formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false }),
+        source: sourceLabel(line),
+        actions,
+      };
+    },
+  }));
   return fragment;
 }
 
@@ -752,6 +766,10 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
   const readOnly = surface === SURFACES.REPORT;
   const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
+  // Lives with the page: paint() rebuilds the tree, so a choice held inside a
+  // render would last only until the next one.
+  const lineColumns = estimateLineColumns();
+  const visibleLineColumns = defaultVisibleColumns(lineColumns);
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
@@ -890,7 +908,16 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
     const linesSection = element("section", "items-section");
     const linesHead = element("div", "items-section__head lines-section__head");
     const linesMeta = element("div", "items-section__meta");
-    linesMeta.append(lineActions);
+    linesMeta.append(createColumnControl({
+      name: "estimate-lines",
+      columns: lineColumns,
+      visible: visibleLineColumns,
+      onToggle: (key, on) => {
+        if (on) visibleLineColumns.add(key);
+        else visibleLineColumns.delete(key);
+        applyColumnVisibility(root.querySelector(".estimate-lines-table"), key, on);
+      },
+    }), lineActions);
     linesHead.append(element("div", "", ""), linesMeta);
     linesHead.firstElementChild.append(element("h2", "", "ریز برآورد پروژه"), element("p", "", "هر ردیف، مقدار برآوردشده یک قلم هزینه را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا برآورد، اصلاحات و پیشرفت هر فعالیت مستقل و قابل پیگیری بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت روز و فاکتورهای تأییدشده محاسبه می‌شوند."));
     linesSection.append(linesHead, renderEstimateLineTable(workspace.estimateLines, workspace.resources, {
@@ -898,6 +925,8 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
       withheld: linesWithheld,
       focusResourceId,
       focusEstimateLineId,
+      columns: lineColumns,
+      visible: visibleLineColumns,
       onRevise: (line, resource) => {
         const dialog = createRevisionDialog(adapter, line, resource, (next) => {
           state = createRequestState(REQUEST_STATUS.SUCCESS, next);

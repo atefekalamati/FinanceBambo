@@ -196,10 +196,6 @@
   min-inline-size: 42rem;
 }
 
-.estimate-lines-table {
-  min-inline-size: 72rem;
-}
-
 .items-table :is(th, td):nth-child(1) {
   inline-size: 17%;
 }
@@ -231,32 +227,39 @@
   vertical-align: middle;
 }
 
-.estimate-lines-table :is(th, td):nth-child(1) {
-  inline-size: 22%;
+/* Named rather than counted. Counted was the bug: three columns were added to
+   this table and the seven nth-child rules kept sizing the first seven, so the
+   last three shared whatever was left and were unreadable. A named width cannot
+   drift when a column is added, and the identity column's width is the
+   component's -- a rule here would outrank its responsive ladder. */
+.estimate-lines-table :is(th, td)[data-col="resource"] {
+  inline-size: 13%;
 }
 
-.estimate-lines-table :is(th, td):nth-child(2) {
-  inline-size: 17%;
+.estimate-lines-table :is(th, td)[data-col="unit"] {
+  inline-size: 6%;
 }
 
-.estimate-lines-table :is(th, td):nth-child(3) {
-  inline-size: 8%;
+.estimate-lines-table :is(th, td)[data-col="originalQuantity"] {
+  inline-size: 9%;
 }
 
-.estimate-lines-table :is(th, td):nth-child(4) {
-  inline-size: 14%;
+.estimate-lines-table :is(th, td)[data-col="revisedQuantity"],
+.estimate-lines-table :is(th, td)[data-col="scheduleCost"] {
+  inline-size: 10%;
 }
 
-.estimate-lines-table :is(th, td):nth-child(5) {
-  inline-size: 16%;
+.estimate-lines-table :is(th, td)[data-col="originalPrice"],
+.estimate-lines-table :is(th, td)[data-col="currentPrice"] {
+  inline-size: 9%;
 }
 
-.estimate-lines-table :is(th, td):nth-child(6) {
+.estimate-lines-table :is(th, td)[data-col="source"] {
+  inline-size: 7%;
+}
+
+.estimate-lines-table :is(th, td)[data-col="actions"] {
   inline-size: 11%;
-}
-
-.estimate-lines-table :is(th, td):nth-child(7) {
-  inline-size: 12%;
 }
 
 .line-actions .table-action + .table-action {
