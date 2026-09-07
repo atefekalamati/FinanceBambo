@@ -36,60 +36,6 @@
   min-inline-size: 0;
 }
 
-/* The same disclosure the items page uses for its resource list: a button that
-   owns a panel, told apart by aria-expanded rather than by a second widget. */
-.invoice-columns {
-  position: relative;
-}
-
-.invoice-columns__panel {
-  position: absolute;
-  z-index: 2;
-  inset-block-start: calc(100% + var(--space-xs));
-  inset-inline-end: 0;
-  inline-size: max-content;
-  max-inline-size: 16rem;
-  padding: var(--space-sm);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-canvas);
-  box-shadow: var(--dash-shadow);
-}
-
-.invoice-columns__set {
-  display: grid;
-  gap: .1rem;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.invoice-columns__set legend {
-  padding-inline: var(--space-xs);
-  color: var(--color-text-secondary);
-  font-size: .82rem;
-  font-weight: 700;
-}
-
-.invoice-columns__option {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.invoice-columns__option:hover {
-  border-color: var(--color-border);
-  background: rgb(120 145 205 / 6%);
-}
-
-.invoice-columns__option input {
-  accent-color: var(--brand-teal);
-}
-
 .invoice-list-heading h2,
 .invoice-list-heading p {
   margin: 0;
@@ -306,38 +252,14 @@
   font-size: var(--font-size-sm);
 }
 
-.invoices-table {
-  /* The width the seven columns need. Fewer columns need less, so the floor
-     steps down with them -- otherwise hiding a column would leave the same
-     sideways scroll behind and the control would look like it did nothing. */
-  min-inline-size: 78rem;
-  table-layout: auto;
-}
-
-.invoices-table[data-columns="6"] {
-  min-inline-size: 66rem;
-}
-
-.invoices-table[data-columns="5"] {
-  min-inline-size: 54rem;
-}
-
-.invoices-table[data-columns="4"] {
-  min-inline-size: 42rem;
-}
-
-.invoices-table[data-columns="3"] {
-  min-inline-size: 30rem;
-}
-
-.invoices-table[data-columns="2"] {
-  min-inline-size: 0;
-}
-
 /* Named rather than counted: a hidden column would shift every nth-child after
-   it, and the header would stop lining up with the body it describes. */
-.invoices-table :is(th, td)[data-col="identity"] {
-  inline-size: 13%;
+   it, and the header would stop lining up with the body it describes. The
+   component owns the floor, the pinned cell and the type; the widths are this
+   table's own. */
+/* The number at one end of the pinned cell and the way in at the other. The
+   component packs the identity row to the start; this table spreads it. */
+.invoices-table .data-table-identity {
+  justify-content: space-between;
 }
 
 .invoices-table :is(th, td)[data-col="date"] {
@@ -374,23 +296,6 @@
   vertical-align: middle;
 }
 
-/* The number, the duplicate flag and the way into the invoice ride together, so
-   the row stays identified and stays openable however far it is scrolled. The
-   surface is the one the comparison table already freezes its header against. */
-.invoices-table :is(th, td)[data-col="identity"] {
-  position: sticky;
-  z-index: 1;
-  inset-inline-start: 0;
-  background: var(--color-surface-canvas);
-  border-inline-end: 1px solid var(--color-border-subtle);
-}
-
-.invoices-table [data-col="identity"] .button {
-  min-block-size: 2rem;
-  padding: .3rem .55rem;
-  font-size: .72rem;
-}
-
 .invoice-status {
   display: inline-flex;
   align-items: center;
@@ -417,24 +322,6 @@
 .invoice-status--corrected {
   border-color: rgb(255 93 115 / 28%);
   color: var(--color-danger);
-}
-
-/* The number and the way into the invoice sit on one line while there is room
-   for both, and the button drops under the number when there is not -- which is
-   what keeps a wide row the height it has always been while a narrow one still
-   fits. The duplicate flag always takes its own line. */
-.invoice-table-identity {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .3rem var(--space-sm);
-}
-
-/* An invoice number is an identifier, so it does not break: "ف-017" split over
-   two lines as "ف-0" and "17" is a different string to read. It sets the cell's
-   floor instead, and the column is as wide as it has to be. */
-.invoice-table-identity > strong {
-  white-space: nowrap;
 }
 
 /* Last on screen, second in the DOM: the row reads "number, needs review, open"
@@ -670,31 +557,7 @@
 
 }
 
-/* The frozen column costs the scrolled ones whatever it takes. From a tablet
-   down it takes less, and the type comes down with it, so the columns it leaves
-   room for stay readable rather than merely present. */
 @media (max-width: 64rem) {
-  .invoices-table :is(th, td) {
-    padding: .6rem .55rem;
-  }
-
-  .invoices-table th {
-    font-size: .7rem;
-  }
-
-  .invoices-table td {
-    font-size: .78rem;
-  }
-
-  .invoices-table :is(th, td)[data-col="identity"] {
-    inline-size: 10%;
-  }
-
-  .invoices-table [data-col="identity"] .button {
-    padding: .28rem .45rem;
-    font-size: .68rem;
-  }
-
   /* Six chips and the column control stop fitting on one line here. At 320 that
      had left 25px a chip and the labels ran into each other; at 769 it left 55,
      narrower than a phone gives them. The row is still one row and still
@@ -710,44 +573,6 @@
 }
 
 @media (max-width: 48rem) {
-  .invoices-table :is(th, td) {
-    padding: .5rem .45rem;
-  }
-
-  .invoices-table th {
-    font-size: .64rem;
-  }
-
-  .invoices-table td {
-    font-size: .72rem;
-  }
-
-  .invoices-table :is(th, td)[data-col="identity"] {
-    inline-size: 9%;
-  }
-
-  /* Narrower columns need less table to sit in, so the floor comes down with
-     them -- the same content, less of it spent scrolling past. */
-  .invoices-table {
-    min-inline-size: 60rem;
-  }
-
-  .invoices-table[data-columns="6"] {
-    min-inline-size: 50rem;
-  }
-
-  .invoices-table[data-columns="5"] {
-    min-inline-size: 40rem;
-  }
-
-  .invoices-table[data-columns="4"] {
-    min-inline-size: 31rem;
-  }
-
-  .invoices-table[data-columns="3"] {
-    min-inline-size: 23rem;
-  }
-
   /* Six across a narrow screen is the whole reason the type steps down. */
   .invoice-summary-item {
     padding: .18rem .2rem;
@@ -776,13 +601,6 @@
 
   .invoice-detail-grid__item dd {
     font-size: var(--font-size-sm);
-  }
-
-  /* A finger needs more than a pointer does. It needs less than it did when the
-     button was propping the row open, though -- from here down the row is as
-     tall as what is in it, and the control steps down with the type. */
-  .invoices-table [data-col="identity"] .button {
-    min-block-size: 2rem;
   }
 
   /* Long records push the head off the top of a phone-height dialog, and with it
@@ -847,24 +665,6 @@
 }
 
 @media (max-width: 36rem) {
-  .invoices-table :is(th, td) {
-    padding: .45rem .35rem;
-  }
-
-  .invoices-table th {
-    font-size: .6rem;
-  }
-
-  .invoices-table td {
-    font-size: .68rem;
-  }
-
-  .invoices-table [data-col="identity"] .button {
-    min-block-size: 2rem;
-    padding: .25rem .35rem;
-    font-size: .62rem;
-  }
-
   .invoice-summary-item {
     padding: .15rem .12rem;
   }
@@ -936,31 +736,6 @@
      tighter floor keeps the words and shortens the scroll. */
   .invoice-lines-table {
     min-inline-size: 40rem;
-  }
-}
-
-/* Under 480 every column is paying for the frozen one. The last step down. */
-@media (max-width: 30rem) {
-  .invoices-table :is(th, td) {
-    padding: .4rem .28rem;
-  }
-
-  .invoices-table th {
-    font-size: .56rem;
-  }
-
-  .invoices-table td {
-    font-size: .64rem;
-  }
-
-  .invoices-table :is(th, td)[data-col="identity"] {
-    inline-size: 8%;
-  }
-
-  .invoices-table [data-col="identity"] .button {
-    min-block-size: 1.85rem;
-    padding: .22rem .3rem;
-    font-size: .58rem;
   }
 }
 
