@@ -33,6 +33,67 @@
   margin-block-end: var(--space-xl);
 }
 
+.invoice-list-heading__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
+/* The same disclosure the items page uses for its resource list: a button that
+   owns a panel, told apart by aria-expanded rather than by a second widget. */
+.invoice-columns {
+  position: relative;
+}
+
+.invoice-columns__panel {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: calc(100% + var(--space-xs));
+  inset-inline-end: 0;
+  inline-size: max-content;
+  max-inline-size: 16rem;
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-canvas);
+  box-shadow: var(--dash-shadow);
+}
+
+.invoice-columns__set {
+  display: grid;
+  gap: .1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.invoice-columns__set legend {
+  padding-inline: var(--space-xs);
+  color: var(--color-text-secondary);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.invoice-columns__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.invoice-columns__option:hover {
+  border-color: var(--color-border);
+  background: rgb(120 145 205 / 6%);
+}
+
+.invoice-columns__option input {
+  accent-color: var(--brand-teal);
+}
+
 .invoice-list-heading h2,
 .invoice-list-heading p {
   margin: 0;
@@ -223,49 +284,78 @@
 }
 
 .invoices-table {
+  /* The width the seven columns need. Fewer columns need less, so the floor
+     steps down with them -- otherwise hiding a column would leave the same
+     sideways scroll behind and the control would look like it did nothing. */
   min-inline-size: 78rem;
   table-layout: auto;
 }
 
-.invoices-table :is(th, td):nth-child(1) {
-  inline-size: 8%;
+.invoices-table[data-columns="6"] {
+  min-inline-size: 66rem;
 }
 
-.invoices-table :is(th, td):nth-child(2) {
+.invoices-table[data-columns="5"] {
+  min-inline-size: 54rem;
+}
+
+.invoices-table[data-columns="4"] {
+  min-inline-size: 42rem;
+}
+
+.invoices-table[data-columns="3"] {
+  min-inline-size: 30rem;
+}
+
+.invoices-table[data-columns="2"] {
+  min-inline-size: 0;
+}
+
+/* Named rather than counted: a hidden column would shift every nth-child after
+   it, and the header would stop lining up with the body it describes. */
+.invoices-table :is(th, td)[data-col="identity"] {
+  inline-size: 13%;
+}
+
+.invoices-table :is(th, td)[data-col="date"] {
   inline-size: 9%;
 }
 
-.invoices-table :is(th, td):nth-child(3) {
+.invoices-table :is(th, td)[data-col="vendor"] {
   inline-size: 26%;
 }
 
-.invoices-table :is(th, td):nth-child(4),
-.invoices-table :is(th, td):nth-child(5) {
+.invoices-table :is(th, td)[data-col="source"],
+.invoices-table :is(th, td)[data-col="status"] {
   inline-size: 10%;
 }
 
-.invoices-table :is(th, td):nth-child(6) {
+.invoices-table :is(th, td)[data-col="lineCount"] {
   inline-size: 8%;
 }
 
-.invoices-table :is(th, td):nth-child(7) {
+.invoices-table :is(th, td)[data-col="amount"] {
   inline-size: 19%;
 }
 
-.invoices-table :is(th, td):nth-child(5),
-.invoices-table :is(th, td):nth-child(6) {
+.invoices-table :is(th, td)[data-col="status"],
+.invoices-table :is(th, td)[data-col="lineCount"] {
   text-align: center;
   vertical-align: middle;
 }
 
-.invoices-table :is(th, td):nth-child(8) {
-  padding-inline: .45rem;
-  text-align: center;
-  vertical-align: middle;
-  white-space: nowrap;
+/* The number, the duplicate flag and the way into the invoice ride together, so
+   the row stays identified and stays openable however far it is scrolled. The
+   surface is the one the comparison table already freezes its header against. */
+.invoices-table :is(th, td)[data-col="identity"] {
+  position: sticky;
+  z-index: 1;
+  inset-inline-start: 0;
+  background: var(--color-surface-canvas);
+  border-inline-end: 1px solid var(--color-border-subtle);
 }
 
-.invoices-table :is(th, td):nth-child(8) .button {
+.invoices-table [data-col="identity"] .button {
   min-block-size: 2rem;
   padding: .3rem .55rem;
   font-size: .72rem;
@@ -299,10 +389,30 @@
   color: var(--color-danger);
 }
 
+/* The number and the way into the invoice sit on one line while there is room
+   for both, and the button drops under the number when there is not -- which is
+   what keeps a wide row the height it has always been while a narrow one still
+   fits. The duplicate flag always takes its own line. */
 .invoice-table-identity {
-  display: grid;
-  gap: .3rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .3rem var(--space-sm);
   min-inline-size: 0;
+}
+
+.invoice-table-identity > strong {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Last on screen, second in the DOM: the row reads "number, needs review, open"
+   to anything that follows source order, while the eye still gets the number and
+   the way in on one line -- which is what keeps a flagged row the height of an
+   unflagged one. */
+.invoice-table-warning {
+  order: 1;
+  flex-basis: 100%;
 }
 
 .invoice-table-warning {
@@ -526,6 +636,26 @@
     grid-template-columns: 1fr;
   }
 
+  /* A finger needs more than a pointer does, and this is the only control in
+     the row. The dialog's own close button is already this size. */
+  .invoices-table [data-col="identity"] .button {
+    min-block-size: 2.5rem;
+  }
+
+  .invoice-filters :is(input, select, .button) {
+    min-block-size: 2.5rem;
+  }
+
+  /* Long records push the head off the top of a phone-height dialog, and with
+     it the only way out. It stays. */
+  .invoice-detail-dialog__head {
+    position: sticky;
+    z-index: 1;
+    inset-block-start: 0;
+    padding-block-end: var(--space-sm);
+    background: var(--color-surface-canvas);
+  }
+
   .invoice-filters input {
     grid-column: auto;
   }
@@ -614,6 +744,20 @@
 
   .invoice-list-summary {
     grid-template-columns: 1fr;
+  }
+
+  /* The heading stacks here, so the count and the column control go with it
+     rather than being squeezed against the title. */
+  .invoice-list-heading__meta {
+    inline-size: 100%;
+    justify-content: space-between;
+  }
+
+  /* A dialog this narrow cannot show six columns of line detail without either
+     scrolling sideways inside a scrolling dialog or shredding the words. A
+     tighter floor keeps the words and shortens the scroll. */
+  .invoice-lines-table {
+    min-inline-size: 40rem;
   }
 }
 
