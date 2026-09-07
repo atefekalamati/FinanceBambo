@@ -808,22 +808,11 @@ export function createInvoicesPage({ context, adapter }) {
     return header;
   }
 
-  function renderContent(data) {
-    const section = element("section", "invoices-section");
-    const heading = element("div", "invoice-list-heading");
-    const meta = element("div", "invoice-list-heading__meta");
-    meta.append(
-      element("span", "section-count numeric", `${formatDisplayNumber(String(data.totalItems))} فاکتور`),
-      renderColumnControl(visibleColumns, (key, on) => {
-        if (on) visibleColumns.add(key);
-        else visibleColumns.delete(key);
-        const table = root.querySelector(".invoices-table");
-        applyColumnVisibility(table, key, on);
-        if (table) table.dataset.columns = String(visibleColumns.size);
-      }),
-    );
-    heading.append(element("div", "", ""), meta);
-    heading.firstElementChild.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
+  /* Only the body goes through the state switch. The heading -- and with it the
+     chips, which are the only filter this page has -- is rendered either way,
+     because a filter that empties the list must not leave with it. */
+  function renderListBody(data) {
+    const body = element("div", "invoices-list-body");
     const table = renderTable(data.items, showDetail, visibleColumns);
     const pagination = element("nav", "invoice-pagination");
     pagination.setAttribute("aria-label", "صفحه‌بندی فاکتورها");
@@ -837,7 +826,28 @@ export function createInvoicesPage({ context, adapter }) {
     next.disabled = data.page >= data.totalPages;
     next.addEventListener("click", () => { filters.page = data.page + 1; load(); });
     pagination.append(previous, label, next);
-    section.append(heading, detailMessage, table, pagination);
+    body.append(table, pagination);
+    return body;
+  }
+
+  function renderSection() {
+    const section = element("section", "invoices-section");
+    const heading = element("div", "invoice-list-heading");
+    const title = element("div", "");
+    title.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
+    const meta = element("div", "invoice-list-heading__meta");
+    meta.append(
+      renderInvoiceListSummary(summary.counts, activeView, selectView),
+      renderColumnControl(visibleColumns, (key, on) => {
+        if (on) visibleColumns.add(key);
+        else visibleColumns.delete(key);
+        const table = root.querySelector(".invoices-table");
+        applyColumnVisibility(table, key, on);
+        if (table) table.dataset.columns = String(visibleColumns.size);
+      }),
+    );
+    heading.append(title, meta);
+    section.append(heading, detailMessage, renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
     return section;
   }
 
@@ -848,10 +858,11 @@ export function createInvoicesPage({ context, adapter }) {
   }
 
   function paint() {
-    const parts = [renderHeader()];
-    if (summary) parts.push(renderInvoiceListSummary(summary.counts, activeView, selectView));
-    parts.push(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
-    root.replaceChildren(...parts);
+    // Before the first read there are no counts to show, so there is no heading
+    // to show them in -- the loading or error card is the whole page, as it was.
+    root.replaceChildren(renderHeader(), summary
+      ? renderSection()
+      : renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
   }
 
   load();
