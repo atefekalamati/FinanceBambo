@@ -361,10 +361,15 @@
   inline-size: 19%;
 }
 
-/* The whole table centres, across and down, rather than two columns of it. The
-   .numeric cells keep their ltr direction and isolation -- only where the text
+/* The whole table centres, across and down, rather than two columns of it.
+   The .numeric cells are named a second time on purpose: the shared rule for
+   them is .data-table :is(th, td).numeric, which carries a class more than
+   .invoices-table :is(th, td) does and kept the figures against the edge. This
+   matches its weight, and invoices.css is read after components.css, so it
+   wins. Their ltr direction and isolation are untouched -- only where the text
    sits changes. */
-.invoices-table :is(th, td) {
+.invoices-table :is(th, td),
+.invoices-table :is(th, td).numeric {
   text-align: center;
   vertical-align: middle;
 }
