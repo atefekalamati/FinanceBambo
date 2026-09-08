@@ -104,11 +104,100 @@
   font-size: .72rem;
 }
 
-/* A table that brings its own control puts it above itself, at the far end. */
+/* --- the table's own toolbar ---------------------------------------------
+   What the table is filtered to at the reading edge, and the tools that act on
+   it at the other. With no chips the tools keep the far end to themselves,
+   which is where a lone column control has always sat. */
+
 .data-table-toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-sm);
   margin-block-end: var(--space-sm);
+}
+
+.data-table-toolbar__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+.data-table-search {
+  flex: 0 1 15rem;
+  min-inline-size: 0;
+}
+
+.data-table-search__input {
+  inline-size: 100%;
+}
+
+/* --- the filter chips ----------------------------------------------------
+   A chip is a word and a number on one line, not a small card. They scroll
+   sideways inside their own rail when there are more than the row holds, so
+   the row stays one row and the page never scrolls with them. */
+
+.data-table-chips {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.data-table-chip {
+  --chip-tone: var(--color-text-muted);
+
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  flex: 0 0 auto;
+  min-block-size: 1.9rem;
+  padding: .2rem .6rem;
+  border: 1px solid color-mix(in srgb, var(--chip-tone) 30%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--chip-tone) 9%, transparent);
+  color: var(--chip-tone);
+  font: inherit;
+  font-size: .72rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.data-table-chip:hover {
+  border-color: color-mix(in srgb, var(--chip-tone) 55%, transparent);
+  background: color-mix(in srgb, var(--chip-tone) 16%, transparent);
+}
+
+/* Pressed, the tone stops being an outline and becomes the chip: filled, lit
+   from its own colour. The same treatment the status pills inside the table
+   wear, so the view you are in reads at a glance. */
+.data-table-chip[aria-pressed="true"] {
+  border-color: var(--chip-tone);
+  background: var(--chip-tone);
+  color: #14122e;
+  box-shadow:
+    0 0 .5rem color-mix(in srgb, var(--chip-tone) 65%, transparent),
+    0 0 1.35rem color-mix(in srgb, var(--chip-tone) 32%, transparent);
+}
+
+.data-table-chip--pending { --chip-tone: var(--dash-sev-med); }
+.data-table-chip--positive { --chip-tone: var(--dash-actual); }
+.data-table-chip--warning { --chip-tone: var(--color-danger); }
+
+.data-table-chip__count {
+  font-size: .78rem;
+  font-weight: 700;
 }
 
 /* --- folded groups ------------------------------------------------------
@@ -384,6 +473,29 @@
 }
 
 @media (max-width: 48rem) {
+  /* The toolbar reflows into two rows: the chip rail keeps a line to itself and
+     scrolls sideways, and the search takes what is left of the second beside a
+     column control that has shrunk to its icon. */
+  .data-table-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .data-table-toolbar__tools {
+    margin-inline-start: 0;
+  }
+
+  .data-table-search {
+    flex: 1 1 auto;
+  }
+
+  /* A touch target, and room for a thumb to push the rail along. */
+  .data-table-chip {
+    min-block-size: 2.1rem;
+    padding-block: .3rem;
+  }
+
   .data-table--pinned :is(th, td) {
     padding: .5rem .45rem;
   }

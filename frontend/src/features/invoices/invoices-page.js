@@ -12,7 +12,7 @@ import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, createDataTable, createTableToolbar, defaultVisibleColumns, repaintPreservingFocus, updateFilterChips }
   from "../../shared/components/data-table.js";
 
 const STATUS_LABELS = Object.freeze({ draft: "پیش‌نویس", awaitingConfirmation: "در انتظار تأیید", confirmed: "تأییدشده", voided: "باطل‌شده", corrected: "اصلاح‌شده" });
@@ -66,23 +66,12 @@ function countInvoiceViews(items, totalItems) {
   };
 }
 
-function renderInvoiceListSummary(counts, activeKey, onSelect) {
-  const section = element("section", "invoice-list-summary");
-  section.setAttribute("aria-label", "فیلتر فاکتورها بر اساس وضعیت");
-  INVOICE_VIEWS.forEach((view) => {
-    const item = element("button", `invoice-summary-item invoice-summary-item--${view.tone}`);
-    item.type = "button";
-    item.dataset.view = view.key;
-    const active = view.key === activeKey;
-    item.setAttribute("aria-pressed", String(active));
-    item.append(
-      element("span", "invoice-summary-item__label", view.label),
-      element("strong", "invoice-summary-item__value numeric", formatDisplayNumber(String(counts[view.key] ?? 0))),
-    );
-    item.addEventListener("click", () => onSelect(view.key));
-    section.append(item);
-  });
-  return section;
+/** The counts, written the way the rest of the page writes numbers. */
+function invoiceChipCounts(counts) {
+  return Object.fromEntries(INVOICE_VIEWS.map((view) => [
+    view.key,
+    formatDisplayNumber(String(counts?.[view.key] ?? 0)),
+  ]));
 }
 
 function option(value, label) {
@@ -612,7 +601,7 @@ function renderTable(items, onDetail, visible) {
 export function createInvoicesPage({ context, adapter }) {
   const root = element("div", "invoices-page");
   let state = createRequestState(REQUEST_STATUS.LOADING);
-  const filters = { status: "", page: 1, pageSize: 50 };
+  const filters = { status: "", query: "", page: 1, pageSize: 50 };
   // Which chip is pressed, and the counts behind all four. The counts describe
   // the project, not the current view, so they are read once per data change and
   // left alone while the reader moves between chips.
@@ -624,6 +613,33 @@ export function createInvoicesPage({ context, adapter }) {
   const canCreate = capabilitiesFor(context).writeFinance;
   const detailMessage = element("div", "form-message invoice-detail-message");
   detailMessage.setAttribute("aria-live", "assertive");
+
+  /* Built once, moved into each repaint. The chips are the only status filter
+     this page has and the search is the endpoint's own `query`, so the two are
+     applied together by the same read rather than narrowing each other's
+     results afterwards. */
+  const toolbar = createTableToolbar({
+    name: "invoices",
+    columns: INVOICE_COLUMNS,
+    visible: visibleColumns,
+    table: () => root.querySelector(".invoices-table"),
+    chips: {
+      label: "فیلتر فاکتورها بر اساس وضعیت",
+      items: INVOICE_VIEWS.map((view) => ({ key: view.key, label: view.label, tone: view.tone, count: "" })),
+      active: activeView,
+      onSelect: (key) => selectView(key),
+    },
+    search: {
+      placeholder: "جست‌وجوی شماره، فروشنده یا توضیح",
+      label: "جست‌وجو در فاکتورها",
+      onSearch: (value) => {
+        filters.query = value;
+        // A new question deserves its first page, not the page you were on.
+        filters.page = 1;
+        load();
+      },
+    },
+  });
 
   async function load({ refreshCounts = false } = {}) {
     state = createRequestState(REQUEST_STATUS.LOADING);
@@ -778,33 +794,43 @@ export function createInvoicesPage({ context, adapter }) {
     const heading = element("div", "invoice-list-heading");
     const title = element("div", "");
     title.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
-    const meta = element("div", "invoice-list-heading__meta");
-    meta.append(
-      renderInvoiceListSummary(summary.counts, activeView, selectView),
-      createColumnControl({
-        name: "invoices",
-        columns: INVOICE_COLUMNS,
-        visible: visibleColumns,
-        table: () => root.querySelector(".invoices-table"),
-      }),
-    );
-    heading.append(title, meta);
-    section.append(heading, detailMessage, renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
+    heading.append(title);
+    // The toolbar is built once and moved, never rebuilt: a repaint that
+    // replaced it would take the search box out from under whoever is typing
+    // into it, along with their caret.
+    updateFilterChips(toolbar.querySelector(".data-table-chips"), {
+      active: activeView,
+      counts: invoiceChipCounts(summary.counts),
+    });
+    section.append(heading, detailMessage, toolbar,
+      renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
     return section;
   }
 
   function renderEmpty() {
     const section = element("section", "state-card");
-    section.append(element("h2", "", "فاکتوری پیدا نشد"), element("p", "", "برای این پروژه فاکتوری مطابق فیلترهای انتخاب‌شده وجود ندارد."));
+    // "Nothing here" and "nothing matched what you asked for" are different
+    // things to be told, and only one of them suggests changing the question.
+    const narrowed = Boolean(filters.query) || activeView !== "all";
+    section.append(
+      element("h2", "", "فاکتوری پیدا نشد"),
+      element("p", "", narrowed
+        ? "موردی مطابق جست‌وجو یا وضعیت انتخاب‌شده پیدا نشد. عبارت جست‌وجو را تغییر دهید یا چیپ «همه» را بزنید."
+        : "برای این پروژه هنوز فاکتوری ثبت نشده است."),
+    );
     return section;
   }
 
   function paint() {
     // Before the first read there are no counts to show, so there is no heading
     // to show them in -- the loading or error card is the whole page, as it was.
-    root.replaceChildren(renderHeader(), summary
-      ? renderSection()
-      : renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
+    // Wrapped, because this replaces the tree the search box is standing in and
+    // the reader may still be typing into it.
+    repaintPreservingFocus(() => {
+      root.replaceChildren(renderHeader(), summary
+        ? renderSection()
+        : renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
+    });
   }
 
   load();
