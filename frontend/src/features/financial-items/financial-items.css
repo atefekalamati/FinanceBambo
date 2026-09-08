@@ -196,10 +196,6 @@
   min-inline-size: 42rem;
 }
 
-.estimate-lines-table {
-  min-inline-size: 56rem;
-}
-
 .items-table :is(th, td):nth-child(1) {
   inline-size: 17%;
 }
@@ -231,27 +227,30 @@
   vertical-align: middle;
 }
 
-/* Each column takes the width its content needs. The table was `fixed` (from
-   .data-table) with seven hand-written percentages that summed to 100 -- and then
-   grew to ten columns, so the last three were allotted nothing at all. `auto` is
-   how .invoices-table and .breakdown-table already solve this; the numeric
-   columns hold short figures and say so, and the two text columns are the ones
-   allowed to wrap. */
-.estimate-lines-table {
-  table-layout: auto;
+/* Named rather than counted. Counted was the bug: columns were added to this
+   table and the nth-child rules kept sizing the first seven, so the rest shared
+   whatever was left. A named width cannot drift when a column is added, and the
+   identity column's width is the component's -- a rule here would outrank its
+   responsive ladder. */
+.estimate-lines-table :is(th, td)[data-col="unit"] {
+  inline-size: 8%;
 }
 
-.estimate-lines-table :is(th, td) {
-  white-space: nowrap;
+.estimate-lines-table :is(th, td)[data-col="quantity"],
+.estimate-lines-table :is(th, td)[data-col="price"] {
+  inline-size: 14%;
 }
 
-.estimate-lines-table :is(th, td):first-child {
-  inline-size: 40%;
-  white-space: normal;
+.estimate-lines-table :is(th, td)[data-col="amount"] {
+  inline-size: 16%;
 }
 
-.estimate-lines-table .pair-cell {
-  inline-size: 1%;
+.estimate-lines-table :is(th, td)[data-col="actualCost"] {
+  inline-size: 12%;
+}
+
+.estimate-lines-table :is(th, td)[data-col="actions"] {
+  inline-size: 12%;
 }
 
 .line-actions .table-action + .table-action {
@@ -312,34 +311,9 @@
   background: rgb(0 136 151 / 10%);
 }
 
-/* One activity, one heading, then its items.
-   The heading spans the table because what it says -- the activity's code, its
-   name and the schedule's cost for it -- is true of the activity and not of any
-   one item under it. `.data-table th` styles a `th` as small muted column-header
-   text, which is the opposite of what this is, so it is restated here. */
-.estimate-lines-table__activity > .activity-block {
-  padding-block: .75rem .5rem;
-  border-block-start: 1px solid var(--color-border, rgb(148 163 184 / 35%));
-  color: var(--color-text-primary);
-  font-size: .85rem;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: none;
-  white-space: normal;
-}
-
-.estimate-lines-table__activity:first-child > .activity-block {
-  border-block-start: 0;
-}
-
-.activity-block {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .35rem 1.25rem;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
+/* The schedule's cost, written on the activity's own row and nowhere else.
+   The row itself is the table component's (.data-table__group); only what this
+   page puts inside it is styled here. */
 .activity-block__cost {
   color: var(--color-text-muted);
   font-size: .78rem;
@@ -804,8 +778,8 @@ html[data-theme="light"] .workspace-form select {
    -------------------------------------------------------------------------- */
 
 @media print {
-  /* A heading must not print at the foot of a page with its items overleaf. */
-  .estimate-lines-table__activity {
+  /* An activity must not print at the foot of a page with its items overleaf. */
+  .estimate-lines-table .data-table__group {
     break-inside: avoid;
     break-after: avoid;
   }

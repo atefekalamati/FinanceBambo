@@ -12,6 +12,8 @@ import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
+import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+  from "../../shared/components/data-table.js";
 
 const STATUS_LABELS = Object.freeze({ draft: "پیش‌نویس", awaitingConfirmation: "در انتظار تأیید", confirmed: "تأییدشده", voided: "باطل‌شده", corrected: "اصلاح‌شده" });
 const SOURCE_LABELS = Object.freeze({ manual: "ورود دستی", image: "تصویر", voice: "صدای فارسی", reversal: "سند برگشت", corrective: "سند اصلاحی" });
@@ -26,24 +28,49 @@ function getInvoiceEffect(invoice) {
   return { tone: "positive", label: "اثر افزاینده", description: "این سند در هزینه واقعی پروژه اثر افزاینده دارد." };
 }
 
-function renderInvoiceListSummary(items) {
-  const counts = items.reduce((summary, invoice) => {
-    summary.total += 1;
-    if (invoice.invoiceStatus === "awaitingConfirmation") summary.awaiting += 1;
-    if (["confirmed", "voided", "corrected"].includes(invoice.invoiceStatus)) summary.effective += 1;
-    if (invoice.duplicateWarning) summary.warning += 1;
-    return summary;
-  }, { total: 0, awaiting: 0, effective: 0, warning: 0 });
+/* The four ways this list is read, and now the only filter it has. Three of them
+   are a status the server already filters on; the fourth has no server filter --
+   /invoices takes page, pageSize, query, status, source and a date range, and
+   nothing about duplicates -- so that one is picked out of the loaded set. */
+const INVOICE_VIEWS = Object.freeze([
+  { key: "all", label: "کل فاکتورها", tone: "neutral" },
+  { key: "draft", label: "پیش‌نویس", tone: "neutral", status: "draft" },
+  { key: "awaiting", label: "در انتظار تأیید", tone: "pending", status: "awaitingConfirmation" },
+  { key: "confirmed", label: "تأییدشده", tone: "positive", status: "confirmed" },
+  { key: "corrected", label: "اصلاح‌شده", tone: "warning", status: "corrected" },
+  { key: "duplicates", label: "نیازمند بررسی تکرار", tone: "warning", duplicates: true },
+]);
+
+/** The most the list endpoint will return in one page, and so the most this can
+ *  count exactly. `totalItems` is the project's real total either way. */
+const SUMMARY_PAGE_SIZE = 200;
+
+function countInvoiceViews(items, totalItems) {
+  const withStatus = (status) => items.filter((invoice) => invoice.invoiceStatus === status).length;
+  return {
+    all: totalItems,
+    draft: withStatus("draft"),
+    awaiting: withStatus("awaitingConfirmation"),
+    confirmed: withStatus("confirmed"),
+    corrected: withStatus("corrected"),
+    duplicates: items.filter((invoice) => invoice.duplicateWarning).length,
+  };
+}
+
+function renderInvoiceListSummary(counts, activeKey, onSelect) {
   const section = element("section", "invoice-list-summary");
-  section.setAttribute("aria-label", "خلاصه وضعیت فاکتورهای نمایش‌داده‌شده");
-  [
-    ["نمایش در این صفحه", counts.total, "neutral"],
-    ["در انتظار تأیید", counts.awaiting, "pending"],
-    ["اسناد مالی مؤثر", counts.effective, "positive"],
-    ["نیازمند بررسی تکرار", counts.warning, "warning"],
-  ].forEach(([label, value, tone]) => {
-    const item = element("article", `invoice-summary-item invoice-summary-item--${tone}`);
-    item.append(element("span", "invoice-summary-item__label", label), element("strong", "invoice-summary-item__value numeric", formatDisplayNumber(String(value))));
+  section.setAttribute("aria-label", "فیلتر فاکتورها بر اساس وضعیت");
+  INVOICE_VIEWS.forEach((view) => {
+    const item = element("button", `invoice-summary-item invoice-summary-item--${view.tone}`);
+    item.type = "button";
+    item.dataset.view = view.key;
+    const active = view.key === activeKey;
+    item.setAttribute("aria-pressed", String(active));
+    item.append(
+      element("span", "invoice-summary-item__label", view.label),
+      element("strong", "invoice-summary-item__value numeric", formatDisplayNumber(String(counts[view.key] ?? 0))),
+    );
+    item.addEventListener("click", () => onSelect(view.key));
     section.append(item);
   });
   return section;
@@ -308,21 +335,24 @@ function renderDetail(invoice, { canEdit, currentUserId, project, onSubmit, onCo
   });
   letterhead.classList.add("report-header--print-only");
   dialog.append(letterhead);
+  // Two rows, one rule between them: the title against the way out, then the
+  // status against the way to paper. Both rows carry the same class, so what
+  // governs the spacing of one governs the other.
   const head = element("header", "invoice-detail-dialog__head");
-  const heading = element("div");
+  const titleRow = element("div", "invoice-detail-dialog__head-row");
   const title = element("h2", "", `جزئیات فاکتور ${invoice.invoiceNumber}`);
   title.id = "invoice-detail-title";
-  heading.append(title, element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "وضعیت نامشخص"));
   const close = element("button", "dialog-close", "×");
   close.type = "button";
   close.setAttribute("aria-label", "بستن جزئیات فاکتور");
   close.addEventListener("click", () => dialog.close());
-  const headActions = element("div", "invoice-detail-dialog__head-actions");
+  titleRow.append(title, close);
+  const metaRow = element("div", "invoice-detail-dialog__head-row");
   const print = element("button", "button button--ghost invoice-print-button", "چاپ فاکتور");
   print.type = "button";
   print.addEventListener("click", () => window.print());
-  headActions.append(print, close);
-  head.append(heading, headActions);
+  metaRow.append(element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "وضعیت نامشخص"), print);
+  head.append(titleRow, metaRow);
 
   const metadata = element("dl", "invoice-detail-grid");
   [
@@ -520,55 +550,112 @@ function createVoidInvoiceDialog({ invoice, adapter, onSaved }) {
   return dialog;
 }
 
-function renderTable(items, onDetail) {
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table invoices-table");
-  table.append(tableCaption("فهرست فاکتورهای پروژه"));
-  const thead = tableHead(["شماره", "تاریخ", "فروشنده یا ارائه‌دهنده", "منبع", "وضعیت", "تعداد ردیف", "مبلغ نهایی", ["", "عملیات"]]);
-  const tbody = document.createElement("tbody");
-  items.forEach((invoice) => {
-    const row = document.createElement("tr");
-    const identity = element("div", "invoice-table-identity");
-    identity.append(element("strong", "", invoice.invoiceNumber));
-    if (invoice.duplicateWarning) identity.append(element("span", "invoice-table-warning", "نیازمند بررسی تکرار"));
-    const action = element("button", "button button--small button--ghost", "جزئیات");
-    action.type = "button";
-    action.addEventListener("click", (event) => onDetail(invoice.invoiceId, event.currentTarget));
-    row.append(
-      element("td", "", ""), element("td", "", formatBusinessDate(invoice.invoiceDate)),
-      element("td", "", invoice.vendorName), element("td", "", SOURCE_LABELS[invoice.source] ?? "نامشخص"),
-      element("td", "", ""), element("td", "numeric", formatDisplayNumber(String(invoice.lineCount))),
-      element("td", "numeric", formatTomanFromIrr(invoice.finalAmountIRR)),
-      element("td", "", ""),
-    );
-    row.children[0].append(identity);
-    row.children[4].append(element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "نامشخص"));
-    row.children[7].append(action);
-    tbody.append(row);
+/* The columns this list has always shown, in the order it has always shown them.
+   `tier` decides nothing on a wide screen -- it only picks what a narrow one
+   starts with. Every column stays reachable from the column control and every
+   value stays in the detail dialog, so nothing is lost to a small viewport. */
+const INVOICE_COLUMNS = Object.freeze([
+  { key: "identity", label: "شماره", tier: IDENTITY },
+  // Kept on a tablet though it is secondary: a date is how these are told apart
+  // once there are more of them than a screen holds.
+  { key: "date", label: "تاریخ", tier: SECONDARY, keepOnTablet: true },
+  { key: "vendor", label: "فروشنده یا ارائه‌دهنده", tier: PRIMARY },
+  { key: "source", label: "منبع", tier: SECONDARY },
+  { key: "status", label: "وضعیت", tier: PRIMARY },
+  { key: "lineCount", label: "تعداد ردیف", tier: SECONDARY, cellClass: "numeric" },
+  { key: "amount", label: "مبلغ نهایی", tier: PRIMARY, cellClass: "numeric" },
+]);
+
+function renderTable(items, onDetail, visible) {
+  return createDataTable({
+    className: "invoices-table",
+    caption: "فهرست فاکتورهای پروژه",
+    scrollLabel: "جدول فاکتورها",
+    columns: INVOICE_COLUMNS,
+    rows: items,
+    visible,
+    cells: (invoice) => {
+      const identity = element("div", "data-table-identity");
+      identity.append(element("strong", "", invoice.invoiceNumber));
+      // The same control as before, in the cell that carries the number rather
+      // than in a column of its own: the two travel together, so the way into an
+      // invoice is still on screen when the table is scrolled sideways.
+      const action = element("button", "button button--small button--ghost invoice-detail-button", "جزئیات");
+      action.type = "button";
+      action.setAttribute("aria-label", `جزئیات فاکتور ${invoice.invoiceNumber}`);
+      action.addEventListener("click", (event) => onDetail(invoice.invoiceId, event.currentTarget));
+      identity.append(action);
+      // The duplicate flag is the cell's, not the identity row's: a third thing
+      // inside that row would share the width the number and the button need.
+      const cell = document.createDocumentFragment();
+      cell.append(identity);
+      if (invoice.duplicateWarning) cell.append(element("span", "invoice-table-warning", "نیازمند بررسی تکرار"));
+      return {
+        identity: cell,
+        date: formatBusinessDate(invoice.invoiceDate),
+        vendor: invoice.vendorName,
+        source: SOURCE_LABELS[invoice.source] ?? "نامشخص",
+        status: element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "نامشخص"),
+        lineCount: formatDisplayNumber(String(invoice.lineCount)),
+        amount: formatTomanFromIrr(invoice.finalAmountIRR),
+      };
+    },
   });
-  table.append(thead, tbody);
-  wrapper.append(table);
-  return wrapper;
 }
 
 export function createInvoicesPage({ context, adapter }) {
   const root = element("div", "invoices-page");
   let state = createRequestState(REQUEST_STATUS.LOADING);
-  const filters = { query: "", status: "", source: "", page: 1, pageSize: 50 };
+  const filters = { status: "", page: 1, pageSize: 50 };
+  // Which chip is pressed, and the counts behind all four. The counts describe
+  // the project, not the current view, so they are read once per data change and
+  // left alone while the reader moves between chips.
+  let activeView = "all";
+  let summary = null;
+  // Lives with the page, not with a render: paint() replaces the whole tree on
+  // every load, so a choice held inside a render would last until the next filter.
+  const visibleColumns = defaultVisibleColumns(INVOICE_COLUMNS);
   const canCreate = capabilitiesFor(context).writeFinance;
   const detailMessage = element("div", "form-message invoice-detail-message");
   detailMessage.setAttribute("aria-live", "assertive");
 
-  async function load() {
+  async function load({ refreshCounts = false } = {}) {
     state = createRequestState(REQUEST_STATUS.LOADING);
     paint();
     try {
-      const data = await adapter.getInvoices(filters);
+      if (refreshCounts || summary === null) {
+        const everything = await adapter.getInvoices({ status: "", page: 1, pageSize: SUMMARY_PAGE_SIZE });
+        summary = {
+          items: everything.items,
+          counts: countInvoiceViews(everything.items, everything.totalItems),
+          capped: everything.totalItems > everything.items.length,
+        };
+      }
+      // The duplicate view is assembled here rather than asked for, because the
+      // endpoint cannot answer it. One page, because the set it draws from is one
+      // page -- pagination that promised more would be promising the untrue.
+      const view = INVOICE_VIEWS.find((entry) => entry.key === activeView);
+      let data;
+      if (view?.duplicates) {
+        const flagged = summary.items.filter((invoice) => invoice.duplicateWarning);
+        data = { items: flagged, page: 1, pageSize: Math.max(flagged.length, 1), totalItems: flagged.length, totalPages: 1 };
+      } else {
+        data = await adapter.getInvoices(filters);
+      }
       state = createRequestState(data.totalItems ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, data);
     } catch (error) {
       state = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
     }
     paint();
+  }
+
+  function selectView(key) {
+    if (key === activeView) return;
+    activeView = key;
+    const view = INVOICE_VIEWS.find((entry) => entry.key === key);
+    filters.status = view?.status ?? "";
+    filters.page = 1;
+    load();
   }
 
   async function showDetail(invoiceId, trigger) {
@@ -610,7 +697,7 @@ export function createInvoicesPage({ context, adapter }) {
         onCorrective: (confirmedInvoice, detailDialog) => {
           const opener = getDialogOpener(detailDialog);
           detailDialog.close();
-          const correctiveDialog = createInvoiceWizard({ adapter, onSaved: load, mode: "corrective", originalInvoice: confirmedInvoice });
+          const correctiveDialog = createInvoiceWizard({ adapter, onSaved: () => load({ refreshCounts: true }), mode: "corrective", originalInvoice: confirmedInvoice });
           root.append(correctiveDialog);
           correctiveDialog.addEventListener("close", () => correctiveDialog.remove(), { once: true });
           showAccessibleDialog(correctiveDialog, { opener });
@@ -638,7 +725,7 @@ export function createInvoicesPage({ context, adapter }) {
       const create = element("button", "button button--primary", "ثبت فاکتور دستی");
       create.type = "button";
       create.addEventListener("click", () => {
-        const dialog = createInvoiceWizard({ adapter, onSaved: () => { filters.page = 1; load(); } });
+        const dialog = createInvoiceWizard({ adapter, onSaved: () => { filters.page = 1; load({ refreshCounts: true }); } });
         root.append(dialog);
         dialog.addEventListener("close", () => dialog.remove(), { once: true });
         showAccessibleDialog(dialog);
@@ -658,38 +745,12 @@ export function createInvoicesPage({ context, adapter }) {
     return header;
   }
 
-  function renderFilters() {
-    const form = element("form", "invoice-filters");
-    const search = element("input", "app-input");
-    search.type = "search";
-    search.placeholder = "شماره، فروشنده یا توضیح";
-    search.value = filters.query;
-    search.setAttribute("aria-label", "جست‌وجوی فاکتور");
-    const status = element("select", "app-select");
-    status.setAttribute("aria-label", "فیلتر وضعیت فاکتور");
-    status.append(option("", "همه وضعیت‌ها"), ...Object.entries(STATUS_LABELS).map(([value, label]) => option(value, label)));
-    status.value = filters.status;
-    const source = element("select", "app-select");
-    source.setAttribute("aria-label", "فیلتر منبع فاکتور");
-    source.append(option("", "همه منابع"), ...Object.entries(SOURCE_LABELS).map(([value, label]) => option(value, label)));
-    source.value = filters.source;
-    const submit = element("button", "button button--primary", "اعمال فیلتر");
-    submit.type = "submit";
-    const reset = element("button", "button button--ghost", "پاک‌کردن");
-    reset.type = "button";
-    reset.addEventListener("click", () => { Object.assign(filters, { query: "", status: "", source: "", page: 1 }); load(); });
-    form.addEventListener("submit", (event) => { event.preventDefault(); Object.assign(filters, { query: search.value, status: status.value, source: source.value, page: 1 }); load(); });
-    form.append(search, status, source, submit, reset);
-    return form;
-  }
-
-  function renderContent(data) {
-    const section = element("section", "invoices-section");
-    const heading = element("div", "invoice-list-heading");
-    heading.append(element("div", "", ""), element("span", "section-count numeric", `${formatDisplayNumber(String(data.totalItems))} فاکتور`));
-    heading.firstElementChild.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
-    const summary = renderInvoiceListSummary(data.items);
-    const table = renderTable(data.items, showDetail);
+  /* Only the body goes through the state switch. The heading -- and with it the
+     chips, which are the only filter this page has -- is rendered either way,
+     because a filter that empties the list must not leave with it. */
+  function renderListBody(data) {
+    const body = element("div", "invoices-list-body");
+    const table = renderTable(data.items, showDetail, visibleColumns);
     const pagination = element("nav", "invoice-pagination");
     pagination.setAttribute("aria-label", "صفحه‌بندی فاکتورها");
     const previous = element("button", "button button--ghost", "صفحه قبل");
@@ -702,7 +763,31 @@ export function createInvoicesPage({ context, adapter }) {
     next.disabled = data.page >= data.totalPages;
     next.addEventListener("click", () => { filters.page = data.page + 1; load(); });
     pagination.append(previous, label, next);
-    section.append(heading, detailMessage, summary, table, pagination);
+    body.append(table, pagination);
+    return body;
+  }
+
+  function renderSection() {
+    const section = element("section", "invoices-section");
+    const heading = element("div", "invoice-list-heading");
+    const title = element("div", "");
+    title.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
+    const meta = element("div", "invoice-list-heading__meta");
+    meta.append(
+      renderInvoiceListSummary(summary.counts, activeView, selectView),
+      createColumnControl({
+        name: "invoices",
+        columns: INVOICE_COLUMNS,
+        visible: visibleColumns,
+        onToggle: (key, on) => {
+          if (on) visibleColumns.add(key);
+          else visibleColumns.delete(key);
+          applyColumnVisibility(root.querySelector(".invoices-table"), key, on);
+        },
+      }),
+    );
+    heading.append(title, meta);
+    section.append(heading, detailMessage, renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
     return section;
   }
 
@@ -713,7 +798,11 @@ export function createInvoicesPage({ context, adapter }) {
   }
 
   function paint() {
-    root.replaceChildren(renderHeader(), renderFilters(), renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    // Before the first read there are no counts to show, so there is no heading
+    // to show them in -- the loading or error card is the whole page, as it was.
+    root.replaceChildren(renderHeader(), summary
+      ? renderSection()
+      : renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
   }
 
   load();
