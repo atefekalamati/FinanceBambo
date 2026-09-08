@@ -510,32 +510,35 @@ function renderPriceFilters(filters, onApply, onReset) {
   return form;
 }
 
-function renderHistory(history, currentPrices) {
+function priceHistoryColumns() {
+  return [
+    { key: "identity", label: "قلم هزینه", tier: IDENTITY },
+    { key: "scope", label: "سطح", tier: PRIMARY },
+    { key: "unitPrice", label: `قیمت واحد (${getDisplayCurrencyLabel()})`, tier: PRIMARY, cellClass: "numeric" },
+    { key: "effectiveFrom", label: "تاریخ اعتبار", tier: SECONDARY, keepOnTablet: true },
+    { key: "actor", label: "ثبت‌کننده", tier: SECONDARY },
+    { key: "createdAt", label: "زمان ثبت", tier: SECONDARY },
+  ];
+}
+
+function renderHistory(history, currentPrices, columns, visible) {
   const resourceMap = new Map(currentPrices.map((item) => [item.resource.resourceId, item.resource]));
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table price-history-table");
-  table.append(element("caption", "sr-only", "تاریخچه تغییرناپذیر قیمت‌ها"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["قلم هزینه", "سطح", `قیمت واحد (${getDisplayCurrencyLabel()})`, "تاریخ اعتبار", "ثبت‌کننده", "زمان ثبت"].forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  history.forEach((price) => {
-    const resource = resourceMap.get(price.resourceId);
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "", resource?.title ?? "قلم حذف‌شده"),
-      element("td", "", SCOPE_LABELS[price.scope] ?? "سطح نامشخص"),
-      element("td", "numeric", formatTomanFromIrr(price.unitPriceIRR, { withCurrency: false })),
-      element("td", "", formatBusinessDate(price.effectiveFrom)),
-      element("td", "", price.actorName || price.actorId),
-      element("td", "", formatSystemDateTime(price.createdAt)),
-    );
-    body.append(row);
+  return createDataTable({
+    className: "price-history-table",
+    caption: "تاریخچه تغییرناپذیر قیمت‌ها",
+    scrollLabel: "جدول تاریخچه قیمت‌ها",
+    columns,
+    rows: history,
+    visible,
+    cells: (price) => ({
+      identity: resourceMap.get(price.resourceId)?.title ?? "قلم حذف‌شده",
+      scope: SCOPE_LABELS[price.scope] ?? "سطح نامشخص",
+      unitPrice: formatTomanFromIrr(price.unitPriceIRR, { withCurrency: false }),
+      effectiveFrom: formatBusinessDate(price.effectiveFrom),
+      actor: price.actorName || price.actorId,
+      createdAt: formatSystemDateTime(price.createdAt),
+    }),
   });
-  table.append(head, body);
-  wrapper.append(table);
-  return wrapper;
 }
 
 export function renderCurrentConversions(items) {
@@ -616,6 +619,8 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
   // render would last only until the next filter.
   const priceColumns = currentPriceColumns();
   const visiblePriceColumns = defaultVisibleColumns(priceColumns);
+  const historyColumns = priceHistoryColumns();
+  const visibleHistoryColumns = defaultVisibleColumns(historyColumns);
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
@@ -732,7 +737,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
     if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history, focusResourceId, priceColumns, visiblePriceColumns));
     else current.append(element("div", "state-card price-filter-empty", "قلمی مطابق فیلترهای انتخاب‌شده پیدا نشد."));
     const history = element("section", "prices-section");
-    history.append(element("h2", "", "تاریخچه قیمت‌ها"), element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."), renderHistory(workspace.history, workspace.currentPrices));
+    history.append(element("h2", "", "تاریخچه قیمت‌ها"), element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."), renderHistory(workspace.history, workspace.currentPrices, historyColumns, visibleHistoryColumns));
     fragment.append(toolbar, current, history);
     return fragment;
   }

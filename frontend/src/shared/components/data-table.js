@@ -45,7 +45,10 @@ export function defaultVisibleColumns(columns, matchMedia = globalThis.matchMedi
 export function applyColumnVisibility(table, key, visible) {
   if (!table) return;
   table.querySelectorAll(`:is(th, td)[data-col="${key}"]`).forEach((cell) => { cell.hidden = !visible; });
-  table.dataset.columns = String(table.querySelectorAll("thead th:not([hidden])").length);
+  const shown = table.querySelectorAll("thead th:not([hidden])").length;
+  table.dataset.columns = String(shown);
+  // The "nothing here" row spans the columns, so it has to follow them.
+  table.querySelectorAll("td[data-empty]").forEach((cell) => { cell.colSpan = shown; });
 }
 
 /**
@@ -179,7 +182,7 @@ function appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible,
   });
 }
 
-export function createDataTable({ caption, scrollLabel, className = "", columns, rows, cells, rowAttributes, visible, group }) {
+export function createDataTable({ caption, scrollLabel, className = "", columns, rows, cells, rowAttributes, visible, group, emptyMessage }) {
   const scroll = element("div", "table-scroll data-table-scroll");
   // The same affordance the comparison chart's table uses: a named region the
   // keyboard can reach and scroll, not a pane only a pointer can move.
@@ -198,8 +201,15 @@ export function createDataTable({ caption, scrollLabel, className = "", columns,
   });
 
   const body = document.createElement("tbody");
-  if (group) appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible, group });
-  else rows.forEach((row) => {
+  if (!rows.length && emptyMessage) {
+    const tr = document.createElement("tr");
+    const cell = element("td", "data-table__empty", emptyMessage);
+    cell.colSpan = visible.size;
+    cell.dataset.empty = "true";
+    tr.append(cell);
+    body.append(tr);
+  } else if (group) appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible, group });
+  else if (rows.length) rows.forEach((row) => {
     const tr = document.createElement("tr");
     const extra = rowAttributes ? rowAttributes(row) : null;
     if (extra?.className) tr.className = extra.className;
