@@ -168,6 +168,14 @@
   background: rgb(3 8 20 / 18%);
 }
 
+/* Indented past where the summary row's own name starts. The summary's name is
+   pushed in by the chevron before it, so matching the cell's padding is not
+   enough -- a member indented by the padding alone ends up further out than the
+   row it belongs to, which reads as the opposite of nested. */
+.data-table__child > [data-col="identity"] {
+  padding-inline-start: calc(var(--space-lg) + var(--space-xl));
+}
+
 /* The row that says there is nothing to show. It spans the visible columns, so
    the column widths above do not reach it and it needs no !important to beat
    them -- the width rules select by data-col and this cell has none. */
@@ -177,39 +185,89 @@
   text-align: center;
 }
 
-/* --- the column control ------------------------------------------------- */
+/* --- the column control -------------------------------------------------
+   One list of checkboxes with two homes. Above the tablet break it sits in a
+   popover anchored to its button; below it, the same element is moved into a
+   modal sheet. Everything shared between the two is written once against
+   `.data-table-columns__set`, and each home only says how it is placed. */
 
 .data-table-columns {
   position: relative;
 }
 
+.data-table-columns__toggle {
+  gap: var(--space-xs);
+  white-space: nowrap;
+}
+
+.data-table-columns__icon {
+  line-height: 1;
+}
+
 .data-table-columns__panel {
+  --data-table-popover-gutter: var(--space-sm);
+
   position: absolute;
   z-index: 2;
   inset-block-start: calc(100% + var(--space-xs));
   inset-inline-end: 0;
   inline-size: max-content;
-  max-inline-size: 16rem;
+  /* The floor of the two is what keeps it on screen: 16rem where there is room,
+     and never wider than the window minus a gutter at each side. The JS shift
+     then moves it back inside; this makes sure there is an inside to move to. */
+  max-inline-size: min(16rem, calc(100vw - 2 * var(--data-table-popover-gutter)));
+  /* The measured room on whichever side it opened, falling back to the window
+     when it fits and nothing had to be capped. */
+  max-block-size: var(--data-table-popover-max-block, calc(100dvh - 2 * var(--data-table-popover-gutter)));
   padding: var(--space-sm);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface-canvas);
   box-shadow: var(--dash-shadow);
+  /* Physical, because the overflow it corrects was measured in viewport axes. */
+  transform: translateX(var(--data-table-popover-shift, 0));
+}
+
+/* Stated only for the shown panel. `display` on the bare class would beat the
+   `[hidden] { display: none }` every browser ships, and the closed panel would
+   sit on the page unopened -- which is exactly what it did until the layout
+   audit caught it at 360. Same reason the sheet below is scoped to [open]. */
+.data-table-columns__panel:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Not enough room underneath, and more above it. */
+.data-table-columns__panel--above {
+  inset-block-start: auto;
+  inset-block-end: calc(100% + var(--space-xs));
 }
 
 .data-table-columns__set {
-  display: grid;
-  gap: .1rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-block-size: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
-.data-table-columns__set legend {
+.data-table-columns__title {
   padding-inline: var(--space-xs);
   color: var(--color-text-secondary);
   font-size: .82rem;
   font-weight: 700;
+}
+
+/* Only the options scroll. The title and the footer stay put, so a long list
+   never pushes the way out of reach. */
+.data-table-columns__list {
+  display: grid;
+  gap: .1rem;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .data-table-columns__option {
@@ -228,7 +286,73 @@
 }
 
 .data-table-columns__option input {
+  flex: none;
   accent-color: var(--brand-teal);
+}
+
+/* A long column name wraps rather than widening the panel past its cap. */
+.data-table-columns__option-label {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Listed so it can be found, locked so it cannot be lost. */
+.data-table-columns__option--locked {
+  cursor: default;
+  opacity: .65;
+}
+
+.data-table-columns__option--locked:hover {
+  border-color: transparent;
+  background: none;
+}
+
+.data-table-columns__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  padding-block-start: var(--space-xs);
+  border-block-start: 1px solid var(--color-border-subtle);
+}
+
+/* --- the sheet ----------------------------------------------------------
+   Below the tablet break the list is moved into a dialog. It inherits the
+   module's dialog surface from `.confirm-dialog`; what is set here is only
+   what a chooser needs that a confirmation does not -- room to scroll, and a
+   footer that stays reachable under a long list. */
+
+.data-table-columns__dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.data-table-columns__dialog {
+  padding: var(--space-lg);
+}
+
+.data-table-columns__dialog .data-table-columns__set {
+  min-block-size: 0;
+  gap: var(--space-sm);
+}
+
+.data-table-columns__dialog .data-table-columns__title {
+  font-size: 1rem;
+}
+
+/* A touch target, not a pointer's. */
+.data-table-columns__dialog .data-table-columns__option {
+  min-block-size: 2.75rem;
+  padding-block: var(--space-sm);
+  border-color: var(--color-border-subtle);
+}
+
+.data-table-columns__dialog .data-table-columns__option input {
+  inline-size: 1.15rem;
+  block-size: 1.15rem;
+}
+
+.data-table-columns__dialog .data-table-columns__footer {
+  padding-block-start: var(--space-sm);
 }
 
 /* --- narrowing ----------------------------------------------------------
@@ -317,6 +441,28 @@
   .data-table--pinned [data-col="identity"] .button {
     padding: .25rem .35rem;
     font-size: .62rem;
+  }
+
+  /* The trigger goes to its icon. It keeps a full touch target and its name
+     comes from aria-label, which is why the word can go without the button
+     becoming anonymous. */
+  .data-table-columns__label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .data-table-columns__toggle {
+    min-inline-size: 2.75rem;
+    padding-inline: var(--space-sm);
+  }
+
+  .data-table-columns__icon {
+    font-size: 1rem;
   }
 }
 
