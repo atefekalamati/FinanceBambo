@@ -4096,6 +4096,10 @@ body[data-finance-runtime="standalone"] .app-workspace {
     --font-size-2xs: .46rem;
   }
 
+  .finance-board .finance-figures .summary-card h2 {
+    font-size: var(--font-size-md);
+  }
+
   .finance-board .finance-figures .summary-card__value {
     font-size: clamp(.875rem, 1.5vw, 1.25rem);
   }
@@ -4252,6 +4256,11 @@ body[data-finance-runtime="standalone"] .app-workspace {
     --font-size-xs: .46rem;
     --font-size-2xs: .42rem;
   }
+
+  .finance-board .finance-figures .summary-card h2 {
+    font-size: 8px;
+  }
+
 
   .finance-board .finance-figures .summary-card__value {
     font-size: clamp(.7rem, 2.2vw, .95rem);
@@ -4554,6 +4563,11 @@ body[data-finance-runtime="standalone"] .app-workspace {
   .finance-board .finance-figures .summary-card__value {
     font-size: clamp(.7rem, 3.2vw, .9rem);
   }
+
+  .finance-board .finance-figures .summary-card h2 {
+    font-size: var(--font-size-sm);
+  }
+
 
   .finance-board .finance-figures {
     --font-size-xs: .5rem;

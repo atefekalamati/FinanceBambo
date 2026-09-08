@@ -220,10 +220,6 @@
    last three shared whatever was left and were unreadable. A named width cannot
    drift when a column is added, and the identity column's width is the
    component's -- a rule here would outrank its responsive ladder. */
-.estimate-lines-table :is(th, td)[data-col="resource"] {
-  inline-size: 13%;
-}
-
 .estimate-lines-table :is(th, td)[data-col="unit"] {
   inline-size: 6%;
 }
