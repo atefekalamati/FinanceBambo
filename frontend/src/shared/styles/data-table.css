@@ -1,0 +1,324 @@
+/* --------------------------------------------------------------------------
+   A table that survives a narrow screen
+
+   Opt in by putting `data-table--pinned` on a `.data-table` inside the scroll
+   region `createDataTable` builds. Nothing here fires on a table that has not
+   asked for it, so the twenty-odd tables that predate this component are
+   untouched until their page opts in.
+
+   What a page still owns: the width of each column, and any alignment of its
+   own. What this owns: the pinned first column, the floor that makes the rest
+   scroll, and how both step down as the screen narrows.
+   -------------------------------------------------------------------------- */
+
+.data-table--pinned {
+  /* The width the columns need, about 11rem each. Fewer columns need less, so
+     the floor steps down with them -- otherwise putting a column away would
+     leave the same sideways scroll behind and the control would look like it
+     did nothing. */
+  min-inline-size: 78rem;
+  table-layout: auto;
+}
+
+.data-table--pinned[data-columns="12"] {
+  min-inline-size: 132rem;
+}
+
+.data-table--pinned[data-columns="11"] {
+  min-inline-size: 121rem;
+}
+
+.data-table--pinned[data-columns="10"] {
+  min-inline-size: 110rem;
+}
+
+.data-table--pinned[data-columns="9"] {
+  min-inline-size: 99rem;
+}
+
+.data-table--pinned[data-columns="8"] {
+  min-inline-size: 88rem;
+}
+
+.data-table--pinned[data-columns="7"] {
+  min-inline-size: 78rem;
+}
+
+.data-table--pinned[data-columns="6"] {
+  min-inline-size: 66rem;
+}
+
+.data-table--pinned[data-columns="5"] {
+  min-inline-size: 54rem;
+}
+
+.data-table--pinned[data-columns="4"] {
+  min-inline-size: 42rem;
+}
+
+.data-table--pinned[data-columns="3"] {
+  min-inline-size: 30rem;
+}
+
+.data-table--pinned[data-columns="2"] {
+  min-inline-size: 0;
+}
+
+/* The identity column rides at the reading edge, so a row stays identified and
+   stays openable however far it is scrolled. The surface is the one the
+   comparison table already freezes its header against. */
+.data-table--pinned :is(th, td)[data-col="identity"] {
+  /* Stated here rather than left to the page. A page rule naming this column
+     weighs the same as the media queries below and is read after them, so a
+     page that set its own base width would silently win every step of the
+     ladder. A table that needs a different one overrides the media queries too. */
+  inline-size: 13%;
+  position: sticky;
+  z-index: 1;
+  inset-inline-start: 0;
+  background: var(--color-surface-canvas);
+  border-inline-end: 1px solid var(--color-border-subtle);
+}
+
+.data-table-identity {
+  display: flex;
+  align-items: center;
+  gap: .3rem var(--space-sm);
+}
+
+/* An identifier does not break: "ف-017" split over two lines as "ف-0" and "17"
+   is a different string to read. It sets the cell's floor instead. */
+.data-table-identity > strong {
+  white-space: nowrap;
+}
+
+.data-table--pinned [data-col="identity"] .button {
+  min-block-size: 2rem;
+  padding: .3rem .55rem;
+  font-size: .72rem;
+}
+
+/* --- folded groups ------------------------------------------------------
+   A summary row per parent, its members underneath until pressed. The whole
+   row is a press target; the button inside the identity cell is what states
+   the state and what the keyboard reaches. */
+
+.data-table__group {
+  cursor: pointer;
+}
+
+.data-table__group:hover :is(th, td) {
+  background: rgb(120 145 205 / 6%);
+}
+
+.data-table__disclosure {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  inline-size: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.data-table__disclosure::before {
+  content: "⌄";
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  line-height: 1;
+  transition: transform .15s ease;
+}
+
+.data-table__group--open .data-table__disclosure::before {
+  transform: rotate(180deg);
+}
+
+.data-table__disclosure-name {
+  display: grid;
+  min-inline-size: 0;
+}
+
+.data-table__disclosure-count {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  white-space: nowrap;
+}
+
+/* A member row reads as belonging to the row above it rather than as a peer. */
+.data-table__child > :is(th, td) {
+  background: rgb(3 8 20 / 18%);
+}
+
+/* --- the column control ------------------------------------------------- */
+
+.data-table-columns {
+  position: relative;
+}
+
+.data-table-columns__panel {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: calc(100% + var(--space-xs));
+  inset-inline-end: 0;
+  inline-size: max-content;
+  max-inline-size: 16rem;
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-canvas);
+  box-shadow: var(--dash-shadow);
+}
+
+.data-table-columns__set {
+  display: grid;
+  gap: .1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.data-table-columns__set legend {
+  padding-inline: var(--space-xs);
+  color: var(--color-text-secondary);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.data-table-columns__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.data-table-columns__option:hover {
+  border-color: var(--color-border);
+  background: rgb(120 145 205 / 6%);
+}
+
+.data-table-columns__option input {
+  accent-color: var(--brand-teal);
+}
+
+/* --- narrowing ----------------------------------------------------------
+   The pinned column costs the scrolled ones whatever it takes. From a tablet
+   down it takes less, and the type comes down with it, so the columns it
+   leaves room for stay readable rather than merely present. */
+
+@media (max-width: 64rem) {
+  .data-table--pinned :is(th, td) {
+    padding: .6rem .55rem;
+  }
+
+  .data-table--pinned th {
+    font-size: .7rem;
+  }
+
+  .data-table--pinned td {
+    font-size: .78rem;
+  }
+
+  .data-table--pinned :is(th, td)[data-col="identity"] {
+    inline-size: 10%;
+  }
+
+  .data-table--pinned [data-col="identity"] .button {
+    padding: .28rem .45rem;
+    font-size: .68rem;
+  }
+}
+
+@media (max-width: 48rem) {
+  .data-table--pinned :is(th, td) {
+    padding: .5rem .45rem;
+  }
+
+  .data-table--pinned th {
+    font-size: .64rem;
+  }
+
+  .data-table--pinned td {
+    font-size: .72rem;
+  }
+
+  .data-table--pinned :is(th, td)[data-col="identity"] {
+    inline-size: 9%;
+  }
+
+  /* Narrower columns need less table to sit in, so the floor comes down with
+     them -- the same content, less of it spent scrolling past. */
+  .data-table--pinned {
+    min-inline-size: 60rem;
+  }
+
+  .data-table--pinned[data-columns="6"] {
+    min-inline-size: 50rem;
+  }
+
+  .data-table--pinned[data-columns="5"] {
+    min-inline-size: 40rem;
+  }
+
+  .data-table--pinned[data-columns="4"] {
+    min-inline-size: 31rem;
+  }
+
+  .data-table--pinned[data-columns="3"] {
+    min-inline-size: 23rem;
+  }
+}
+
+@media (max-width: 36rem) {
+  .data-table--pinned :is(th, td) {
+    padding: .45rem .35rem;
+  }
+
+  .data-table--pinned th {
+    font-size: .6rem;
+  }
+
+  .data-table--pinned td {
+    font-size: .68rem;
+  }
+
+  /* The row is as tall as what is in it; only the control's own type comes
+     down. Its 2rem floor is the base's and does not move until 30rem. */
+  .data-table--pinned [data-col="identity"] .button {
+    padding: .25rem .35rem;
+    font-size: .62rem;
+  }
+}
+
+/* Under 480 every column is paying for the pinned one. The last step down. */
+@media (max-width: 30rem) {
+  .data-table--pinned :is(th, td) {
+    padding: .4rem .28rem;
+  }
+
+  .data-table--pinned th {
+    font-size: .56rem;
+  }
+
+  .data-table--pinned td {
+    font-size: .64rem;
+  }
+
+  .data-table--pinned :is(th, td)[data-col="identity"] {
+    inline-size: 8%;
+  }
+
+  .data-table--pinned [data-col="identity"] .button {
+    min-block-size: 1.85rem;
+    padding: .22rem .3rem;
+    font-size: .58rem;
+  }
+}
