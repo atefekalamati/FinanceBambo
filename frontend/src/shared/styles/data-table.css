@@ -98,6 +98,13 @@
   font-size: .72rem;
 }
 
+/* A table that brings its own control puts it above itself, at the far end. */
+.data-table-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-end: var(--space-sm);
+}
+
 /* --- folded groups ------------------------------------------------------
    A summary row per parent, its members underneath until pressed. The whole
    row is a press target; the button inside the identity cell is what states

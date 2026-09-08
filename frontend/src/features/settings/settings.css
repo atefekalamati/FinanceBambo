@@ -536,32 +536,20 @@ html[data-theme="light"] .form-field textarea {
   gap: var(--space-md);
 }
 
-.settings-history {
-  min-inline-size: 64rem;
-}
-
-.settings-history :is(th, td):nth-child(1) {
-  inline-size: 8%;
-  white-space: nowrap;
-}
-
-.settings-history :is(th, td):nth-child(2),
-.settings-history :is(th, td):nth-child(7) {
+.settings-history :is(th, td)[data-col="effectiveDate"],
+.settings-history :is(th, td)[data-col="occurredAt"] {
   inline-size: 13%;
   white-space: nowrap;
 }
 
-.settings-history :is(th, td):nth-child(3),
-.settings-history :is(th, td):nth-child(4) {
+.settings-history :is(th, td)[data-col="previousValue"],
+.settings-history :is(th, td)[data-col="newValue"],
+.settings-history :is(th, td)[data-col="actor"] {
   inline-size: 14%;
 }
 
-.settings-history :is(th, td):nth-child(5) {
+.settings-history :is(th, td)[data-col="reason"] {
   inline-size: 24%;
-}
-
-.settings-history :is(th, td):nth-child(6) {
-  inline-size: 14%;
 }
 
 .settings-empty {

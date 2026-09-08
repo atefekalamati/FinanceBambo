@@ -17,7 +17,7 @@ import { validatePriceVersion } from "./prices-validation.js";
 import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition, validateUnitConversion } from "./unit-conversions-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 
 const SCOPE_LABELS = Object.freeze({ organization: "پایه سازمان", project: "اختصاصی پروژه" });
@@ -541,62 +541,73 @@ function renderHistory(history, currentPrices, columns, visible) {
   });
 }
 
+/* These two are rendered by the settings page but built here, so their column
+   state lives with the module rather than being threaded through a caller that
+   has no other reason to know about columns. One page, one of each table. */
+const CONVERSION_COLUMNS = Object.freeze([
+  { key: "identity", label: "تبدیل", tier: IDENTITY },
+  { key: "dimension", label: "نوع واحد", tier: SECONDARY, keepOnTablet: true },
+  { key: "organization", label: "ضریب پایه سازمان", tier: SECONDARY, cellClass: "numeric" },
+  { key: "project", label: "تبدیل اختصاصی پروژه", tier: SECONDARY, cellClass: "numeric" },
+  { key: "current", label: "ضریب جاری", tier: PRIMARY, cellClass: "numeric conversion-current" },
+  { key: "scope", label: "مبنای جاری", tier: PRIMARY },
+  { key: "effectiveDate", label: "تاریخ اعتبار", tier: SECONDARY },
+]);
+const visibleConversionColumns = defaultVisibleColumns(CONVERSION_COLUMNS);
+
 export function renderCurrentConversions(items) {
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table current-conversions-table");
-  table.append(element("caption", "sr-only", "فهرست تبدیل‌های واحد جاری"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["تبدیل", "نوع واحد", "ضریب پایه سازمان", "تبدیل اختصاصی پروژه", "ضریب جاری", "مبنای جاری", "تاریخ اعتبار"].forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  items.forEach((item) => {
-    const definition = getUnitDefinition(item.sourceUnit);
-    const currentScope = item.currentConversion?.projectId ? "اختصاصی پروژه" : "پایه سازمان";
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "", `${formatUnitLabel(item.sourceUnit)} ← ${formatUnitLabel(item.targetUnit)}`),
-      element("td", "", definition?.dimensionLabel ?? "نامشخص"),
-      element("td", "numeric", item.organizationConversion ? formatDisplayNumber(item.organizationConversion.factor) : "—"),
-      element("td", "numeric", item.projectConversion ? formatDisplayNumber(item.projectConversion.factor) : "—"),
-      element("td", "numeric conversion-current", formatDisplayNumber(item.currentConversion.factor)),
-      element("td", "", currentScope),
-      element("td", "", formatBusinessDate(item.currentConversion.effectiveDate)),
-    );
-    body.append(row);
+  return createDataTableWithControl({
+    name: "current-conversions",
+    className: "current-conversions-table",
+    caption: "فهرست تبدیل‌های واحد جاری",
+    scrollLabel: "جدول تبدیل‌های واحد جاری",
+    columns: CONVERSION_COLUMNS,
+    visible: visibleConversionColumns,
+    rows: items,
+    cells: (item) => ({
+      identity: `${formatUnitLabel(item.sourceUnit)} ← ${formatUnitLabel(item.targetUnit)}`,
+      dimension: getUnitDefinition(item.sourceUnit)?.dimensionLabel ?? "نامشخص",
+      organization: item.organizationConversion ? formatDisplayNumber(item.organizationConversion.factor) : "—",
+      project: item.projectConversion ? formatDisplayNumber(item.projectConversion.factor) : "—",
+      current: formatDisplayNumber(item.currentConversion.factor),
+      scope: item.currentConversion?.projectId ? "اختصاصی پروژه" : "پایه سازمان",
+      effectiveDate: formatBusinessDate(item.currentConversion.effectiveDate),
+    }),
   });
-  table.append(head, body);
-  wrapper.append(table);
-  return wrapper;
 }
 
+const CONVERSION_HISTORY_COLUMNS = Object.freeze([
+  { key: "identity", label: "واحد مبدأ", tier: IDENTITY },
+  { key: "target", label: "واحد مقصد", tier: PRIMARY },
+  { key: "dimension", label: "نوع واحد", tier: SECONDARY },
+  { key: "factor", label: "ضریب تبدیل", tier: PRIMARY, cellClass: "numeric" },
+  { key: "scope", label: "سطح", tier: SECONDARY, keepOnTablet: true },
+  { key: "effectiveDate", label: "تاریخ اعتبار", tier: SECONDARY, keepOnTablet: true },
+  { key: "actor", label: "ثبت‌کننده", tier: SECONDARY },
+  { key: "createdAt", label: "زمان ثبت", tier: SECONDARY },
+]);
+const visibleConversionHistoryColumns = defaultVisibleColumns(CONVERSION_HISTORY_COLUMNS);
+
 export function renderConversionHistory(history) {
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table conversion-history-table");
-  table.append(element("caption", "sr-only", "تاریخچه نسخه‌های تبدیل واحد"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["واحد مبدأ", "واحد مقصد", "نوع واحد", "ضریب تبدیل", "سطح", "تاریخ اعتبار", "ثبت‌کننده", "زمان ثبت"].forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  history.forEach((conversion) => {
-    const definition = getUnitDefinition(conversion.sourceUnit);
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "", formatUnitLabel(conversion.sourceUnit)),
-      element("td", "", formatUnitLabel(conversion.targetUnit)),
-      element("td", "", definition?.dimensionLabel ?? "نامشخص"),
-      element("td", "numeric", formatDisplayNumber(conversion.factor)),
-      element("td", "", conversion.projectId ? "اختصاصی پروژه" : "پایه سازمان"),
-      element("td", "", formatBusinessDate(conversion.effectiveDate)),
-      element("td", "", conversion.createdByName || conversion.createdBy),
-      element("td", "", formatSystemDateTime(conversion.createdAt)),
-    );
-    body.append(row);
+  return createDataTableWithControl({
+    name: "conversion-history",
+    className: "conversion-history-table",
+    caption: "تاریخچه نسخه‌های تبدیل واحد",
+    scrollLabel: "جدول تاریخچه تبدیل واحد",
+    columns: CONVERSION_HISTORY_COLUMNS,
+    visible: visibleConversionHistoryColumns,
+    rows: history,
+    cells: (conversion) => ({
+      identity: formatUnitLabel(conversion.sourceUnit),
+      target: formatUnitLabel(conversion.targetUnit),
+      dimension: getUnitDefinition(conversion.sourceUnit)?.dimensionLabel ?? "نامشخص",
+      factor: formatDisplayNumber(conversion.factor),
+      scope: conversion.projectId ? "اختصاصی پروژه" : "پایه سازمان",
+      effectiveDate: formatBusinessDate(conversion.effectiveDate),
+      actor: conversion.createdByName || conversion.createdBy,
+      createdAt: formatSystemDateTime(conversion.createdAt),
+    }),
   });
-  table.append(head, body);
-  wrapper.append(table);
-  return wrapper;
 }
 
 /**

@@ -122,14 +122,6 @@
    Price tables
    -------------------------------------------------------------------------- */
 
-.current-conversions-table {
-  min-inline-size: 64rem;
-}
-
-.conversion-history-table {
-  min-inline-size: 68rem;
-}
-
 /* Named rather than counted, because a column can be put away now and every
    nth-child after it would shift. The floor and the pinned column are the
    component's; these widths are this table's. The identity column's width is
@@ -212,39 +204,34 @@
   inline-size: 17%;
 }
 
-.current-conversions-table :is(th, td):nth-child(1) {
-  inline-size: 18%;
-}
-
-.current-conversions-table :is(th, td):nth-child(2),
-.current-conversions-table :is(th, td):nth-child(6),
-.current-conversions-table :is(th, td):nth-child(7) {
+.current-conversions-table :is(th, td)[data-col="dimension"],
+.current-conversions-table :is(th, td)[data-col="scope"],
+.current-conversions-table :is(th, td)[data-col="effectiveDate"] {
   inline-size: 13%;
 }
 
-.current-conversions-table :is(th, td):nth-child(3),
-.current-conversions-table :is(th, td):nth-child(4),
-.current-conversions-table :is(th, td):nth-child(5) {
+.current-conversions-table :is(th, td)[data-col="organization"],
+.current-conversions-table :is(th, td)[data-col="project"],
+.current-conversions-table :is(th, td)[data-col="current"] {
   inline-size: 14%;
 }
 
-.conversion-history-table :is(th, td):nth-child(1),
-.conversion-history-table :is(th, td):nth-child(2),
-.conversion-history-table :is(th, td):nth-child(3),
-.conversion-history-table :is(th, td):nth-child(5),
-.conversion-history-table :is(th, td):nth-child(6) {
+.conversion-history-table :is(th, td)[data-col="target"],
+.conversion-history-table :is(th, td)[data-col="dimension"],
+.conversion-history-table :is(th, td)[data-col="scope"],
+.conversion-history-table :is(th, td)[data-col="effectiveDate"] {
   inline-size: 12%;
 }
 
-.conversion-history-table :is(th, td):nth-child(4) {
+.conversion-history-table :is(th, td)[data-col="factor"] {
   inline-size: 10%;
 }
 
-.conversion-history-table :is(th, td):nth-child(7) {
+.conversion-history-table :is(th, td)[data-col="actor"] {
   inline-size: 14%;
 }
 
-.conversion-history-table :is(th, td):nth-child(8) {
+.conversion-history-table :is(th, td)[data-col="createdAt"] {
   inline-size: 16%;
 }
 
