@@ -469,25 +469,17 @@
   color: var(--color-danger);
 }
 
-.invoice-lines-table {
-  min-inline-size: 58rem;
-}
-
-.invoice-lines-table :is(th, td):nth-child(1) {
-  inline-size: 6%;
-}
-
-.invoice-lines-table :is(th, td):nth-child(2) {
+.invoice-lines-table :is(th, td)[data-col="target"] {
   inline-size: 24%;
 }
 
-.invoice-lines-table :is(th, td):nth-child(3),
-.invoice-lines-table :is(th, td):nth-child(4),
-.invoice-lines-table :is(th, td):nth-child(5) {
+.invoice-lines-table :is(th, td)[data-col="quantity"],
+.invoice-lines-table :is(th, td)[data-col="unitPrice"],
+.invoice-lines-table :is(th, td)[data-col="lineAmount"] {
   inline-size: 16%;
 }
 
-.invoice-lines-table :is(th, td):nth-child(6) {
+.invoice-lines-table :is(th, td)[data-col="description"] {
   inline-size: 22%;
 }
 
@@ -731,12 +723,6 @@
     justify-content: space-between;
   }
 
-  /* A dialog this narrow cannot show six columns of line detail without either
-     scrolling sideways inside a scrolling dialog or shredding the words. A
-     tighter floor keeps the words and shortens the scroll. */
-  .invoice-lines-table {
-    min-inline-size: 40rem;
-  }
 }
 
 @media print {

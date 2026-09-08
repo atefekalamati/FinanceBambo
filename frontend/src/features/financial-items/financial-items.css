@@ -192,36 +192,24 @@
    Resource and estimate-line tables
    -------------------------------------------------------------------------- */
 
-.items-table {
-  min-inline-size: 42rem;
-}
-
-.items-table :is(th, td):nth-child(1) {
-  inline-size: 17%;
-}
-
-.items-table :is(th, td):nth-child(2) {
+.items-table :is(th, td)[data-col="title"] {
   inline-size: 29%;
 }
 
-.items-table :is(th, td):nth-child(3) {
+.items-table :is(th, td)[data-col="type"] {
   inline-size: 18%;
 }
 
-.items-table :is(th, td):nth-child(4) {
+.items-table :is(th, td)[data-col="unit"] {
   inline-size: 17%;
-}
-
-.items-table :is(th, td):nth-child(5) {
-  inline-size: 19%;
-}
-
-.items-table :is(th, td):nth-child(1),
-.items-table :is(th, td):nth-child(4) {
   overflow-wrap: anywhere;
 }
 
-.items-table :is(th, td):nth-child(3),
+.items-table :is(th, td)[data-col="source"] {
+  inline-size: 19%;
+}
+
+.items-table :is(th, td)[data-col="type"],
 .items-table__type {
   text-align: center;
   vertical-align: middle;

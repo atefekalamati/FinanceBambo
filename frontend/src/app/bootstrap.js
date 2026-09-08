@@ -1,4 +1,5 @@
-import { getHostContext, subscribeHostProjectContext } from "../adapters/host/context-adapter.js";
+import { subscribeHostProjectContext } from "../adapters/host/context-adapter.js";
+import { resolveRuntimeContext } from "../adapters/host/runtime-context.js";
 import { getStandaloneContext } from "../adapters/mock/standalone-context.js";
 import { createMockSettingsAdapter } from "../adapters/mock/settings-adapter.js";
 import { createMockFinancialItemsAdapter } from "../adapters/mock/financial-items-adapter.js";
@@ -56,9 +57,13 @@ function createHostAdapters(context) {
 }
 
 function resolveContext() {
-  const hostContext = getHostContext();
-  document.body.dataset.financeRuntime = hostContext ? "host" : "standalone";
-  return hostContext ?? getStandaloneContext();
+  const { runtime, context } = resolveRuntimeContext({
+    mode: document.body.dataset.financeRuntime,
+    hostContext: window.__BAMBO_FINANCE_CONTEXT__,
+    createStandaloneContext: getStandaloneContext,
+  });
+  document.body.dataset.financeRuntime = runtime;
+  return context;
 }
 
 function renderDenied(context = null) {

@@ -41,6 +41,17 @@ const INVOICE_VIEWS = Object.freeze([
   { key: "duplicates", label: "نیازمند بررسی تکرار", tone: "warning", duplicates: true },
 ]);
 
+/* The lines of one invoice, inside its dialog. The row number is the identity --
+   it is how a line is referred to when someone asks about one. */
+const INVOICE_LINE_COLUMNS = Object.freeze([
+  { key: "identity", label: "ردیف", tier: IDENTITY },
+  { key: "target", label: "اتصال مالی", tier: PRIMARY },
+  { key: "quantity", label: "مقدار و واحد", tier: PRIMARY, cellClass: "numeric" },
+  { key: "unitPrice", label: "قیمت واحد", tier: SECONDARY, keepOnTablet: true, cellClass: "numeric" },
+  { key: "lineAmount", label: "مبلغ خط", tier: PRIMARY, cellClass: "numeric" },
+  { key: "description", label: "توضیح", tier: SECONDARY },
+]);
+
 /** The most the list endpoint will return in one page, and so the most this can
  *  count exactly. `totalItems` is the project's real total either way. */
 const SUMMARY_PAGE_SIZE = 200;
@@ -379,29 +390,26 @@ function renderDetail(invoice, { canEdit, currentUserId, project, onSubmit, onCo
   if (invoice.originalInvoiceId) dialog.append(element("div", "inline-notice numeric", `فاکتور اصلی: ${invoice.originalInvoiceId} · اثر مالی: ${invoice.financialEffectSign === -1 ? "کاهنده" : "افزاینده"}`));
   if (invoice.correctionReason) dialog.append(element("div", "inline-notice", `دلیل اصلاح: ${invoice.correctionReason}`));
 
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table invoice-lines-table");
-  table.append(tableCaption("ریز خطوط فاکتور انتخاب‌شده"));
-  const thead = tableHead(["ردیف", "اتصال مالی", "مقدار و واحد", "قیمت واحد", "مبلغ خط", "توضیح"]);
-  const tbody = document.createElement("tbody");
-  invoice.lines.forEach((line, index) => {
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "numeric", formatDisplayNumber(String(index + 1))),
-      element("td", "", `${line.targetLabel} · ${line.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : "ردیف برآورد"}`),
-      element("td", "numeric", line.quantity === null ? "بدون مقدار فیزیکی" : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)}`),
-      element("td", "numeric", line.unitPriceIRR === null ? "—" : formatTomanFromIrr(line.unitPriceIRR)),
-      element("td", "numeric", formatTomanFromIrr(line.lineAmountIRR)),
-      element("td", "", line.description || "—"),
-    );
-    tbody.append(row);
+  const linesTable = createDataTable({
+    className: "invoice-lines-table",
+    caption: "ریز خطوط فاکتور انتخاب‌شده",
+    scrollLabel: "جدول ریز خطوط فاکتور",
+    columns: INVOICE_LINE_COLUMNS,
+    rows: invoice.lines,
+    visible: defaultVisibleColumns(INVOICE_LINE_COLUMNS),
+    cells: (line) => ({
+      identity: formatDisplayNumber(String(invoice.lines.indexOf(line) + 1)),
+      target: `${line.targetLabel} · ${line.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : "ردیف برآورد"}`,
+      quantity: line.quantity === null ? "بدون مقدار فیزیکی" : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)}`,
+      unitPrice: line.unitPriceIRR === null ? "—" : formatTomanFromIrr(line.unitPriceIRR),
+      lineAmount: formatTomanFromIrr(line.lineAmountIRR),
+      description: line.description || "—",
+    }),
   });
-  table.append(thead, tbody);
-  wrapper.append(table);
 
   const totals = element("dl", "invoice-totals");
   [["جمع خام خطوط", invoice.rawLinesTotalIRR], ["تخفیف", invoice.discountIRR], ["مالیات", invoice.taxIRR], ["حمل", invoice.shippingIRR], ["سایر هزینه‌ها", invoice.otherCostsIRR], ["مبلغ نهایی", invoice.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIrr(value))));
-  dialog.append(wrapper, totals);
+  dialog.append(linesTable, totals);
   // The detail dialog is a record anyone who can read the invoice may open.
   // What it offers to do with it is another matter.
   if (canEdit && invoice.invoiceStatus === "draft") {
