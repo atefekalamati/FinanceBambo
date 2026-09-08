@@ -14,6 +14,8 @@
  */
 
 export const REPORT_CATEGORIES = Object.freeze([
+  { key: "completion", title: "بودجه و تکمیل پروژه", description: "بودجه ادامه کار و شاخص‌های هزینه هر مترمربع" },
+  { key: "controls", title: "پیگیری اقلام و اسناد", description: "قیمت‌های ناموجود، اسناد منتظر تأیید و اصلاحات مالی" },
   { key: "summary", title: "خلاصهٔ مدیریتی", description: "تصویر کلی وضعیت مالی پروژه در یک نگاه" },
   { key: "cost", title: "هزینه‌ها", description: "ترکیب و روند هزینه‌های ثبت‌شده" },
   { key: "deviation", title: "انحرافات", description: "اقلامی که از برآورد خود فاصله گرفته‌اند" },
@@ -44,7 +46,7 @@ export const REPORTS = Object.freeze([
     summary: "فاصله پیش‌بینی هزینه نهایی از برآورد اولیه پروژه و جهت آن",
     needs: ["overview"],
     period: false,
-    featured: true,
+    featured: false,
   },
   {
     key: "breakdown",
@@ -62,7 +64,7 @@ export const REPORTS = Object.freeze([
     summary: "هزینه واقعی ثبت‌شده در هر ماه شمسی، به‌همراه تعداد اسناد و ابطال‌ها",
     needs: ["monthly"],
     period: false,
-    featured: true,
+    featured: false,
   },
   {
     key: "priceVariance",
@@ -71,7 +73,7 @@ export const REPORTS = Object.freeze([
     summary: "اقلامی که تغییر قیمتشان بیشترین اثر را بر برآورد پروژه گذاشته است",
     needs: ["overview"],
     period: false,
-    featured: true,
+    featured: false,
   },
   {
     key: "quantityVariance",
@@ -80,15 +82,16 @@ export const REPORTS = Object.freeze([
     summary: "اقلامی که مقدار برآوردشان بیش از همه اصلاح شده است",
     needs: ["overview"],
     period: false,
-    featured: true,
+    featured: false,
   },
   {
     key: "invoices",
     category: "documents",
-    title: "فاکتورهای بازه",
-    summary: "اسناد مالی با تاریخ داخل بازه، به‌همراه وضعیت، فروشنده و مبلغ",
+    title: "فاکتورها و اسناد مالی",
+    summary: "تمام اسناد بازه، وضعیت تأیید، اسناد برگشت و اصلاحی، فروشنده و مبلغ",
     needs: ["invoices"],
     period: true,
+    featured: true,
   },
   {
     key: "auditEvents",
@@ -101,10 +104,11 @@ export const REPORTS = Object.freeze([
   {
     key: "warnings",
     category: "basis",
-    title: "هشدارهای کیفیت محاسبه",
-    summary: "مواردی که سرویس مالی هنگام ساخت ارقام گزارش کرده است",
+    title: "کیفیت داده و محاسبات",
+    summary: "کامل‌بودن محاسبات، کیفیت پیشرفت، قیمت‌های ناموجود و ردیف‌های کنارگذاشته‌شده",
     needs: ["overview"],
     period: false,
+    featured: true,
   },
   {
     key: "prices",
@@ -123,24 +127,58 @@ export const REPORTS = Object.freeze([
     period: false,
   },
 
-  /* ── Declared, not yet producible ─────────────────────────────────────── */
   {
     key: "sCurve",
     category: "cost",
-    title: "منحنی S مالی — برنامه در برابر عملکرد",
-    summary: "هزینه برنامه‌ای و واقعی به‌صورت تجمعی روی دوره‌های پروژه",
+    title: "منحنی S مالی",
+    summary: "روند تجمعی هزینه واقعی در بازه موجود؛ مقایسه با برنامه فقط در صورت وجود مبنای کامل",
     needs: ["monthly"],
     period: false,
-    unavailable: "تا وقتی سرویس مالی دوره‌های زمانی و برآورد هر دوره را از فایل MSP استخراج نکند، مبنای برنامه‌ای برای این منحنی وجود ندارد.",
+    featured: true,
   },
   {
     key: "levelOne",
     category: "summary",
     title: "گزارش مالی مراحل سطح ۱",
-    summary: "برآورد، ارزش کار انجام‌شده و هزینه واقعی هر مرحله از ساختار شکست کار",
-    needs: ["overview"],
+    summary: "برآورد اولیه و اصلاح‌شده، هزینه واقعی، باقیمانده، بودجه تکمیل و پیش‌بینی هر مرحله، با جزئیات تخصیص",
+    needs: ["wbs"],
     period: false,
-    unavailable: "این گزارش به جمع‌بندی مالی بر اساس مرحله سطح ۱ نیاز دارد که هنوز در سرویس مالی ساخته نشده است.",
+    featured: true,
+  },
+  {
+    key: "completionBudget", category: "completion", title: "بودجه موردنیاز تا تکمیل",
+    summary: "هزینه واقعی، هزینه کار باقی‌مانده، بودجه ادامه و پیش‌بینی نهایی؛ مطابق محاسبه سرویس",
+    needs: ["overview"], period: false,
+  },
+  {
+    key: "areaCosts", category: "completion", title: "هزینه واقعی و پیش‌بینی هر مترمربع",
+    summary: "شاخص‌های هر مترمربع با مبالغ کل متناظر؛ بدون حدس‌زدن زیربنا یا جایگزینی مقدار ناموجود",
+    needs: ["overview"], period: false,
+  },
+  {
+    key: "unpricedItems", category: "controls", title: "اقلام بدون قیمت روز",
+    summary: "فهرست اقلام فاقد قیمت جاری برای پیگیری تکمیل اطلاعات مالی",
+    needs: ["prices"], period: false,
+  },
+  {
+    key: "supplierDocuments", category: "documents", title: "اسناد به تفکیک فروشنده",
+    summary: "تعداد و جمع مبلغ اسناد هر نام فروشنده، جداشده بر اساس وضعیت و منبع سند؛ نه مانده بدهی",
+    needs: ["invoices"], period: true,
+  },
+  {
+    key: "pendingDocuments", category: "controls", title: "اسناد در انتظار تأیید",
+    summary: "پیش‌نویس‌ها و اسناد منتظر تأیید در بازه؛ بدون اثر مالی تا تأیید نهایی",
+    needs: ["invoices"], period: true,
+  },
+  {
+    key: "correctiveDocuments", category: "controls", title: "اسناد برگشت و اصلاحی",
+    summary: "اسناد اصلاح و برگشت در بازه، با شماره و ارجاع به سند اصلی",
+    needs: ["invoices"], period: true,
+  },
+  {
+    key: "estimateChanges", category: "basis", title: "تغییرات برآورد اولیه تا مقدار جاری",
+    summary: "مقایسه ردیف‌های تغییرکرده با مقدار اولیه؛ این مقایسه جایگزین تاریخچه تمام بازنگری‌ها نیست",
+    needs: ["financialItems"], period: false,
   },
 ]);
 
@@ -152,9 +190,10 @@ export function findReport(key) {
   return REPORTS.find((report) => report.key === key) ?? null;
 }
 
-/** The reports offered as chips on the overview, in catalogue order. */
+/** The six shortcuts; the full catalogue remains available in the chooser. */
 export function featuredReports() {
-  return REPORTS.filter((report) => report.featured && !report.unavailable);
+  return ["overview", "breakdown", "levelOne", "sCurve", "warnings", "invoices"]
+    .map(findReport).filter((report) => report.featured && !report.unavailable);
 }
 
 /** Only what exists, only once, and always in the order the catalogue declares. */

@@ -44,9 +44,8 @@ test("a report that can be chosen is a report that can be drawn", () => {
   });
 });
 
-test("a report that is not yet producible says why, and cannot be chosen", () => {
+test("unavailable reports remain unselectable if declared", () => {
   const pending = REPORTS.filter((report) => report.unavailable);
-  assert.ok(pending.length, "the catalogue should still name what is coming");
   pending.forEach((report) => {
     assert.match(report.unavailable, /[؀-ۿ]/, `${report.key} gives no reason`);
     // Neither by ticking it, nor by typing its key into the address.
@@ -72,7 +71,15 @@ test("only the datasets the chosen reports need are asked for", () => {
   assert.deepEqual(datasetsFor(["prices"]), ["prices"]);
   assert.deepEqual(datasetsFor(["invoices", "auditEvents"]).sort(), ["audit", "invoices"]);
   assert.deepEqual(datasetsFor([]), []);
-  assert.deepEqual(datasetsFor(["sCurve"]), [], "a report that cannot be built fetches nothing");
+  assert.deepEqual(datasetsFor(["sCurve"]), ["monthly"]);
+  assert.deepEqual(datasetsFor(["levelOne"]), ["wbs"]);
+});
+
+test("the six requested shortcuts are selectable without removing other reports", () => {
+  assert.deepEqual(featuredReports().map((report) => report.key), ["overview", "breakdown", "levelOne", "sCurve", "warnings", "invoices"]);
+  assert.equal(normalizeSelection(featuredReports().map((report) => report.key)).length, 6);
+  assert.ok(findReport("monthly"));
+  assert.ok(findReport("priceVariance"));
 });
 
 test("the chosen range is only claimed when something in the document uses it", () => {

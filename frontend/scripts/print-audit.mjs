@@ -82,15 +82,34 @@ function countPdfPages(base64) {
 }
 
 const documents = [
+  {
+    key: "priority-followups",
+    route: "report-builder?sections=completionBudget,areaCosts,unpricedItems,supplierDocuments,pendingDocuments,correctiveDocuments,estimateChanges",
+    chapters: 7,
+    maxPages: 24,
+  },
   { key: "financial-report", route: "reports", prepare: null },
   {
     // Everything the builder can produce, in one document. Each chosen report
     // starts its own page, so the count is the guard against a section that
     // silently grew or one that stopped rendering at all.
     key: "custom-report",
-    route: "report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines",
+    route: "report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines,sCurve,levelOne",
     prepare: null,
-    maxPages: 24,
+    chapters: 13,
+    maxPages: 32,
+  },
+  {
+    key: "suggested-six",
+    route: "report-builder?sections=overview,breakdown,levelOne,sCurve,warnings,invoices",
+    chapters: 6,
+    maxPages: 20,
+  },
+  {
+    key: "s-curve",
+    route: "report-builder?sections=sCurve",
+    chapters: 1,
+    maxPages: 1,
   },
   {
     // The period report only exists once it is built, so the audit builds one
@@ -134,10 +153,62 @@ try {
     await cdp.send("Page.enable");
     await delay(1100);
 
+    if (documentCase.chapters) {
+      let rendered = false;
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const result = await cdp.send("Runtime.evaluate", {
+          expression: `document.querySelectorAll('.report-doc__chapter').length === ${documentCase.chapters}`,
+          returnByValue: true,
+        });
+        if (result.result.value) { rendered = true; break; }
+        await delay(150);
+      }
+      if (!rendered) throw new Error(`${documentCase.key}: report chapters did not load.`);
+      await cdp.send("Runtime.evaluate", { expression: "document.fonts.ready", awaitPromise: true });
+    }
+
     if (documentCase.prepare) {
       const prepared = await cdp.send("Runtime.evaluate", { expression: documentCase.prepare, returnByValue: true });
       if (!prepared.result.value) throw new Error(`Could not prepare ${documentCase.key} for printing.`);
       await delay(documentCase.settle ?? 700);
+    }
+
+    const responsive = [];
+    if (documentCase.chapters) {
+      for (const width of [320, 425, 768, 1366]) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+        const measured = await cdp.send("Runtime.evaluate", {
+          expression: `({ overflow: document.documentElement.scrollWidth > innerWidth + 1,
+            charts: [...document.querySelectorAll('.report-doc__curve')].every(el => el.getBoundingClientRect().right <= innerWidth + 1 && el.getBoundingClientRect().left >= -1) })`,
+          returnByValue: true,
+        });
+        responsive.push({ width, ...measured.result.value });
+        if (documentCase.key === "priority-followups") {
+          const chooser = await cdp.send("Runtime.evaluate", {
+            expression: `(async () => {
+              const { openReportBuilder } = await import('/src/features/report-builder/report-builder-dialog.js');
+              const dialog = openReportBuilder({ onBuild() {} });
+              const cats = dialog.querySelector('.report-builder-cats');
+              const tile = cats.querySelector('button');
+              tile.click();
+              dialog.querySelector('.report-builder-level2 input').click();
+              dialog.querySelector('.report-builder-back').click();
+              const selected = dialog.querySelector('.report-builder-level2 input').checked;
+              for (let i = 0; i < 40; i++) cats.append(tile.cloneNode(true));
+              cats.scrollTop = 100;
+              const build = dialog.querySelector('.report-builder-panel__build').getBoundingClientRect();
+              const bounds = dialog.getBoundingClientRect();
+              const result = { scrolls: cats.scrollHeight > cats.clientHeight && cats.scrollTop > 0,
+                selected, buildVisible: build.bottom <= bounds.bottom && build.top >= bounds.top };
+              dialog.close();
+              dialog.remove();
+              return result;
+            })()`, awaitPromise: true, returnByValue: true,
+          });
+          responsive[responsive.length - 1].chooser = chooser.result.value;
+        }
+      }
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
     }
 
     const pdf = await cdp.send("Page.printToPDF", {
@@ -147,7 +218,7 @@ try {
       generateTaggedPDF: true,
     });
     const pageCount = countPdfPages(pdf.data);
-    results.push({ key: documentCase.key, pageCount, maxPages: documentCase.maxPages ?? 1, exceptions: [...cdp.exceptions] });
+    results.push({ key: documentCase.key, pageCount, maxPages: documentCase.maxPages ?? 1, responsive, exceptions: [...cdp.exceptions] });
     cdp.close();
     await fetch(`http://127.0.0.1:${port}/json/close/${page.id}`);
   }
@@ -162,6 +233,8 @@ try {
 // A document that must fit one page is held to one page. A period report is a
 // listing, so its length follows the data; the cap is there to catch a layout
 // that blows up, not to forbid a second page.
-const failures = results.filter((result) => result.pageCount < 1 || result.pageCount > (result.maxPages ?? 1) || result.exceptions.length);
+const failures = results.filter((result) => result.pageCount < 1 || result.pageCount > (result.maxPages ?? 1) || result.exceptions.length
+  || result.responsive.some((size) => size.overflow || !size.charts
+    || (size.chooser && (!size.chooser.scrolls || !size.chooser.selected || !size.chooser.buildVisible))));
 console.log(JSON.stringify({ documents: results, failures }, null, 2));
 if (failures.length) process.exitCode = 1;
