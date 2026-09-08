@@ -68,6 +68,12 @@
    stays openable however far it is scrolled. The surface is the one the
    comparison table already freezes its header against. */
 .data-table--pinned :is(th, td)[data-col="identity"] {
+  /* The reading edge, whatever the cell's own direction says. inset-inline-start
+     resolves against the element, so a pinned cell marked .numeric -- which is
+     direction: ltr -- would pin to the far edge and slide out of view as the
+     table scrolled. This sheet is read after components.css, so it wins the tie.
+     A caller that needs ltr digits here wraps them in a span. */
+  direction: rtl;
   /* Stated here rather than left to the page. A page rule naming this column
      weighs the same as the media queries below and is read after them, so a
      page that set its own base width would silently win every step of the

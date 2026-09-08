@@ -45,7 +45,9 @@ function createField({ id, label, type = "text", value = "", hint, inputMode, re
 /* The revision number is the identity: it is what a revision is referred to by,
    and every other column says what that revision did. */
 const REVISION_COLUMNS = Object.freeze([
-  { key: "identity", label: "بازنگری", tier: IDENTITY, cellClass: "numeric" },
+  // Not .numeric: that class is direction: ltr, and a pinned cell reads its own
+  // direction to decide which edge it pins to. The figure is a short integer.
+  { key: "identity", label: "بازنگری", tier: IDENTITY },
   { key: "effectiveDate", label: "تاریخ اعمال", tier: SECONDARY, keepOnTablet: true },
   { key: "previousValue", label: "مقدار قبلی", tier: SECONDARY, cellClass: "numeric" },
   { key: "newValue", label: "مقدار جدید", tier: PRIMARY, cellClass: "numeric" },
