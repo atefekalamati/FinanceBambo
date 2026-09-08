@@ -18,6 +18,9 @@ export function mapResource(value) {
     dimension: value.dimension ?? null,
     externalResourceId: value.externalResourceId ?? null,
     sourceResourceUid: value.sourceResourceUid ?? null,
+    // Whether a person has used this item: an invoice names it, or somebody priced it.
+    // Absent means "not told", which is read as untouched -- never as used.
+    hasOperationalRecords: value.hasOperationalRecords === true,
     createdBy: value.createdBy,
     createdAt: value.createdAt,
     /* Read from `sourceResourceUid`, not `externalResourceId`. The old rule had the label

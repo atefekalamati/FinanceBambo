@@ -15,7 +15,7 @@ import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
-import { ABSENT, activityBlockStarts, activityLabel, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
+import { ABSENT, activityBlockStarts, activityLabel, amountChange, canonicalWbs, estimateAmount, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, withheldRowsNotice } from "./financial-items-presentation.js";
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
   const wrapper = element("div", "form-field");
@@ -651,6 +651,43 @@ function renderResourceTable(resources, withheld = null) {
   return fragment;
 }
 
+//: The table's columns, in order. The block header spans exactly this many, read
+//: from the array so the two cannot drift apart.
+const ESTIMATE_COLUMNS = Object.freeze([
+  "قلم هزینه", "واحد", "مقدار برآورد", "قیمت واحد", "مبلغ برآورد", "هزینه واقعی", "عملیات",
+]);
+
+/**
+ * Two related figures in one cell — the first estimate and where it stands now.
+ *
+ * They belong together: the pair is one fact about the line, and splitting them
+ * into two columns made a wide table out of a narrow one. Either may be
+ * unknown, and an unknown one prints as an absence rather than as a zero.
+ */
+function pairCell(firstLabel, firstValue, secondLabel, secondValue, extra = null) {
+  const cell = element("td", "numeric pair-cell");
+  cell.append(element("span", "pair-cell__line", `${firstLabel}: ${firstValue}`),
+              element("span", "pair-cell__line", `${secondLabel}: ${secondValue}`));
+  if (extra) cell.append(extra);
+  return cell;
+}
+
+/** The header that opens one activity's block: what it is, and what the schedule says it costs. */
+function activityHeaderRow(line) {
+  const row = element("tr", "estimate-lines-table__activity");
+  // A `th` for a row that heads a group of rows, which is what this is. Not
+  // `.numeric`: that flips the cell to left-to-right and would reverse the
+  // Persian sentence, so only the amount inside it is isolated.
+  const cell = element("th", "activity-block");
+  cell.setAttribute("scope", "colgroup");
+  cell.colSpan = ESTIMATE_COLUMNS.length;
+  const cost = element("span", "activity-block__cost", "هزینه MSP فعالیت: ");
+  cost.append(element("bdi", "numeric", formatTomanFromIrr(scheduleCostOf(line))));
+  cell.append(element("span", "activity-block__name", `${canonicalWbs(line)} — ${activityLabel(line)}`), cost);
+  row.append(cell);
+  return row;
+}
+
 function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "" }) {
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
   const fragment = document.createDocumentFragment();
@@ -660,25 +697,18 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
   table.append(element("caption", "sr-only", "ریز برآورد پروژه"));
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  // Three money columns, deliberately three. «هزینه MSP فعالیت» is what the
-  // schedule says the activity costs; «قیمت اولیه» is the unit price this line
-  // was estimated at and never changes; «قیمت روز» is the price in force today.
-  // None is computed from another, and an empty one means unknown, not zero.
-  ["ساختار شکست کار / فعالیت", "قلم هزینه", "واحد", "مقدار برآورد اولیه", "آخرین مقدار برآورد",
-   "هزینه MSP فعالیت", "قیمت اولیه", "قیمت روز", "منبع", "عملیات"]
-    .forEach((label) => header.append(element("th", "", label)));
+  ESTIMATE_COLUMNS.forEach((label) => header.append(element("th", "", label)));
   head.append(header);
   const body = document.createElement("tbody");
-  // Every item of one activity in one block, the blocks in WBS order. The table
-  // is read down the فعالیت column, so an activity whose five items land in five
-  // places cannot be read at all -- and that is what insertion order gave.
+  // Every item of one activity in one block, the blocks in WBS order. The
+  // activity, its code and the schedule's cost for it are written once, above
+  // the block: they are facts about the activity, and repeating them down a
+  // column invited a reader to add up a figure that is already a total.
   const opensBlock = activityBlockStarts(lines);
   lines.forEach((line, index) => {
     const resource = resourceMap.get(line.resourceId);
     const isGeneralCost = resource?.type === "general_cost";
-    const original = isGeneralCost ? line.originalAmount : line.originalQuantity;
-    const revised = isGeneralCost ? line.revisedAmount : line.revisedQuantity;
-    const changed = original !== revised;
+    if (opensBlock[index]) body.append(activityHeaderRow(line));
     const row = document.createElement("tr");
     const isTarget = focusEstimateLineId
       ? line.lineId === focusEstimateLineId
@@ -687,26 +717,41 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
       row.classList.add("deep-link-target");
       row.tabIndex = -1;
     }
-    // The activity column names the activity and the cost item column names the
-    // cost item. Neither ever supplies the other's missing value.
-    const activityCell = element("td", opensBlock[index] ? "" : "activity-cell--continued");
-    if (opensBlock[index]) row.classList.add("estimate-lines-table__block");
-    // The name is in the row either way. On a continuation row it is spoken and
-    // not shown: a reader who has just read it does not need it five more times,
-    // and a screen reader announcing a lone quantity would have lost the subject.
-    const naming = opensBlock[index] ? "" : "sr-only";
-    activityCell.append(element("strong", naming, activityLabel(line)),
-                        element("small", `table-subtext numeric ${naming}`, canonicalWbs(line)));
+    // The cost item names itself. It never borrows the activity's name: an
+    // activity is work and an item is a thing bought, and the page showing one
+    // as the other is what this column exists to prevent.
     const resourceCell = document.createElement("td");
-    resourceCell.append(element("strong", "", resourceLabel(resource)), element("small", "table-subtext numeric", resource?.code ?? ABSENT));
-    const revisedCell = element("td", `numeric ${changed ? "value-changed" : ""}`, isGeneralCost ? formatTomanFromIrr(revised, { withCurrency: false }) : formatDisplayNumber(revised));
-    if (changed) revisedCell.append(element("span", "change-badge", "اصلاح‌شده"));
-    // The schedule's figure belongs to the activity, so it is written once per
-    // block beside the activity it describes. Spoken on every row all the same:
-    // a row read on its own must not be missing the number it belongs under.
-    const scheduleCost = element("td", "numeric");
-    scheduleCost.append(element("span", opensBlock[index] ? "" : "sr-only",
-                                formatTomanFromIrr(scheduleCostOf(line), { withCurrency: false })));
+    resourceCell.append(element("strong", "", resourceLabel(resource)),
+                        element("small", "table-subtext numeric", resource?.code ?? ABSENT));
+
+    // A general cost carries a rial amount and no quantity, so it has neither a
+    // quantity nor a unit price to show -- its amount is the amount.
+    const quantityCell = isGeneralCost
+      ? element("td", "numeric", ABSENT)
+      : pairCell("اولیه", formatDisplayNumber(line.originalQuantity),
+                 "جاری", formatDisplayNumber(line.revisedQuantity),
+                 line.originalQuantity !== line.revisedQuantity
+                   ? element("span", "change-badge", "اصلاح‌شده") : null);
+    const priceCell = isGeneralCost
+      ? element("td", "numeric", ABSENT)
+      : pairCell("اولیه", formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false }),
+                 "آخرین", formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false }));
+
+    // Derived, always: quantity x unit price, and nothing when either is
+    // missing. The schedule's cost is not a fallback for it.
+    const initialAmount = isGeneralCost
+      ? line.originalAmount
+      : estimateAmount(line.originalQuantity, line.originalUnitPriceIRR);
+    const currentAmount = isGeneralCost
+      ? line.revisedAmount
+      : estimateAmount(line.revisedQuantity, line.currentUnitPriceIRR);
+    const change = amountChange(initialAmount, currentAmount);
+    const amountCell = pairCell("اولیه", formatTomanFromIrr(initialAmount, { withCurrency: false }),
+                                "جاری", formatTomanFromIrr(currentAmount, { withCurrency: false }),
+                                change === null || change === "0" ? null
+                                  : element("span", "pair-cell__change",
+                                            `تغییر: ${change.startsWith("-") ? "" : "+"}${formatTomanFromIrr(change, { withCurrency: false })}`));
+
     const actionsCell = element("td", "line-actions");
     const history = element("button", "table-action", "تاریخچه");
     history.type = "button";
@@ -719,15 +764,14 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
       actionsCell.append(revise);
     }
     row.append(
-      activityCell,
       resourceCell,
       element("td", "numeric", isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit)),
-      element("td", "numeric", isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original)),
-      revisedCell,
-      scheduleCost,
-      element("td", "numeric", formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false })),
-      element("td", "numeric", formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false })),
-      element("td", "", sourceLabel(line)),
+      quantityCell,
+      priceCell,
+      amountCell,
+      // Only a confirmed invoice records a cost actually incurred. No confirmed
+      // invoice line names this one, no figure -- not a zero.
+      element("td", "numeric", formatTomanFromIrr(line.actualCostIRR, { withCurrency: false })),
       actionsCell,
     );
     body.append(row);

@@ -73,6 +73,10 @@ class FinanceResource:
     #: value on this database -- MSP task uids written by an old seed -- so anything
     #: deciding "did this come from the current file?" must read this and not that.
     source_resource_uid: int | None = None
+    #: True when a person has used this item through the product: an invoice line names
+    #: it, or somebody priced it. It exists so that no view hides a row a person worked
+    #: on, whatever its provenance says. It is evidence OF USE, never evidence of origin.
+    has_operational_records: bool = False
 
     def with_changes(self, **changes):
         return replace(self, **changes)
@@ -102,6 +106,11 @@ class EstimateLine:
     #: the current schedule?" must not depend on a coincidence.
     source_assignment_uid: int | None = None
     source_task_uid: int | None = None
+    #: What has actually been spent against this line, from confirmed invoices, or None
+    #: when no confirmed invoice line names it. None is not zero: nothing recorded is not
+    #: the same as nothing spent, and only a real sum of nothing may be shown as zero.
+    #: A schedule cost is never this -- the schedule states a plan, an invoice a payment.
+    actual_cost_irr: Decimal | None = None
 
     def with_revised_quantity(self, quantity: Decimal | None):
         return replace(self, revised_quantity=quantity)
