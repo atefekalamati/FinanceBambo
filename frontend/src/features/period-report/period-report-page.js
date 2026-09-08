@@ -5,6 +5,8 @@ import { createPersianDatePicker } from "../../shared/components/persian-date-pi
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
+import { IDENTITY, PRIMARY, SECONDARY, createDataTableWithControl, defaultVisibleColumns }
+  from "../../shared/components/data-table.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { compactMoneyFromIrr, formatCompactMoneyFromIrr, formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
@@ -207,31 +209,43 @@ function renderBreakdown(groups, period) {
     element("h2", "", "تفکیک دوره بر اساس نوع قلم"),
     element("p", "", "هزینه واقعی و برآورد هر نوع قلم، در دو سر بازه"),
   );
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table period-breakdown-table");
-  table.append(
-    tableCaption(`تفکیک مالی هر نوع قلم در بازه ${period.from} تا ${period.to}`),
-    tableHead(["نوع قلم", "هزینه واقعی دوره", "برآورد افزوده دوره", "کار باقی‌مانده (پایان)", "پیش‌بینی نهایی (پایان)"]),
-  );
-  const body = document.createElement("tbody");
-  groups.forEach((group) => {
-    const row = document.createElement("tr");
-    const actual = element("td", "");
-    actual.append(changeCell(group.measures.actualCostIrr.changeIrr, group.measures.actualCostIrr.direction));
-    const estimate = element("td", "");
-    estimate.append(changeCell(group.measures.initialEstimateIrr.changeIrr, group.measures.initialEstimateIrr.direction));
-    const remaining = element("td", "");
-    remaining.append(moneyCell(group.measures.remainingPhysicalCostIrr.closingIrr));
-    const forecast = element("td", "");
-    forecast.append(moneyCell(group.measures.forecastFinalIrr.closingIrr));
-    row.append(element("td", "", group.label), actual, estimate, remaining, forecast);
-    body.append(row);
+  const breakdown = createDataTableWithControl({
+    name: "period-breakdown",
+    className: "period-breakdown-table",
+    caption: `تفکیک مالی هر نوع قلم در بازه ${period.from} تا ${period.to}`,
+    scrollLabel: "جدول تفکیک مالی هر نوع قلم در این دوره",
+    columns: PERIOD_BREAKDOWN_COLUMNS,
+    visible: visiblePeriodBreakdownColumns,
+    rows: groups,
+    cells: (group) => ({
+      identity: group.label,
+      actual: changeCell(group.measures.actualCostIrr.changeIrr, group.measures.actualCostIrr.direction),
+      estimate: changeCell(group.measures.initialEstimateIrr.changeIrr, group.measures.initialEstimateIrr.direction),
+      remaining: moneyCell(group.measures.remainingPhysicalCostIrr.closingIrr),
+      forecast: moneyCell(group.measures.forecastFinalIrr.closingIrr),
+    }),
   });
-  table.append(body);
-  wrapper.append(table);
-  section.append(heading, wrapper);
+  section.append(heading, breakdown);
   return section;
 }
+
+const PERIOD_BREAKDOWN_COLUMNS = Object.freeze([
+  { key: "identity", label: "نوع قلم", tier: IDENTITY },
+  { key: "actual", label: "هزینه واقعی دوره", tier: PRIMARY },
+  { key: "estimate", label: "برآورد افزوده دوره", tier: PRIMARY },
+  { key: "remaining", label: "کار باقی‌مانده (پایان)", tier: SECONDARY, keepOnTablet: true },
+  { key: "forecast", label: "پیش‌بینی نهایی (پایان)", tier: SECONDARY },
+]);
+const visiblePeriodBreakdownColumns = defaultVisibleColumns(PERIOD_BREAKDOWN_COLUMNS);
+
+const PERIOD_INVOICE_COLUMNS = Object.freeze([
+  { key: "identity", label: "شماره", tier: IDENTITY },
+  { key: "date", label: "تاریخ", tier: SECONDARY, keepOnTablet: true },
+  { key: "vendor", label: "فروشنده", tier: PRIMARY },
+  { key: "status", label: "وضعیت", tier: PRIMARY },
+  { key: "amount", label: "مبلغ نهایی", tier: PRIMARY },
+]);
+const visiblePeriodInvoiceColumns = defaultVisibleColumns(PERIOD_INVOICE_COLUMNS);
 
 function renderInvoices({ invoices, truncated, period }) {
   const section = element("section", "report-section");
@@ -250,29 +264,23 @@ function renderInvoices({ invoices, truncated, period }) {
 
   const total = element("p", "period-invoice-total");
   total.append(element("span", "", "جمع اثر مالی اسناد این دوره"), moneyCell(totalInvoicedIrr(invoices), { compact: false }));
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table period-invoice-table");
-  table.append(
-    tableCaption(`فاکتورهای ثبت‌شده در بازه ${period.from} تا ${period.to}`),
-    tableHead(["شماره", "تاریخ", "فروشنده", "وضعیت", "مبلغ نهایی"]),
-  );
-  const body = document.createElement("tbody");
-  invoices.forEach((invoice) => {
-    const row = document.createElement("tr");
-    const amount = element("td", "");
-    amount.append(moneyCell(invoice.finalAmountIRR ?? invoice.finalAmountIrr));
-    row.append(
-      element("td", "numeric", invoice.invoiceNumber ?? "—"),
-      element("td", "", formatBusinessDate(invoice.invoiceDate)),
-      element("td", "", invoice.vendorName ?? "—"),
-      element("td", "", INVOICE_STATUS_LABELS[invoice.invoiceStatus] ?? invoice.invoiceStatus ?? "—"),
-      amount,
-    );
-    body.append(row);
+  const invoiceTable = createDataTableWithControl({
+    name: "period-invoices",
+    className: "period-invoice-table",
+    caption: `فاکتورهای ثبت‌شده در بازه ${period.from} تا ${period.to}`,
+    scrollLabel: "جدول فاکتورهای این دوره",
+    columns: PERIOD_INVOICE_COLUMNS,
+    visible: visiblePeriodInvoiceColumns,
+    rows: invoices,
+    cells: (invoice) => ({
+      identity: invoice.invoiceNumber ?? "—",
+      date: formatBusinessDate(invoice.invoiceDate),
+      vendor: invoice.vendorName ?? "—",
+      status: INVOICE_STATUS_LABELS[invoice.invoiceStatus] ?? invoice.invoiceStatus ?? "—",
+      amount: moneyCell(invoice.finalAmountIRR ?? invoice.finalAmountIrr),
+    }),
   });
-  table.append(body);
-  wrapper.append(table);
-  section.append(total, wrapper);
+  section.append(total, invoiceTable);
 
   if (truncated) {
     section.append(element("p", "inline-notice", `فهرست فاکتورها به ${formatDisplayNumber(String(INVOICE_PAGE_SIZE * INVOICE_PAGE_LIMIT))} سند اخیر محدود شد. سرویس مالی هنوز فیلتر بازه تاریخ روی فهرست فاکتورها ندارد و این گزارش ناچار است اسناد را صفحه‌به‌صفحه بگیرد و خودش کنار بگذارد.`));
