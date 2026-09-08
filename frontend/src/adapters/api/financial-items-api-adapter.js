@@ -43,6 +43,8 @@ function mapLine(value, resources, activities = [], currentPrices = new Map()) {
     originalAmount: general ? value.originalUnitPriceIrr : null,
     revisedAmount: general ? value.revisedQuantity : null,
     originalUnitPriceIRR: value.originalUnitPriceIrr,
+    // What confirmed invoices record against this line. Null means none name it.
+    actualCostIRR: value.actualCostIrr ?? null,
     source: value.source,
     revision: value.revision,
     revisions: (value.revisions ?? []).map((revision) => ({

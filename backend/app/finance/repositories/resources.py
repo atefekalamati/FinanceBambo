@@ -6,6 +6,11 @@ from uuid import UUID
 
 from psycopg import errors
 from psycopg.rows import dict_row
+
+#: The reason the local test seed stamps on every price it invents
+#: (scripts/test_only/seed_terrace_finance.py). Quoted rather than inferred: a price
+#: carrying it is the seed talking to itself, and is not somebody having priced an item.
+SEED_PRICE_REASON = "TEST ONLY -- local demo rate"
 from psycopg.types.json import Jsonb
 
 from ..domain.resources import (DuplicateExternalResourceId, EstimateLine,
@@ -20,7 +25,7 @@ class PsycopgFinanceResourcesRepository:
         return FinanceResource(row["id"], row["organization_id"], row["project_id"],
             row["resource_type"], row["code"], row["title"], row["base_unit"], row["dimension"],
             row["external_resource_id"], row["created_by"], row["created_at"],
-            row.get("source_resource_uid"))
+            row.get("source_resource_uid"), bool(row.get("has_operational_records")))
 
     @staticmethod
     def _line(row, revisions=()):
@@ -28,11 +33,12 @@ class PsycopgFinanceResourcesRepository:
             row["activity_external_id"], row["assignment_external_id"], row["original_quantity"],
             row["revised_quantity"], row["original_unit_price_irr"], row["source"], row["created_by"], row["created_at"],
             row.get("current_revision",0)+1,tuple(revisions),row.get("activity_title"),row.get("wbs_code"),
-            row.get("source_assignment_uid"),row.get("source_task_uid"))
+            row.get("source_assignment_uid"),row.get("source_task_uid"),
+            row.get("actual_cost_irr"))
 
     async def list_resources(self, scope):
         async with self._connection.cursor(row_factory=dict_row) as c:
-            await c.execute("SELECT * FROM finance_resources WHERE organization_id=%s AND project_id=%s AND deleted_at IS NULL ORDER BY created_at,id", (scope.organization_id, scope.project_id))
+            await c.execute("""SELECT r.*,(EXISTS(SELECT 1 FROM invoice_lines il WHERE il.organization_id=r.organization_id AND il.project_id=r.project_id AND il.resource_id=r.id) OR EXISTS(SELECT 1 FROM price_versions pv WHERE pv.organization_id=r.organization_id AND pv.project_id=r.project_id AND pv.resource_id=r.id AND pv.reason IS DISTINCT FROM %s)) has_operational_records FROM finance_resources r WHERE r.organization_id=%s AND r.project_id=%s AND r.deleted_at IS NULL ORDER BY r.created_at,r.id""", (SEED_PRICE_REASON, scope.organization_id, scope.project_id))
             return [self._resource(x) for x in await c.fetchall()]
 
     async def get_resource(self, scope, resource_id):
@@ -82,7 +88,7 @@ class PsycopgFinanceResourcesRepository:
 
     async def list_estimate_lines(self, scope):
         async with self._connection.cursor(row_factory=dict_row) as c:
-            await c.execute("""SELECT l.*, COALESCE((SELECT r.new_quantity FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id ORDER BY r.revision DESC LIMIT 1),CASE WHEN fr.resource_type='general_cost' THEN l.original_unit_price_irr ELSE l.original_quantity END) revised_quantity,COALESCE((SELECT max(r.revision) FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id),0) current_revision FROM estimate_lines l JOIN finance_resources fr ON fr.organization_id=l.organization_id AND fr.project_id=l.project_id AND fr.id=l.resource_id WHERE l.organization_id=%s AND l.project_id=%s AND l.deleted_at IS NULL ORDER BY l.created_at,l.id""", (scope.organization_id,scope.project_id));lines=await c.fetchall()
+            await c.execute("""SELECT l.*, COALESCE((SELECT r.new_quantity FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id ORDER BY r.revision DESC LIMIT 1),CASE WHEN fr.resource_type='general_cost' THEN l.original_unit_price_irr ELSE l.original_quantity END) revised_quantity,COALESCE((SELECT max(r.revision) FROM estimate_revisions r WHERE r.organization_id=l.organization_id AND r.project_id=l.project_id AND r.estimate_line_id=l.id),0) current_revision,(SELECT sum(il.final_line_amount_irr*i.financial_effect_sign) FROM invoice_lines il JOIN invoices i ON i.organization_id=il.organization_id AND i.project_id=il.project_id AND i.id=il.invoice_id WHERE il.organization_id=l.organization_id AND il.project_id=l.project_id AND il.estimate_line_id=l.id AND i.status IN ('confirmed','voided','corrected')) actual_cost_irr FROM estimate_lines l JOIN finance_resources fr ON fr.organization_id=l.organization_id AND fr.project_id=l.project_id AND fr.id=l.resource_id WHERE l.organization_id=%s AND l.project_id=%s AND l.deleted_at IS NULL ORDER BY l.created_at,l.id""", (scope.organization_id,scope.project_id));lines=await c.fetchall()
             await c.execute("SELECT id,estimate_line_id,revision,previous_quantity,new_quantity,reason,created_by,created_at FROM estimate_revisions WHERE organization_id=%s AND project_id=%s ORDER BY estimate_line_id,revision",(scope.organization_id,scope.project_id));history=await c.fetchall()
         grouped={line["id"]:[] for line in lines}
         for revision in history:grouped.setdefault(revision["estimate_line_id"],[]).append({key:value for key,value in revision.items() if key!="estimate_line_id"})

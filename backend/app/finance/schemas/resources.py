@@ -52,6 +52,10 @@ class ResourceResponse(ResourceCreate):
     #: schedule from one a legacy seed created -- `externalResourceId` carries a task uid
     #: on historical rows and cannot answer that question.
     source_resource_uid: int | None = None
+    #: Additive and optional. True when an invoice line names this item or somebody
+    #: priced it -- said here so a client can keep a row a person has worked on, whatever
+    #: else it looks like. A client that ignores it behaves exactly as before.
+    has_operational_records: bool = False
 
     @classmethod
     def from_domain(cls, value: FinanceResource):
@@ -111,13 +115,18 @@ class EstimateLineResponse(EstimateLineCreate):
     #: `assignmentExternalId` -- free text that holds the same digits by accident.
     source_assignment_uid: int | None = None
     source_task_uid: int | None = None
+    #: Additive and optional. Null means no confirmed invoice line names this estimate
+    #: line -- not that nothing was spent. A zero here is a real zero: invoice lines that
+    #: cancel out. Never derived from a schedule cost or from a price.
+    actual_cost_irr: Decimal | None = None
     revised_quantity: Decimal | None
     created_by: UUID
     created_at: datetime
     revision: int
     revisions: list[EstimateRevisionResponse]
 
-    @field_serializer("original_quantity", "revised_quantity", "original_unit_price_irr")
+    @field_serializer("original_quantity", "revised_quantity", "original_unit_price_irr",
+                      "actual_cost_irr")
     def serialize_decimal(self, value: Decimal | None):
         return None if value is None else format(value, "f")
 

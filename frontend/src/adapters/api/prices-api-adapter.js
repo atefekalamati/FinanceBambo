@@ -1,5 +1,6 @@
 import { getConversionDimension, getUnitDefinition, setUnitRegistry } from "../../features/prices/unit-conversions-validation.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
+import { selectActiveResources } from "../../shared/finance/active-resources.js";
 import { financeBase, formDataWithFile, jsonOptions, mapImportPreview, mapResource } from "./api-utils.js";
 
 function mapPrice(value) {
@@ -59,8 +60,15 @@ function mapCurrentTrend(value) {
   };
 }
 
-function buildWorkspace(context, resources, prices, conversions, currentTrends) {
+function buildWorkspace(context, allResources, prices, conversions, currentTrends) {
   const asOfDate = getTehranTodayIso();
+  // The operational list is the items somebody can price today. Rows the local
+  // test seed made out of schedule tasks are withheld -- unless a person has
+  // since priced or invoiced one, in which case it is theirs and it stays.
+  // Nothing is deleted: the API still returns them and the price versions are
+  // untouched; `withheldResourceCount` exists so the page can say so.
+  const { rows: resources, withheldCount: withheldResourceCount } = selectActiveResources(allResources);
+  const visible = new Set(resources.map((resource) => resource.resourceId));
   const currentPrices = resources.map((resource) => {
     const trend = currentTrends.find((item) => item.resourceId === resource.resourceId) ?? { resourceId: resource.resourceId, currentPriceIrr: null, previousPriceIrr: null, latestChangePercent: null, trendDirection: "none", scopeKind: null, trendPoints: [] };
     const organizationPrice = trend.organizationPriceIrr === null || trend.organizationPriceIrr === undefined ? null : { scope: "organization", unitPriceIRR: trend.organizationPriceIrr, effectiveFrom: trend.organizationEffectiveFrom };
@@ -79,7 +87,13 @@ function buildWorkspace(context, resources, prices, conversions, currentTrends) 
     const organizationConversion = sorted.find((item) => item.scope === "organization") ?? null;
     return { sourceUnit: sorted[0].sourceUnit, targetUnit: sorted[0].targetUnit, dimension: sorted[0].dimension ?? getUnitDefinition(sorted[0].sourceUnit)?.dimension ?? null, currentConversion: projectConversion ?? organizationConversion, projectConversion, organizationConversion };
   });
-  return { currentPrices, history: [...prices].sort(compareVersion), currentConversions, conversionHistory: [...conversions].sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate) || right.version - left.version), asOfDate, scope: { organizationId: context.organizationId, projectId: context.projectId } };
+  // The history belongs to the same list. Left whole it would name withheld
+  // items in a column the page resolves from `currentPrices`, printing them as
+  // «قلم حذف‌شده» -- which they are not.
+  const activeHistory = prices.filter((price) => visible.has(price.resourceId));
+  return { currentPrices, withheldResourceCount,
+           withheldPriceCount: prices.length - activeHistory.length,
+           history: activeHistory.sort(compareVersion), currentConversions, conversionHistory: [...conversions].sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate) || right.version - left.version), asOfDate, scope: { organizationId: context.organizationId, projectId: context.projectId } };
 }
 
 export function createApiPricesAdapter(context, client) {

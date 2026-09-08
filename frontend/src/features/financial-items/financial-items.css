@@ -197,7 +197,7 @@
 }
 
 .estimate-lines-table {
-  min-inline-size: 72rem;
+  min-inline-size: 56rem;
 }
 
 .items-table :is(th, td):nth-child(1) {
@@ -231,32 +231,27 @@
   vertical-align: middle;
 }
 
-.estimate-lines-table :is(th, td):nth-child(1) {
-  inline-size: 22%;
+/* Each column takes the width its content needs. The table was `fixed` (from
+   .data-table) with seven hand-written percentages that summed to 100 -- and then
+   grew to ten columns, so the last three were allotted nothing at all. `auto` is
+   how .invoices-table and .breakdown-table already solve this; the numeric
+   columns hold short figures and say so, and the two text columns are the ones
+   allowed to wrap. */
+.estimate-lines-table {
+  table-layout: auto;
 }
 
-.estimate-lines-table :is(th, td):nth-child(2) {
-  inline-size: 17%;
+.estimate-lines-table :is(th, td) {
+  white-space: nowrap;
 }
 
-.estimate-lines-table :is(th, td):nth-child(3) {
-  inline-size: 8%;
+.estimate-lines-table :is(th, td):first-child {
+  inline-size: 40%;
+  white-space: normal;
 }
 
-.estimate-lines-table :is(th, td):nth-child(4) {
-  inline-size: 14%;
-}
-
-.estimate-lines-table :is(th, td):nth-child(5) {
-  inline-size: 16%;
-}
-
-.estimate-lines-table :is(th, td):nth-child(6) {
-  inline-size: 11%;
-}
-
-.estimate-lines-table :is(th, td):nth-child(7) {
-  inline-size: 12%;
+.estimate-lines-table .pair-cell {
+  inline-size: 1%;
 }
 
 .line-actions .table-action + .table-action {
@@ -317,20 +312,52 @@
   background: rgb(0 136 151 / 10%);
 }
 
-/* One activity's items read as one block: a rule above the first row of each,
-   and the repeated name shown once. The rows stay separate rows -- nothing is
-   merged and no cell spans -- so a narrow screen and a screen reader both keep
-   working. */
-.estimate-lines-table tbody tr.estimate-lines-table__block > td {
-  border-block-start: 1px solid var(--color-border-strong, rgb(148 163 184 / 35%));
+/* One activity, one heading, then its items.
+   The heading spans the table because what it says -- the activity's code, its
+   name and the schedule's cost for it -- is true of the activity and not of any
+   one item under it. `.data-table th` styles a `th` as small muted column-header
+   text, which is the opposite of what this is, so it is restated here. */
+.estimate-lines-table__activity > .activity-block {
+  padding-block: .75rem .5rem;
+  border-block-start: 1px solid var(--color-border, rgb(148 163 184 / 35%));
+  color: var(--color-text-primary);
+  font-size: .85rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
 }
 
-.estimate-lines-table tbody tr.estimate-lines-table__block:first-child > td {
+.estimate-lines-table__activity:first-child > .activity-block {
   border-block-start: 0;
 }
 
-.activity-cell--continued {
-  padding-block: .2rem;
+.activity-block {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem 1.25rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.activity-block__cost {
+  color: var(--color-text-muted);
+  font-size: .78rem;
+  font-weight: 500;
+}
+
+/* Two figures in one cell, one under the other: they are one fact about the
+   line, and two columns made a wide table where a tall cell would do. */
+.pair-cell__line {
+  display: block;
+  line-height: 1.75;
+}
+
+.pair-cell__change {
+  display: block;
+  margin-block-start: .15rem;
+  color: var(--dash-sev-med);
+  font-size: .72rem;
 }
 
 /* Says which rows the table is not showing. Quiet, and above the table it
@@ -777,6 +804,12 @@ html[data-theme="light"] .workspace-form select {
    -------------------------------------------------------------------------- */
 
 @media print {
+  /* A heading must not print at the foot of a page with its items overleaf. */
+  .estimate-lines-table__activity {
+    break-inside: avoid;
+    break-after: avoid;
+  }
+
   .items-section__actions,
   .workspace-dialog {
     display: none !important;

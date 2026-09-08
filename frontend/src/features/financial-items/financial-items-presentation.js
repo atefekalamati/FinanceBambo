@@ -1,4 +1,5 @@
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
+import { isSeedTaskResource } from "../../shared/finance/active-resources.js";
 
 /**
  * Which activity, which cost item, and which WBS code — kept apart.
@@ -14,35 +15,19 @@ import { formatDisplayNumber } from "../../shared/formatters/display.js";
 /** Printed where a value is genuinely missing. Never a value in its own right. */
 export const ABSENT = "—";
 
-/**
- * `MSP-T<task uid>` — the code an older seed wrote when it created one Finance
- * resource per schedule TASK. Such a row's title is a task name, so presenting
- * it as a cost item is exactly the confusion reported.
- */
-const LEGACY_TASK_CODE = /^MSP-T\d+$/i;
-
 /** A WBS code as this project writes them: numbers separated by dots. */
 const WBS_SHAPE = /^\d+(?:\.\d+)*$/;
 
 /**
- * True for a resource an older seed made out of a schedule TASK.
+ * True for a row this page should withhold: made by the seed out of a schedule
+ * TASK, and never used by anybody since.
  *
- * Three facts must coincide, because each alone would catch something else:
- * the resource was never read from a schedule as a resource
- * (`sourceResourceUid` is null — but so is a hand-made item's); it is coded
- * `MSP-T<uid>` (— but `code` is free text a person may type); and its
- * `externalResourceId` is that same uid (— which is how the seed wrote it, and
- * which no live path writes: the MPP mapper never sets the column and the
- * "قلم جدید" form has no field for it). Demanding all three means a genuine
- * manual item is spared even if it is coded to look legacy, which is the way
- * round this must fail.
+ * The whole rule lives in `shared/finance/active-resources.js` so that this page
+ * and قیمت روز cannot come to different answers about the same row. It is
+ * re-exported here under the name this feature has always called it.
  */
 export function isLegacyTaskResource(resource) {
-  if (!resource) return false;
-  if (resource.sourceResourceUid != null) return false;
-  const code = String(resource.code ?? "").trim();
-  if (!LEGACY_TASK_CODE.test(code)) return false;
-  return String(resource.externalResourceId ?? "").trim() === code.slice(5);
+  return isSeedTaskResource(resource) && resource?.hasOperationalRecords !== true;
 }
 
 /**
@@ -223,11 +208,14 @@ export function sortEstimateRows(lines = [], resources = []) {
 }
 
 /**
- * True when this row opens a new activity block — the row that carries the
- * activity's name and code, the ones after it belonging to the same activity.
+ * True when this row opens a new activity block — the row a header is written
+ * above, the ones after it belonging to the same activity.
  *
- * The rows are still one row each: nothing is merged, no cell spans, and a
- * screen reader still reads a whole row. Only the repeated text is quieted.
+ * The activity's name, its code and the schedule's cost for it are facts about
+ * the activity, not about any one of its items, so they are written once in a
+ * header row that spans the table rather than repeated down a column. (An
+ * earlier shape repeated them on every row and hid the copies from sight; a
+ * spanning header says the same thing to a reader and to a screen reader.)
  */
 export function activityBlockStarts(lines = []) {
   let previous = null;
@@ -249,20 +237,6 @@ const SOURCE_LABELS = Object.freeze({
 /** Read from the schedule, whatever the stored enum was able to say. */
 const SCHEDULE_SOURCE = "فایل برنامه زمانی (MPP)";
 
-/**
- * Where a row came from, said accurately.
- *
- * The identity decides, not the enum. `source` has three permitted values and
- * none of them is "read from an .mpp file", so the mapper stores the nearest —
- * `progress_feed` — and a reader is told the row came from a progress feed,
- * which it did not. When the schedule identity is present it is the better
- * witness, and it is the one this reads.
- */
-export function sourceLabel(line) {
-  if (line?.sourceAssignmentUid != null) return SCHEDULE_SOURCE;
-  return SOURCE_LABELS[line?.source] ?? "منبع تعریف‌نشده";
-}
-
 /** The same question about a cost item, answered from the same kind of evidence. */
 export function resourceSourceLabel(resource) {
   if (resource?.sourceResourceUid != null) return SCHEDULE_SOURCE;
@@ -281,4 +255,48 @@ export function resourceSourceLabel(resource) {
 export function scheduleCostOf(line) {
   const value = line?.mppTaskCostIrr;
   return value === null || value === undefined || value === "" ? null : value;
+}
+
+/**
+ * The money an estimate line comes to, or null.
+ *
+ * An amount is a product and never a figure of its own: no quantity or no unit
+ * price means no amount, and the page says so rather than showing a zero or
+ * borrowing the schedule's cost for the activity. Decimal strings are
+ * multiplied exactly — a rial figure large enough to matter is large enough for
+ * a float to round it.
+ */
+export function estimateAmount(quantity, unitPrice) {
+  const left = exactDecimal(quantity);
+  const right = exactDecimal(unitPrice);
+  if (left === null || right === null) return null;
+  const scaled = left.value * right.value;
+  const scale = left.scale + right.scale;
+  return scale === 0 ? String(scaled) : withDecimalPoint(scaled, scale);
+}
+
+/** The change between two amounts, or null when either is unknown. */
+export function amountChange(initial, current) {
+  const before = exactDecimal(initial);
+  const after = exactDecimal(current);
+  if (before === null || after === null) return null;
+  const scale = Math.max(before.scale, after.scale);
+  const lift = (part) => part.value * 10n ** BigInt(scale - part.scale);
+  const difference = lift(after) - lift(before);
+  return scale === 0 ? String(difference) : withDecimalPoint(difference, scale);
+}
+
+function exactDecimal(value) {
+  const text = String(value ?? "").trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(text)) return null;
+  const [whole, fraction = ""] = text.split(".");
+  return { value: BigInt(whole + fraction), scale: fraction.length };
+}
+
+function withDecimalPoint(value, scale) {
+  const negative = value < 0n;
+  const digits = (negative ? -value : value).toString().padStart(scale + 1, "0");
+  const whole = digits.slice(0, digits.length - scale);
+  const fraction = digits.slice(digits.length - scale).replace(/0+$/, "");
+  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
 }
