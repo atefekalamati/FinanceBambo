@@ -461,18 +461,171 @@ function appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible,
 }
 
 /**
- * A table with its own column control above it.
+ * The chips that say what the table is filtered to.
  *
- * For a table whose caller has nowhere obvious to put the control -- no heading
- * row of its own to hang it from. The toolbar is the table's, so the page that
- * renders it needs to know nothing about columns.
+ * They are the filter, not a description of one: pressing a chip is the whole
+ * gesture, which is why there is no apply button beside them. Each is a real
+ * button carrying aria-pressed, so what is on is announced rather than only
+ * coloured, and label and count sit on one line -- a chip is a word and a
+ * number, not a small card.
+ *
+ * Counts arrive already written. Formatting a number is the page's business
+ * (which digits, which locale); a chip only has to place it.
  */
-export function createDataTableWithControl({ name, columns, visible, controlLabel, ...config }) {
-  const fragment = document.createDocumentFragment();
+export function createFilterChips({ items, active, onSelect, label = "فیلتر جدول" }) {
+  const rail = element("div", "data-table-chips");
+  rail.setAttribute("role", "group");
+  rail.setAttribute("aria-label", label);
+  items.forEach((item) => {
+    const chip = element("button", `data-table-chip${item.tone ? ` data-table-chip--${item.tone}` : ""}`);
+    chip.type = "button";
+    chip.dataset.chip = item.key;
+    chip.setAttribute("aria-pressed", String(item.key === active));
+    chip.append(element("span", "data-table-chip__label", item.label));
+    const count = element("span", "data-table-chip__count numeric");
+    count.hidden = item.count === undefined || item.count === null;
+    count.textContent = count.hidden ? "" : String(item.count);
+    chip.append(count);
+    chip.addEventListener("click", () => onSelect(item.key));
+    rail.append(chip);
+  });
+  return rail;
+}
+
+/**
+ * Move the pressed state and the counts without rebuilding the rail.
+ *
+ * A page that repaints on every read would otherwise replace the toolbar under
+ * the reader's hands -- and with it the search box they are typing into. Kept
+ * in place, the caret stays where it was.
+ */
+export function updateFilterChips(rail, { active, counts = {} } = {}) {
+  if (!rail) return;
+  rail.querySelectorAll(".data-table-chip").forEach((chip) => {
+    const key = chip.dataset.chip;
+    if (active !== undefined) chip.setAttribute("aria-pressed", String(key === active));
+    if (!(key in counts)) return;
+    const count = chip.querySelector(".data-table-chip__count");
+    if (!count) return;
+    count.hidden = counts[key] === undefined || counts[key] === null;
+    count.textContent = count.hidden ? "" : String(counts[key]);
+  });
+}
+
+/**
+ * Looking for something in the table.
+ *
+ * Reports after a pause rather than per keystroke, because the caller behind
+ * this may be a request. Enter and the input's own clear button skip the pause,
+ * since both are someone saying they have finished typing.
+ *
+ * What "matching" means is never decided here -- the caller is handed the text
+ * and does its own filtering, server-side or in the page, whichever it already
+ * did.
+ */
+export function createTableSearch({
+  value = "",
+  onSearch,
+  placeholder = "جست‌وجو در جدول…",
+  label = "جست‌وجو در جدول",
+  delay = 300,
+}) {
+  const field = element("div", "data-table-search");
+  const input = element("input", "app-input data-table-search__input");
+  input.type = "search";
+  input.value = value;
+  input.placeholder = placeholder;
+  input.setAttribute("aria-label", label);
+
+  let timer = null;
+  let reported = value.trim();
+  const report = () => {
+    clearTimeout(timer);
+    const next = input.value.trim();
+    if (next === reported) return;
+    reported = next;
+    onSearch(next);
+  };
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(report, delay);
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    report();
+  });
+  // Fired by the clear button a search input draws for itself.
+  input.addEventListener("search", report);
+
+  field.append(input);
+  return field;
+}
+
+/**
+ * Repaint without dropping the caret.
+ *
+ * A page that rebuilds its tree detaches whatever had focus, and a detached
+ * element is blurred even when the very same node goes straight back -- which
+ * is exactly what happens to a search box while someone is typing into it, on
+ * the reload their own typing asked for.
+ *
+ * Reaching for the element afterwards rather than before is what makes this
+ * work for a toolbar that is moved rather than rebuilt: the node is the same
+ * one, so restoring its focus restores the reader's place.
+ */
+export function repaintPreservingFocus(repaint) {
+  const active = document.activeElement;
+  let caret = null;
+  try {
+    caret = [active.selectionStart, active.selectionEnd, active.selectionDirection];
+  } catch {
+    // Not a field that carries a selection; focus alone is enough.
+  }
+
+  repaint();
+
+  if (!(active instanceof HTMLElement) || !active.isConnected || active === document.activeElement) return;
+  active.focus({ preventScroll: true });
+  if (!caret || caret[0] === null) return;
+  try {
+    active.setSelectionRange(caret[0], caret[1], caret[2] ?? "none");
+  } catch {
+    // The field kept its own idea of where the caret goes.
+  }
+}
+
+/**
+ * The row above a table: what it is filtered to, what is being looked for, and
+ * which columns are showing.
+ *
+ * Three controls with three jobs, in one row so the reader reads them as one
+ * set. Anything a table grows later belongs here too rather than beside it.
+ */
+export function createTableToolbar({ chips, search, name, columns, visible, table, controlLabel }) {
   const toolbar = element("div", "data-table-toolbar");
+  if (chips) toolbar.append(createFilterChips(chips));
+  const tools = element("div", "data-table-toolbar__tools");
+  if (search) tools.append(createTableSearch(search));
+  if (columns) tools.append(createColumnControl({ name, columns, visible, label: controlLabel, table }));
+  toolbar.append(tools);
+  return toolbar;
+}
+
+/**
+ * A table with its own toolbar above it.
+ *
+ * For a table whose caller has nowhere obvious to put the controls -- no
+ * heading row of its own to hang them from. The toolbar is the table's, so the
+ * page that renders it needs to know nothing about columns.
+ */
+export function createDataTableWithControl({ name, columns, visible, controlLabel, chips, search, ...config }) {
+  const fragment = document.createDocumentFragment();
   const table = createDataTable({ ...config, columns, visible });
-  toolbar.append(createColumnControl({ name, columns, visible, label: controlLabel, table }));
-  fragment.append(toolbar, table);
+  fragment.append(
+    createTableToolbar({ chips, search, name, columns, visible, table, controlLabel }),
+    table,
+  );
   return fragment;
 }
 
