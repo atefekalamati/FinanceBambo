@@ -5,7 +5,7 @@
 ## انتخاب Runtime
 
 - اگر Host مقدار معتبر `window.__BAMBO_FINANCE_CONTEXT__` را پیش از `bootstrap.js` قرار دهد، Runtime برابر `host` و تمام صفحات فعال از API واقعی Same-Origin استفاده می‌کنند.
-- اگر Context وجود نداشته باشد، Runtime برابر `standalone` و فقط برای توسعه محلی از Mock Adapter استفاده می‌کند.
+- حالت پیش‌فرض `host` است؛ نبود Context مانع راه‌اندازی می‌شود. Mock فقط در پیش‌نمایش دارای نشانگر صریح `data-finance-runtime="standalone"` فعال است. جزئیات در `HOST_RUNTIME_STARTUP_FA.md` آمده است.
 - Scope سازمان و پروژه هرگز در Body ارسال نمی‌شود؛ `projectId` فقط از Context معتبر وارد Path می‌شود و Backend سازمان را از Auth Context تعیین می‌کند.
 
 ## Endpointهای متصل‌شده
