@@ -7,7 +7,7 @@ import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { ACTION_LABELS, ENTITY_LABELS, filterAuditEvents } from "./audit-model.js";
 import { element } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 
 /** GET /audit-events default; the endpoint accepts 1..200 and returns a paged envelope. */
@@ -243,11 +243,7 @@ export function createAuditPage({ adapter }) {
       name: "audit",
       columns: auditColumns,
       visible: visibleAuditColumns,
-      onToggle: (key, on) => {
-        if (on) visibleAuditColumns.add(key);
-        else visibleAuditColumns.delete(key);
-        applyColumnVisibility(root.querySelector(".audit-table"), key, on);
-      },
+      table: () => root.querySelector(".audit-table"),
     }));
     fragment.append(header, form, summaryRow, auditTable, pagination);
     return fragment;

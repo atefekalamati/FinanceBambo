@@ -6,7 +6,7 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
 import { element } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 import { feedWarningText } from "../../shared/warnings/finance-warning-labels.js";
 
@@ -421,11 +421,7 @@ export function createProgressPage({ context, adapter }) {
         name: "progress-feed",
         columns: feedColumns,
         visible: visibleFeedColumns,
-        onToggle: (key, on) => {
-          if (on) visibleFeedColumns.add(key);
-          else visibleFeedColumns.delete(key);
-          applyColumnVisibility(root.querySelector(".progress-feed-table"), key, on);
-        },
+        table: () => root.querySelector(".progress-feed-table"),
       }),
     );
     head.append(element("div", "", ""), headMeta);
