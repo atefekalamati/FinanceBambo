@@ -182,6 +182,32 @@ function appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible,
   });
 }
 
+/**
+ * A table with its own column control above it.
+ *
+ * For a table whose caller has nowhere obvious to put the control -- no heading
+ * row of its own to hang it from. The toolbar is the table's, so the page that
+ * renders it needs to know nothing about columns.
+ */
+export function createDataTableWithControl({ name, columns, visible, controlLabel, ...config }) {
+  const fragment = document.createDocumentFragment();
+  const toolbar = element("div", "data-table-toolbar");
+  const table = createDataTable({ ...config, columns, visible });
+  toolbar.append(createColumnControl({
+    name,
+    columns,
+    visible,
+    label: controlLabel,
+    onToggle: (key, on) => {
+      if (on) visible.add(key);
+      else visible.delete(key);
+      applyColumnVisibility(table.querySelector("table"), key, on);
+    },
+  }));
+  fragment.append(toolbar, table);
+  return fragment;
+}
+
 export function createDataTable({ caption, scrollLabel, className = "", columns, rows, cells, rowAttributes, visible, group, emptyMessage }) {
   const scroll = element("div", "table-scroll data-table-scroll");
   // The same affordance the comparison chart's table uses: a named region the

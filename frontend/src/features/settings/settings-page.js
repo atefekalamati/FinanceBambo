@@ -13,6 +13,8 @@ import { createUnitConversionForm, renderConversionHistory, renderCurrentConvers
 import { isConfigurableConversionDirection } from "../prices/unit-conversions-validation.js";
 import { validateSettingsRevision } from "./settings-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
+import { IDENTITY, PRIMARY, SECONDARY, createDataTableWithControl, defaultVisibleColumns }
+  from "../../shared/components/data-table.js";
 
 function createField({ id, label, type = "text", value = "", hint, inputMode, required = false }) {
   const field = element("div", "form-field");
@@ -40,30 +42,38 @@ function createField({ id, label, type = "text", value = "", hint, inputMode, re
  * revision with the area it replaced, so the original value stays visible
  * alongside every correction (FR-001).
  */
+/* The revision number is the identity: it is what a revision is referred to by,
+   and every other column says what that revision did. */
+const REVISION_COLUMNS = Object.freeze([
+  { key: "identity", label: "بازنگری", tier: IDENTITY, cellClass: "numeric" },
+  { key: "effectiveDate", label: "تاریخ اعمال", tier: SECONDARY, keepOnTablet: true },
+  { key: "previousValue", label: "مقدار قبلی", tier: SECONDARY, cellClass: "numeric" },
+  { key: "newValue", label: "مقدار جدید", tier: PRIMARY, cellClass: "numeric" },
+  { key: "reason", label: "دلیل", tier: PRIMARY },
+  { key: "actor", label: "ثبت‌کننده", tier: SECONDARY, cellClass: "numeric" },
+  { key: "occurredAt", label: "زمان ثبت", tier: SECONDARY },
+]);
+const visibleRevisionColumns = defaultVisibleColumns(REVISION_COLUMNS);
+
 function createRevisionTable(revisions = []) {
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table settings-history");
-  table.append(
-    tableCaption("تاریخچه بازنگری زیربنای کل پروژه"),
-    tableHead(["بازنگری", "تاریخ اعمال", "مقدار قبلی", "مقدار جدید", "دلیل", "ثبت‌کننده", "زمان ثبت"]),
-  );
-  const body = document.createElement("tbody");
-  revisions.forEach((revision) => {
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "numeric", formatDisplayNumber(String(revision.revisionNumber))),
-      element("td", "", revision.effectiveDate ? formatBusinessDate(revision.effectiveDate) : "—"),
-      element("td", "numeric", revision.previousValue ? formatArea(revision.previousValue) : "ثبت اولیه"),
-      element("td", "numeric", formatArea(revision.newValue)),
-      element("td", "", revision.reason || "بدون دلیل ثبت‌شده"),
-      element("td", "numeric", revision.actorName || revision.actorId || "نامشخص"),
-      element("td", "", revision.occurredAt ? formatSystemDateTime(revision.occurredAt) : "—"),
-    );
-    body.append(row);
+  return createDataTableWithControl({
+    name: "settings-revisions",
+    className: "settings-history",
+    caption: "تاریخچه بازنگری زیربنای کل پروژه",
+    scrollLabel: "جدول تاریخچه بازنگری زیربنا",
+    columns: REVISION_COLUMNS,
+    visible: visibleRevisionColumns,
+    rows: revisions,
+    cells: (revision) => ({
+      identity: formatDisplayNumber(String(revision.revisionNumber)),
+      effectiveDate: revision.effectiveDate ? formatBusinessDate(revision.effectiveDate) : "—",
+      previousValue: revision.previousValue ? formatArea(revision.previousValue) : "ثبت اولیه",
+      newValue: formatArea(revision.newValue),
+      reason: revision.reason || "بدون دلیل ثبت‌شده",
+      actor: revision.actorName || revision.actorId || "نامشخص",
+      occurredAt: revision.occurredAt ? formatSystemDateTime(revision.occurredAt) : "—",
+    }),
   });
-  table.append(body);
-  wrapper.append(table);
-  return wrapper;
 }
 
 function createRevisionHistory(data) {
