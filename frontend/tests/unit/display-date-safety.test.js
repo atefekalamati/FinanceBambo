@@ -10,7 +10,10 @@ import { ApiError } from "../../src/core/api/api-error.js";
    the reader to look at the network. These tests hold both ends of that shut. */
 
 test("a date-only business date still formats as it always did", () => {
-  assert.equal(formatBusinessDate("2026-10-22"), "۲۹ مهر ۱۴۰۵");
+  // 1 Mehr 1405 is 2026-09-23, so 2026-10-22 is 30 Mehr. It read 29 only because
+  // the formatter had no time zone and the machine that wrote this sits west of
+  // UTC; in Tehran the same call has always returned 30.
+  assert.equal(formatBusinessDate("2026-10-22"), "۳۰ مهر ۱۴۰۵");
 });
 
 test("a business date carrying a time formats instead of throwing", () => {
