@@ -17,7 +17,8 @@ import { validatePriceVersion } from "./prices-validation.js";
 import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition, validateUnitConversion } from "./unit-conversions-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
+import { fetchGoogleSheetAsFile, GoogleSheetError } from "../../shared/imports/google-sheet.js";
+import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 
 const SCOPE_LABELS = Object.freeze({ organization: "پایه سازمان", project: "اختصاصی پروژه" });
@@ -216,6 +217,19 @@ function createPriceImportDialog(adapter, onSaved) {
   error.setAttribute("aria-live", "polite");
   input.setAttribute("aria-describedby", `${hint.id} ${error.id}`);
   field.append(label, input, hint, error);
+
+  // The same import, from a link instead of a disk.
+  const sheetField = element("div", "form-field form-field--wide");
+  const sheetLabel = element("label", "form-label", "یا نشانی گوگل شیت");
+  sheetLabel.htmlFor = "priceImportSheet";
+  const sheetInput = element("input", "app-input");
+  sheetInput.id = "priceImportSheet";
+  sheetInput.type = "url";
+  sheetInput.placeholder = "https://docs.google.com/spreadsheets/d/…";
+  sheetInput.setAttribute("aria-describedby", "priceSheetHint");
+  const sheetHint = element("small", "form-hint", "برگه باید روی «هر کسی که لینک را دارد» باشد. اگر نشانی را از روی تب موردنظر کپی کنید، همان تب خوانده می‌شود.");
+  sheetHint.id = "priceSheetHint";
+  sheetField.append(sheetLabel, sheetInput, sheetHint);
   const previewButton = element("button", "button button--primary", "بررسی و نمایش پیش‌نمایش");
   previewButton.type = "submit";
   const status = element("div", "form-status");
@@ -223,7 +237,7 @@ function createPriceImportDialog(adapter, onSaved) {
   status.setAttribute("aria-live", "polite");
   const actions = element("div", "form-actions");
   actions.append(previewButton, status);
-  form.append(field, actions);
+  form.append(field, sheetField, actions);
   const resultRegion = element("section", "price-import-result");
   resultRegion.setAttribute("aria-live", "polite");
   resultRegion.hidden = true;
@@ -326,26 +340,34 @@ function createPriceImportDialog(adapter, onSaved) {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const file = input.files?.[0];
-    error.textContent = file ? "" : "انتخاب فایل اکسل الزامی است.";
-    input.setAttribute("aria-invalid", String(!file));
-    if (!file) {
+    const picked = input.files?.[0];
+    const link = sheetInput.value.trim();
+    error.textContent = picked || link ? "" : "یک فایل اکسل انتخاب کنید یا نشانی گوگل شیت را وارد کنید.";
+    input.setAttribute("aria-invalid", String(!picked && !link));
+    if (!picked && !link) {
       input.focus();
       return;
     }
     input.disabled = true;
+    sheetInput.disabled = true;
     previewButton.disabled = true;
     resultRegion.hidden = true;
-    status.textContent = "در حال بررسی فایل…";
+    status.textContent = link && !picked ? "در حال دریافت برگه از گوگل…" : "در حال بررسی فایل…";
     try {
+      // A picked file wins: it is the more deliberate of the two.
+      const file = picked ?? await fetchGoogleSheetAsFile(link, { name: "price-import" });
+      if (!picked) status.textContent = "در حال بررسی فایل…";
       const preview = await adapter.previewPriceImport(file);
       status.textContent = preview.canCommit ? "پیش‌نمایش معتبر آماده است." : "پیش‌نمایش دارای خطاست.";
       renderPreview(preview);
     } catch (previewError) {
-      error.textContent = formatApiErrorMessage(previewError);
+      error.textContent = previewError instanceof GoogleSheetError
+        ? previewError.message
+        : formatApiErrorMessage(previewError);
       status.textContent = "بررسی فایل انجام نشد.";
     } finally {
       input.disabled = false;
+      sheetInput.disabled = false;
       previewButton.disabled = false;
     }
   });
@@ -735,11 +757,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
         name: "current-prices",
         columns: priceColumns,
         visible: visiblePriceColumns,
-        onToggle: (key, on) => {
-          if (on) visiblePriceColumns.add(key);
-          else visiblePriceColumns.delete(key);
-          applyColumnVisibility(root.querySelector(".current-prices-table"), key, on);
-        },
+        table: () => root.querySelector(".current-prices-table"),
       }),
     );
     currentHeading.append(element("div", "", ""), currentMeta);

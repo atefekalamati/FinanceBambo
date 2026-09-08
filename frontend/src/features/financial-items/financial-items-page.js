@@ -15,7 +15,8 @@ import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
+import { fetchGoogleSheetAsFile, GoogleSheetError } from "../../shared/imports/google-sheet.js";
+import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 import { ABSENT, activityBlockStarts, activityLabel, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
@@ -342,12 +343,26 @@ function createEstimateImportDialog(adapter, onSaved) {
   input.type = "file";
   input.accept = ".xlsx";
   input.setAttribute("aria-describedby", "estimateImportHint estimateImportError");
-  const hint = element("small", "form-hint", "قالب دقیق ستون‌ها در منابع تعریف نشده است و پس از دریافت قرارداد سمت سرور نهایی می‌شود.");
+  const hint = element("small", "form-hint", "ستون‌ها: resourceCode، activityExternalId، assignmentExternalId، originalQuantity و source. ستون کم یا اضافه پذیرفته نمی‌شود و source باید excel_import باشد.");
   hint.id = "estimateImportHint";
   const error = element("small", "form-error");
   error.id = "estimateImportError";
   error.setAttribute("aria-live", "polite");
   field.append(label, input, hint, error);
+
+  // The same import, from a link instead of a disk. What is sent to the server
+  // is the same .xlsx either way -- only where the bytes came from differs.
+  const sheetField = element("div", "form-field form-field--wide");
+  const sheetLabel = element("label", "form-label", "یا نشانی گوگل شیت");
+  sheetLabel.htmlFor = "estimateImportSheet";
+  const sheetInput = element("input", "app-input");
+  sheetInput.id = "estimateImportSheet";
+  sheetInput.type = "url";
+  sheetInput.placeholder = "https://docs.google.com/spreadsheets/d/…";
+  sheetInput.setAttribute("aria-describedby", "estimateSheetHint");
+  const sheetHint = element("small", "form-hint", "برگه باید روی «هر کسی که لینک را دارد» باشد. اگر نشانی را از روی تب موردنظر کپی کنید، همان تب خوانده می‌شود.");
+  sheetHint.id = "estimateSheetHint";
+  sheetField.append(sheetLabel, sheetInput, sheetHint);
 
   const previewButton = element("button", "button button--primary", "بررسی و نمایش پیش‌نمایش");
   previewButton.type = "submit";
@@ -356,7 +371,7 @@ function createEstimateImportDialog(adapter, onSaved) {
   formStatus.setAttribute("aria-live", "polite");
   const formActions = element("div", "form-actions");
   formActions.append(previewButton, formStatus);
-  form.append(field, formActions);
+  form.append(field, sheetField, formActions);
 
   const resultRegion = element("section", "import-result");
   resultRegion.setAttribute("aria-live", "polite");
@@ -472,28 +487,36 @@ function createEstimateImportDialog(adapter, onSaved) {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const file = input.files?.[0];
-    error.textContent = file ? "" : "انتخاب فایل اکسل الزامی است.";
-    input.setAttribute("aria-invalid", String(!file));
-    if (!file) {
+    const picked = input.files?.[0];
+    const link = sheetInput.value.trim();
+    error.textContent = picked || link ? "" : "یک فایل اکسل انتخاب کنید یا نشانی گوگل شیت را وارد کنید.";
+    input.setAttribute("aria-invalid", String(!picked && !link));
+    if (!picked && !link) {
       input.focus();
       return;
     }
     previewButton.disabled = true;
     input.disabled = true;
-    formStatus.textContent = "در حال بررسی فایل…";
+    sheetInput.disabled = true;
+    formStatus.textContent = link && !picked ? "در حال دریافت برگه از گوگل…" : "در حال بررسی فایل…";
     resultRegion.hidden = true;
     try {
+      // A picked file wins: it is the more deliberate of the two.
+      const file = picked ?? await fetchGoogleSheetAsFile(link, { name: "estimate-import" });
+      if (!picked) formStatus.textContent = "در حال بررسی فایل…";
       currentPreview = await adapter.previewEstimateImport(file);
       formStatus.textContent = currentPreview.canCommit ? "پیش‌نمایش معتبر آماده است." : "پیش‌نمایش دارای خطاست.";
       renderPreview(currentPreview);
     } catch (previewError) {
       currentPreview = null;
-      error.textContent = formatApiErrorMessage(previewError);
+      error.textContent = previewError instanceof GoogleSheetError
+        ? previewError.message
+        : formatApiErrorMessage(previewError);
       formStatus.textContent = "بررسی فایل انجام نشد.";
     } finally {
       previewButton.disabled = false;
       input.disabled = false;
+      sheetInput.disabled = false;
     }
   });
 
@@ -663,8 +686,11 @@ function renderResourceTable(resources, withheld = null) {
    empty one means unknown, not zero. */
 function estimateLineColumns() {
   return [
-    { key: "identity", label: "ساختار شکست کار / فعالیت", tier: IDENTITY },
-    { key: "resource", label: "قلم هزینه", tier: PRIMARY },
+    // The pinned column answers "what is this row": the activity on a summary
+    // row, the cost item on one of its items. They never appear together -- a
+    // summary row has no item and an item row has no activity -- so one column
+    // holds both and «قلم هزینه» is not a column of its own any more.
+    { key: "identity", label: "فعالیت و قلم هزینه", tier: IDENTITY },
     { key: "unit", label: "واحد", tier: SECONDARY, cellClass: "numeric" },
     { key: "originalQuantity", label: "مقدار برآورد اولیه", tier: SECONDARY, cellClass: "numeric" },
     { key: "revisedQuantity", label: "آخرین مقدار برآورد", tier: PRIMARY, cellClass: "numeric" },
@@ -718,9 +744,10 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
       const original = isGeneralCost ? line.originalAmount : line.originalQuantity;
       const revised = isGeneralCost ? line.revisedAmount : line.revisedQuantity;
 
-      const resourceCell = document.createDocumentFragment();
-      resourceCell.append(element("strong", "", resourceLabel(resource)),
-                          element("small", "table-subtext numeric", resource?.code ?? ABSENT));
+      // Was the «قلم هزینه» cell; it is the identity of an item row now.
+      const identity = document.createDocumentFragment();
+      identity.append(element("strong", "", resourceLabel(resource)),
+                      element("small", "table-subtext numeric", resource?.code ?? ABSENT));
 
       const revisedCell = element("span", original !== revised ? "value-changed" : "",
         isGeneralCost ? formatTomanFromIrr(revised, { withCurrency: false }) : formatDisplayNumber(revised));
@@ -739,8 +766,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
       }
 
       return {
-        identity: "",
-        resource: resourceCell,
+        identity,
         unit: isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit),
         originalQuantity: isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original),
         revisedQuantity: revisedCell,
@@ -915,11 +941,7 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
       name: "estimate-lines",
       columns: lineColumns,
       visible: visibleLineColumns,
-      onToggle: (key, on) => {
-        if (on) visibleLineColumns.add(key);
-        else visibleLineColumns.delete(key);
-        applyColumnVisibility(root.querySelector(".estimate-lines-table"), key, on);
-      },
+      table: () => root.querySelector(".estimate-lines-table"),
     }), lineActions);
     linesHead.append(element("div", "", ""), linesMeta);
     linesHead.firstElementChild.append(element("h2", "", "ریز برآورد پروژه"), element("p", "", "هر ردیف، مقدار برآوردشده یک قلم هزینه را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا برآورد، اصلاحات و پیشرفت هر فعالیت مستقل و قابل پیگیری بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت روز و فاکتورهای تأییدشده محاسبه می‌شوند."));

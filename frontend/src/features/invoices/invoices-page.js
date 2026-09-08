@@ -12,7 +12,7 @@ import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 
 const STATUS_LABELS = Object.freeze({ draft: "پیش‌نویس", awaitingConfirmation: "در انتظار تأیید", confirmed: "تأییدشده", voided: "باطل‌شده", corrected: "اصلاح‌شده" });
@@ -38,7 +38,6 @@ const INVOICE_VIEWS = Object.freeze([
   { key: "awaiting", label: "در انتظار تأیید", tone: "pending", status: "awaitingConfirmation" },
   { key: "confirmed", label: "تأییدشده", tone: "positive", status: "confirmed" },
   { key: "corrected", label: "اصلاح‌شده", tone: "warning", status: "corrected" },
-  { key: "duplicates", label: "نیازمند بررسی تکرار", tone: "warning", duplicates: true },
 ]);
 
 /* The lines of one invoice, inside its dialog. The row number is the identity --
@@ -64,7 +63,6 @@ function countInvoiceViews(items, totalItems) {
     awaiting: withStatus("awaitingConfirmation"),
     confirmed: withStatus("confirmed"),
     corrected: withStatus("corrected"),
-    duplicates: items.filter((invoice) => invoice.duplicateWarning).length,
   };
 }
 
@@ -787,11 +785,7 @@ export function createInvoicesPage({ context, adapter }) {
         name: "invoices",
         columns: INVOICE_COLUMNS,
         visible: visibleColumns,
-        onToggle: (key, on) => {
-          if (on) visibleColumns.add(key);
-          else visibleColumns.delete(key);
-          applyColumnVisibility(root.querySelector(".invoices-table"), key, on);
-        },
+        table: () => root.querySelector(".invoices-table"),
       }),
     );
     heading.append(title, meta);
