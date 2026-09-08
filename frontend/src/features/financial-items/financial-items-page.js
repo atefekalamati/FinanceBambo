@@ -15,7 +15,7 @@ import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 import { ABSENT, activityBlockStarts, activityLabel, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
@@ -623,33 +623,36 @@ function createRevisionHistoryDialog(line, resource) {
   return dialog;
 }
 
+/* The code is the identity: it is what an item is referred to by everywhere else
+   in the module, and the title is what it is called. */
+const RESOURCE_COLUMNS = Object.freeze([
+  { key: "identity", label: "کد", tier: IDENTITY },
+  { key: "title", label: "عنوان", tier: PRIMARY },
+  { key: "type", label: "نوع", tier: PRIMARY, cellClass: "items-table__type" },
+  { key: "unit", label: "واحد پایه", tier: SECONDARY, keepOnTablet: true, cellClass: "numeric" },
+  { key: "source", label: "منبع ورود", tier: SECONDARY },
+]);
+const visibleResourceColumns = defaultVisibleColumns(RESOURCE_COLUMNS);
+
 function renderResourceTable(resources, withheld = null) {
   const fragment = document.createDocumentFragment();
   if (withheld) fragment.append(element("p", "table-note", withheld));
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table items-table");
-  table.append(element("caption", "sr-only", "فهرست اقلام مالی"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["کد", "عنوان", "نوع", "واحد پایه", "منبع ورود"].forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  resources.forEach((resource) => {
-    const row = document.createElement("tr");
-    const typeCell = element("td", "items-table__type");
-    typeCell.append(element("span", `type-badge type-badge--${resource.type}`, getResourceTypeLabel(resource.type)));
-    row.append(
-      element("td", "numeric", resource.code),
-      element("td", "", resource.title),
-      typeCell,
-      element("td", "numeric", formatUnitLabel(resource.baseUnit)),
-      element("td", "", resourceSourceLabel(resource)),
-    );
-    body.append(row);
-  });
-  table.append(head, body);
-  wrapper.append(table);
-  fragment.append(wrapper);
+  fragment.append(createDataTableWithControl({
+    name: "resources",
+    className: "items-table",
+    caption: "فهرست اقلام مالی",
+    scrollLabel: "جدول اقلام مالی پروژه",
+    columns: RESOURCE_COLUMNS,
+    visible: visibleResourceColumns,
+    rows: resources,
+    cells: (resource) => ({
+      identity: resource.code,
+      title: resource.title,
+      type: element("span", `type-badge type-badge--${resource.type}`, getResourceTypeLabel(resource.type)),
+      unit: formatUnitLabel(resource.baseUnit),
+      source: resourceSourceLabel(resource),
+    }),
+  }));
   return fragment;
 }
 
