@@ -228,38 +228,43 @@
   margin-block-start: var(--space-xl);
 }
 
-.progress-feed-table {
-  min-inline-size: 112rem;
-}
-
-.progress-feed-table :is(th, td):nth-child(1),
-.progress-feed-table :is(th, td):nth-child(2) {
+/* Named rather than counted. The floor is the component's -- nine columns ask
+   for 99rem there against the 112rem this had, and the difference is the width
+   the pinned column no longer has to be given twice. */
+.progress-feed-table :is(th, td)[data-col="resource"] {
   inline-size: 14%;
 }
 
-.progress-feed-table :is(th, td):nth-child(3) {
+.progress-feed-table :is(th, td)[data-col="unit"] {
   inline-size: 7%;
 }
 
-.progress-feed-table :is(th, td):nth-child(4),
-.progress-feed-table :is(th, td):nth-child(5) {
+.progress-feed-table :is(th, td)[data-col="quantities"],
+.progress-feed-table :is(th, td)[data-col="work"] {
   inline-size: 12%;
 }
 
-.progress-feed-table :is(th, td):nth-child(6) {
+.progress-feed-table :is(th, td)[data-col="percents"] {
   inline-size: 10%;
 }
 
-.progress-feed-table :is(th, td):nth-child(7) {
+.progress-feed-table :is(th, td)[data-col="source"] {
   inline-size: 14%;
 }
 
-.progress-feed-table :is(th, td):nth-child(8) {
+.progress-feed-table :is(th, td)[data-col="dates"] {
   inline-size: 9%;
 }
 
-.progress-feed-table :is(th, td):nth-child(9) {
+.progress-feed-table :is(th, td)[data-col="override"] {
   inline-size: 8%;
+}
+
+.progress-section-heading__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-inline-size: 0;
 }
 
 .feed-values {

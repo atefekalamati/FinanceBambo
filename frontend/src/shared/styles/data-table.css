@@ -155,6 +155,15 @@
   background: rgb(3 8 20 / 18%);
 }
 
+/* The row that says there is nothing to show. It spans the visible columns, so
+   the column widths above do not reach it and it needs no !important to beat
+   them -- the width rules select by data-col and this cell has none. */
+.data-table__empty {
+  padding: var(--space-xl);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
 /* --- the column control ------------------------------------------------- */
 
 .data-table-columns {

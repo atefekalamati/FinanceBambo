@@ -6,6 +6,8 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
 import { element } from "../../shared/dom/elements.js";
+import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+  from "../../shared/components/data-table.js";
 import { feedWarningText } from "../../shared/warnings/finance-warning-labels.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "آماده", superseded: "جایگزین‌شده" });
@@ -264,64 +266,99 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
   return dialog;
 }
 
-function renderAssignments(assignments, { canOverride, onOverride }) {
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table progress-feed-table");
-  table.append(element("caption", "sr-only", "اطلاعات فقط‌خواندنی پیشرفت اجرایی و تخصیص‌های مالی"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["فعالیت", "قلم هزینه", "واحد", "مقادیر برنامه، انجام‌شده و باقی‌مانده", "کار برنامه، انجام‌شده و باقی‌مانده", "درصدهای پیشرفت", "مبنای محاسبه و کیفیت", "بازه فعالیت", "اصلاح دستی مقدار"].forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  assignments.forEach((assignment) => {
-    const row = document.createElement("tr");
-    const task = document.createElement("td");
-    task.append(element("strong", "", assignment.task.taskName), element("small", "table-subtext numeric", `${assignment.task.wbsCode ?? "ساختار شکست موجود نیست"} · ${assignment.task.activityCode ?? "کد فعالیت موجود نیست"}`), element("small", "table-subtext numeric", `شناسه فعالیت: ${assignment.task.taskExternalId}`), element("small", "table-subtext numeric", `فعالیت والد: ${assignment.task.parentTaskExternalId ?? "ندارد"}`));
-    const resource = document.createElement("td");
-    resource.append(element("strong", "", assignment.resourceName), element("small", "table-subtext", RESOURCE_TYPE_LABELS[assignment.resourceType] ?? "نوع نامشخص"), element("small", "table-subtext numeric", `قلم: ${assignment.resourceExternalId}`), element("small", "table-subtext numeric", `تخصیص: ${assignment.assignmentExternalId}`));
-    const quantities = element("dl", "feed-values");
-    [["برنامه", assignment.plannedQuantity], ["واقعی", assignment.actualQuantity], ["باقی‌مانده", assignment.remainingQuantity]].forEach(([label, value]) => quantities.append(element("dt", "", label), element("dd", value === null ? "missing-value" : "numeric", valueOrMissing(value))));
-    const work = element("dl", "feed-values");
-    [["برنامه", assignment.plannedWork], ["واقعی", assignment.actualWork], ["باقی‌مانده", assignment.remainingWork]].forEach(([label, value]) => work.append(element("dt", "", label), element("dd", value === null ? "missing-value" : "numeric", valueOrMissing(value))));
-    const percents = element("dl", "feed-values");
-    [["تخصیص", assignment.assignmentWorkCompletePercent], ["فعالیت", assignment.task.taskProgressPercent]].forEach(([label, value]) => percents.append(element("dt", "", label), element("dd", value === null ? "missing-value" : "numeric", value === null ? "داده موجود نیست" : `${formatDisplayNumber(value)} درصد`)));
-    const source = document.createElement("td");
-    source.append(element("strong", "", SOURCE_METHOD_LABELS[assignment.sourceMethod] ?? "روش نامشخص"), element("small", "quality-badge", `کیفیت ${qualityFormatter.format(assignment.quality)}`));
-    const warnings = assignmentWarnings(assignment);
-    if (warnings.length) {
-      const list = element("ul", "feed-warnings");
-      warnings.forEach((warning) => list.append(element("li", "", warning)));
-      source.append(list);
-    }
-    const dates = element("dl", "feed-values");
-    dates.append(element("dt", "", "شروع"), element("dd", assignment.task.taskStart ? "" : "missing-value", dateOrMissing(assignment.task.taskStart)), element("dt", "", "پایان"), element("dd", assignment.task.taskFinish ? "" : "missing-value", dateOrMissing(assignment.task.taskFinish)));
-    const override = document.createElement("td");
-    override.append(renderOverrideDetails(assignment.manualOverride));
-    // A disabled button on every row of a long table is noise for an account
-    // that will never be able to press one, and it invites the reading that the
-    // interface is what stops them. The row still shows the reported quantity
-    // and any override already recorded on it.
-    if (canOverride && assignment.actualQuantity !== null && assignment.resourceType !== "general_cost") {
-      const button = element("button", "button button--small button--ghost progress-override-button", "اصلاح دستی مقدار");
-      button.type = "button";
-      button.addEventListener("click", () => onOverride(assignment));
-      override.append(button);
-    }
-    row.append(task, resource, element("td", "", formatUnitLabel(assignment.unit)), element("td", "", ""), element("td", "", ""), element("td", "", ""), source, element("td", "", ""), override);
-    row.children[3].append(quantities);
-    row.children[4].append(work);
-    row.children[5].append(percents);
-    row.children[7].append(dates);
-    body.append(row);
+/* Nine columns of read-only schedule fact. The activity is the identity -- it is
+   what a row is looked up by; everything else describes what happened to it. */
+const PROGRESS_COLUMNS = Object.freeze([
+  { key: "identity", label: "فعالیت", tier: IDENTITY },
+  { key: "resource", label: "قلم هزینه", tier: PRIMARY },
+  { key: "unit", label: "واحد", tier: SECONDARY },
+  { key: "quantities", label: "مقادیر برنامه، انجام‌شده و باقی‌مانده", tier: PRIMARY },
+  { key: "work", label: "کار برنامه، انجام‌شده و باقی‌مانده", tier: SECONDARY },
+  { key: "percents", label: "درصدهای پیشرفت", tier: SECONDARY, keepOnTablet: true },
+  { key: "source", label: "مبنای محاسبه و کیفیت", tier: SECONDARY },
+  { key: "dates", label: "بازه فعالیت", tier: SECONDARY },
+  { key: "override", label: "اصلاح دستی مقدار", tier: SECONDARY, keepOnTablet: true },
+]);
+
+function renderAssignments(assignments, { canOverride, onOverride, columns, visible }) {
+  const valueList = (pairs, render) => {
+    const list = element("dl", "feed-values");
+    pairs.forEach(([label, value]) => list.append(element("dt", "", label), render(value)));
+    return list;
+  };
+
+  return createDataTable({
+    className: "progress-feed-table",
+    caption: "اطلاعات فقط‌خواندنی پیشرفت اجرایی و تخصیص‌های مالی",
+    scrollLabel: "جدول پیشرفت اجرایی و تخصیص‌های مالی",
+    columns,
+    rows: assignments,
+    visible,
+    cells: (assignment) => {
+      const task = document.createDocumentFragment();
+      task.append(element("strong", "", assignment.task.taskName),
+        element("small", "table-subtext numeric", `${assignment.task.wbsCode ?? "ساختار شکست موجود نیست"} · ${assignment.task.activityCode ?? "کد فعالیت موجود نیست"}`),
+        element("small", "table-subtext numeric", `شناسه فعالیت: ${assignment.task.taskExternalId}`),
+        element("small", "table-subtext numeric", `فعالیت والد: ${assignment.task.parentTaskExternalId ?? "ندارد"}`));
+
+      const resource = document.createDocumentFragment();
+      resource.append(element("strong", "", assignment.resourceName),
+        element("small", "table-subtext", RESOURCE_TYPE_LABELS[assignment.resourceType] ?? "نوع نامشخص"),
+        element("small", "table-subtext numeric", `قلم: ${assignment.resourceExternalId}`),
+        element("small", "table-subtext numeric", `تخصیص: ${assignment.assignmentExternalId}`));
+
+      const amount = (value) => element("dd", value === null ? "missing-value" : "numeric", valueOrMissing(value));
+      const percent = (value) => element("dd", value === null ? "missing-value" : "numeric",
+        value === null ? "داده موجود نیست" : `${formatDisplayNumber(value)} درصد`);
+
+      const source = document.createDocumentFragment();
+      source.append(element("strong", "", SOURCE_METHOD_LABELS[assignment.sourceMethod] ?? "روش نامشخص"),
+                    element("small", "quality-badge", `کیفیت ${qualityFormatter.format(assignment.quality)}`));
+      const warnings = assignmentWarnings(assignment);
+      if (warnings.length) {
+        const list = element("ul", "feed-warnings");
+        warnings.forEach((warning) => list.append(element("li", "", warning)));
+        source.append(list);
+      }
+
+      const dates = element("dl", "feed-values");
+      dates.append(element("dt", "", "شروع"), element("dd", assignment.task.taskStart ? "" : "missing-value", dateOrMissing(assignment.task.taskStart)),
+                   element("dt", "", "پایان"), element("dd", assignment.task.taskFinish ? "" : "missing-value", dateOrMissing(assignment.task.taskFinish)));
+
+      const override = document.createDocumentFragment();
+      override.append(renderOverrideDetails(assignment.manualOverride));
+      // A disabled button on every row of a long table is noise for an account
+      // that will never be able to press one, and it invites the reading that the
+      // interface is what stops them. The row still shows the reported quantity
+      // and any override already recorded on it.
+      if (canOverride && assignment.actualQuantity !== null && assignment.resourceType !== "general_cost") {
+        const button = element("button", "button button--small button--ghost progress-override-button", "اصلاح دستی مقدار");
+        button.type = "button";
+        button.addEventListener("click", () => onOverride(assignment));
+        override.append(button);
+      }
+
+      return {
+        identity: task,
+        resource,
+        unit: formatUnitLabel(assignment.unit),
+        quantities: valueList([["برنامه", assignment.plannedQuantity], ["واقعی", assignment.actualQuantity], ["باقی‌مانده", assignment.remainingQuantity]], amount),
+        work: valueList([["برنامه", assignment.plannedWork], ["واقعی", assignment.actualWork], ["باقی‌مانده", assignment.remainingWork]], amount),
+        percents: valueList([["تخصیص", assignment.assignmentWorkCompletePercent], ["فعالیت", assignment.task.taskProgressPercent]], percent),
+        source,
+        dates,
+        override,
+      };
+    },
   });
-  table.append(head, body);
-  wrapper.append(table);
-  return wrapper;
 }
 
 export function createProgressPage({ context, adapter }) {
   const root = element("div", "progress-page");
   let snapshotsState = createRequestState(REQUEST_STATUS.LOADING);
+  // Lives with the page: paint() rebuilds the tree.
+  const feedColumns = PROGRESS_COLUMNS;
+  const visibleFeedColumns = defaultVisibleColumns(feedColumns);
   let feedState = createRequestState(REQUEST_STATUS.IDLE);
   let selectedId = null;
   const canOverride = capabilitiesFor(context).writeFinance;
@@ -377,10 +414,26 @@ export function createProgressPage({ context, adapter }) {
     fragment.append(renderSnapshotMetadata(feed.snapshot, feed.assignments.length));
     const section = element("section", "progress-feed-section");
     const head = element("div", "progress-section-heading");
-    head.append(element("div", "", ""), element("span", "section-count numeric", formatDisplayNumber(String(feed.assignments.length))));
+    const headMeta = element("div", "progress-section-heading__meta");
+    headMeta.append(
+      element("span", "section-count numeric", formatDisplayNumber(String(feed.assignments.length))),
+      createColumnControl({
+        name: "progress-feed",
+        columns: feedColumns,
+        visible: visibleFeedColumns,
+        onToggle: (key, on) => {
+          if (on) visibleFeedColumns.add(key);
+          else visibleFeedColumns.delete(key);
+          applyColumnVisibility(root.querySelector(".progress-feed-table"), key, on);
+        },
+      }),
+    );
+    head.append(element("div", "", ""), headMeta);
     head.firstElementChild.append(element("h2", "", "تخصیص‌های مالی"), element("p", "", "هر اتصال فعالیت و قلم هزینه یک ردیف مستقل است؛ مقدار ثبت‌نشده هرگز به صفر تبدیل نمی‌شود."));
     section.append(head, renderAssignments(feed.assignments, {
       canOverride,
+      columns: feedColumns,
+      visible: visibleFeedColumns,
       onOverride: (assignment) => {
         const dialog = createOverrideDialog({
           assignment,
