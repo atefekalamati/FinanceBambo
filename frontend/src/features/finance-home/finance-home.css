@@ -2427,9 +2427,16 @@ a.breakdown-donut:focus-visible {
   --level-one-plot-height: 100%;
 
   display: grid;
-  /* The basis bar, then the three content rows. The heading above them is
-     visually hidden and out of flow, so it takes no track — leaving one here
-     for it would park an empty fifth of the board under the last row. */
+  /* Three tracks for three rows, and no more.
+     
+     There were four: an `auto` at the front for the basis bar that used to sit
+     above them. The bar is gone, and the only thing left above the rows is a
+     visually hidden heading, which is out of flow and takes no track — so the
+     leading `auto` stopped belonging to anything and started catching row one
+     instead. An `auto` track is sized by its content, so row one froze at the
+     height its cards happened to ask for (228px at every window height above
+     920) while rows two and three shared the rest, and the trailing 1.03fr
+     track — now matched by nothing — parked 405px of empty board under them. */
   /* Desktop, 1280 and up. The weights are the host dashboard's own row
      proportions, so the two boards read as one page rather than two that
      happen to sit in the same frame. Measured on a 2650x1055 screen, its
@@ -2450,7 +2457,7 @@ a.breakdown-donut:focus-visible {
      beside the phase chart now asks for 231px of a 355px row and leaves the
      rest empty; the phase chart pays for the change, since it is the one thing
      in this row that grows to fill whatever it is given. */
-  grid-template-rows: auto minmax(0, 1fr) minmax(0, .95fr) minmax(0, 1.03fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, .95fr) minmax(0, 1.03fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -2695,7 +2702,7 @@ a.breakdown-donut:focus-visible {
 
 @media (max-width: 80rem) {
   .finance-board {
-    grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.25fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1.5fr) minmax(0, 1.25fr) minmax(0, 1fr);
   }
 }
 
