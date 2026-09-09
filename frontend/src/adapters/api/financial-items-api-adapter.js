@@ -155,9 +155,14 @@ export function createApiFinancialItemsAdapter(context, client) {
   async function previewEstimateImport(file) {
     return mapImportPreview(await client.request(`${base}/imports/estimate/preview`, { method: "POST", body: formDataWithFile(file) }), "estimate");
   }
+  /* The same preview, for a workbook the service fetches rather than the browser
+     uploading. Same shape back, same previewId, committed by the same call. */
+  async function previewEstimateImportFromLink(sourceUrl) {
+    return mapImportPreview(await client.request(`${base}/imports/estimate/preview-link`, jsonOptions("POST", { sourceUrl })), "estimate");
+  }
   async function commitEstimateImport({ previewId }) {
     const result = await client.request(`${base}/imports/estimate/commit`, jsonOptions("POST", { previewId }));
     return { workspace: await getWorkspace(), importedCount: result.committedCount };
   }
-  return Object.freeze({ getWorkspace, createResource, createActivity, createEstimateLine, reviseEstimateLine, previewEstimateImport, commitEstimateImport });
+  return Object.freeze({ getWorkspace, createResource, createActivity, createEstimateLine, reviseEstimateLine, previewEstimateImport, previewEstimateImportFromLink, commitEstimateImport });
 }

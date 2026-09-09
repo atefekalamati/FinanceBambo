@@ -22,7 +22,8 @@ from .domain.unit_registry import UNIT_REGISTRY
 from .schemas.prices import CurrentPriceTrendResponse,PriceCreate, PriceResponse
 from .schemas.conversions import ConversionCreate,ConversionPatch,ConversionResponse
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
-from .schemas.imports import ImportCommit,ImportCommitResponse,ImportPreviewResponse
+from .schemas.imports import ImportCommit,ImportCommitResponse,ImportFromLink,ImportPreviewResponse
+from .services.google_sheet import fetch_sheet_as_xlsx
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoiceListResponse,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from .schemas.attachments import AttachmentListResponse,AttachmentResponse
 from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionListResponse,ExtractionReject,ExtractionRetry,ExtractionStart
@@ -266,6 +267,23 @@ async def _preview_import(projectId,request,kind,file):
 async def preview_estimate(projectId:str,request:Request,file:UploadFile=File(...)):return await _preview_import(projectId,request,"estimate",file)
 @router.post("/imports/prices/preview",response_model=ImportPreviewResponse,responses=FINANCE_ERROR_RESPONSES)
 async def preview_prices(projectId:str,request:Request,file:UploadFile=File(...)):return await _preview_import(projectId,request,"prices",file)
+
+async def _preview_import_from_link(projectId,request,kind,payload):
+    """The same preview, for a workbook the server fetches instead of the browser.
+
+    The client sends a link and never touches Google: its own API client refuses any
+    address outside the page's origin, and the host's CSP names `connect-src 'self'`.
+    What comes back is bytes, judged by the same parser an upload reaches -- so there is
+    one import contract, not two, and `commit` is unchanged because it works from the
+    stored preview rather than from the file.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    content=await fetch_sheet_as_xlsx(payload.source_url)
+    return await request.app.state.finance_import_service.preview(scope,kind,content)
+@router.post("/imports/estimate/preview-link",response_model=ImportPreviewResponse,responses=FINANCE_ERROR_RESPONSES)
+async def preview_estimate_link(projectId:str,payload:ImportFromLink,request:Request):return await _preview_import_from_link(projectId,request,"estimate",payload)
+@router.post("/imports/prices/preview-link",response_model=ImportPreviewResponse,responses=FINANCE_ERROR_RESPONSES)
+async def preview_prices_link(projectId:str,payload:ImportFromLink,request:Request):return await _preview_import_from_link(projectId,request,"prices",payload)
 async def _commit_import(projectId,request,payload):
     scope=await _resource_scope(projectId,request,"finance.edit");return await request.app.state.finance_import_service.commit(scope,payload.preview_id)
 @router.post("/imports/estimate/commit",response_model=ImportCommitResponse,responses=FINANCE_ERROR_RESPONSES)

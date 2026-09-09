@@ -1,67 +1,70 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { fetchGoogleSheetAsFile, GoogleSheetError, googleSheetExportUrl, parseGoogleSheetUrl }
+import { GoogleSheetError, looksLikeSheetLink, requireSheetLink }
   from "../../src/shared/imports/google-sheet.js";
 
-/* A .xlsx is a zip, so it opens with "PK". Everything downstream leans on that. */
-const XLSX = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0]).buffer;
-const HTML = new TextEncoder().encode("<!doctype html><title>Sign in</title>").buffer;
-const ok = (body) => async () => ({ ok: true, status: 200, arrayBuffer: async () => body });
+/* The fetch itself moved to the service: the browser must not call Google, because
+   this module's client refuses any address outside the page's origin and the host's
+   CSP names `connect-src 'self'`. What is left here is the guess a person can be
+   told about without a round trip. */
 
-test("a sheet link gives up its document, and its tab when it names one", () => {
-  assert.deepEqual(parseGoogleSheetUrl("https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit#gid=1842"),
-    { id: "1AbCdEfGhIjKlMnOpQrStUvWxYz", gid: "1842" });
-  assert.deepEqual(parseGoogleSheetUrl("https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit"),
-    { id: "1AbCdEfGhIjKlMnOpQrStUvWxYz", gid: null });
+test("a sheets link is recognised, with or without a tab", () => {
+  assert.ok(looksLikeSheetLink("https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit"));
+  assert.ok(looksLikeSheetLink("https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit#gid=42"));
+  assert.ok(looksLikeSheetLink("  https://docs.google.com/spreadsheets/d/e/2PACX-1vABC/pubhtml  "));
 });
 
-test("anything that is not a Google Sheets link is refused rather than fetched", () => {
-  for (const value of ["", "   ", null, undefined, "not a url", "https://example.com/a.xlsx",
-                       "https://docs.evil.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit",
-                       "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit"]) {
-    assert.equal(parseGoogleSheetUrl(value), null, `parseGoogleSheetUrl(${String(value)})`);
+test("anything that is not a sheets link is refused before a request is made", () => {
+  for (const value of ["", "   ", null, undefined, "not a url",
+                       "https://example.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz",
+                       "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit",
+                       // A host that merely ends in something google-ish.
+                       "https://docs.google.com.evil.example/spreadsheets/d/1AbC"]) {
+    assert.equal(looksLikeSheetLink(value), false, `looksLikeSheetLink(${String(value)})`);
   }
 });
 
-test("the tab travels to the export, which is what stops the wrong sheet being read", () => {
-  assert.equal(googleSheetExportUrl({ id: "ABC", gid: "77" }),
-    "https://docs.google.com/spreadsheets/d/ABC/export?format=xlsx&gid=77");
-  assert.equal(googleSheetExportUrl({ id: "ABC", gid: null }),
-    "https://docs.google.com/spreadsheets/d/ABC/export?format=xlsx");
+test("an empty box and a wrong link are different things to be told", () => {
+  assert.throws(() => requireSheetLink("   "),
+    (error) => error instanceof GoogleSheetError && error.message.includes("وارد کنید"));
+  assert.throws(() => requireSheetLink("https://example.com/x"),
+    (error) => error instanceof GoogleSheetError && error.message.includes("معتبر"));
 });
 
-test("a workbook comes back as the .xlsx file the import endpoint already takes", async () => {
-  const file = await fetchGoogleSheetAsFile("https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit",
-    { fetchImpl: ok(XLSX), name: "price-import" });
-  assert.equal(file.name, "price-import.xlsx");
-  assert.equal(file.type, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  assert.equal(file.size, 8);
+test("a good link comes back trimmed, ready to send", () => {
+  const link = "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit#gid=7";
+  assert.equal(requireSheetLink(`  ${link}  `), link);
 });
 
-test("a private sheet answers with a sign-in page, and that is said in those terms", async () => {
-  // Google returns 200 and HTML rather than an error status, so the status code
-  // cannot be what tells these apart -- the first two bytes can.
-  await assert.rejects(
-    () => fetchGoogleSheetAsFile("https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit", { fetchImpl: ok(HTML) }),
-    (error) => error instanceof GoogleSheetError && error.message.includes("عمومی"));
-});
+/* Where the link actually goes. The browser probe can only prove that nothing
+   left the origin -- the mock adapter answers in process. This names the path. */
+test("the adapters send the link to this module's own service, never to Google", async () => {
+  const { createApiPricesAdapter } = await import("../../src/adapters/api/prices-api-adapter.js");
+  const { createApiFinancialItemsAdapter } = await import("../../src/adapters/api/financial-items-api-adapter.js");
 
-test("a refusal and a blocked request each say something a reader can act on", async () => {
-  await assert.rejects(
-    () => fetchGoogleSheetAsFile("https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit",
-      { fetchImpl: async () => ({ ok: false, status: 403, arrayBuffer: async () => XLSX }) }),
-    (error) => error instanceof GoogleSheetError && error.message.includes("عمومی"));
-  await assert.rejects(
-    () => fetchGoogleSheetAsFile("https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit",
-      { fetchImpl: async () => { throw new TypeError("Failed to fetch"); } }),
-    (error) => error instanceof GoogleSheetError && error.message.includes("اینترنت"));
-});
+  const seen = [];
+  const client = {
+    async request(path, options) {
+      seen.push({ path, body: options?.body, method: options?.method });
+      return { previewId: "11111111-1111-4111-8111-111111111111", kind: "prices", rows: [], errors: [], canCommit: true };
+    },
+    async download() { throw new Error("not used"); },
+  };
+  const context = { projectId: "terrace", organizationId: "org", permissionCodes: [] };
+  const link = "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit#gid=3";
 
-test("a link that is not a sheet never reaches the network", async () => {
-  let called = false;
-  await assert.rejects(
-    () => fetchGoogleSheetAsFile("https://example.com/x", { fetchImpl: async () => { called = true; return ok(XLSX)(); } }),
-    (error) => error instanceof GoogleSheetError);
-  assert.equal(called, false, "a non-sheet link must not be fetched");
+  await createApiPricesAdapter(context, client).previewPriceImportFromLink(link);
+  await createApiFinancialItemsAdapter(context, client).previewEstimateImportFromLink(link);
+
+  assert.deepEqual(seen.map((call) => call.path), [
+    "/api/projects/terrace/finance/imports/prices/preview-link",
+    "/api/projects/terrace/finance/imports/estimate/preview-link",
+  ]);
+  for (const call of seen) {
+    assert.equal(call.method, "POST");
+    // The link travels as data in the body -- it is never part of an address the
+    // browser resolves, which is the whole reason this moved to the service.
+    assert.deepEqual(JSON.parse(call.body), { sourceUrl: link });
+  }
 });
