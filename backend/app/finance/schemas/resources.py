@@ -1,5 +1,5 @@
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -52,6 +52,10 @@ class ResourceResponse(ResourceCreate):
     #: schedule from one a legacy seed created -- `externalResourceId` carries a task uid
     #: on historical rows and cannot answer that question.
     source_resource_uid: int | None = None
+    #: Additive and optional. True when an invoice line names this item or somebody
+    #: priced it -- said here so a client can keep a row a person has worked on, whatever
+    #: else it looks like. A client that ignores it behaves exactly as before.
+    has_operational_records: bool = False
 
     @classmethod
     def from_domain(cls, value: FinanceResource):
@@ -111,13 +115,44 @@ class EstimateLineResponse(EstimateLineCreate):
     #: `assignmentExternalId` -- free text that holds the same digits by accident.
     source_assignment_uid: int | None = None
     source_task_uid: int | None = None
+    #: Additive and optional. Null means no confirmed invoice line names this estimate
+    #: line -- not that nothing was spent. A zero here is a real zero: invoice lines that
+    #: cancel out. Never derived from a schedule cost or from a price.
+    actual_cost_irr: Decimal | None = None
+    #: Additive and optional: what the schedule planned for this line's assignment.
+    #: Deliberately named for the schedule and never for money-in-general, because a
+    #: reader who saw `unitPrice` or `cost` here would reasonably pair it with the
+    #: financial columns beside it, and it is not one of them.
+    mpp_quantity: Decimal | None = None
+    mpp_unit: str | None = None
+    #: `exact` when the file named a registry unit, `alias` a known spelling of one,
+    #: `low` when nothing recognised it -- and then `mpp_unit` is null rather than guessed.
+    mpp_unit_confidence: str | None = None
+    mpp_cost_irr: Decimal | None = None
+    #: Constant, and said out loud so nobody has to assume it. The file states toman; the
+    #: conversion happened once, at import.
+    mpp_cost_currency: str = "IRR"
+    #: Additive and optional: where the two original figures above came from.
+    #: `recorded` -- written into the line when it was created.
+    #: `source_completion` -- recorded later from the exact source version the line was
+    #: mapped from, because the mapper of the day wrote NULL and the file said otherwise.
+    #: Null -- nothing states an original, and the line is unmeasured rather than zero.
+    original_value_source: str | None = None
     revised_quantity: Decimal | None
     created_by: UUID
     created_at: datetime
     revision: int
     revisions: list[EstimateRevisionResponse]
 
-    @field_serializer("original_quantity", "revised_quantity", "original_unit_price_irr")
+    @field_serializer("mpp_cost_irr", "original_unit_price_irr")
+    def serialize_rials(self, value: Decimal | None):
+        # Rials are whole. The schedule's figure arrives with a fractional tail -- the
+        # file's own arithmetic, x10 -- and every money formatter downstream reads an
+        # integer string, so a value like "15234765668.0" reaches the page as "—".
+        return None if value is None else format(value.quantize(Decimal(1), ROUND_HALF_UP), "f")
+
+    @field_serializer("original_quantity", "revised_quantity",
+                      "actual_cost_irr", "mpp_quantity")
     def serialize_decimal(self, value: Decimal | None):
         return None if value is None else format(value, "f")
 

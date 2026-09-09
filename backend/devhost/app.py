@@ -603,6 +603,20 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
         return {"items": await _mapping_service(request).list_unclassified(
             str(context.organization_id), projectId)}
 
+    @application.get("/api/projects/{projectId}/finance/mpp-mapping-status")
+    async def mpp_mapping_status(projectId: str, request: Request):
+        """What became of every row of the current schedule.
+
+        Reads and counts; writes nothing and computes no financial figure. The three
+        states are exhaustive, so they sum to the total -- a reader who sees them add up
+        knows nothing was left out of the reckoning, which is the point of publishing a
+        status at all. `unclassified` is the one worth acting on: a resource assigned in
+        the file with no estimate line naming it. It is expected to be empty.
+        """
+        context = await _mpp_guard(request, projectId, "finance.view")
+        return await _mapping_service(request).mapping_status(
+            str(context.organization_id), projectId)
+
     @application.post("/api/projects/{projectId}/finance/mpp-work-resources/{sourceResourceUid}")
     async def classify_work_resource(projectId: str, sourceResourceUid: int,
                                      request: Request):

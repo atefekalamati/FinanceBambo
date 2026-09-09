@@ -14,13 +14,17 @@ file) and one activity draws on many resources. Keying on the task would collaps
 keying on the resource would collapse the second.
 
 WHAT THIS REFUSES TO DO
-  * invent a quantity. The current file states no approved quantity column, so every line
-    is created with `original_quantity` NULL. Work, duration, cost, units and percentages
-    are all present in the file and none of them is a quantity; a line with a NULL quantity
-    reports itself as unmeasured, which is true, where a line with a fabricated one would
-    report a number nobody wrote down.
-  * invent a price. `original_unit_price_irr` is NULL for the same reason: the schedule
-    prices tasks, not the estimate, and Finance's price belongs to `price_versions`.
+  * invent a quantity. Work, duration, units and percentages are all present in the file
+    and none of them is a quantity. What IS a quantity is the Material field, which MS
+    Project keeps per assignment for material resources, and a line is created with that
+    when the row carries one -- and with `original_quantity` NULL when it does not, which
+    reports itself as unmeasured rather than reporting a number nobody wrote down.
+  * invent a price. `original_unit_price_irr` is the resource's own standard rate, and only
+    where `source_rate_basis` proved that rate is per material unit -- quantity x rate
+    reproducing the assignment's own cost. A rate nothing proves, and the cost of an
+    assignment (which is a total, not a rate), are both refused. This is the ESTIMATE'S
+    basis, not a market price: `price_versions` still holds the price of the day and
+    nothing here writes one.
   * match on anything but an identifier. No name comparison, no WBS similarity, no
     positional guessing. A row whose resource uid is absent (twelve of them here) produces
     nothing at all and is reported as unmapped.
@@ -40,6 +44,8 @@ from uuid import uuid4
 
 from psycopg.rows import dict_row
 
+from .finance_mpp_sync import MATERIAL_UNIT_RATE
+
 LOG = logging.getLogger("coreint.finance_mpp_mapping")
 
 #: What a resource read from a schedule is called on the Finance side. The MPP resource uid
@@ -58,9 +64,11 @@ UNCLASSIFIED_WORK_TYPE = None
 
 _SOURCE_ROWS = """
     SELECT source_task_uid, source_assignment_uid, source_resource_uid,
-           task_name, task_wbs, resource_name, resource_type, resource_unit
+           task_name, task_wbs, resource_name, resource_type, resource_unit,
+           source_material_quantity, source_resource_rate_irr, source_rate_basis
       FROM finance_mpp_rows
      WHERE source_version_id = %(version_id)s
+       AND organization_id = %(organization_id)s AND project_id = %(project_id)s
        AND source_assignment_uid IS NOT NULL
        AND source_resource_uid IS NOT NULL
      ORDER BY source_assignment_uid
@@ -79,9 +87,27 @@ _INSERT_LINE = """
         (id, organization_id, project_id, resource_id, activity_external_id,
          assignment_external_id, original_quantity, original_unit_price_irr, source,
          source_assignment_uid, source_task_uid, created_by)
-    VALUES (%s,%s,%s,%s,%s,%s,NULL,NULL,'progress_feed',%s,%s,%s)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'progress_feed',%s,%s,%s)
     ON CONFLICT DO NOTHING
 """
+
+
+def estimate_basis(row):
+    """The quantity and unit rate a line may be created with, or `(None, None)`.
+
+    Both or neither. A quantity with no rate prices nothing and a rate with no quantity
+    measures nothing, so a half-stated row states nothing here; and neither travels at all
+    unless `source_rate_basis` says the file's own arithmetic proved the rate is per unit
+    of that quantity. `(None, None)` becomes two NULL columns, which is the line saying it
+    was never given an estimate -- not that its estimate is zero.
+    """
+    if row.get("source_rate_basis") != MATERIAL_UNIT_RATE:
+        return None, None
+    quantity = row.get("source_material_quantity")
+    rate = row.get("source_resource_rate_irr")
+    if quantity is None or rate is None:
+        return None, None
+    return quantity, rate
 
 
 def _finance_type(native_type):
@@ -115,6 +141,59 @@ _UNCLASSIFIED = """
                           AND fr.deleted_at IS NULL)
      GROUP BY m.source_resource_uid
      ORDER BY count(*) DESC, m.source_resource_uid
+"""
+
+
+#: Every row of the current schedule, in exactly one state.
+#:
+#: The states are mutually exclusive and exhaustive by construction, so the three counts
+#: always sum to the total: a reader who sees them add up knows nothing was quietly left
+#: out of the reckoning, which is the only reason to publish a status at all.
+#:
+#:   assignment_mapped  a resource is assigned here, and Finance carries the estimate line
+#:                      for it. This is the ordinary state.
+#:   activity_only      the schedule states an activity and no resource behind it -- a
+#:                      stage heading, or a milestone like «شروع», «تحویل زمین», «گرفتن
+#:                      مجوز». Nothing was bought, so there is nothing to estimate, and
+#:                      the absence of a line is the correct answer rather than a gap.
+#:   unclassified       a resource IS assigned and yet no estimate line names it. Nothing
+#:                      is expected to be here; anything that appears is worth a person.
+_MAPPING_STATUS = """
+    SELECT CASE
+             WHEN m.source_assignment_uid IS NULL THEN 'activity_only'
+             WHEN m.source_resource_uid IS NULL THEN 'activity_only'
+             WHEN EXISTS (SELECT 1 FROM estimate_lines l
+                           WHERE l.organization_id = m.organization_id
+                             AND l.project_id = m.project_id
+                             AND l.source_assignment_uid = m.source_assignment_uid
+                             AND l.deleted_at IS NULL) THEN 'assignment_mapped'
+             ELSE 'unclassified'
+           END AS status,
+           count(*) AS rows,
+           count(*) FILTER (WHERE m.source_assignment_uid IS NULL) AS stage_labels,
+           count(*) FILTER (WHERE m.source_assignment_uid IS NOT NULL
+                              AND m.source_resource_uid IS NULL) AS assignments_without_resource
+      FROM finance_mpp_rows m
+     WHERE m.source_version_id = %(version_id)s
+     GROUP BY 1
+"""
+
+#: The rows a person may want to look at: the ones in a state nobody planned for.
+_UNCLASSIFIED_ROWS = """
+    SELECT m.source_assignment_uid AS assignment_uid,
+           m.source_resource_uid   AS resource_uid,
+           m.task_wbs, m.task_name, m.resource_name
+      FROM finance_mpp_rows m
+     WHERE m.source_version_id = %(version_id)s
+       AND m.source_assignment_uid IS NOT NULL
+       AND m.source_resource_uid IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM estimate_lines l
+                        WHERE l.organization_id = m.organization_id
+                          AND l.project_id = m.project_id
+                          AND l.source_assignment_uid = m.source_assignment_uid
+                          AND l.deleted_at IS NULL)
+     ORDER BY m.source_assignment_uid
+     LIMIT 200
 """
 
 
@@ -153,6 +232,48 @@ class FinanceMppMappingService:
                 """, (organization_id, project_id))
                 found = await cursor.fetchone()
         return None if found is None else found["id"]
+
+    async def mapping_status(self, organization_id, project_id):
+        """What became of every row of the current schedule. Reads only.
+
+        Nothing here computes a financial figure or touches one: it counts rows and says
+        which state each is in. A schedule the project has not imported yet reports zero
+        of everything rather than failing -- there is nothing to say, and that is a
+        different answer from an error.
+        """
+        version = await self.current_version_id(organization_id, project_id)
+        if version is None:
+            return {"sourceVersionId": None, "total": 0, "assignmentMapped": 0,
+                    "activityOnly": 0, "unclassified": 0,
+                    "activityOnlyDetail": {"stageLabelRows": 0,
+                                           "assignmentsWithoutResource": 0},
+                    "unclassifiedRows": []}
+        async with await self._connect() as connection:
+            async with connection.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(_MAPPING_STATUS, {"version_id": version})
+                counted = {row["status"]: row for row in await cursor.fetchall()}
+                await cursor.execute(_UNCLASSIFIED_ROWS, {"version_id": version})
+                stray = await cursor.fetchall()
+        activity_only = counted.get("activity_only") or {}
+        return {
+            "sourceVersionId": str(version),
+            "total": sum(row["rows"] for row in counted.values()),
+            "assignmentMapped": (counted.get("assignment_mapped") or {}).get("rows", 0),
+            "activityOnly": activity_only.get("rows", 0),
+            "unclassified": (counted.get("unclassified") or {}).get("rows", 0),
+            # The two kinds of "no resource behind it", told apart because they are
+            # different things: a stage heading never had an assignment, while a
+            # milestone has one that names nobody.
+            "activityOnlyDetail": {
+                "stageLabelRows": activity_only.get("stage_labels", 0),
+                "assignmentsWithoutResource": activity_only.get(
+                    "assignments_without_resource", 0)},
+            "unclassifiedRows": [
+                {"sourceAssignmentUid": r["assignment_uid"],
+                 "sourceResourceUid": r["resource_uid"], "wbsCode": r["task_wbs"],
+                 "taskName": r["task_name"], "resourceName": r["resource_name"]}
+                for r in stray],
+        }
 
     async def list_unclassified(self, organization_id, project_id):
         """Every WORK resource nobody has decided about yet, commonest first."""
@@ -253,12 +374,18 @@ class FinanceMppMappingService:
         result = {"sourceVersionId": str(version_id),
                   "resourcesCreated": 0, "resourcesMatched": 0,
                   "linesCreated": 0, "linesMatched": 0,
+                  # Of the lines created, how many the file could give an estimate to. The
+                  # difference is not a failure: a row the file states no material quantity
+                  # for has no estimate to give, and says so by staying NULL.
+                  "linesWithEstimate": 0,
                   "unmappedRows": 0, "unclassifiedResources": []}
 
         async with await self._connect() as connection:
             async with connection.transaction():
                 async with connection.cursor(row_factory=dict_row) as cursor:
-                    await cursor.execute(_SOURCE_ROWS, {"version_id": str(version_id)})
+                    await cursor.execute(_SOURCE_ROWS, {"version_id": str(version_id),
+                                                       "organization_id": organization_id,
+                                                       "project_id": project_id})
                     rows = await cursor.fetchall()
 
                     # 1. One financial item per distinct schedule resource. Built from the
@@ -306,7 +433,8 @@ class FinanceMppMappingService:
                         by_uid[uid] = resource_id
                         result["resourcesCreated"] += 1
 
-                    # 2. One estimate line per assignment, quantity and price both NULL.
+                    # 2. One estimate line per assignment, carrying the file's own
+                    #    quantity and unit rate where the file proved both.
                     for row in rows:
                         resource_id = by_uid.get(row["source_resource_uid"])
                         if resource_id is None:
@@ -320,14 +448,18 @@ class FinanceMppMappingService:
                         if await cursor.fetchone() is not None:
                             result["linesMatched"] += 1
                             continue
+                        quantity, unit_rate = estimate_basis(row)
                         await cursor.execute(
                             _INSERT_LINE,
                             (str(self._ids()), organization_id, project_id, resource_id,
                              # The identifiers the report's pairing reads, written from the
                              # file's own values so a line and its feed row agree.
                              row["task_wbs"], str(row["source_assignment_uid"]),
+                             quantity, unit_rate,
                              row["source_assignment_uid"], row["source_task_uid"],
                              actor_user_id))
+                        if quantity is not None:
+                            result["linesWithEstimate"] += 1
                         result["linesCreated"] += 1
 
         LOG.info("finance mpp mapping project=%s resources=+%d/=%d lines=+%d/=%d unmapped=%d",

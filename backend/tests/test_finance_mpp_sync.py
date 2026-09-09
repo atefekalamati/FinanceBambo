@@ -85,15 +85,18 @@ class Cursor:
         if self._c.fail_on and self._c.fail_on in text:
             raise RuntimeError("simulated failure on: " + self._c.fail_on)
         self._c.statements.append(text)
-        self._rows = list(self._c.existing) if "FROM finance_mpp_source_versions" in text else []
+        self._rows = [dict(row, actual_row_count=self._c.actual_rows,
+                           quantity_row_count=self._c.quantity_rows)
+                      for row in self._c.existing] if "FROM finance_mpp_source_versions" in text else []
 
     async def fetchone(self):
         return self._rows[0] if self._rows else None
 
 
 class Connection:
-    def __init__(self, existing=(), fail_on=None):
+    def __init__(self, existing=(), fail_on=None, actual_rows=2, quantity_rows=0):
         self.existing, self.fail_on = list(existing), fail_on
+        self.actual_rows, self.quantity_rows = actual_rows, quantity_rows
         self.statements, self.log = [], []
 
     async def __aenter__(self):
@@ -168,6 +171,17 @@ class SyncTests(unittest.TestCase):
                                            "source_file_name_safe": "terrace.mpp"}])
         run(self.service(connection, Reader(self.parsed)).sync(ORG, "terrace"))
         self.assertFalse(any(s.startswith("UPDATE") for s in connection.statements))
+
+    def test_unchanged_sync_reports_stored_counts_and_repairs_only_stale_metadata(self):
+        connection = Connection(existing=[{"id": VERSION, "row_count": 727,
+                                           "source_file_name_safe": "terrace.mpp"}],
+                                actual_rows=789, quantity_rows=3)
+        result = run(self.service(connection, Reader(self.parsed)).sync(ORG, "terrace"))
+        self.assertEqual("unchanged", result["status"])
+        self.assertEqual(789, result["rowCount"])
+        self.assertEqual(3, result["quantityRowCount"])
+        writes = [s for s in connection.statements if s.startswith(("INSERT", "DELETE", "UPDATE"))]
+        self.assertEqual(["UPDATE finance_mpp_source_versions SET row_count=%s WHERE id=%s"], writes)
 
     def test_the_request_may_name_a_file_inside_the_configured_root(self):
         import pathlib

@@ -73,6 +73,10 @@ class FinanceResource:
     #: value on this database -- MSP task uids written by an old seed -- so anything
     #: deciding "did this come from the current file?" must read this and not that.
     source_resource_uid: int | None = None
+    #: True when a person has used this item through the product: an invoice line names
+    #: it, or somebody priced it. It exists so that no view hides a row a person worked
+    #: on, whatever its provenance says. It is evidence OF USE, never evidence of origin.
+    has_operational_records: bool = False
 
     def with_changes(self, **changes):
         return replace(self, **changes)
@@ -102,6 +106,25 @@ class EstimateLine:
     #: the current schedule?" must not depend on a coincidence.
     source_assignment_uid: int | None = None
     source_task_uid: int | None = None
+    #: What has actually been spent against this line, from confirmed invoices, or None
+    #: when no confirmed invoice line names it. None is not zero: nothing recorded is not
+    #: the same as nothing spent, and only a real sum of nothing may be shown as zero.
+    #: A schedule cost is never this -- the schedule states a plan, an invoice a payment.
+    actual_cost_irr: Decimal | None = None
+    #: What the SCHEDULE planned for this line's assignment. Read from the file, never
+    #: computed by Finance: `mpp_quantity` is the file's units, `mpp_cost_irr` the file's
+    #: own cost for that assignment. Neither is a financial figure -- a quantity here is
+    #: not an approved estimate quantity, and a cost here is not a price and not a spend.
+    mpp_quantity: Decimal | None = None
+    mpp_unit: str | None = None
+    mpp_unit_confidence: str | None = None
+    mpp_cost_irr: Decimal | None = None
+    #: Where `original_quantity` and `original_unit_price_irr` above came from.
+    #: `recorded` -- the line's own columns, written when it was created.
+    #: `source_completion` -- a documented completion from the source version the line was
+    #: mapped from, recorded because the mapper of the day wrote NULL and the file said
+    #: otherwise. None -- nothing states an original, and the line is unmeasured.
+    original_value_source: str | None = None
 
     def with_revised_quantity(self, quantity: Decimal | None):
         return replace(self, revised_quantity=quantity)

@@ -9,12 +9,14 @@ and the refusals that keep a guess out of a financial record.
 import asyncio
 import sys
 import unittest
+from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from coreint.finance_mpp_sync import MATERIAL_UNIT_RATE
 from coreint.finance_mpp_mapping import (CLASSIFIABLE_TYPES, RESOURCE_CODE_PREFIX,
                                          FinanceMppClassificationRefused,
                                          FinanceMppMappingService, _finance_type)
@@ -64,7 +66,7 @@ class Cursor:
             self._db.resources[params[8]] = params[0]      # source_resource_uid -> id
             self._rows = []
         elif "INSERT INTO estimate_lines" in text:
-            self._db.lines[params[6]] = params[0]          # source_assignment_uid -> id
+            self._db.lines[params[8]] = params[0]          # source_assignment_uid -> id
             self._rows = []
         else:
             self._rows = []
@@ -186,16 +188,41 @@ class EstimateLineIdentityTests(unittest.TestCase):
     def test_a_line_is_keyed_on_the_assignment_uid(self):
         _result, db = run([row(55, 1244, 97)])
         insert = next(p for text, p in db.statements if "INSERT INTO estimate_lines" in text)
-        self.assertEqual(55, insert[6], "source_assignment_uid is the identity")
-        self.assertEqual(1244, insert[7], "the task uid is carried for corroboration")
+        self.assertEqual(55, insert[8], "source_assignment_uid is the identity")
+        self.assertEqual(1244, insert[9], "the task uid is carried for corroboration")
 
-    def test_a_line_carries_no_quantity_and_no_price(self):
-        # The current file states no approved quantity, and the schedule does not price the
-        # estimate. Both stay NULL rather than being derived from work, cost or duration.
+    def test_a_row_the_file_proves_nothing_for_carries_no_quantity_and_no_price(self):
+        # No material quantity, no proven unit rate: both columns stay NULL rather than
+        # being derived from work, units, duration or the assignment's total cost.
         _result, db = run([row(1, 100, 97)])
-        text = next(t for t, _p in db.statements if "INSERT INTO estimate_lines" in t)
-        self.assertIn("original_quantity, original_unit_price_irr", text)
-        self.assertIn("NULL,NULL,'progress_feed'", text.replace(" ", ""))
+        insert = next(p for text, p in db.statements if "INSERT INTO estimate_lines" in text)
+        self.assertIsNone(insert[6], "no quantity was stated, so none is written")
+        self.assertIsNone(insert[7], "no unit rate was proven, so none is written")
+
+    def test_a_row_the_file_proves_carries_the_file_s_own_quantity_and_rate(self):
+        # The Material field and the resource's standard rate, whose product the file's own
+        # cost reproduces. This is the estimate's basis; it is not a price of the day.
+        proven = row(9703, 1212, 155)
+        proven.update({"source_material_quantity": Decimal("1"),
+                       "source_resource_rate_irr": Decimal("125651153910"),
+                       "source_rate_basis": MATERIAL_UNIT_RATE})
+        result, db = run([proven])
+        insert = next(p for text, p in db.statements if "INSERT INTO estimate_lines" in text)
+        self.assertEqual(Decimal("1"), insert[6])
+        self.assertEqual(Decimal("125651153910"), insert[7])
+        self.assertEqual(1, result["linesWithEstimate"])
+
+    def test_an_unproven_rate_is_refused_even_when_both_numbers_are_present(self):
+        # A rate whose product does not reproduce the file's cost proves nothing, and half
+        # a basis is not half an estimate: the line is created without either number.
+        unproven = row(9704, 1212, 156)
+        unproven.update({"source_material_quantity": Decimal("2"),
+                         "source_resource_rate_irr": Decimal("10000000"),
+                         "source_rate_basis": None})
+        result, db = run([unproven])
+        insert = next(p for text, p in db.statements if "INSERT INTO estimate_lines" in text)
+        self.assertEqual((None, None), (insert[6], insert[7]))
+        self.assertEqual(0, result["linesWithEstimate"])
 
     def test_the_pairing_identifiers_come_from_the_file(self):
         _result, db = run([row(55, 1244, 97, wbs="1.8.1.12")])

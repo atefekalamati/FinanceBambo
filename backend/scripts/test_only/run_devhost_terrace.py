@@ -66,6 +66,14 @@ PROJECT_ID = "terrace"
 #: these may ever be that database.
 FORBIDDEN = frozenset({"bambo", "bambo_canonical_local"})
 
+#: Where Finance reads schedules from. `devhost` installs Finance's OWN providers -- the
+#: rows-backed activity list and the rows-backed progress feed -- only when this is set, and
+#: falls back to Core for both when it is not. Defaulted to the worktree's `Sources`, which
+#: is the directory `finance_mpp_sync` already reads, rather than to a path typed by hand.
+#: An MPP_IMPORT_ROOT already in the environment wins, and a missing directory leaves the
+#: setting unset instead of pointing the importer at somewhere that is not there.
+SOURCES = BACKEND_ROOT.parent / "Sources"
+
 
 def redacted(dsn):
     parts = urlsplit(dsn)
@@ -155,6 +163,9 @@ def main(argv=None):
     print("  target                        %s" % redacted(arguments.dsn))
     verify(arguments.dsn)
 
+    schedule_root = (os.environ.get("MPP_IMPORT_ROOT") or "").strip() or (
+        str(SOURCES) if SOURCES.is_dir() else "")
+
     environment = dict(
         os.environ,
         # Both point at the same database here because this one carries both schemas. They
@@ -173,16 +184,32 @@ def main(argv=None):
         # Without it every report answered 404 "progress snapshot not found for reporting
         # date" even though the Core adapter, called directly, returned all 1248 rows for
         # snapshot 38 -- the seeded feed simply knows nothing about `terrace`.
+        # It ADDS a source rather than replacing one: with a schedule root configured too,
+        # `_progress_provider` composes [Finance rows, Core] and asks Finance first, so the
+        # file-backed snapshot still answers exactly as before while the Core-hosted ones --
+        # the references carrying a `host_snapshot_id`, an identifier the rows provider has
+        # never issued and correctly refuses -- stop being 404s.
         FINANCE_CORE_PROGRESS="on",
     )
+    if schedule_root:
+        environment["MPP_IMPORT_ROOT"] = schedule_root
+    else:
+        environment.pop("MPP_IMPORT_ROOT", None)
     # Removed rather than overridden: `build()` connects the owner role only to decide
     # whether to seed, and this database holds real project data. Absent means it cannot.
     environment.pop("FINANCE_MIGRATION_DSN", None)
     environment.pop("FINANCE_ALLOW_SEED", None)
+    # The root above is a READ path. The periodic importer is a separate switch, and this
+    # launcher must not start a writer against a database holding real project data.
+    environment.pop("MPP_IMPORT_ENABLED", None)
 
     print("\n  standing in for                admin@bambo.local / %s" % PROJECT_ID)
     print("  seeding                       disabled (no FINANCE_MIGRATION_DSN, "
           "no FINANCE_ALLOW_SEED)")
+    print("  schedule root                 %s"
+          % (schedule_root or "unset  (activities and progress fall back to Core)"))
+    print("  progress sources              Finance rows, then Core "
+          "(FINANCE_CORE_PROGRESS)")
     print("  serving on                    http://%s:%s\n" % (arguments.host,
                                                               arguments.port))
     if arguments.check_only:

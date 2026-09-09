@@ -9,6 +9,7 @@ from uuid import UUID
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.finance.domain.estimate_basis import effective_original_price
 from app.finance.domain.resources import ActivityInactive, ActivityNotFound, EstimateLine, FinanceResource, UnitMismatch, UnitNotFound
 from app.finance.schemas.resources import (
     EstimateLineCreate,
@@ -141,7 +142,11 @@ class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
 
     def test_general_cost_revision_uses_money_fallback_and_rejects_fractional_irr(self):
         source = inspect.getsource(PsycopgFinanceResourcesRepository.append_estimate_revision)
-        self.assertIn("fr.resource_type='general_cost' THEN l.original_unit_price_irr", source)
+        # The money fallback is still the money column -- now through the shared
+        # expression that prefers the line's own value and takes a documented completion
+        # of the same source version only when the line has none.
+        self.assertIn("fr.resource_type='general_cost' THEN \"\"\" + effective_original_price(\"l\")", source)
+        self.assertIn("COALESCE(l.original_unit_price_irr", effective_original_price("l"))
         self.assertIn("new_quantity.to_integral_value()", source)
         self.assertIn("general cost revision requires an exact integer IRR amount", source)
 
