@@ -31,12 +31,11 @@ import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
 import { createBreakdownChart } from "../../shared/components/breakdown-chart.js";
 import { createTomanDisplay } from "../../shared/components/money-display.js";
-import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
-import { canAccessSurface } from "../../core/auth/permissions.js";
 import { createReportBuilderSection } from "../report-builder/report-builder-section.js";
 import { reportIcon } from "../report-builder/report-icons.js";
 import { createLevelOneSection } from "../level-one/level-one-section.js";
 import { createPricesSummary } from "./prices-summary.js";
+import { createItemsSummary } from "./items-summary.js";
 import { createInvoicesEntry } from "./invoices-entry.js";
 
 /* The four the board shows, in the order it shows them. The rest of the
@@ -458,71 +457,6 @@ export function logSnapshotProvenance({ selected, report }) {
   return null;
 }
 
-const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-
-/**
- * A gear, built node by node the way the price sparkline is.
- *
- * There is no icon set in this project, so the shape is drawn here: a hub, a
- * body, and eight teeth placed by rotation. Everything strokes in
- * `currentColor`, so the link's own hover and focus colours carry the icon with
- * them and no second palette appears.
- */
-function createSettingsIcon() {
-  const icon = document.createElementNS(SVG_NAMESPACE, "svg");
-  icon.setAttribute("viewBox", "0 0 24 24");
-  icon.setAttribute("focusable", "false");
-  icon.setAttribute("aria-hidden", "true");
-  icon.setAttribute("fill", "none");
-  icon.setAttribute("stroke", "currentColor");
-  icon.setAttribute("stroke-width", "1.7");
-  icon.setAttribute("stroke-linecap", "round");
-  icon.classList.add("finance-project-settings-link__icon");
-
-  // Each tooth starts just inside the body so the two read as one shape rather
-  // than as spokes around a hub, and squares off at the tip the way a tooth does.
-  const teeth = document.createElementNS(SVG_NAMESPACE, "g");
-  teeth.setAttribute("stroke-width", "2.4");
-  teeth.setAttribute("stroke-linecap", "butt");
-  for (let index = 0; index < 8; index += 1) {
-    const tooth = document.createElementNS(SVG_NAMESPACE, "line");
-    tooth.setAttribute("x1", "12");
-    tooth.setAttribute("y1", "3.9");
-    tooth.setAttribute("x2", "12");
-    tooth.setAttribute("y2", "6.8");
-    tooth.setAttribute("transform", `rotate(${index * 45} 12 12)`);
-    teeth.append(tooth);
-  }
-
-  const body = document.createElementNS(SVG_NAMESPACE, "circle");
-  body.setAttribute("cx", "12");
-  body.setAttribute("cy", "12");
-  body.setAttribute("r", "5.9");
-  body.setAttribute("stroke-width", "2.2");
-
-  const hub = document.createElementNS(SVG_NAMESPACE, "circle");
-  hub.setAttribute("cx", "12");
-  hub.setAttribute("cy", "12");
-  hub.setAttribute("r", "2.5");
-
-  icon.append(teeth, body, hub);
-  return icon;
-}
-
-function createSettingsLink() {
-  const link = document.createElement("a");
-  link.className = "finance-project-settings-link";
-  // The settings this surface owns are the display ones. The gross built area
-  // and the conversion rules change what the figures come out as, and they are
-  // authored on امور مالی.
-  link.href = "#/report-settings";
-  // The icon carries no text, so the name has to be spoken here — and shown on
-  // hover, since a lone gear is only conventional, never self-explanatory.
-  link.setAttribute("aria-label", "تنظیمات نمایش");
-  link.title = "تنظیمات نمایش";
-  link.append(createSettingsIcon());
-  return link;
-}
 
 function renderFinanceHome(
   data,
@@ -532,30 +466,18 @@ function renderFinanceHome(
   cumulative = null,
   levelOne = null,
   prices = null,
+  items = null,
 ) {
   const board = element("div", "finance-board");
 
-  // The board had a full-width header over it carrying the page's name and two
-  // buttons. On a page whose whole promise is one screen, a band that says only
-  // what the reader already knows is the most expensive thing on it — so the
-  // two ways out move down into the basis bar beside the settings gear, as
-  // text rather than buttons, and the name stays for anyone who cannot see the
-  // page: the document still needs a heading, and a screen reader still reads
-  // it first.
+  // The page carries no bar of its own. Both surfaces are opened from the
+  // host's sidebar, and every report is built in one place, so a strip holding
+  // a way out and a settings gear was furniture over a page whose whole promise
+  // is one screen. The name stays for anyone who cannot see the page: the
+  // document still needs a heading, and a screen reader reads it first.
   const pageTitle = element("h1", "sr-only", "گزارش مالی پروژه");
-  const toAreas = element("a", "finance-basis__link", "بخش‌های گزارش");
-  toAreas.href = "#/work-areas";
-  const toOperations = element("a", "finance-basis__link", "رفتن به امور مالی");
-  toOperations.href = `#${homeRouteFor(SURFACES.OPERATIONS)?.path ?? "/finance"}`;
 
   const comparisons = buildOverviewComparisons(data.metrics);
-
-  // ── row 0 — the basis of the figures, full width, settings inside it ────
-  const basis = element("section", "finance-basis");
-  if (provenance) basis.append(provenance);
-  const basisMeta = element("div", "finance-basis__meta");
-  basisMeta.append(toAreas, toOperations, createSettingsLink());
-  basis.append(basisMeta);
 
   // ── row 1 — the main chart, the day prices, the cost mix ───────────────
   // The four figures a reader opens this page for, then the chart that puts
@@ -613,13 +535,18 @@ function renderFinanceHome(
     curvePanel.append(cumulative.panel);
   }
   const insightCards = element("div", "finance-insight-cards");
-  insightCards.append(
+  const summaryStack = element("div", "finance-summary-stack");
+  summaryStack.append(
     createPricesSummary(prices ?? {}),
+    createItemsSummary(items ?? {}),
+  );
+  insightCards.append(
+    summaryStack,
     buildWarningsCard(data),
   );
   rowThird.append(curvePanel, insightCards);
 
-  board.append(pageTitle, basis, rowMain, rowSecond, rowThird);
+  board.append(pageTitle, rowMain, rowSecond, rowThird);
   return board;
 }
 
@@ -947,15 +874,11 @@ function createMonthlyTrendPanel({ trend, trendError }) {
 }
 
 export function createFinanceHomePage({
-  context = null,
   reportsAdapter,
   progressAdapter,
   pricesAdapter,
+  financialItemsAdapter,
 }) {
-  // The deviation rows lead to this surface's own read-only tables now, so the
-  // only thing left that crosses into امور مالی is the empty state's shortcut to
-  // the progress versions — offered only to an account that may be there.
-  const canOperate = canAccessSurface(context, SURFACES.OPERATIONS);
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let trend = null;
   let trendError = null;
@@ -963,6 +886,8 @@ export function createFinanceHomePage({
   let wbsError = null;
   let priceWorkspace = null;
   let priceError = null;
+  let itemsWorkspace = null;
+  let itemsError = null;
   let activeChart = "managerial";
   let chart = null;
   let snapshots = [];
@@ -993,7 +918,7 @@ export function createFinanceHomePage({
         selectedSnapshotId = latest.progressSnapshotId;
         // The trend is independent of the overview: a failure there must not
         // take the eight headline metrics down with it.
-        const [report, monthly, rollup, workspace] = await Promise.all([
+        const [report, monthly, rollup, priceData, itemData] = await Promise.all([
           reportsAdapter.getOverview({
             reportingDate: latest.reportingDate,
             progressSnapshotId: latest.progressSnapshotId,
@@ -1042,10 +967,24 @@ export function createFinanceHomePage({
               return null;
             },
           ),
+          // The compact estimate table is a read-only view of the exact
+          // workspace used by #/report-items. Its failure is isolated from the
+          // report metrics and from the day-price summary beside it.
+          financialItemsAdapter.getWorkspace().then(
+            (value) => {
+              itemsError = null;
+              return value;
+            },
+            (error) => {
+              itemsError = error;
+              return null;
+            },
+          ),
         ]);
         trend = monthly;
         wbsRollup = rollup;
-        priceWorkspace = workspace;
+        priceWorkspace = priceData;
+        itemsWorkspace = itemData;
         state = report
           ? createRequestState(REQUEST_STATUS.SUCCESS, report)
           : createRequestState(REQUEST_STATUS.EMPTY);
@@ -1073,13 +1012,6 @@ export function createFinanceHomePage({
     message.textContent =
       "برای محاسبه شاخص‌های مالی، حداقل یک نسخه پیشرفت پروژه لازم است. نسخه‌های پیشرفت در سربرگ امور مالی ثبت می‌شوند.";
     card.append(title, message);
-    if (canOperate) {
-      const link = document.createElement("a");
-      link.className = "button button--primary";
-      link.href = "#/progress";
-      link.textContent = "مشاهده نسخه‌های پیشرفت";
-      card.append(link);
-    }
     return card;
   }
 
@@ -1090,6 +1022,7 @@ export function createFinanceHomePage({
       const curve = createCostCurvePanel({ trend, trendError });
       const levelOne = { rollup: wbsRollup, error: wbsError };
       const prices = { workspace: priceWorkspace, error: priceError };
+      const items = { workspace: itemsWorkspace, error: itemsError };
       chart = built.chart;
       const provenance = logSnapshotProvenance({
         selected:
@@ -1106,6 +1039,7 @@ export function createFinanceHomePage({
         curve,
         levelOne,
         prices,
+        items,
       );
     };
     root.replaceChildren(

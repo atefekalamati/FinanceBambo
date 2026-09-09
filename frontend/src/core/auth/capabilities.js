@@ -22,16 +22,16 @@ export function capabilitiesFor(context) {
     // Reading the project's financial data. Every route in the module is behind
     // this, because every page opens with a GET.
     viewFinance: hasPermission(context, "finance.view"),
-    // Changing the cost model: prices, estimate lines, quantities, the gross
-    // built area and the conversion rules. It no longer covers invoices --
-    // maintaining a cost breakdown and approving a supplier's bill are different
-    // jobs, and in most organizations different people.
+    // Authoring what the figures are built from: prices, estimate lines,
+    // quantities, the gross built area and the conversion rules — the whole of
+    // امور مالی behind one code, because the account trusted with one of those
+    // numbers is trusted with the rest of the same plan.
     writeFinance: hasPermission(context, "finance.edit"),
-    // Invoices, their uploaded images and recordings, and the extraction drafts
-    // between them -- including opening the original file. Separate from
-    // writeFinance in BOTH directions: neither implies the other, and the
-    // interface must not offer either as a substitute for the other, because the
-    // Backend will not accept one for the other.
+    // Recording what was actually spent, by every route a document takes into
+    // the ledger: typed by hand, photographed, spoken, or read out of a file by
+    // the extractor — then reviewed, submitted and confirmed. Separate from the
+    // code above because a receipt is not one of the plan's numbers, and an
+    // account may be trusted with either without the other.
     manageInvoice: hasPermission(context, "finance.manage_invoice"),
     viewReport: hasPermission(context, "finance_report.view"),
     // Freezing a report into an immutable record, and taking a copy away.
@@ -40,19 +40,15 @@ export function capabilitiesFor(context) {
   });
 }
 
-/** Shown wherever an invoice control is disabled, so the reason is not a mystery. */
-export const MANAGE_INVOICE_NOTICE =
-  "نیازمند مجوز مدیریت فاکتورها؛ این حساب می‌تواند اطلاعات را ببیند ولی فاکتور ثبت، تأیید یا اصلاح نکند.";
-
 /**
- * The codes the host can grant, in the order the settings page lists them.
+ * The six codes the host can grant, in the order the settings page lists them.
  * Kept beside the mapping above so a code cannot be added to one and forgotten
  * in the other.
  */
 export const FINANCE_PERMISSIONS = Object.freeze([
   Object.freeze({ code: "finance.view", label: "مشاهده اطلاعات مالی" }),
   Object.freeze({ code: "finance.edit", label: "ویرایش اطلاعات و تنظیمات مالی" }),
-  Object.freeze({ code: "finance.manage_invoice", label: "مدیریت فاکتورها و فایل‌های اصلی" }),
+  Object.freeze({ code: "finance.manage_invoice", label: "مدیریت فاکتورها" }),
   Object.freeze({ code: "finance_report.view", label: "مشاهده گزارش‌های مالی" }),
   Object.freeze({ code: "finance_report.issue", label: "ثبت گزارش دوره‌ای" }),
   Object.freeze({ code: "finance_report.export", label: "دریافت خروجی گزارش‌ها" }),

@@ -18,14 +18,16 @@ export function hasPermission(context, permissionCode) {
  */
 export function canAccessRoute(context, route) {
   if (route.permission && !hasPermission(context, route.permission)) return false;
-  const required = SURFACE_REQUIREMENTS[route.surface];
-  return !required || hasPermission(context, required);
+  return canAccessSurface(context, route.surface);
 }
 
-/** Whether this account belongs on a surface at all. */
+/**
+ * Whether this account belongs on a surface at all — it does if it holds any one
+ * of that surface's codes. See SURFACE_REQUIREMENTS for why any rather than all.
+ */
 export function canAccessSurface(context, surface) {
   const required = SURFACE_REQUIREMENTS[surface];
-  return !required || hasPermission(context, required);
+  return !required?.length || required.some((code) => hasPermission(context, code));
 }
 
 /**

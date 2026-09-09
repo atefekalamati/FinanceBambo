@@ -8,7 +8,8 @@ import { createPersianDatePicker } from "../../shared/components/persian-date-pi
 import { getDialogOpener, showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
-import { MANAGE_INVOICE_NOTICE, capabilitiesFor } from "../../core/auth/capabilities.js";
+import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { createPermissionNotice } from "../../shared/components/permission-notice.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
@@ -321,7 +322,10 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
   return dialog;
 }
 
-function renderDetail(invoice, { canEdit, currentUserId, project, onSubmit, onConfirm, onVoid, onCorrective }) {
+/* Exported for the tests that hold the refusal rules still. What a reader is
+   shown when they may not act is as much a decision as what they are shown when
+   they may, and it is not reachable from the page factory without a Backend. */
+export function renderDetail(invoice, { canEdit, currentUserId, project, onSubmit, onConfirm, onVoid, onCorrective }) {
   const dialog = document.createElement("dialog");
   dialog.className = "confirm-dialog invoice-detail-dialog";
   dialog.setAttribute("aria-labelledby", "invoice-detail-title");
@@ -397,39 +401,43 @@ function renderDetail(invoice, { canEdit, currentUserId, project, onSubmit, onCo
   const totals = element("dl", "invoice-totals");
   [["جمع خام خطوط", invoice.rawLinesTotalIRR], ["تخفیف", invoice.discountIRR], ["مالیات", invoice.taxIRR], ["حمل", invoice.shippingIRR], ["سایر هزینه‌ها", invoice.otherCostsIRR], ["مبلغ نهایی", invoice.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIrr(value))));
   dialog.append(linesTable, totals);
-  // The detail dialog is a record anyone who can read the invoice may open.
-  // What it offers to do with it is another matter.
-  if (canEdit && invoice.invoiceStatus === "draft") {
+  // The detail dialog is a record anyone who can read the invoice may open, and
+  // it shows every decision this document is waiting on whoever opens it. What
+  // an account may not do is switched off rather than taken away: a reader who
+  // sees «در انتظار تأیید» and no button at all cannot tell a document waiting
+  // on someone else from a page that failed to load.
+  const act = (button, handler) => {
+    button.type = "button";
+    button.disabled = !canEdit;
+    if (canEdit) button.addEventListener("click", handler);
+    return button;
+  };
+  const actionsFor = (...buttons) => {
     const actions = element("div", "dialog-actions invoice-detail-actions");
-    const submit = element("button", "button button--primary", "ارسال برای تأیید");
-    submit.type = "button";
-    submit.addEventListener("click", () => onSubmit(invoice, dialog));
-    actions.append(submit);
+    actions.append(...buttons);
     dialog.append(actions);
+    if (!canEdit) dialog.append(createPermissionNotice("انجام عملیات روی فاکتور"));
+  };
+  if (invoice.invoiceStatus === "draft") {
+    actionsFor(act(element("button", "button button--primary", "ارسال برای تأیید"),
+      () => onSubmit(invoice, dialog)));
   }
-  if (canEdit && invoice.invoiceStatus === "awaitingConfirmation") {
+  if (invoice.invoiceStatus === "awaitingConfirmation") {
+    // Two different refusals, and the reader is owed the difference. Being
+    // unable to confirm your own submission is a rule about this invoice;
+    // holding no grant is a fact about this account. The label carries the
+    // first, the notice below carries the second.
     const isSubmitter = invoice.submittedBy === currentUserId;
-    const actions = element("div", "dialog-actions invoice-detail-actions");
-    // Being unable to confirm your own submission is a rule about this
-    // invoice, not about this account, so that one stays visible and disabled:
-    // the label is the explanation.
-    const confirm = element("button", "button button--primary", isSubmitter ? "تأیید نهایی فاکتور" : "فقط ثبت‌کننده مجاز است");
-    confirm.type = "button";
-    confirm.disabled = !isSubmitter;
-    confirm.addEventListener("click", () => onConfirm(invoice, dialog));
-    actions.append(confirm);
-    dialog.append(actions);
+    const label = !canEdit || isSubmitter ? "تأیید نهایی فاکتور" : "فقط ثبت‌کننده مجاز است";
+    const confirm = act(element("button", "button button--primary", label), () => onConfirm(invoice, dialog));
+    confirm.disabled = !canEdit || !isSubmitter;
+    actionsFor(confirm);
   }
-  if (canEdit && invoice.invoiceStatus === "confirmed") {
-    const actions = element("div", "dialog-actions invoice-detail-actions");
-    const corrective = element("button", "button button--ghost", "ثبت سند اصلاحی");
-    corrective.type = "button";
-    corrective.addEventListener("click", () => onCorrective(invoice, dialog));
-    const voidButton = element("button", "button button--danger", "ابطال با سند برگشت");
-    voidButton.type = "button";
-    voidButton.addEventListener("click", () => onVoid(invoice, dialog));
-    actions.append(corrective, voidButton);
-    dialog.append(actions);
+  if (invoice.invoiceStatus === "confirmed") {
+    actionsFor(
+      act(element("button", "button button--ghost", "ثبت سند اصلاحی"), () => onCorrective(invoice, dialog)),
+      act(element("button", "button button--danger", "ابطال با سند برگشت"), () => onVoid(invoice, dialog)),
+    );
   }
   return dialog;
 }
@@ -740,25 +748,26 @@ export function createInvoicesPage({ context, adapter }) {
   function renderHeader() {
     const header = createFinancePageHeader("فاکتورها", "feature-header");
     const actions = element("div", "finance-page-actions");
-    if (canCreate) {
-      const create = element("button", "button button--primary", "ثبت فاکتور دستی");
-      create.type = "button";
-      create.addEventListener("click", () => {
-        const dialog = createInvoiceWizard({ adapter, onSaved: () => { filters.page = 1; load({ refreshCounts: true }); } });
-        root.append(dialog);
-        dialog.addEventListener("close", () => dialog.remove(), { once: true });
-        showAccessibleDialog(dialog);
-      });
-      // Reading an invoice happens on گزارش مالی; producing one from a file is
-      // work, and the page that does it is on امور مالی. Only an account that
-      // can do that work is sent there.
-      const upload = element("a", "button button--ghost", "ورود از تصویر یا صدا");
-      upload.href = "#/invoice-files";
-      actions.append(create, upload);
-    }
+    // Both ways of recording a document, offered to everyone who can read the
+    // register and switched off for whoever may not use them. The upload page
+    // makes its own refusal the same way, so following the link never turns a
+    // disabled button into an unexplained dead end.
+    const create = element("button", "button button--primary", "ثبت فاکتور دستی");
+    create.type = "button";
+    create.disabled = !canCreate;
+    if (canCreate) create.addEventListener("click", () => {
+      const dialog = createInvoiceWizard({ adapter, onSaved: () => { filters.page = 1; load({ refreshCounts: true }); } });
+      root.append(dialog);
+      dialog.addEventListener("close", () => dialog.remove(), { once: true });
+      showAccessibleDialog(dialog);
+    });
+    const upload = element("a", "button button--ghost", "ورود از تصویر یا صدا");
+    upload.href = "#/invoice-files";
+    actions.append(create, upload);
+
     const fragment = document.createDocumentFragment();
-    fragment.append(header);
-    if (actions.childElementCount) fragment.append(actions);
+    fragment.append(header, actions);
+    if (!canCreate) fragment.append(createPermissionNotice("ثبت فاکتور"));
     return fragment;
   }
 
@@ -798,7 +807,6 @@ export function createInvoicesPage({ context, adapter }) {
       counts: invoiceChipCounts(summary.counts),
     });
     section.append(heading, detailMessage);
-    if (!canCreate) section.append(element("p", "inline-notice", MANAGE_INVOICE_NOTICE));
     section.append(toolbar,
       renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
     return section;

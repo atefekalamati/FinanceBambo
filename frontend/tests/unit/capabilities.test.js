@@ -29,6 +29,8 @@ test("a reader has every capability except the ones that write", () => {
   assert.deepEqual(reader, {
     viewFinance: true,
     writeFinance: false,
+    // Reading what the project cost says nothing about being trusted to record
+    // what it spent. Two grants, and a reader holds neither.
     manageInvoice: false,
     viewReport: true,
     issueReport: false,
