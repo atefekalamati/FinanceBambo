@@ -3489,6 +3489,56 @@ a.breakdown-donut:focus-visible {
   overflow-y: auto;
 }
 
+/* …and the card has to be a column before that can mean anything.
+
+   `overflow-y: auto` on the list was doing nothing, because nothing ever gave
+   the list a height to overflow. The card computes to `display: block` — the
+   rule that makes an insight card a flex column does not reach it — so the list
+   simply took its content's height and the card took the list's. With 21
+   warnings at 1920x1080 that was a 740px list inside a 342px card, and the
+   card's own `overflow: hidden` cut 448px of warnings off with no way to reach
+   them. At 1440x900, where the board lets go of the window on purpose, the same
+   list pushed the card to 986px and the page scrolled 797px.
+
+   A column card, a heading that keeps its size, and a list that takes what is
+   left and scrolls: the row's height decides the card's, as it does for every
+   other card on this board. */
+.finance-board .finance-insight-cards > .finance-warnings {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.finance-board .finance-insight-cards > .finance-warnings ul {
+  /* Zero is the floor a flex item needs before it will give way: min-height
+     resolves to `auto` -- the content's own height -- and an item that will not
+     shrink has nothing to scroll. */
+  min-block-size: 0;
+  /* A scroll that reaches its end stops there rather than passing the gesture to
+     the page behind it. */
+  overscroll-behavior: contain;
+}
+
+/* Where the board has let go of the window on purpose -- a screen under 920
+   tall, or one narrow enough that the rows stack -- the card has no row height
+   to take, and the block above states the intent as "the sections keep the
+   heights their contents ask for".
+
+   That holds for every other card, whose content is a chart or a fixed set of
+   figures. It does not hold for this one: its content is a list that grows with
+   the data, so "the height its content asks for" has no limit. Measured at
+   1440x900 with 21 warnings, the card asked for 989px and the page scrolled 799.
+
+   About one board row's worth, in the only terms left once the row is gone: the
+   third row is roughly a third of the board, and the board is roughly the
+   window. The list scrolls inside it, and the page carries the same amount it
+   would have carried with two warnings. */
+@media (max-height: 920px), (max-width: 64rem) {
+  .finance-board .finance-insight-cards > .finance-warnings ul {
+    max-block-size: 30vh;
+  }
+}
+
 /* The trend is the line and the word, the same component the price table
    draws. In a card this narrow the line gets the room and the word sits under
    it rather than beside it, and both come down to the table's own scale. */
