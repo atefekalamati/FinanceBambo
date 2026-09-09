@@ -1,3 +1,4 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -152,16 +153,6 @@ export function createAuditPage({ adapter }) {
 
   function renderContent(events) {
     const fragment = document.createDocumentFragment();
-    const header = element("header", "feature-header");
-    const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "ردیابی تغییرات حساس"), element("h1", "", "تاریخچه تغییرات مالی"), element("p", "", "رویدادهای تغییر فقط‌خواندنی و براساس زمان ثبت سیستم نمایش داده می‌شوند."));
-    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
-    back.classList.add("finance-back-link");
-    back.href = "#/finance";
-    const navigation = element("div", "feature-header__navigation");
-    const otherActions = element("div", "feature-header__other-actions");
-    navigation.append(otherActions, back);
-    header.append(copy, navigation);
 
     const form = element("form", "audit-filters");
     const query = element("input", "app-input");
@@ -245,12 +236,12 @@ export function createAuditPage({ adapter }) {
       visible: visibleAuditColumns,
       table: () => root.querySelector(".audit-table"),
     }));
-    fragment.append(header, form, summaryRow, auditTable, pagination);
+    fragment.append(form, summaryRow, auditTable, pagination);
     return fragment;
   }
 
   function paint() {
-    root.replaceChildren(renderPageState(state, { renderContent, onRetry: load }));
+    root.replaceChildren(createFinancePageHeader("تاریخچه تغییرات مالی"), renderPageState(state, { renderContent, onRetry: load }));
   }
 
   load();

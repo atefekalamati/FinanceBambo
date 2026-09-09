@@ -1,7 +1,7 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
-import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { formatCompactMoneyFromIrr, formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
@@ -59,23 +59,8 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
   }
 
   function renderHeader(data) {
-    const header = element("header", "feature-header");
-    const copy = element("div", "feature-header__copy");
     const parent = data ? data.top.nodes.find((node) => node.wbsCode === wbsCode) : null;
-    copy.append(
-      element("span", "feature-header__eyebrow", wbsCode ? "جزئیات مرحله" : "گزارش مالی سطح ۱"),
-      element("h1", "", wbsCode ? (parent?.title ?? `مرحله ${wbsCode}`) : "هزینه مراحل پروژه"),
-      element("p", "", wbsCode
-        ? "زیرمجموعه‌های این مرحله و اقلامی که هزینه صرف آن‌ها شده است."
-        : "هزینه واقعی ثبت‌شده هر مرحله در برابر برآورد اولیه همان مرحله. برای دیدن جزئیات، روی هر مرحله بزنید."),
-    );
-    const navigation = element("div", "feature-header__navigation");
-    const back = element("a", "button button--ghost finance-back-link",
-      wbsCode ? "بازگشت به گزارش سطح ۱" : `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
-    back.href = wbsCode ? "#/level-one" : `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
-    navigation.append(back);
-    header.append(copy, navigation);
-    return header;
+    return createFinancePageHeader(wbsCode ? (parent?.title ?? `مرحله ${wbsCode}`) : "هزینه مراحل پروژه");
   }
 
   function renderUnavailable() {

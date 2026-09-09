@@ -1,3 +1,4 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
@@ -177,25 +178,13 @@ export function createInvoiceFilesPage({ context, adapter }) {
   }
 
   function paint() {
-    const header = element("header", "feature-header");
-    const copy = element("div", "feature-header__copy");
-    copy.append(
-      element("span", "feature-header__eyebrow", "ورودی هوشمند فاکتور"),
-      element("h1", "", "بارگذاری تصویر و صدا"),
-      element("p", "", "فایل فاکتور را برای پردازش بعدی ثبت کنید. بارگذاری یا استخراج به‌تنهایی هیچ اثر مالی ایجاد نمی‌کند."),
-    );
-    const actions = element("div", "feature-header__actions feature-header__other-actions");
+    const header = createFinancePageHeader("بارگذاری تصویر و صدا");
+    const actions = element("div", "finance-page-actions");
     const manual = element("a", "button button--ghost", "ورود دستی فاکتور");
     manual.href = "#/invoices";
     actions.append(manual);
-    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
-    back.classList.add("finance-back-link");
-    back.href = "#/finance";
-    const navigation = element("div", "feature-header__navigation");
-    navigation.append(actions, back);
-    header.append(copy, navigation);
 
-    root.replaceChildren(header, renderPageState(state, { renderContent, onRetry: load }));
+    root.replaceChildren(header, actions, renderPageState(state, { renderContent, onRetry: load }));
   }
 
   function renderContent(files) {

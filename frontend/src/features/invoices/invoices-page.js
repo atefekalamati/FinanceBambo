@@ -1,5 +1,5 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
-import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
@@ -738,11 +738,8 @@ export function createInvoicesPage({ context, adapter }) {
   }
 
   function renderHeader() {
-    const header = element("header", "feature-header");
-    const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "اسناد هزینه پروژه"), element("h1", "", "فاکتورها"), element("p", "", "فاکتورهای پروژه را براساس وضعیت، منبع و مشخصات سند جست‌وجو و جزئیات ثبت‌شده را مشاهده کنید."));
-    const navigation = element("div", "feature-header__navigation");
-    const actions = element("div", "feature-header__actions feature-header__other-actions");
+    const header = createFinancePageHeader("فاکتورها", "feature-header");
+    const actions = element("div", "finance-page-actions");
     if (canCreate) {
       const create = element("button", "button button--primary", "ثبت فاکتور دستی");
       create.type = "button";
@@ -759,12 +756,10 @@ export function createInvoicesPage({ context, adapter }) {
       upload.href = "#/invoice-files";
       actions.append(create, upload);
     }
-    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
-    back.classList.add("finance-back-link");
-    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
-    navigation.append(actions, back);
-    header.append(copy, navigation);
-    return header;
+    const fragment = document.createDocumentFragment();
+    fragment.append(header);
+    if (actions.childElementCount) fragment.append(actions);
+    return fragment;
   }
 
   /* Only the body goes through the state switch. The heading -- and with it the

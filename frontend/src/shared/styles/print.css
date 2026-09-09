@@ -18,7 +18,8 @@
     display: block;
   }
 
-  .button {
+  .button,
+  .finance-page-actions {
     display: none !important;
   }
 

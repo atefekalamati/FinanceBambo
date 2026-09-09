@@ -1,5 +1,5 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
-import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
@@ -634,12 +634,7 @@ export function createPeriodReportPage({ context, reportsAdapter, auditAdapter, 
   }
 
   function paint() {
-    const header = element("div", "finance-page-header period-report-topbar");
-    const heading = element("div");
-    heading.append(element("h1", "", "گزارش دوره‌ای"), element("p", "", "وضعیت مالی پروژه بین دو تاریخ، از داده‌های واقعی همین پروژه"));
-    const back = element("a", "button button--ghost finance-back-link", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
-    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
-    header.append(heading, back);
+    const header = createFinancePageHeader("گزارش دوره‌ای", "finance-page-header period-report-topbar");
     const body = state.status === REQUEST_STATUS.IDLE
       ? renderIdle()
       : renderPageState(state, { renderContent, renderEmpty, onRetry: build });

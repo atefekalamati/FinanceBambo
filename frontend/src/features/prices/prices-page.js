@@ -1,5 +1,6 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
-import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
+import { SURFACES } from "../../core/config/routes.js";
 import { downloadCsvFile } from "../../shared/exports/csv.js";
 import { buildPricesCsv, pricesFileName } from "./prices-csv.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
@@ -668,23 +669,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
   }
 
   function renderHeader() {
-    const header = element("header", "feature-header");
-    const copy = element("div", "feature-header__copy");
-    copy.append(
-      element("span", "feature-header__eyebrow", readOnly ? "جدول قیمت‌های پروژه" : "قیمت روز و تاریخچه قیمت"),
-      element("h1", "", readOnly ? "جدول قیمت‌ها" : "قیمت روز"),
-      element("p", "", readOnly
-        ? "قیمت پایه سازمان، قیمت اختصاصی پروژه و قیمت روز هر قلم. این صفحه فقط‌خواندنی است و می‌توانید از آن خروجی اکسل بگیرید."
-        : "قیمت پایه سازمان و قیمت اختصاصی پروژه را بدون بازنویسی نسخه‌های قبلی مدیریت کنید."),
-    );
-    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[surface]}`);
-    back.classList.add("finance-back-link");
-    back.href = `#${homeRouteFor(surface)?.path ?? "/finance"}`;
-    const navigation = element("div", "feature-header__navigation");
-    const otherActions = element("div", "feature-header__other-actions");
-    navigation.append(otherActions, back);
-    header.append(copy, navigation);
-    return header;
+    return createFinancePageHeader(readOnly ? "جدول قیمت‌ها" : "قیمت روز");
   }
 
   function openEditor(workspace) {
