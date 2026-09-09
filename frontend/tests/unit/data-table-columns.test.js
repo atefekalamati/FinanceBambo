@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { IDENTITY, PRIMARY, SECONDARY, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, defaultVisibleColumns, repeatedGroupColumnLabel }
   from "../../src/shared/components/data-table.js";
 
 /** A matchMedia that answers for one viewport width, in rem at a 16px root. */
@@ -44,4 +44,15 @@ test("the identity column is in every default, at every width", () => {
 
 test("without matchMedia the answer is the widest one, not an empty table", () => {
   assert.equal(defaultVisibleColumns(columns, undefined).size, columns.length);
+});
+
+test("an open group may repeat labels only in its otherwise-empty cells", () => {
+  const amount = { key: "amount", label: "مبلغ", tier: PRIMARY };
+  const actions = { key: "actions", label: ["", "عملیات"], tier: SECONDARY };
+
+  assert.equal(repeatedGroupColumnLabel(amount, undefined, true), "مبلغ");
+  assert.equal(repeatedGroupColumnLabel(actions, null, true), "عملیات");
+  assert.equal(repeatedGroupColumnLabel(amount, "100", true), "");
+  assert.equal(repeatedGroupColumnLabel(columns[0], undefined, true), "");
+  assert.equal(repeatedGroupColumnLabel(amount, undefined, false), "");
 });

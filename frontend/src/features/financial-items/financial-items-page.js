@@ -726,6 +726,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
     group: {
       key: (line) => canonicalWbs(line) + "|" + activityLabel(line),
       countLabel: "قلم",
+      showColumnLabelsWhenOpen: true,
       cells: (rows) => {
         const first = rows[0];
         const name = document.createDocumentFragment();

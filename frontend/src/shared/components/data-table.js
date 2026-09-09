@@ -416,6 +416,14 @@ function appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible,
       const cell = element("td", column.cellClass ?? "", typeof value === "string" ? value : "");
       cell.dataset.col = column.key;
       if (value != null && typeof value !== "string") cell.append(value);
+      const repeatedLabel = repeatedGroupColumnLabel(column, value, group.showColumnLabelsWhenOpen);
+      if (repeatedLabel) {
+        const label = element("span", "data-table__group-column-label", repeatedLabel);
+        // The table header already names this cell for assistive technology.
+        // This copy is only a visual wayfinding aid after a long vertical scroll.
+        label.setAttribute("aria-hidden", "true");
+        cell.append(label);
+      }
       cell.hidden = !visible.has(column.key);
       summary.append(cell);
     });
@@ -458,6 +466,20 @@ function appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible,
     });
     void index;
   });
+}
+
+/**
+ * A folded parent may repeat the names of its otherwise-empty columns while it
+ * is open. The page opts in; populated cells and the identity cell keep their
+ * real content, and an action column may use its accessible label when its
+ * visible heading is intentionally empty.
+ */
+export function repeatedGroupColumnLabel(column, value, enabled = false) {
+  if (!enabled || column.key === "identity" || (value !== null && value !== undefined && value !== "")) return "";
+  const [visibleLabel, accessibleLabel] = Array.isArray(column.label)
+    ? column.label
+    : [column.label, ""];
+  return String(visibleLabel || accessibleLabel || "");
 }
 
 /**
