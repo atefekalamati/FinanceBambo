@@ -22,17 +22,16 @@ must answer it identically or a report changes meaning with its deployment.
 
 from psycopg.rows import dict_row
 
+from app.finance.domain.mpp_source_version import active_source_version
+
 #: Everything present in the current source version is part of the current plan. Finance
 #: records no lifecycle for a schedule row, and a task dropped from the plan is simply
 #: absent from the next version rather than marked inactive.
 ACTIVE = "active"
 
-_CURRENT_VERSION = """
-    SELECT id FROM finance_mpp_source_versions
-     WHERE organization_id = %(organization_id)s AND project_id = %(project_id)s
-       AND status = 'ready'
-     ORDER BY imported_at DESC, id DESC LIMIT 1
-"""
+#: One definition, shared with the items repository, the mapping service and the progress
+#: provider, so a catalogue cannot describe a different schedule than the estimate does.
+_CURRENT_VERSION = active_source_version()
 
 #: One row per distinct WBS code. `min(...)` picks a stable representative for the name and
 #: task id: several assignments repeat one task, and the catalogue names each stage once.

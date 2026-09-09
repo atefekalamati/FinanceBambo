@@ -39,9 +39,15 @@ def _sync_fixtures():
     return importlib.import_module("test_finance_mpp_sync")
 
 
+#: One file the toman decision was taken for. The constant is a SET -- the same schedule
+#: reached this project as two files with identical figures -- and a test that wants "an
+#: approved file" wants any member of it, deterministically chosen.
+APPROVED_SHA = sorted(_APPROVED_TOMAN_SHA256)[0]
+
+
 class CurrencyAndAssignmentTests(unittest.TestCase):
     def test_approved_file_converts_once_without_replacing_task_or_estimate(self):
-        row = finance_rows(parsed(), source_sha256=_APPROVED_TOMAN_SHA256)[0]
+        row = finance_rows(parsed(), source_sha256=APPROVED_SHA)[0]
         self.assertEqual(Decimal("125651153910"), row["source_assignment_cost_irr"])
         self.assertEqual(Decimal("900"), row["source_cost"])
         self.assertEqual(Decimal("1"), row["source_assignment_units"])
@@ -61,17 +67,17 @@ class CurrencyAndAssignmentTests(unittest.TestCase):
         for symbol, code in [(None, None), ("$", "USD"), ("تومان", "USD")]:
             with self.subTest(symbol=symbol, code=code):
                 with self.assertRaises(FinanceMppSyncRefused):
-                    finance_rows(parsed(symbol, code), source_sha256=_APPROVED_TOMAN_SHA256)
+                    finance_rows(parsed(symbol, code), source_sha256=APPROVED_SHA)
 
     def test_zero_and_null_are_distinct(self):
-        row = finance_rows(parsed(cost="0"), source_sha256=_APPROVED_TOMAN_SHA256)[0]
+        row = finance_rows(parsed(cost="0"), source_sha256=APPROVED_SHA)[0]
         self.assertEqual(Decimal(0), row["source_assignment_cost_irr"])
         self.assertIsNone(finance_rows(parsed(None, None, None))[0]["source_assignment_cost_irr"])
 
     def test_each_assignment_keeps_its_cost(self):
         value = parsed(cost="12")
         value.assignments.append(dict(value.assignments[0], assignment_uid=9704, cost="0", units=None))
-        rows = finance_rows(value, source_sha256=_APPROVED_TOMAN_SHA256)
+        rows = finance_rows(value, source_sha256=APPROVED_SHA)
         self.assertEqual([Decimal(120), Decimal(0)], [r["source_assignment_cost_irr"] for r in rows])
         self.assertIsNone(rows[1]["source_assignment_units"])
         self.assertTrue(all(r["source_cost"] == Decimal(900) for r in rows))

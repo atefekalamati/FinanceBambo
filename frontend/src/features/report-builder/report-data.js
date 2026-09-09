@@ -1,4 +1,5 @@
 import { datasetsFor } from "./report-catalog.js";
+import { defaultSnapshot } from "../../shared/progress/project-snapshot.js";
 
 // Do not silently print a truncated or changing register as a complete report.
 export async function loadAllInvoices(adapter) {
@@ -24,9 +25,9 @@ export async function loadReportData({ adapters, selection, period, today }) {
   const wanted = new Set(datasetsFor(selection));
   let snapshot = null;
   if (wanted.has("overview") || wanted.has("wbs")) {
-    const snapshots = await adapters.progress.getSnapshots();
-    snapshot = snapshots.filter((item) => item.status === "ready")
-      .sort((a, b) => String(b.reportingDate).localeCompare(String(a.reportingDate)))[0] ?? null;
+    // A printed report has to be the same figures the screen showed. It therefore asks
+    // the shared question instead of re-sorting the list into an order of its own.
+    snapshot = defaultSnapshot(await adapters.progress.getSnapshots());
     if (!snapshot) return null;
   }
   const reportingDate = snapshot?.reportingDate ?? today;

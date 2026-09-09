@@ -86,11 +86,19 @@ class ScheduleCostSourceTests(unittest.TestCase):
         self.assertNotIn("m.source_cost", statement)
 
     def test_a_row_is_matched_to_exactly_one_assignment(self):
+        from app.finance.domain.mpp_source_version import active_source_version_for
         statement = self.statement()
         self.assertIn("m.source_assignment_uid=l.source_assignment_uid", statement)
         # Scoped to the version in force, so a re-import cannot pair a line with a row
-        # from a schedule the project has moved on from.
-        self.assertIn("v.status='ready'", statement)
+        # from a schedule the project has moved on from. The rule itself lives in one
+        # module now, so what this asserts is that the query asks IT rather than carrying
+        # a fourth copy of the same ordering.
+        self.assertIn('active_source_version_for("l")', statement)
+        scoped = active_source_version_for("l")
+        self.assertIn("status = 'ready'", scoped)
+        self.assertIn("organization_id = l.organization_id", scoped)
+        self.assertIn("project_id = l.project_id", scoped)
+        self.assertIn("ORDER BY imported_at DESC", scoped)
 
     def test_the_schedule_cost_is_declared_apart_from_every_financial_field(self):
         from app.finance.schemas.resources import EstimateLineResponse
