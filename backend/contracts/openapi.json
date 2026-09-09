@@ -4124,6 +4124,11 @@
             ],
             "title": "Importedby"
           },
+          "isActiveSource": {
+            "default": false,
+            "title": "Isactivesource",
+            "type": "boolean"
+          },
           "isLatest": {
             "anyOf": [
               {
@@ -5245,6 +5250,7 @@
       },
       "TypeBreakdown": {
         "additionalProperties": false,
+        "description": "One resource type's share, with the same nullability as the totals above it.\n\n`initialEstimateIrr` and `revisedEstimateIrr` were already nullable here, because a row\nbuilt from some of its lines is not that row's total. The two figures DERIVED from them\nwere not, and that was an inconsistency rather than a decision: whenever the estimate\nbehind a row is unknown, the remaining cost and the forecast computed from it are\nunknown too, and the response could not say so -- it raised a validation error instead\nof publishing \"-\". `LiveMetrics` and `WbsNode` both already carry the null; this row now\nagrees with them.\n\nNullable is not the same as defaulted. `calculate_live_report` always states both\nfigures for a row it could compute, so a null here means the calculation said so.",
         "properties": {
           "actualCostIrr": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -5266,9 +5272,16 @@
             "type": "integer"
           },
           "forecastFinalIrr": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Forecastfinalirr",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forecastfinalirr"
           },
           "initialEstimateIrr": {
             "anyOf": [
@@ -5283,10 +5296,17 @@
             "title": "Initialestimateirr"
           },
           "remainingPhysicalCostIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "default": "0",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Remainingphysicalcostirr",
-            "type": "string"
+            "title": "Remainingphysicalcostirr"
           },
           "resourceType": {
             "enum": [
@@ -7711,6 +7731,7 @@
     },
     "/api/projects/{projectId}/finance/files/{fileId}/content": {
       "get": {
+        "description": "The uploaded invoice image or recording itself, for invoice managers only.\n\nThe metadata beside it stays on `finance.view` -- a viewer may see that a file exists,\nwhat it is called, and whether it has been read. The BYTES are different: an invoice\nphotograph carries a supplier's name, their prices and often a signature, and that is\nthe one thing here that cannot be redacted after somebody has seen it.\n\n404 rather than 403, and the concealment is the point rather than a side effect. \"You\nmay not read this file\" tells the caller the file is there; on an id they guessed, the\ndifference between 403 and 404 is exactly the fact they were probing for. A caller\nwithout the permission therefore gets the same answer as one asking for a file that\nnever existed, and nothing is streamed before the gate is passed.",
         "operationId": "get_finance_file_content_api_projects__projectId__finance_files__fileId__content_get",
         "parameters": [
           {

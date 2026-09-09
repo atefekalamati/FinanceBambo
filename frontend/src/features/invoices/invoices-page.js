@@ -8,7 +8,7 @@ import { createPersianDatePicker } from "../../shared/components/persian-date-pi
 import { getDialogOpener, showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
-import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { MANAGE_INVOICE_NOTICE, capabilitiesFor } from "../../core/auth/capabilities.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
@@ -610,7 +610,7 @@ export function createInvoicesPage({ context, adapter }) {
   // Lives with the page, not with a render: paint() replaces the whole tree on
   // every load, so a choice held inside a render would last until the next filter.
   const visibleColumns = defaultVisibleColumns(INVOICE_COLUMNS);
-  const canCreate = capabilitiesFor(context).writeFinance;
+  const canCreate = capabilitiesFor(context).manageInvoice;
   const detailMessage = element("div", "form-message invoice-detail-message");
   detailMessage.setAttribute("aria-live", "assertive");
 
@@ -797,7 +797,9 @@ export function createInvoicesPage({ context, adapter }) {
       active: activeView,
       counts: invoiceChipCounts(summary.counts),
     });
-    section.append(heading, detailMessage, toolbar,
+    section.append(heading, detailMessage);
+    if (!canCreate) section.append(element("p", "inline-notice", MANAGE_INVOICE_NOTICE));
+    section.append(toolbar,
       renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
     return section;
   }

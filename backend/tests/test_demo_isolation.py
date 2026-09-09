@@ -244,5 +244,67 @@ class DemoDataProvenanceTests(unittest.TestCase):
                 self.assertTrue(str(user_id).startswith("aaaaaaaa-aaaa-"))
 
 
+class MirrorClaimsTests(unittest.TestCase):
+    """A local fixture must not become a claim about the customer's live host.
+
+    The mirror exists so a demo can run against Core-shaped tables. The risk it carries is
+    that somebody reads a row in it as a fact: "bambo_admin can manage invoices, look, it is
+    in the seed". So the two kinds of row are kept apart -- what we were told, and what this
+    demo needed -- and this test is what keeps them apart.
+    """
+
+    def mirror(self):
+        from scripts.demo import seed_core_mirror
+        return seed_core_mirror
+
+    def test_a_permission_in_the_vocabulary_is_not_a_permission_granted(self):
+        """`finance.manage_invoice` is defined locally and assigned to nobody.
+
+        It has to be defined: routes name it, and a mirror missing it would make those
+        routes look broken rather than blocked. It must not be assigned: the host has not
+        registered it, so any role holding it here would describe a deployment that does not
+        exist -- and the demo would show invoice buttons that the real host will refuse.
+        """
+        mirror = self.mirror()
+        vocabulary = {code for _m, _a, code, _l, _g in mirror.PERMISSIONS}
+        self.assertIn("finance.manage_invoice", vocabulary)
+        self.assertIn("finance_report.issue", vocabulary)
+
+        granted = {code for codes in mirror.ROLE_PERMISSIONS.values() for code in codes}
+        self.assertNotIn("finance.manage_invoice", granted)
+        self.assertNotIn("finance_report.issue", granted)
+
+    def test_only_the_role_we_were_given_evidence_for_is_mapped(self):
+        """Silence about a role is recorded as silence, not filled in."""
+        mirror = self.mirror()
+        self.assertEqual({"bambo_admin"}, set(mirror.HOST_ROLE_PERMISSIONS))
+        self.assertEqual(
+            ("finance.view", "finance.edit", "finance_report.view", "finance_report.export"),
+            mirror.HOST_ROLE_PERMISSIONS["bambo_admin"])
+        # The other host roles are named as unmapped rather than left to be inferred.
+        self.assertEqual(11, len(mirror.UNMAPPED_HOST_ROLES))
+        for code in mirror.UNMAPPED_HOST_ROLES:
+            with self.subTest(role=code):
+                self.assertNotIn(code, mirror.HOST_ROLE_PERMISSIONS)
+
+    def test_the_demos_own_roles_cannot_be_mistaken_for_the_hosts(self):
+        mirror = self.mirror()
+        host = {code for code, _label, _category in mirror.HOST_ROLES}
+        demo = {code for code, _label, _category in mirror.DEMO_ROLES}
+        self.assertEqual(set(), host & demo, "a demo role shares a host role's name")
+        for code in demo:
+            with self.subTest(role=code):
+                self.assertTrue(code.startswith("demo_"))
+        # Every role the mirror inserts is one or the other, and nothing else.
+        self.assertEqual(host | demo, {code for code, _l, _c in mirror.ROLES})
+
+    def test_every_role_a_person_holds_actually_exists(self):
+        mirror = self.mirror()
+        known = {code for code, _label, _category in mirror.ROLES}
+        for _user, role_code, _project in mirror.USER_ROLES:
+            with self.subTest(role=role_code):
+                self.assertIn(role_code, known, "a demo person holds an undefined role")
+
+
 if __name__ == "__main__":
     unittest.main()

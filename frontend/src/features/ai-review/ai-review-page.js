@@ -1,6 +1,6 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
-import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { MANAGE_INVOICE_NOTICE, capabilitiesFor } from "../../core/auth/capabilities.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
@@ -74,8 +74,13 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
   // PRD section 12 requires the original file beside the extracted fields, and
   // the card's own copy tells the reader to compare against it.
   const source = element("figure", "ai-review-source");
-  const contentUrl = adapter.getFileContentUrl?.(draft.file.fileId) ?? null;
-  if (!contentUrl) {
+  // Not requested at all without the permission. The Backend answers 404 either way, but
+  // asking would put a broken image where an explanation belongs, and the reader would be
+  // left guessing whether the file is missing or they are.
+  const contentUrl = canEdit ? (adapter.getFileContentUrl?.(draft.file.fileId) ?? null) : null;
+  if (!canEdit) {
+    source.append(element("figcaption", "", MANAGE_INVOICE_NOTICE));
+  } else if (!contentUrl) {
     source.append(element("figcaption", "", "پیش‌نمایش فایل اصلی در این محیط در دسترس نیست."));
   } else if (draft.file.logicalType === "invoice_image") {
     const image = element("img", "ai-review-source__image");
@@ -192,7 +197,8 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
 
 export function createAiReviewPage({ context, adapter }) {
   const root = element("div", "ai-review-page");
-  const canEdit = capabilitiesFor(context).writeFinance;
+  // Reviewing an extraction IS invoice work: accepting one writes an invoice.
+  const canEdit = capabilitiesFor(context).manageInvoice;
   let state = createRequestState(REQUEST_STATUS.LOADING);
 
   async function load() {
@@ -216,7 +222,10 @@ export function createAiReviewPage({ context, adapter }) {
     manual.href = "#/invoices";
     actions.append(files, manual);
 
-    root.replaceChildren(header, actions, renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    const children = [header, actions];
+    if (!canEdit) children.push(element("p", "inline-notice", MANAGE_INVOICE_NOTICE));
+    children.push(renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    root.replaceChildren(...children);
   }
 
   function renderContent(data) {
