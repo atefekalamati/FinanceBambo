@@ -93,12 +93,16 @@ class ParsedMppProject:
     """Everything one file states, as plain data. No database identifiers exist yet."""
 
     def __init__(self, application, tasks, resources, assignments, warnings,
-                 parser_engine=None, status_date=None):
+                 parser_engine=None, currency_symbol=None, currency_code=None,
+                 status_date=None):
         self.application = application
         self.tasks = tasks
         self.resources = resources
         self.assignments = assignments
         self.warnings = warnings
+        # Raw file metadata, not a conversion policy. Consumers must resolve conflicts.
+        self.currency_symbol = currency_symbol
+        self.currency_code = currency_code
         #: Real provenance ("mpxj-<installed version>/jvm-<running java>"), derived at
         #: JVM boot -- None from a reader that cannot honestly claim one.
         self.parser_engine = parser_engine
@@ -444,5 +448,7 @@ class MpxjMppReader:
             application=_text(properties.getFullApplicationName()),
             tasks=tasks, resources=resources, assignments=assignments,
             warnings=warnings, parser_engine=self._parser_engine,
+            currency_symbol=_text(properties.getCurrencySymbol()),
+            currency_code=_text(properties.getCurrencyCode()),
             status_date=_calendar_date(
                 getattr(properties, "getStatusDate", lambda: None)()))

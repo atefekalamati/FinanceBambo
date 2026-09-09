@@ -26,8 +26,12 @@ from coreint.mpp_progress_shape import file_rows
 class ParsedFile:
     """What the shared reader returns. No database identity anywhere in it."""
 
-    def __init__(self, tasks, resources=(), assignments=(), warnings=()):
+    def __init__(self, tasks, resources=(), assignments=(), warnings=(),
+                 currency_symbol="ریال", currency_code="IRR"):
         self.application = "Microsoft.Project 16.0"
+        # The file's own currency metadata. Stated because a rate or a cost cannot be
+        # converted without it, and `finance_rows` refuses rather than guessing.
+        self.currency_symbol, self.currency_code = currency_symbol, currency_code
         self.tasks = list(tasks)
         self.resources = list(resources)
         self.assignments = list(assignments)
