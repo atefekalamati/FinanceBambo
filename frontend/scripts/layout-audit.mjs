@@ -158,14 +158,35 @@ const measurementExpression = `(() => {
   const root = document.documentElement;
   const viewportWidth = root.clientWidth;
   const pageOverflow = Math.max(root.scrollWidth, document.body.scrollWidth) - viewportWidth;
+  // A row of a wide table sits outside the viewport and is not a defect: the reader
+  // scrolls the table to it. That was already forgiven, but by NAME -- '.table-scroll' and
+  // '.breakdown-table-wrapper' -- and a name only forgives the containers somebody
+  // remembered to list. The level-one chart is the same kind of container (overflow-x:auto,
+  // a styled scrollbar, scroll-snap, its own tab stop) and was not on the list, so all
+  // thirteen phase groups were reported as escaping the page at every width while
+  // pageOverflow stayed 0 and every group was reachable by scrolling.
+  //
+  // So the test is now the property that made those two safe rather than their names: is
+  // this inside something that actually scrolls on this axis. A container that CLIPS
+  // without scrolling still fails, which is the case worth catching -- content nobody can
+  // reach. Fixed elements are exempt as before; they are positioned against the viewport.
+  const reachableByScrolling = (element) => {
+    for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+      const overflowX = getComputedStyle(node).overflowX;
+      if ((overflowX === 'auto' || overflowX === 'scroll') && node.scrollWidth > node.clientWidth + 1) {
+        return true;
+      }
+    }
+    return false;
+  };
   const unexpected = [...document.querySelectorAll('body *')]
     .filter((element) => {
       const rect = element.getBoundingClientRect();
       if (rect.width < 1 || rect.height < 1) return false;
-      if (element.closest('.table-scroll, .breakdown-table-wrapper')) return false;
       const style = getComputedStyle(element);
       if (style.position === 'fixed') return false;
-      return rect.right > viewportWidth + 2 || rect.left < -2;
+      if (rect.right <= viewportWidth + 2 && rect.left >= -2) return false;
+      return !reachableByScrolling(element);
     })
     .slice(0, 12)
     .map((element) => ({

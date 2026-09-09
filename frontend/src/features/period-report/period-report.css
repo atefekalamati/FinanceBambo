@@ -58,11 +58,28 @@
   align-items: start;
 }
 
+/* A <fieldset> is not an ordinary box. Browsers give it `min-inline-size: min-content`,
+   which no amount of `min-width: 0` on its ancestors overrides, so this one held the whole
+   page open: its 13rem track plus padding demanded 274px, `.period-report-page` is a grid
+   whose single auto column is floored by the widest item's min-content, and every sibling
+   -- the header, the builder, the empty-state card -- was stretched to 340px inside a
+   257px parent. The page then scrolled sideways by 44px at 320px wide.
+
+   Two properties fix it and neither changes anything at a normal width:
+
+   * `min-inline-size: 0` retires the fieldset's special floor.
+   * `min(13rem, 100%)` keeps the 13rem minimum wherever there is room for it, and lets the
+     track fall to the container's width where there is not. Above 13rem the `min()`
+     returns 13rem, so the desktop grid is the same grid it was.
+
+   Deliberately NOT `overflow-x: hidden` on the page: that would keep the layout broken and
+   simply cut off whatever fell outside. */
 .period-builder__sections {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
   gap: var(--space-sm);
   margin: 0;
+  min-inline-size: 0;
   padding: var(--space-md);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
