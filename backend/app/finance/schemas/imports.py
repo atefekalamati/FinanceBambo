@@ -2,7 +2,7 @@ from decimal import Decimal
 from datetime import date,datetime
 from typing import Literal
 from uuid import UUID
-from pydantic import field_serializer
+from pydantic import Field,field_serializer
 from .base import ApiModel
 class ImportIssue(ApiModel):
  row:int;field:str;reason:str
@@ -33,6 +33,9 @@ class ImportPreviewResponse(ApiModel):
  duplicate_file:bool=False
  duplicate_of_import_id:UUID|None=None
  duplicate_committed_at:datetime|None=None
+class ImportFromLink(ApiModel):
+ """A Google Sheets link, previewed as though the workbook behind it were uploaded."""
+ source_url:str=Field(min_length=1,max_length=2048)
 class ImportCommit(ApiModel):
  preview_id:UUID
 class ImportCommitResponse(ApiModel):

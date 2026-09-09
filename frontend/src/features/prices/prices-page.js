@@ -18,7 +18,7 @@ import { validatePriceVersion } from "./prices-validation.js";
 import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition, validateUnitConversion } from "./unit-conversions-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
-import { fetchGoogleSheetAsFile, GoogleSheetError } from "../../shared/imports/google-sheet.js";
+import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
 import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 
@@ -226,7 +226,7 @@ function createPriceImportDialog(adapter, onSaved) {
   const sheetInput = element("input", "app-input");
   sheetInput.id = "priceImportSheet";
   sheetInput.type = "url";
-  sheetInput.placeholder = "https://docs.google.com/spreadsheets/d/…";
+  sheetInput.placeholder = "نشانی برگه را از نوار آدرس مرورگر کپی کنید";
   sheetInput.setAttribute("aria-describedby", "priceSheetHint");
   const sheetHint = element("small", "form-hint", "برگه باید روی «هر کسی که لینک را دارد» باشد. اگر نشانی را از روی تب موردنظر کپی کنید، همان تب خوانده می‌شود.");
   sheetHint.id = "priceSheetHint";
@@ -355,10 +355,11 @@ function createPriceImportDialog(adapter, onSaved) {
     resultRegion.hidden = true;
     status.textContent = link && !picked ? "در حال دریافت برگه از گوگل…" : "در حال بررسی فایل…";
     try {
-      // A picked file wins: it is the more deliberate of the two.
-      const file = picked ?? await fetchGoogleSheetAsFile(link, { name: "price-import" });
-      if (!picked) status.textContent = "در حال بررسی فایل…";
-      const preview = await adapter.previewPriceImport(file);
+      // A picked file wins: it is the more deliberate of the two. A link goes to
+      // the service, which fetches the sheet -- this page never calls Google.
+      const preview = picked
+        ? await adapter.previewPriceImport(picked)
+        : await adapter.previewPriceImportFromLink(requireSheetLink(link));
       status.textContent = preview.canCommit ? "پیش‌نمایش معتبر آماده است." : "پیش‌نمایش دارای خطاست.";
       renderPreview(preview);
     } catch (previewError) {

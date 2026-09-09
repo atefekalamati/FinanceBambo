@@ -247,5 +247,15 @@ export function createMockPricesAdapter(context, { initialState = "success", res
     return snapshot();
   }
 
-  return Object.freeze({ getPrices, createPriceVersion, previewPriceImport, commitPriceImport, createUnitConversion });
+
+  /* The mock has no server to fetch a sheet, so a link becomes the same named
+     workbook an upload would have been. It proves the wiring, never the parse --
+     that only happens against the real service. */
+  async function previewPriceImportFromLink(sourceUrl) {
+    if (!String(sourceUrl ?? "").trim()) {
+      throw new ApiError({ status: 422, code: "IMPORT_LINK_REQUIRED", message: "نشانی گوگل شیت الزامی است." });
+    }
+    return previewPriceImport({ name: "price-import.xlsx" });
+  }
+  return Object.freeze({ getPrices, createPriceVersion, previewPriceImport, previewPriceImportFromLink, commitPriceImport, createUnitConversion });
 }

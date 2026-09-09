@@ -1,93 +1,54 @@
 /**
- * A Google Sheets link, turned into the .xlsx file the import endpoint already takes.
+ * A Google Sheets link, on its way to an import the server performs.
  *
- * The import contract does not change: the server still receives a multipart
- * .xlsx and parses it exactly as it parses one picked off a disk. What changes
- * is only where the bytes came from.
+ * The browser never calls Google. It sends the link to this module's own
+ * service, which fetches the sheet and hands the workbook to the same parser an
+ * upload reaches. That is not a preference:
  *
- * The fetch happens in the browser rather than on the server. That is worth
- * stating plainly, because the module's architecture note says the frontend does
- * not call an external provider directly, and this does. It is here because it
- * needs no backend and no new contract; if the host's CSP forbids the request,
- * this feature stops working and the file picker beside it still does.
+ *   * this module's API client resolves every path against the page's own origin
+ *     and refuses anything else;
+ *   * the repo's stated constraints forbid an external browser request outright;
+ *   * the BAMBO dashboard's Content-Security-Policy names `connect-src 'self'`,
+ *     so a fetch to docs.google.com from this page would stop working the day
+ *     that header stops being report-only -- silently, on a page nobody watches.
  *
- * Only a sheet shared as "anyone with the link can view" can be read. A private
- * one answers with Google's sign-in page, which is HTML -- caught here rather
- * than sent to the server to come back as "invalid Excel workbook".
+ * What comes back is an ordinary import preview: the same shape, the same
+ * `previewId`, committed by the same endpoint. A link and an upload differ only
+ * in how the workbook reached the parser.
+ *
+ * The only thing left on this side is the guess a person can be told about
+ * immediately. Whether the sheet is readable, whether it is a workbook at all,
+ * and which tab to export are the server's to answer.
  */
 
-/** A Google Sheets URL carries the document in its path and the tab in its fragment. */
-const SHEET_ID = /\/spreadsheets\/d\/(?:e\/)?([a-zA-Z0-9_-]{20,})/;
-const GID = /[#&?]gid=(\d+)/;
-
-/**
- * The document id and, if the link names one, the tab.
- *
- * Returns null for anything that is not a Google Sheets link, so the caller can
- * say so rather than fetching something arbitrary.
- */
-export function parseGoogleSheetUrl(value) {
-  const text = String(value ?? "").trim();
-  if (!text) return null;
-  let url;
-  try { url = new URL(text); } catch { return null; }
-  if (!/(^|\.)google\.com$/.test(url.hostname)) return null;
-  const id = SHEET_ID.exec(url.pathname);
-  if (!id) return null;
-  const gid = GID.exec(text);
-  return { id: id[1], gid: gid ? gid[1] : null };
-}
-
-/**
- * Where Google serves the workbook for a link.
- *
- * The tab is passed on when the link named one, which also settles the "the data
- * has to be on the first sheet" problem: a link copied while looking at the
- * right tab exports that tab and nothing else.
- */
-export function googleSheetExportUrl({ id, gid }) {
-  const params = new URLSearchParams({ format: "xlsx" });
-  if (gid) params.set("gid", gid);
-  return `https://docs.google.com/spreadsheets/d/${id}/export?${params.toString()}`;
-}
-
-/** Every way this can fail, said in the reader's terms rather than the network's. */
+/** A link this module can act on, told apart from a request that simply failed. */
 export class GoogleSheetError extends Error {}
 
 /**
- * Fetch the sheet and hand back a File the import flow can send unchanged.
+ * Enough of a check to answer without a round trip.
  *
- * `fetchImpl` is injectable so this can be tested without a network.
+ * Deliberately loose: it says "that is not a Google Sheets address" for a
+ * mistyped link, and lets everything else through to the service, which
+ * validates properly and is the only side that can.
  */
-export async function fetchGoogleSheetAsFile(value, { fetchImpl = fetch, name = "google-sheet" } = {}) {
-  const parsed = parseGoogleSheetUrl(value);
-  if (!parsed) throw new GoogleSheetError("نشانی معتبر گوگل شیت نیست. نشانی کامل برگه را از نوار آدرس مرورگر کپی کنید.");
-
-  let response;
+export function looksLikeSheetLink(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return false;
+  let url;
   try {
-    response = await fetchImpl(googleSheetExportUrl(parsed));
+    url = new URL(text);
   } catch {
-    // A blocked request and an offline machine look the same from here.
-    throw new GoogleSheetError("دریافت برگه از گوگل انجام نشد. اتصال اینترنت سرور یا دسترسی به گوگل را بررسی کنید.");
+    return false;
   }
+  return /(^|\.)google\.com$/i.test(url.hostname) && /\/spreadsheets\/d\//.test(url.pathname);
+}
 
-  if (response.status === 401 || response.status === 403) {
-    throw new GoogleSheetError("این برگه عمومی نیست. در گوگل شیت دسترسی را روی «هر کسی که لینک را دارد» بگذارید.");
+/** The link, or a refusal a person can act on. Callers pass the result to their adapter. */
+export function requireSheetLink(value) {
+  const text = String(value ?? "").trim();
+  if (!text) throw new GoogleSheetError("نشانی گوگل شیت را وارد کنید.");
+  if (!looksLikeSheetLink(text)) {
+    throw new GoogleSheetError("نشانی معتبر گوگل شیت نیست. نشانی کامل برگه را از نوار آدرس مرورگر کپی کنید.");
   }
-  if (!response.ok) {
-    throw new GoogleSheetError(`گوگل به این نشانی پاسخ نداد (کد ${response.status}). نشانی و دسترسی برگه را بررسی کنید.`);
-  }
-
-  const buffer = await response.arrayBuffer();
-  // An .xlsx is a zip and starts with "PK". Google answers a private sheet with
-  // its sign-in page, which is HTML and starts with "<" -- worth telling apart
-  // here, because the server would only be able to call it a broken workbook.
-  const head = new Uint8Array(buffer.slice(0, 2));
-  if (head[0] !== 0x50 || head[1] !== 0x4b) {
-    throw new GoogleSheetError("پاسخ گوگل یک فایل اکسل نبود. معمولاً یعنی برگه عمومی نیست و صفحهٔ ورود برگشته است.");
-  }
-
-  return new File([buffer], `${name}.xlsx`, {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  return text;
 }
