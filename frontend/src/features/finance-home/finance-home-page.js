@@ -427,141 +427,34 @@ const SNAPSHOT_SOURCE_LABELS = Object.freeze({
 });
 
 /**
- * Which progress snapshot these figures were computed from.
- *
- * Five of the eight headline metrics are derived from the executed quantity the
- * progress feed reports — the day value of work done, the remaining physical
- * cost, the money required to continue, the final forecast and the forecast per
- * square metre. Change the snapshot and those five change with it, so a reader
- * who cannot see which snapshot was used cannot defend the numbers.
- *
- * The selector re-asks the Backend rather than recomputing anything here: the
- * report endpoints accept a progressSnapshotId and rebuild the whole picture
- * against it. No finance arithmetic happens in this file.
+ * Keep the calculation provenance available to developers while the temporary
+ * top strip carries navigation only. This is diagnostic output, not a second
+ * source of truth and not data rendered for the customer.
  */
-function createSnapshotProvenance({
-  snapshots = [],
-  selected,
-  report,
-  onSelect,
-}) {
+export function logSnapshotProvenance({ selected, report }) {
   if (!selected) return null;
-  const section = element("section", "finance-snapshot-provenance");
-  section.setAttribute("aria-label", "نسخه پیشرفت مبنای این محاسبه");
-  section.append(
-    element("span", "finance-snapshot-provenance__lead", "مبنای محاسبه"),
-  );
-
-  /**
-   * The strip stays on one line at every width, so each fact carries a short
-   * label as well as a full one — the same long/narrow pairing the combination
-   * chart uses for its category names — and the facts drop out in order of how
-   * little they say as the room runs out. The file name is the only value with
-   * no natural length, so it is the one that gives way with an ellipsis.
-   */
-  const facts = element("dl", "finance-snapshot-provenance__facts");
-  [
-    [
-      "version",
-      "نسخه",
-      "نسخه",
-      selected.version == null
-        ? null
-        : `${formatDisplayNumber(String(selected.version))}${selected.isLatest ? " (آخرین)" : ""}`,
-    ],
-    [
-      "date",
-      "تاریخ گزارش نسخه",
-      "تاریخ",
-      formatBusinessDate(selected.reportingDate),
-    ],
-    [
-      "source",
-      "منبع",
-      "منبع",
-      SNAPSHOT_SOURCE_LABELS[selected.sourceType] ??
-        (selected.sourceType == null ? null : "منبع تعریف‌نشده"),
-    ],
-    [
-      "status",
-      "وضعیت",
-      "وضعیت",
-      SNAPSHOT_STATUS_LABELS[selected.status] ?? "نامشخص",
-    ],
-    ["file", "فایل مبدأ", "فایل", selected.sourceFileNameSafe ?? "—"],
-    [
-      "imported",
-      "ورود به سیستم",
-      "ورود",
-      formatSystemDateTime(selected.importedAt),
-    ],
-  ]
-    .filter(([, , , value]) => value != null)
-    .forEach(([key, label, shortLabel, value]) => {
-      const item = element(
-        "div",
-        `finance-snapshot-provenance__fact finance-snapshot-provenance__fact--${key}`,
-      );
-      const term = element("dt");
-      term.append(
-        element("span", "finance-snapshot-provenance__label--full", label),
-        element(
-          "span",
-          "finance-snapshot-provenance__label--short",
-          shortLabel,
-        ),
-      );
-      const definition = element("dd", "", value);
-      // Truncation hides characters, so the whole value stays reachable.
-      definition.title = value;
-      item.append(term, definition);
-      facts.append(item);
-    });
-  section.append(facts);
-
-  // Only a ready snapshot can be reported on: the report endpoints refuse a
-  // superseded one, so it is listed and disabled rather than silently failing.
-  const selectable = snapshots.filter(
-    (snapshot) => snapshot.status === "ready",
-  );
-  if (selectable.length > 1 && typeof onSelect === "function") {
-    const picker = document.createElement("select");
-    picker.className = "app-select finance-snapshot-provenance__picker";
-    picker.setAttribute("aria-label", "انتخاب نسخه پیشرفت مبنای محاسبه");
-    picker.title =
-      "با تغییر نسخه، محاسبه از سمت سرویس مالی دوباره انجام می‌شود.";
-    snapshots.forEach((snapshot) => {
-      const option = document.createElement("option");
-      option.value = snapshot.progressSnapshotId;
-      const status =
-        snapshot.status === "ready"
-          ? ""
-          : ` · ${SNAPSHOT_STATUS_LABELS[snapshot.status] ?? "نامشخص"}`;
-      option.textContent = `${formatBusinessDate(snapshot.reportingDate)}${status}`;
-      option.disabled = snapshot.status !== "ready";
-      option.selected =
-        snapshot.progressSnapshotId === selected.progressSnapshotId;
-      picker.append(option);
-    });
-    picker.addEventListener("change", () => onSelect(picker.value));
-    section.append(picker);
+  const answered = report?.progressSnapshotId ?? null;
+  console.info("[BAMBO Finance] مبنای محاسبه گزارش مالی", {
+    "مبنای محاسبه": "نسخه پیشرفت پروژه",
+    "نسخه": selected.version == null
+      ? null
+      : `${formatDisplayNumber(String(selected.version))}${selected.isLatest ? " (آخرین)" : ""}`,
+    "تاریخ گزارش نسخه": formatBusinessDate(selected.reportingDate),
+    "منبع": SNAPSHOT_SOURCE_LABELS[selected.sourceType] ??
+      (selected.sourceType == null ? null : "منبع ثبت‌نشده"),
+    "وضعیت": SNAPSHOT_STATUS_LABELS[selected.status] ?? "نامشخص",
+    "فایل مبدأ": selected.sourceFileNameSafe ?? null,
+    "ورود به سیستم": formatSystemDateTime(selected.importedAt),
+    "شناسه نسخه انتخاب‌شده": selected.progressSnapshotId,
+    "شناسه نسخه استفاده‌شده در گزارش": answered,
+  });
+  if (answered && answered !== selected.progressSnapshotId) {
+    console.warn(
+      "[BAMBO Finance] نسخه پاسخ سرویس با نسخه انتخاب‌شده یکسان نیست.",
+      { selected: selected.progressSnapshotId, answered },
+    );
   }
-
-  // The response states which snapshot it actually used. If that is not the one
-  // we asked for, the reader is told — below the strip rather than inside it,
-  // so the strip keeps its single line and the warning still gets said.
-  const answered = report?.progressSnapshotId;
-  if (!answered || answered === selected.progressSnapshotId) return section;
-
-  const notice = element(
-    "p",
-    "inline-notice finance-snapshot-provenance__notice",
-    "سرویس مالی این ارقام را بر پایه نسخه دیگری محاسبه کرده است؛ نسخه انتخابی برای این تاریخ گزارش قابل استفاده نبود.",
-  );
-  notice.setAttribute("role", "status");
-  const group = document.createDocumentFragment();
-  group.append(section, notice);
-  return group;
+  return null;
 }
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -1172,12 +1065,6 @@ export function createFinanceHomePage({
     activeChart = nextChart;
   }
 
-  function selectSnapshot(nextSnapshotId) {
-    if (!nextSnapshotId || nextSnapshotId === selectedSnapshotId) return;
-    selectedSnapshotId = nextSnapshotId;
-    load();
-  }
-
   function renderEmpty() {
     const card = document.createElement("section");
     card.className = "state-card";
@@ -1205,14 +1092,12 @@ export function createFinanceHomePage({
       const levelOne = { rollup: wbsRollup, error: wbsError };
       const prices = { workspace: priceWorkspace, error: priceError };
       chart = built.chart;
-      const provenance = createSnapshotProvenance({
-        snapshots,
+      const provenance = logSnapshotProvenance({
         selected:
           snapshots.find(
             (snapshot) => snapshot.progressSnapshotId === selectedSnapshotId,
           ) ?? null,
         report: data,
-        onSelect: selectSnapshot,
       });
       return renderFinanceHome(
         data,
