@@ -38,7 +38,7 @@ SOURCE_TYPE_FINANCE_ROWS = "microsoft_project"
 
 _VERSION = """
     SELECT id, organization_id, project_id, source_file_name_safe, source_sha256,
-           row_count, imported_by, imported_at
+           row_count, imported_by, imported_at, reporting_date
       FROM finance_mpp_source_versions
      WHERE organization_id = %(organization_id)s AND project_id = %(project_id)s
        AND status = 'ready'
@@ -137,7 +137,8 @@ class FinanceRowsProgressProvider:
                 # source version from a Core snapshot.
                 "sourceFileVersionId": str(version["id"]),
                 "sourceFileNameSafe": version["source_file_name_safe"],
-                "reportingDate": version["imported_at"].date().isoformat(),
+                "reportingDate": (version["reporting_date"]
+                                  or version["imported_at"].date()).isoformat(),
                 "status": STATUS_READY,
                 "snapshotType": "ACTUAL" if stated else "TARGET",
                 "sourceType": SOURCE_TYPE_FINANCE_ROWS,

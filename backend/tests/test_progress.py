@@ -1,5 +1,5 @@
 import sys,unittest
-from datetime import datetime,timezone
+from datetime import date,datetime,timezone
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -86,6 +86,31 @@ class ProgressServiceTests(unittest.IsolatedAsyncioTestCase):
    async def get_line_mapping(self,scope,line_id):return None
   with self.assertRaises(FinanceRecordNotFound):
    await self.service(Foreign()).override_history(SCOPE,LINE)
+
+ async def test_unpinned_finance_version_is_listed_and_read_without_a_get_write(self):
+  class FinanceProvider(Provider):
+   def envelope(self,organization_id,project_id,snapshot_id):
+    return {"snapshot":{"organizationId":organization_id,"projectId":project_id,
+      "progressSnapshotId":snapshot_id,"sourceFileVersionId":snapshot_id,
+      "sourceFileNameSafe":"period-12.mpp","reportingDate":"2026-08-02",
+      "status":"ready","sourceType":"microsoft_project",
+      "importedBy":str(ACTOR),"importedAt":"2026-08-03T08:00:00+00:00"},
+      "assignments":[]}
+   async def current_snapshot(self,organization_id,project_id,as_of=None):
+    return self.envelope(organization_id,project_id,str(SNAPSHOT))
+   async def get_snapshot(self,organization_id,project_id,snapshot_id):
+    return self.envelope(organization_id,project_id,snapshot_id)
+  class UnpinnedRepo(Repo):
+   async def list_snapshots(self,scope):return []
+   async def get_snapshot(self,scope,snapshot_id):return None
+  service=ProgressService(UnpinnedRepo(),FinanceProvider(),id_factory=lambda:REF,
+                          clock=lambda:AT)
+  listed=await service.list_snapshots(SCOPE)
+  self.assertEqual((SNAPSHOT,date(2026,8,2),True),
+                   (listed[0]["progress_snapshot_id"],listed[0]["reporting_date"],
+                    listed[0]["is_latest"]))
+  feed=await service.feed(SCOPE,SNAPSHOT)
+  self.assertEqual(SNAPSHOT,feed["snapshot"]["progressSnapshotId"])
 
 
 class MeasurementTypeTests(unittest.TestCase):

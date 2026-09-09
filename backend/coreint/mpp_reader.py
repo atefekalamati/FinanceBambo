@@ -27,6 +27,7 @@ never as floats. A value the file does not state is ``None`` -- absent is not ze
 
 import os
 import threading
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Protocol
@@ -92,7 +93,7 @@ class ParsedMppProject:
     """Everything one file states, as plain data. No database identifiers exist yet."""
 
     def __init__(self, application, tasks, resources, assignments, warnings,
-                 parser_engine=None):
+                 parser_engine=None, status_date=None):
         self.application = application
         self.tasks = tasks
         self.resources = resources
@@ -101,6 +102,10 @@ class ParsedMppProject:
         #: Real provenance ("mpxj-<installed version>/jvm-<running java>"), derived at
         #: JVM boot -- None from a reader that cannot honestly claim one.
         self.parser_engine = parser_engine
+        # The schedule's own data/status date. This is deliberately separate from the
+        # import timestamp: a periodic file may be uploaded days after the period it
+        # describes, and financial reporting must stop at the former.
+        self.status_date = status_date
 
 
 class MppReaderPort(Protocol):
@@ -129,6 +134,21 @@ def _number(value):
 
 def _moment(value):
     return None if value is None else str(value)
+
+
+def _calendar_date(value):
+    """Return MPXJ's ISO-like date as a Python date, or None when it states none.
+
+    MPXJ exposes modern Project dates as Java LocalDate/LocalDateTime values whose string
+    representation starts with YYYY-MM-DD. Keeping the conversion here prevents database
+    adapters from each guessing how to parse a Java object.
+    """
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(str(value).strip()[:10])
+    except (TypeError, ValueError):
+        return None
 
 
 class MpxjMppReader:
@@ -423,4 +443,6 @@ class MpxjMppReader:
         return ParsedMppProject(
             application=_text(properties.getFullApplicationName()),
             tasks=tasks, resources=resources, assignments=assignments,
-            warnings=warnings, parser_engine=self._parser_engine)
+            warnings=warnings, parser_engine=self._parser_engine,
+            status_date=_calendar_date(
+                getattr(properties, "getStatusDate", lambda: None)()))

@@ -18,6 +18,7 @@ import sys
 import tempfile
 import unittest
 import uuid
+from datetime import date
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -65,10 +66,10 @@ def assignment(auid, task_uid, resource_uid, planned_work=None, planned_quantity
             "remaining_cost": None}
 
 
-def parsed_project(tasks, resources, assignments, warnings=()):
+def parsed_project(tasks, resources, assignments, warnings=(), status_date=None):
     return ParsedMppProject(application="Microsoft.Project 16.0", tasks=tasks,
                             resources=resources, assignments=assignments,
-                            warnings=list(warnings))
+                            warnings=list(warnings), status_date=status_date)
 
 
 class CannedReader:
@@ -252,6 +253,13 @@ class MppImportServiceTests(unittest.TestCase):
             set(result))
         # No period logic exists in this repository, so none is invented.
         self.assertIsNone(result["reportingPeriodId"])
+
+    def test_the_file_status_date_is_stored_as_the_snapshots_jalali_date(self):
+        project = parsed_project([task(1)], [], [], status_date=date(2026, 8, 2))
+        self.import_file(self.service(project))
+        params = next(params for statement, params in self.state.statements
+                      if "INSERT INTO msp_snapshots" in statement)
+        self.assertEqual("1405-05-11", params[-2])
 
     def test_physical_progress_alone_still_marks_the_version_actual(self):
         # A physically-tracked actuals file keeps duration-percent at 0 everywhere;
