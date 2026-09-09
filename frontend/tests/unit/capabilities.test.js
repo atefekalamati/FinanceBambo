@@ -29,14 +29,17 @@ test("a reader has every capability except the ones that write", () => {
   assert.deepEqual(reader, {
     viewFinance: true,
     writeFinance: false,
+    // Reading what the project cost says nothing about being trusted to record
+    // what it spent. Two grants, and a reader holds neither.
+    manageInvoice: false,
     viewReport: true,
     issueReport: false,
     exportReport: false,
   });
   const admin = capabilitiesFor({ permissionCodes: FINANCE_PERMISSIONS.map((permission) => permission.code) });
-  assert.deepEqual(Object.values(admin), [true, true, true, true, true]);
+  assert.deepEqual(Object.values(admin), [true, true, true, true, true, true]);
   // An absent context is not an account with rights.
-  assert.deepEqual(Object.values(capabilitiesFor(null)), [false, false, false, false, false]);
+  assert.deepEqual(Object.values(capabilitiesFor(null)), [false, false, false, false, false, false]);
 });
 
 test("the access list shows every code the module honours", () => {
