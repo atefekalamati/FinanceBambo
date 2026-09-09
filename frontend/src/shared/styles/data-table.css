@@ -236,6 +236,22 @@
   transform: rotate(180deg);
 }
 
+.data-table__group-column-label {
+  display: none;
+  inline-size: 100%;
+  color: var(--color-text-muted);
+  direction: rtl;
+  font-size: .68rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
+}
+
+.data-table__group--open .data-table__group-column-label {
+  display: inline-block;
+}
+
 .data-table__disclosure-name {
   display: grid;
   min-inline-size: 0;

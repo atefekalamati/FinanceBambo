@@ -316,6 +316,12 @@
   border-block-start: 0;
 }
 
+/* A member stays visually tied to its open activity without changing the
+   table geometry or making the whole row louder than its parent. */
+.estimate-lines-table .data-table__child > [data-col="identity"] {
+  border-inline-start: .18rem solid rgb(0 172 88 / 30%);
+}
+
 .activity-cell--continued {
   padding-block: .2rem;
 }
