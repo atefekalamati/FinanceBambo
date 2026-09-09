@@ -97,12 +97,18 @@ def build_monthly_series(amount_rows, document_rows, window):
     return list(buckets.values()), start
 
 
-def monthly_report(amount_rows, document_rows, window, anchor: date):
+def monthly_report(amount_rows, document_rows, window, anchor: date,
+                   progress_snapshot_id=None):
     months, window_start = build_monthly_series(amount_rows, document_rows, window)
+    actual_dates = [row["invoice_date"] for row in (*amount_rows, *document_rows)
+                    if row.get("invoice_date") is not None]
     return {
         "months": months,
         "windowStart": window_start,
         "windowEnd": anchor,
+        "reportingDate": anchor,
+        "actualDataThroughDate": max(actual_dates) if actual_dates else None,
+        "progressSnapshotId": progress_snapshot_id,
         "estimateSource": "unavailable",
         "actualSource": "confirmed_financial_documents",
         # "incomplete" rather than "partial": the two existing calculationStatus fields

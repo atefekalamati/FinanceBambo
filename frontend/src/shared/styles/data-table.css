@@ -186,9 +186,6 @@
   border-color: var(--chip-tone);
   background: var(--chip-tone);
   color: #14122e;
-  box-shadow:
-    0 0 .5rem color-mix(in srgb, var(--chip-tone) 65%, transparent),
-    0 0 1.35rem color-mix(in srgb, var(--chip-tone) 32%, transparent);
 }
 
 .data-table-chip--pending { --chip-tone: var(--dash-sev-med); }

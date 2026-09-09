@@ -406,7 +406,8 @@ async def live_report_variances(projectId:str,request:Request,reportingDate:date
     return await request.app.state.finance_live_report_service.variances(scope,reportingDate,progressSnapshotId,varianceType,resourceType,query,page,pageSize,sortBy,sortDirection)
 
 @router.get("/reports/monthly",response_model=MonthlyReportResponse)
-async def monthly_report(projectId:str,request:Request,reportingDate:date,
+async def monthly_report(projectId:str,request:Request,reportingDate:date|None=None,
+    progressSnapshotId:UUID|None=None,
     monthCount:int=Query(DEFAULT_MONTH_COUNT,ge=1,le=MAX_MONTH_COUNT)):
     """Persian-month cost series for the trend chart, aggregated server-side.
 
@@ -415,7 +416,8 @@ async def monthly_report(projectId:str,request:Request,reportingDate:date,
     half a month and the chart would draw those stubs as real dips.
     """
     scope=await _resource_scope(projectId,request,"finance_report.view")
-    return await request.app.state.finance_live_report_service.monthly(scope,reportingDate,monthCount)
+    return await request.app.state.finance_live_report_service.monthly(
+        scope,reportingDate,monthCount,progressSnapshotId)
 
 @router.post("/report-snapshots",response_model=ReportSnapshotReference,status_code=201)
 async def issue_report_snapshot(projectId:str,payload:ReportSnapshotCreate,request:Request):

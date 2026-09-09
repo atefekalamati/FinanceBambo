@@ -23,6 +23,9 @@ const PAYLOAD = Object.freeze({
   ],
   windowStart: "2025-09-23",
   windowEnd: "2026-08-25",
+  reportingDate: "2026-08-25",
+  actualDataThroughDate: "2026-08-20",
+  progressSnapshotId: "snapshot-1",
   estimateSource: "unavailable",
   actualSource: "confirmed_financial_documents",
   warnings: [{ code: "MONTHLY_ESTIMATE_UNAVAILABLE", message: "برآورد ماهانه در دسترس نیست." }],
@@ -36,6 +39,12 @@ test("the monthly series is asked for as an anchor and a month count", async () 
   assert.match(client.calls[0], /\/reports\/monthly\?/);
   assert.match(client.calls[0], /reportingDate=2026-08-25/);
   assert.match(client.calls[0], /monthCount=12/);
+  const pinned = stubClient(PAYLOAD);
+  await createApiReportsAdapter(context, pinned).getMonthlyTrend({
+    reportingDate: "2026-08-25",
+    progressSnapshotId: "snapshot-1",
+  });
+  assert.match(pinned.calls[0], /progressSnapshotId=snapshot-1/);
   const custom = stubClient(PAYLOAD);
   await createApiReportsAdapter(context, custom).getMonthlyTrend({ reportingDate: "2026-08-25", monthCount: 24 });
   assert.match(custom.calls[0], /monthCount=24/);
@@ -53,6 +62,9 @@ test("money arrives as exact strings and a missing estimate stays missing", asyn
   assert.equal(result.estimateSource, "unavailable");
   assert.equal(result.actualSource, "confirmed_financial_documents");
   assert.equal(result.windowStart, "2025-09-23");
+  assert.equal(result.reportingDate, "2026-08-25");
+  assert.equal(result.actualDataThroughDate, "2026-08-20");
+  assert.equal(result.progressSnapshotId, "snapshot-1");
   assert.equal(result.warnings[0].code, "MONTHLY_ESTIMATE_UNAVAILABLE");
 });
 

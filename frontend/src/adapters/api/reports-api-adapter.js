@@ -71,8 +71,10 @@ export function createApiReportsAdapter(context, client) {
    * Coercing it here would put a floor on the chart and turn every month into an
    * overrun.
    */
-  async function getMonthlyTrend({ reportingDate, monthCount = 12 } = {}) {
-    const query = new URLSearchParams({ reportingDate, monthCount: String(monthCount) });
+  async function getMonthlyTrend({ reportingDate, progressSnapshotId, monthCount = 12 } = {}) {
+    const query = new URLSearchParams({ monthCount: String(monthCount) });
+    if (reportingDate) query.set("reportingDate", reportingDate);
+    if (progressSnapshotId) query.set("progressSnapshotId", progressSnapshotId);
     const payload = await client.request(`${base}/reports/monthly?${query.toString()}`);
     return {
       months: (payload.months ?? []).map((month) => ({
@@ -88,6 +90,9 @@ export function createApiReportsAdapter(context, client) {
       actualSource: payload.actualSource ?? "confirmed_financial_documents",
       windowStart: payload.windowStart ?? null,
       windowEnd: payload.windowEnd ?? null,
+      reportingDate: payload.reportingDate ?? payload.windowEnd ?? reportingDate ?? null,
+      actualDataThroughDate: payload.actualDataThroughDate ?? null,
+      progressSnapshotId: payload.progressSnapshotId ?? progressSnapshotId ?? null,
       warnings: payload.warnings ?? [],
     };
   }

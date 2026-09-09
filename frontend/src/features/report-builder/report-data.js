@@ -31,9 +31,10 @@ export async function loadReportData({ adapters, selection, period, today }) {
   }
   const reportingDate = snapshot?.reportingDate ?? today;
   const query = { reportingDate, progressSnapshotId: snapshot?.progressSnapshotId };
+  const monthlyQuery = snapshot ? query : { reportingDate };
   const [overview, monthly, invoices, audit, prices, financialItems, wbs] = await Promise.all([
     wanted.has("overview") ? adapters.reports.getOverview(query) : null,
-    wanted.has("monthly") ? adapters.reports.getMonthlyTrend({ reportingDate }) : null,
+    wanted.has("monthly") ? adapters.reports.getMonthlyTrend(monthlyQuery) : null,
     wanted.has("invoices") ? loadAllInvoices(adapters.invoices) : null,
     wanted.has("audit") ? adapters.audit.getEvents({ occurredFrom: period?.from, occurredTo: period?.to, pageSize: 200 }) : null,
     wanted.has("prices") ? adapters.prices.getPrices() : null,
