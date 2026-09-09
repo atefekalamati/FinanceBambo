@@ -73,13 +73,16 @@ test("independent invoice and S reports require neither progress nor overview", 
   assert.equal(data.overview, null);
 });
 
-test("overview and WBS share the newest ready snapshot and failed requests propagate", async () => {
+test("overview and WBS share the snapshot the screen showed, and failed requests propagate", async () => {
   const calls = [];
   const adapters = {
+    // Newest first, as /progress-snapshots orders them. The builder used to re-sort this
+    // list itself, which meant a printed report could name a different snapshot than the
+    // page the reader printed it from; it now asks the same question every page asks.
     progress: { getSnapshots: async () => [
-      { status: "ready", reportingDate: "2026-08-01", progressSnapshotId: "old" },
       { status: "processing", reportingDate: "2026-09-08" },
       { status: "ready", reportingDate: "2026-09-01", progressSnapshotId: "new" },
+      { status: "ready", reportingDate: "2026-08-01", progressSnapshotId: "old" },
     ] },
     reports: {
       getOverview: async (query) => { calls.push(query); return {}; },
@@ -98,6 +101,18 @@ test("overview and WBS share the newest ready snapshot and failed requests propa
     adapters.progress.getSnapshots = async () => { throw Object.assign(new Error("server"), { status }); };
     await assert.rejects(loadReportData({ selection: ["levelOne"], adapters }), (error) => error.status === status);
   }
+
+  // A snapshot of the project's OWN schedule outranks a later-dated one of another file.
+  // This is the case the builder could not previously express: it sorted by date, so an
+  // unrelated import with a newer reporting date silently became the basis of the report.
+  calls.length = 0;
+  adapters.progress.getSnapshots = async () => [
+    { status: "ready", reportingDate: "2026-10-22", progressSnapshotId: "unrelated" },
+    { status: "ready", reportingDate: "2025-10-02", progressSnapshotId: "ours", isActiveSource: true },
+  ];
+  const owned = await loadReportData({ selection: ["overview"], adapters });
+  assert.equal(owned.snapshot.progressSnapshotId, "ours");
+  assert.deepEqual(calls, [{ reportingDate: "2025-10-02", progressSnapshotId: "ours" }]);
 });
 
 test("WBS adapter preserves all quality and allocation details including null money", async () => {

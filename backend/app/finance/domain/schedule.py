@@ -128,3 +128,30 @@ def derive_snapshot_versions(refs):
     total = len(ordered)
     return [{**row, "version": total - index, "is_latest": index == 0}
             for index, row in enumerate(ordered)]
+
+
+def mark_active_source(refs, active_source_version_id):
+    """Say which snapshot came from the schedule this project's estimate is priced on.
+
+    `is_latest` answers a question about HISTORY: which row arrived last. That is not the
+    same question as which schedule the project is running on, and on a project that has
+    received snapshots from more than one file the two answers differ -- a snapshot of
+    somebody else's schedule carrying a later reporting date is still the newest row, and
+    still the wrong file to read progress from.
+
+    So the two are separate flags. `is_active_source` marks the row whose source file
+    version IS the project's active one, as `mpp_source_version` decides it: the same file
+    the estimate lines were mapped to and the same file the item table prices from. A
+    reader that wants ONE project on ONE schedule follows this flag; a reader that wants
+    the project's history follows `version`.
+
+    False is the honest answer, not a fallback: on a project with no imported source
+    version, or for a snapshot ingested from the host with no Finance file version of its
+    own, there is nothing here claiming to be the active schedule. Choosing what to do
+    with that belongs to the caller, not to this function.
+    """
+    active = None if active_source_version_id is None else str(active_source_version_id)
+    return [{**row,
+             "is_active_source": (active is not None
+                                  and str(row.get("source_file_version_id") or "") == active)}
+            for row in refs]

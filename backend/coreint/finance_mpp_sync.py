@@ -170,14 +170,26 @@ _UNITS_SCALE = Decimal(100)
 #: recovers the file's own number.
 _TOMAN_TO_RIAL = Decimal(10)
 
-# The approved toman decision belongs to these exact bytes, not to every MPP file.
-_APPROVED_TOMAN_SHA256 = "b86b63738f592bfd90286ab08daedcea4374d815c02a7503adc18182cec6e908"
+#: The toman decision belongs to exact bytes, never to "any file that says تومان".
+#:
+#: Two entries, because the same schedule reached this project as two files: MS Project
+#: rewrote the container (1,638,400 bytes and 1,518,592 bytes) without changing a figure.
+#: Compared assignment by assignment, the pair agree on all 727 costs, all 727 material
+#: quantities, all 727 actual quantities and all 81 standard rates, and state the same
+#: Status Date -- so one decision covers both, and it is recorded rather than guessed.
+#:
+#: A THIRD file does not inherit this. Adding a sha here is a statement that somebody read
+#: that file's amounts and found them to be toman.
+_APPROVED_TOMAN_SHA256 = frozenset({
+    "b86b63738f592bfd90286ab08daedcea4374d815c02a7503adc18182cec6e908",
+    "9792d658aed54efa0f397cccf73b9e1f55623f73fa0e0062643f62d8132520f3",
+})
 
 
 def _currency_scale(parsed, source_sha256):
     symbol = str(getattr(parsed, "currency_symbol", None) or "").strip()
     code = str(getattr(parsed, "currency_code", None) or "").strip().upper()
-    if (source_sha256 == _APPROVED_TOMAN_SHA256
+    if (source_sha256 in _APPROVED_TOMAN_SHA256
             and symbol == "تومان" and code == "IRR"):
         return _TOMAN_TO_RIAL
     if code == "IRR" and symbol in ("", "IRR", "ریال", "﷼"):

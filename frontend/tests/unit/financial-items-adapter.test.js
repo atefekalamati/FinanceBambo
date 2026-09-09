@@ -43,13 +43,13 @@ test("stores general cost as integer IRR amount without a physical quantity", as
 test("appends revision history while keeping original quantity immutable", async () => {
   const adapter = createMockFinancialItemsAdapter(context);
   const before = await adapter.getWorkspace();
-  const line = before.estimateLines.find((item) => item.originalQuantity === "8500.0000");
-  const after = await adapter.reviseEstimateLine({ lineId: line.lineId, revisedValue: "9000.0000", reason: "اصلاح براساس نقشه اجرایی", expectedRevision: line.revision });
+  const line = before.estimateLines.find((item) => item.lineId === "30000000-0000-4000-8000-000000000011");
+  const after = await adapter.reviseEstimateLine({ lineId: line.lineId, revisedValue: "260000.0000", reason: "اصلاح براساس نقشه اجرایی", expectedRevision: line.revision });
   const revised = after.estimateLines.find((item) => item.lineId === line.lineId);
-  assert.equal(revised.originalQuantity, "8500.0000");
-  assert.equal(revised.revisedQuantity, "9000.0000");
-  assert.equal(revised.revisions[0].previousValue, "8500.0000");
-  assert.equal(revised.revisions[0].newValue, "9000.0000");
+  assert.equal(revised.originalQuantity, "240000.0000");
+  assert.equal(revised.revisedQuantity, "260000.0000");
+  assert.equal(revised.revisions[0].previousValue, "255000.0000");
+  assert.equal(revised.revisions[0].newValue, "260000.0000");
   assert.equal(revised.revisions[0].reason, "اصلاح براساس نقشه اجرایی");
   assert.equal(revised.revisions[0].isOverrun, true);
 });
@@ -57,7 +57,7 @@ test("appends revision history while keeping original quantity immutable", async
 test("rejects stale or no-change estimate revisions", async () => {
   const adapter = createMockFinancialItemsAdapter(context);
   const workspace = await adapter.getWorkspace();
-  const line = workspace.estimateLines.find((item) => item.originalQuantity === "8500.0000");
+  const line = workspace.estimateLines.find((item) => item.lineId === "30000000-0000-4000-8000-000000000011");
   await assert.rejects(
     adapter.reviseEstimateLine({ lineId: line.lineId, revisedValue: "9000", reason: "اصلاح معتبر", expectedRevision: 999 }),
     (error) => error.code === "STALE_VERSION",

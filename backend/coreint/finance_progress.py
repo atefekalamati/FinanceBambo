@@ -28,6 +28,8 @@ so it does not report one.
 
 from psycopg.rows import dict_row
 
+from app.finance.domain.mpp_source_version import active_source_version
+
 from .progress import (ACTIVITY_CODE_FIELDS, STATUS_READY, assignment_row, task_row)
 
 #: `sourceType` names the KIND of source file, and its vocabulary is closed by the API
@@ -36,15 +38,18 @@ from .progress import (ACTIVITY_CODE_FIELDS, STATUS_READY, assignment_row, task_
 #: below: no host identifier, and a `sourceFileVersionId` naming the version itself.
 SOURCE_TYPE_FINANCE_ROWS = "microsoft_project"
 
-_VERSION = """
-    SELECT id, organization_id, project_id, source_file_name_safe, source_sha256,
-           row_count, imported_by, imported_at, reporting_date
-      FROM finance_mpp_source_versions
-     WHERE organization_id = %(organization_id)s AND project_id = %(project_id)s
-       AND status = 'ready'
-"""
-_CURRENT = _VERSION + " ORDER BY imported_at DESC, id DESC LIMIT 1"
-_BY_ID = _VERSION + " AND id = %(version_id)s"
+_COLUMNS = ("id, organization_id, project_id, source_file_name_safe, source_sha256, "
+            "row_count, imported_by, imported_at, reporting_date")
+
+#: The project's active version -- the same rule the estimate, the catalogue and the
+#: mapping use, so a feed cannot describe a schedule the other three never read.
+_CURRENT = active_source_version(_COLUMNS)
+
+#: An explicitly named version. No ordering: a caller that names one is not asking which
+#: is newest. Still scoped, so naming another project's version finds nothing.
+_BY_ID = ("SELECT %s FROM finance_mpp_source_versions"
+          " WHERE organization_id = %%(organization_id)s AND project_id = %%(project_id)s"
+          " AND status = 'ready' AND id = %%(version_id)s" % _COLUMNS)
 
 _ROWS = """
     SELECT source_task_uid, source_assignment_uid, source_resource_uid,

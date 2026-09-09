@@ -1,5 +1,6 @@
 import { element } from "../../shared/dom/elements.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
+import { defaultSnapshot } from "../../shared/progress/project-snapshot.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
 
@@ -94,8 +95,9 @@ export function createOperationsHomePage({ progressAdapter }) {
   function renderInputState(snapshots) {
     const section = element("section", "operations-input-state");
     section.setAttribute("aria-label", "وضعیت ورودی‌های محاسبه");
-    const reportable = snapshots.filter((snapshot) => snapshot.status === "ready");
-    const latest = reportable[0] ?? null;
+    // "ورودی محاسبه" must name the version the figures are actually computed from, so it
+    // asks the same question the report pages ask rather than assuming the newest row.
+    const latest = defaultSnapshot(snapshots);
 
     section.append(element("span", "operations-input-state__lead", "ورودی محاسبه"));
     const facts = element("dl", "operations-input-state__facts");

@@ -12,6 +12,7 @@ from ..domain import wbs as wbs_tree
 from ..domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT,monthly_report
 from ..domain.persian_calendar import persian_month_window
 from ..domain.reports import calculate_live_report
+from ..domain.report_coverage import require_estimate_coverage
 from ..domain.progress import (finance_version_id,
     apply_progress_overrides,reference_from_header,
  snapshot_assignments,snapshot_metadata)
@@ -206,6 +207,7 @@ class FinanceLiveReportService:
         header=effective_feed.get("snapshot") if isinstance(effective_feed,dict) else None
         report=calculate_live_report(data["estimates"],data["invoices"],effective_feed.get("assignments",[]),data["conversions"],data["gross_area"],
             corroborate_identity=finance_version_id(header) is not None)
+        report=require_estimate_coverage(report,data.get("estimate_coverage_known",True))
         return report,data,snapshot,effective_feed
 
     async def live(self,scope,reporting_date:date,progress_snapshot_id=None):
@@ -269,6 +271,7 @@ class FinanceLiveReportService:
             # per-area metrics themselves are not part of a node's contract.
             node_report=calculate_live_report(rows,invoices,assignments,data["conversions"],
                                               data["gross_area"])
+            node_report=require_estimate_coverage(node_report,data.get("estimate_coverage_known",True))
             metrics=node_report.metrics
             # One unknown type makes the node's revised estimate unknown. Skipping the
             # None entries instead would publish the sum of the types that happened to be

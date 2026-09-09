@@ -83,7 +83,15 @@ class PsycopgInvoiceRepository:
   try:
    async with self.db.transaction():
     async with self.db.cursor(row_factory=dict_row) as c:
-     await c.execute("UPDATE invoices SET status='confirmed',confirmation_idempotency_key=%s,confirmed_by=%s,confirmed_at=%s,version=version+1,updated_at=%s WHERE organization_id=%s AND project_id=%s AND id=%s AND status='awaitingConfirmation' AND version=%s AND submitted_by=%s",(key,s.actor_user_id,at,at,s.organization_id,s.project_id,v.id,v.version,s.actor_user_id))
+     # No `AND submitted_by=%s` here. The rule that only the submitter could confirm was
+     # written twice -- once in the service and once into this WHERE clause -- so removing
+     # the readable one would have left this one deciding, and it fails by matching zero
+     # rows: the caller would have been told the version was stale, which is not what
+     # happened and not a thing they could fix. Who may confirm is a permission
+     # (`finance.manage_invoice`) settled at the route; what this clause still guarantees is
+     # the concurrency contract -- right tenant, right invoice, still awaiting, unchanged
+     # version -- and `confirmed_by` records who actually did it.
+     await c.execute("UPDATE invoices SET status='confirmed',confirmation_idempotency_key=%s,confirmed_by=%s,confirmed_at=%s,version=version+1,updated_at=%s WHERE organization_id=%s AND project_id=%s AND id=%s AND status='awaitingConfirmation' AND version=%s",(key,s.actor_user_id,at,at,s.organization_id,s.project_id,v.id,v.version))
      if c.rowcount!=1:
       await c.execute("SELECT confirmation_idempotency_key FROM invoices WHERE organization_id=%s AND project_id=%s AND id=%s AND status='confirmed'",(s.organization_id,s.project_id,v.id));row=await c.fetchone()
       if row is None or row["confirmation_idempotency_key"]!=key:raise ValueError("competing confirmation")
