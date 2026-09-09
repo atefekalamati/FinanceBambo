@@ -8,6 +8,10 @@ import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/vari
 import { isWithinPeriod } from "../../shared/dates/reporting-periods.js";
 import { renderLevelOne, renderQuality, renderSCurve } from "./report-analysis.js";
 import { FOLLOWUP_SECTIONS } from "./report-followups.js";
+// The period arithmetic is the page's, not the builder's: which measures may be
+// subtracted, and what a missing end means, are answered in one place and read
+// from here so the two can never drift into two different periods.
+import { buildBreakdownComparison, buildPeriodComparison } from "../period-report/period-report.js";
 
 /**
  * One renderer per catalogue entry. Each is handed the datasets its entry asked
@@ -65,6 +69,71 @@ export const REPORT_SECTIONS = Object.freeze({
   levelOne: renderLevelOne,
   sCurve: renderSCurve,
   warnings: renderQuality,
+
+  periodMetrics(data) {
+    const reading = data.periodOverview;
+    if (!reading?.closing) {
+      return [element("p", "report-doc__note", "برای پایان این بازه گزارشی در دسترس نیست؛ بازه دیگری انتخاب کنید.")];
+    }
+    const rows = buildPeriodComparison({
+      opening: reading.opening?.metrics,
+      closing: reading.closing.metrics,
+    });
+    const nodes = [];
+    if (!reading.opening) {
+      // Reported rather than silently zeroed: a project with no reportable day
+      // before the range has an end-of-period reading and no change to state.
+      nodes.push(element("p", "report-doc__note",
+        `برای ${formatBusinessDate(reading.openingDate)} گزارشی وجود ندارد، پس مقایسه با ابتدای بازه ممکن نیست و ارقام زیر خوانش پایان بازه‌اند.`));
+    }
+    nodes.push(element("p", "report-doc__note",
+      "«افزوده‌شده» فقط برای شاخص‌های انباشتی معنا دارد. یک شاخص وضعیتی جابه‌جا می‌شود و جابه‌جایی‌اش هزینه این بازه نیست."));
+    nodes.push(reportTable({
+      caption: `شاخص‌های مالی در ابتدا و پایان بازه ${formatBusinessDate(reading.openingDate)} تا ${formatBusinessDate(reading.closingDate)}`,
+      columns: [{ label: "شاخص" }, { label: "نوع" }, { label: "ابتدای بازه", numeric: true },
+                { label: "پایان بازه", numeric: true }, { label: "تغییر", numeric: true }],
+      rows: rows.map((row) => [
+        row.label,
+        row.kind === "cumulative" ? "انباشتی" : "وضعیتی",
+        money(row.openingIrr),
+        money(row.closingIrr),
+        row.comparable ? money(row.changeIrr) : "قابل مقایسه نیست",
+      ]),
+    }));
+    return nodes;
+  },
+
+  periodBreakdown(data) {
+    const reading = data.periodOverview;
+    if (!reading?.closing) {
+      return [element("p", "report-doc__note", "برای پایان این بازه گزارشی در دسترس نیست؛ بازه دیگری انتخاب کنید.")];
+    }
+    const rows = buildBreakdownComparison({
+      opening: reading.opening?.breakdown,
+      closing: reading.closing.breakdown,
+    });
+    if (!rows.length) {
+      return [element("p", "report-doc__note", "برای این بازه تفکیکی بر اساس نوع قلم ثبت نشده است.")];
+    }
+    return [
+      element("p", "report-doc__note",
+        "برآورد اولیه و هزینه واقعی انباشتی‌اند، پس تغییرشان سهم همین بازه است. باقی‌مانده و پیش‌بینی وضعیتی‌اند."),
+      reportTable({
+        caption: `تفکیک هزینه بر اساس نوع قلم، از ${formatBusinessDate(reading.openingDate)} تا ${formatBusinessDate(reading.closingDate)}`,
+        columns: [{ label: "نوع قلم" }, { label: "برآورد اولیه — تغییر", numeric: true },
+                  { label: "هزینه واقعی — تغییر", numeric: true },
+                  { label: "باقی‌مانده — پایان بازه", numeric: true },
+                  { label: "پیش‌بینی — پایان بازه", numeric: true }],
+        rows: rows.map((row) => [
+          row.label,
+          money(row.measures.initialEstimateIrr?.changeIrr),
+          money(row.measures.actualCostIrr?.changeIrr),
+          money(row.measures.remainingPhysicalCostIrr?.closingIrr),
+          money(row.measures.forecastFinalIrr?.closingIrr),
+        ]),
+      }),
+    ];
+  },
 
   overview(data) {
     const metrics = metricsOf(data);

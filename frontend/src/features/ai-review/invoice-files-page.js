@@ -1,6 +1,7 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { createPermissionNotice } from "../../shared/components/permission-notice.js";
 import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -162,7 +163,7 @@ function renderFiles(files, { adapter, canUpload, onChanged }) {
 
 export function createInvoiceFilesPage({ context, adapter }) {
   const root = element("div", "invoice-files-page");
-  const canUpload = capabilitiesFor(context).writeFinance;
+  const canUpload = capabilitiesFor(context).manageInvoice;
   let state = createRequestState(REQUEST_STATUS.LOADING);
 
   async function load() {
@@ -189,7 +190,12 @@ export function createInvoiceFilesPage({ context, adapter }) {
 
   function renderContent(files) {
     const fragment = document.createDocumentFragment();
-    const permissionNote = canUpload ? document.createDocumentFragment() : element("div", "state-card state-card--danger", "این صفحه فقط برای مشاهده است؛ مجوز ویرایش مالی برای بارگذاری لازم است.");
+    // Named for the grant that actually gates it. It used to say «ویرایش مالی»,
+    // which is a different code and would have sent the reader to ask for the
+    // wrong thing.
+    const permissionNote = canUpload
+      ? document.createDocumentFragment()
+      : createPermissionNotice("بارگذاری تصویر یا صدای فاکتور");
     const uploadGrid = element("div", "file-upload-grid");
     uploadGrid.append(
       createUploadCard({ logicalType: "invoice_image", title: "تصویر فاکتور", description: "تصویر خوانا از فاکتور را بارگذاری کنید.", accept: ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp", limit: "قالب‌های مجاز: جی‌پگ، پی‌ان‌جی و وب‌پی · حداکثر ۱۰ مگابایت", adapter, onUploaded: load, canUpload }),
