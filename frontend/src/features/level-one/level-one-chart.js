@@ -32,7 +32,7 @@ export function createLevelOneChart({ rows, formatExact, ariaLabel, onSelect = n
   // Top line first: the guide reads downwards, as the host's does.
   [...ticks].reverse().forEach((tick) => {
     const value = element("span", "vbars__tick", scale?.format(tick.valueIrr) ?? "");
-    value.dataset.exact = formatExact(tick.valueIrr);
+    value.title = formatExact(tick.valueIrr);
     axis.append(value);
   });
 
@@ -52,7 +52,7 @@ export function createLevelOneChart({ rows, formatExact, ariaLabel, onSelect = n
     ].forEach(([series, value, label]) => {
       const bar = element("div", `vbar vbar--${series}`);
       bar.style.height = `${share(value, ceiling)}%`;
-      bar.dataset.exact = `${label}: ${formatExact(value)}`;
+      bar.title = `${label}: ${formatExact(value)}`;
       bar.append(element("em", "", scale?.format(value) ?? ""));
       bars.append(bar);
     });

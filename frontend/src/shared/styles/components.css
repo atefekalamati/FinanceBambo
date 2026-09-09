@@ -419,41 +419,10 @@
    Compact financial values
    -------------------------------------------------------------------------- */
 
-.compact-money {
-  position: relative;
+/* The exact amount is a native `title` now, painted by the host's tooltip
+   engine. Only the cursor stays: it is what says there is more to see. */
+  .compact-money {
   cursor: help;
-}
-
-.compact-money::after {
-  position: absolute;
-  z-index: var(--z-calendar-popup);
-  inset-block-end: calc(100% + .4rem);
-  inset-inline-start: 50%;
-  inline-size: max-content;
-  max-inline-size: min(18rem, 80vw);
-  padding: .35rem .55rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  background: var(--color-surface-canvas);
-  box-shadow: var(--shadow-toolbar);
-  content: attr(data-exact);
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  line-height: 1.5;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(50%) translateY(.2rem);
-  transition:
-    opacity var(--duration-fast) var(--ease-standard),
-    transform var(--duration-fast) var(--ease-standard);
-  white-space: normal;
-}
-
-.compact-money:is(:hover, :focus-visible)::after,
-.price-impact-chart__row:focus-visible .compact-money::after {
-  opacity: 1;
-  transform: translateX(50%) translateY(0);
 }
 
 @media (max-width: 48rem) {

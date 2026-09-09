@@ -83,7 +83,7 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       const card = element("article", "level-one-totals__card");
       const figure = element("strong", "level-one-totals__value numeric",
         kind === "text" ? value : formatCompactMoneyFromIrr(value));
-      if (kind !== "text") figure.dataset.exact = formatTomanFromIrr(value);
+      if (kind !== "text") figure.title = formatTomanFromIrr(value);
       card.append(figure, element("span", "level-one-totals__label", label));
       grid.append(card);
     });
@@ -103,7 +103,7 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       element("p", "", `${formatCompactMoneyFromIrr(view.unattributed.actualCostIrr)} از هزینه ثبت‌شده به هیچ مرحله‌ای وصل نیست، چون خط فاکتور آن به ردیف برآوردی ارجاع ندارد. این مبلغ در جمع مراحل بالا نیامده است.`),
     );
     const value = element("strong", "numeric", percent(view.unattributed.sharePercent));
-    value.dataset.exact = formatTomanFromIrr(view.unattributed.actualCostIrr);
+    value.title = formatTomanFromIrr(view.unattributed.actualCostIrr);
     notice.append(value);
     return notice;
   }
@@ -139,7 +139,7 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
         const cell = element("td", index === 0 ? "" : "numeric");
         cell.textContent = text;
         if (index === 2 || index === 3 || index === 5) {
-          cell.dataset.exact = formatTomanFromIrr([row.initialEstimateIrr, row.actualCostIrr, row.forecastFinalIrr][index === 2 ? 0 : index === 3 ? 1 : 2]);
+          cell.title = formatTomanFromIrr([row.initialEstimateIrr, row.actualCostIrr, row.forecastFinalIrr][index === 2 ? 0 : index === 3 ? 1 : 2]);
         }
         record.append(cell);
       });
@@ -166,7 +166,7 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       const track = element("div", "level-one-breakdown__track");
       const bar = element("span", "level-one-breakdown__bar chart-mark");
       bar.style.setProperty("--bar-width", `${entry.magnitude}%`);
-      bar.dataset.exact = formatTomanFromIrr(entry.amountIrr);
+      bar.title = formatTomanFromIrr(entry.amountIrr);
       track.append(bar);
       item.append(head, track, element("span", "level-one-breakdown__share", `${percent(entry.sharePercent)} از هزینه این مرحله`));
       list.append(item);
