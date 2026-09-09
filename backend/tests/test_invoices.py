@@ -8,7 +8,7 @@ BACKEND_ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(BACKEND_R
 from app.finance.domain.invoices import Invoice,actual_cost,calculate_invoice
 from app.finance.schemas.invoices import CorrectiveInvoiceCreate,InvoiceConfirm,InvoiceCreate,InvoicePatch,InvoiceVoid
 from app.finance.security.guards import FinanceScope
-from app.finance.services.invoices import FinanceInvoiceService,InvoiceAlreadyConfirmed,InvoiceConfirmationForbidden,StaleInvoice,invoice_code
+from app.finance.services.invoices import FinanceInvoiceService,InvoiceAlreadyConfirmed,StaleInvoice,invoice_code
 class InvoiceTests(unittest.TestCase):
  def test_round_half_up_and_proportional_adjustments_last_line_remainder(self):
   result=calculate_invoice([("2.5","101"),("1","100")],discount=Decimal("10"),tax=Decimal("7"),shipping=Decimal("3"),other=Decimal("0"))
@@ -98,12 +98,27 @@ class InvoiceLifecycleTests(unittest.IsolatedAsyncioTestCase):
   repo=FakeInvoiceRepo(current);service=FinanceInvoiceService(repo,clock=lambda:NOW)
   awaiting=await service.update(FinanceScope(ORG,"p1",ACTOR),INVOICE_ID,InvoicePatch(expectedVersion=1,status="awaitingConfirmation"))
   self.assertEqual("keep me",awaiting.description)
- async def test_competing_confirmation_and_wrong_submitter_are_rejected(self):
+ async def test_a_competing_confirmation_is_still_rejected(self):
   scope=FinanceScope(ORG,"p1",ACTOR)
   repo=FakeInvoiceRepo(invoice("confirmed",3));repo.confirm_key="first"
   with self.assertRaises(InvoiceAlreadyConfirmed):await FinanceInvoiceService(repo).confirm(scope,INVOICE_ID,InvoiceConfirm(expectedVersion=2,idempotencyKey="second"))
-  wrong=FakeInvoiceRepo(invoice("awaitingConfirmation",2,OTHER))
-  with self.assertRaises(InvoiceConfirmationForbidden):await FinanceInvoiceService(wrong).confirm(scope,INVOICE_ID,InvoiceConfirm(expectedVersion=2,idempotencyKey="key"))
+
+ async def test_somebody_elses_invoice_may_be_confirmed_by_an_authorized_caller(self):
+  """Confirming is authorized, not personal.
+
+  The old rule let only the submitter confirm, which meant an invoice waiting on somebody
+  on leave could not be confirmed by anyone -- and, read as a control, it said the opposite
+  of what it did: it REQUIRED the same person to raise and approve. Who may confirm is
+  `finance.manage_invoice`, settled at the route before this code runs; what this service
+  still owes is the lifecycle, and what the repository still records is who actually did it.
+  """
+  scope=FinanceScope(ORG,"p1",ACTOR)
+  repo=FakeInvoiceRepo(invoice("awaitingConfirmation",2,OTHER))
+  confirmed=await FinanceInvoiceService(repo).confirm(scope,INVOICE_ID,InvoiceConfirm(expectedVersion=2,idempotencyKey="key"))
+  self.assertEqual("confirmed",confirmed.status)
+  self.assertEqual(OTHER,confirmed.submitted_by)
+  # The actor is recorded as the confirmer, so the trail still names two different people.
+  self.assertEqual(ACTOR,confirmed.confirmed_by)
  async def test_confirm_requires_awaiting_state_and_current_version(self):
   service=FinanceInvoiceService(FakeInvoiceRepo(invoice("draft",1)))
   with self.assertRaises(StaleInvoice):await service.confirm(FinanceScope(ORG,"p1",ACTOR),INVOICE_ID,InvoiceConfirm(expectedVersion=1,idempotencyKey="key"))

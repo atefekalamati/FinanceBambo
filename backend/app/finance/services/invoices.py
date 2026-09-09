@@ -7,7 +7,6 @@ from ..domain.errors import FinanceDomainError
 class DuplicateInvoice(FinanceDomainError):status=409;code="DUPLICATE_INVOICE"
 class StaleInvoice(FinanceDomainError):status=409;code="STALE_VERSION"
 class InvoiceAlreadyConfirmed(FinanceDomainError):status=409;code="INVOICE_ALREADY_CONFIRMED"
-class InvoiceConfirmationForbidden(FinanceDomainError):status=403;code="FINANCE_FORBIDDEN"
 class InvoiceOperationConflict(FinanceDomainError):status=409;code="INVOICE_ALREADY_CONFIRMED"
 class InvoiceValidationError(FinanceDomainError):status=422;code="VALIDATION_ERROR"
 def invoice_code(invoice_id):return f"F-{str(invoice_id).split('-')[0].upper()}"
@@ -63,7 +62,12 @@ class FinanceInvoiceService:
  async def confirm(self,s,invoice_id,c):
   if s.actor_user_id is None:raise PermissionError("actor required")
   current=await self.get(s,invoice_id)
-  if current.submitted_by!=s.actor_user_id:raise InvoiceConfirmationForbidden("only the submitting user can confirm this invoice")
+  # Confirming is not personal, it is authorized. The rule used to be "only the submitter
+  # may confirm", which made an invoice unconfirmable the moment the person who entered it
+  # was on leave, and -- worse -- described a SEGREGATION of duty while doing the opposite:
+  # it required the same person to raise and approve. What matters is that the caller holds
+  # finance.manage_invoice for this project, which the route gate has already established,
+  # and that the actual confirming actor is recorded below.
   if current.status=="confirmed":
    repeated=await self.repo.confirmation_matches(s,invoice_id,c.idempotency_key)
    if repeated:return current

@@ -5,7 +5,7 @@ from ..domain.progress import (ProgressOverride,ProgressPairing,ProgressReferenc
  finance_version_id,reference_from_header,resolve_progress_quantity,
  snapshot_assignments,snapshot_metadata)
 from ..adapters.ports import supports_current_snapshot
-from ..domain.schedule import derive_snapshot_versions
+from ..domain.schedule import derive_snapshot_versions,mark_active_source
 from ..domain.errors import FinanceDomainError
 from ..domain.resources import FinanceRecordNotFound
 class ProgressMappingError(FinanceDomainError):status=422;code="PROGRESS_LINE_MAPPING_MISSING"
@@ -36,7 +36,11 @@ class ProgressService:
                  "source_type":value.source_type,"host_snapshot_id":None,
                  "host_file_version_id":None})
     rows.sort(key=lambda row:(row["reporting_date"],str(row["imported_at"])),reverse=True)
-  return derive_snapshot_versions(rows)
+  # Which of these is the project's own schedule is a fact the caller should be told, not
+  # one it should re-derive from dates. Five pages used to guess it and did not all guess
+  # the same way; see `mark_active_source`.
+  return derive_snapshot_versions(
+   mark_active_source(rows,await self.repo.active_source_version(s)))
 
  async def snapshot(self,s,snapshot_id):
   """One snapshot, with the version the list would have given it.
@@ -52,6 +56,8 @@ class ProgressService:
   ref=await self.repo.get_snapshot(s,snapshot_id)
   direct_feed=None
   if ref is None:
+   if not supports_current_snapshot(self.provider):
+    raise FinanceRecordNotFound("progress snapshot not found")
    # Finance-owned versions resolve by their own UUID even before they are pinned.
    # This keeps the newest uploaded file usable without turning a GET into a write.
    direct_feed=await self.provider.get_snapshot(

@@ -44,6 +44,8 @@ from uuid import uuid4
 
 from psycopg.rows import dict_row
 
+from app.finance.domain.mpp_source_version import active_source_version
+
 from .finance_mpp_sync import MATERIAL_UNIT_RATE
 
 LOG = logging.getLogger("coreint.finance_mpp_mapping")
@@ -225,11 +227,9 @@ class FinanceMppMappingService:
         """The newest ready source version for this project, or None."""
         async with await self._connect() as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
-                await cursor.execute("""
-                    SELECT id FROM finance_mpp_source_versions
-                     WHERE organization_id=%s AND project_id=%s AND status='ready'
-                     ORDER BY imported_at DESC, id DESC LIMIT 1
-                """, (organization_id, project_id))
+                await cursor.execute(
+                    active_source_version(organization="%s", project="%s"),
+                    (organization_id, project_id))
                 found = await cursor.fetchone()
         return None if found is None else found["id"]
 

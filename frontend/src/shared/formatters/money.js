@@ -17,6 +17,22 @@ export function irrToToman(value) {
   return remainder === 0n ? String(whole) : `${amount < 0n && whole === 0n ? "-" : ""}${whole}.${remainder}`;
 }
 
+/**
+ * How to say, once for a whole table, what its bare numbers are.
+ *
+ * A numeric column is easier to read without a currency word repeated down every row, so
+ * several tables format their money with `withCurrency: false`. That is a presentation
+ * choice, and it leaves a real gap: a column of «۱۲٬۵۶۵٬۱۱۵٬۳۹۱» does not say whether it
+ * is rials or tomans, and the difference is a factor of ten in somebody's budget.
+ *
+ * It reads the same preference `formatTomanFromIrr` reads, on purpose. A label written out
+ * by hand would be right until the reader switched the display currency, and then it would
+ * be confidently wrong -- which is worse than the silence it replaced.
+ */
+export function displayCurrencyNote() {
+  return `مبالغ به ${getDisplayCurrencyLabel()}`;
+}
+
 export function formatTomanFromIrr(value, { withCurrency = true, fallback = "—" } = {}) {
   const displayValue = irrToDisplayValue(value);
   if (displayValue === null) return fallback;

@@ -3,7 +3,7 @@
 Feature endpoints are intentionally added only in their approved delivery stage.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Request, UploadFile, File, Form,Response,Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile, File, Form,Response,Query
 from uuid import UUID
 
 from .schemas.settings import (
@@ -12,8 +12,8 @@ from .schemas.settings import (
     FinanceSettingsRevisionResponse,
     FinanceSummaryResponse,
 )
-from .security.guards import authorize_finance_request
-from .services.settings import may_edit_settings, settings_edit_permission
+from .security.guards import FinanceNotFound, authorize_finance_request
+from .services.settings import SETTINGS_EDIT_PERMISSION, may_edit_settings
 from .schemas.resources import (EstimateLineCreate, EstimateLineResponse,
     EstimateRevisionCreate, ResourceCreate, ResourcePatch, ResourceResponse)
 from .schemas.activities import ActivityCreate, ActivityListResponse, ActivityResponse
@@ -69,7 +69,7 @@ async def patch_finance_settings(
     scope = await authorize_finance_request(
         request,
         projectId,
-        settings_edit_permission,
+        SETTINGS_EDIT_PERMISSION,
         auth,
         scope_authorizer,
         permission_authorizer,
@@ -111,6 +111,28 @@ async def get_finance_summary(projectId: str, request: Request):
 async def _resource_scope(project_id, request, permission):
     auth, scope_authorizer, permission_authorizer = _host_ports(request)
     return await authorize_finance_request(request, project_id, permission, auth, scope_authorizer, permission_authorizer)
+
+
+async def _conceal_unless_permitted(project_id, request, permission):
+    """The same four gates, but a refusal is reported as "not found".
+
+    For a route whose entire subject is content somebody must not see, every "no" has to
+    look the same. `authorize_finance_request` answers 403, which is the right answer
+    almost everywhere -- it tells an authenticated colleague they need a permission rather
+    than pretending the feature is missing. On the original-file route it is the wrong one,
+    because a 403 on a guessed id confirms the id.
+
+    So a 403 from ANY of the gates becomes the 404 a missing record produces, and the
+    caller cannot tell "no permission" from "wrong project" from "no such file".
+    Authentication is untouched: a 401 stays a 401, because being logged out is not a fact
+    about the file.
+    """
+    try:
+        return await _resource_scope(project_id, request, permission)
+    except HTTPException as refusal:
+        if refusal.status_code == 403:
+            raise FinanceNotFound() from None
+        raise
 
 
 @router.get("/resources", response_model=list[ResourceResponse])
@@ -298,26 +320,26 @@ async def invoices(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize
     return InvoiceListResponse(items=[InvoiceResponse.from_domain(x) for x in items],page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 @router.post("/invoices",response_model=InvoiceResponse,status_code=201)
 async def create_invoice(projectId:str,payload:InvoiceCreate,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.create(scope,payload))
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return InvoiceResponse.from_domain(await request.app.state.invoice_service.create(scope,payload))
 @router.get("/invoices/{invoiceId}",response_model=InvoiceResponse)
 async def invoice(projectId:str,invoiceId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view");return InvoiceResponse.from_domain(await request.app.state.invoice_service.get(scope,invoiceId))
 @router.patch("/invoices/{invoiceId}",response_model=InvoiceResponse)
 async def patch_invoice(projectId:str,invoiceId:UUID,payload:InvoicePatch,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.update(scope,invoiceId,payload))
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return InvoiceResponse.from_domain(await request.app.state.invoice_service.update(scope,invoiceId,payload))
 @router.post("/invoices/{invoiceId}/confirm",response_model=InvoiceResponse)
 async def confirm_invoice(projectId:str,invoiceId:UUID,payload:InvoiceConfirm,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.confirm(scope,invoiceId,payload))
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return InvoiceResponse.from_domain(await request.app.state.invoice_service.confirm(scope,invoiceId,payload))
 @router.post("/invoices/{invoiceId}/void",response_model=InvoiceResponse,status_code=201)
 async def void_invoice(projectId:str,invoiceId:UUID,payload:InvoiceVoid,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.void(scope,invoiceId,payload))
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return InvoiceResponse.from_domain(await request.app.state.invoice_service.void(scope,invoiceId,payload))
 @router.post("/invoices/{invoiceId}/corrective",response_model=InvoiceResponse,status_code=201)
 async def corrective_invoice(projectId:str,invoiceId:UUID,payload:CorrectiveInvoiceCreate,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.edit");return InvoiceResponse.from_domain(await request.app.state.invoice_service.corrective(scope,invoiceId,payload))
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return InvoiceResponse.from_domain(await request.app.state.invoice_service.corrective(scope,invoiceId,payload))
 
 @router.post("/files",response_model=AttachmentResponse,status_code=201,responses=FINANCE_ERROR_RESPONSES)
 async def upload_finance_file(projectId:str,request:Request,logicalType:str=Form(...),file:UploadFile=File(...)):
-    scope=await _resource_scope(projectId,request,"finance.edit")
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice")
     value=await request.app.state.finance_attachment_service.upload(scope,logicalType,file.filename or "upload.bin",file.content_type or "application/octet-stream",await file.read())
     return AttachmentResponse.from_domain(value)
 
@@ -346,13 +368,26 @@ async def get_finance_file(projectId:str,fileId:UUID,request:Request):
 
 @router.get("/files/{fileId}/content",responses=FINANCE_ERROR_RESPONSES)
 async def get_finance_file_content(projectId:str,fileId:UUID,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.view")
+    """The uploaded invoice image or recording itself, for invoice managers only.
+
+    The metadata beside it stays on `finance.view` -- a viewer may see that a file exists,
+    what it is called, and whether it has been read. The BYTES are different: an invoice
+    photograph carries a supplier's name, their prices and often a signature, and that is
+    the one thing here that cannot be redacted after somebody has seen it.
+
+    404 rather than 403, and the concealment is the point rather than a side effect. "You
+    may not read this file" tells the caller the file is there; on an id they guessed, the
+    difference between 403 and 404 is exactly the fact they were probing for. A caller
+    without the permission therefore gets the same answer as one asking for a file that
+    never existed, and nothing is streamed before the gate is passed.
+    """
+    scope=await _conceal_unless_permitted(projectId,request,"finance.manage_invoice")
     metadata,content=await request.app.state.finance_attachment_service.content(scope,fileId)
-    return Response(content=content,media_type=metadata.mime_type,headers={"Content-Disposition":f'inline; filename="{metadata.original_name_safe}"',"X-Content-Type-Options":"nosniff"})
+    return Response(content=content,media_type=metadata.mime_type,headers={"Content-Disposition":f'inline; filename="{metadata.original_name_safe}"',"X-Content-Type-Options":"nosniff","Cache-Control":"private, no-store"})
 
 @router.post("/files/{fileId}/extractions",response_model=ExtractionDraftResponse,status_code=201,responses=FINANCE_ERROR_RESPONSES)
 async def start_extraction(projectId:str,fileId:UUID,payload:ExtractionStart,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.edit")
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice")
     return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.start(scope,fileId,payload.hints))
 
 @router.post("/files/{fileId}/extractions/async",status_code=202,responses=FINANCE_ERROR_RESPONSES)
@@ -364,7 +399,7 @@ async def start_extraction_async(projectId:str,fileId:UUID,payload:ExtractionSta
     request open for all of it. Poll `GET /extractions?fileId=` -- the attachment status
     returned here moves uploaded -> processing -> ready | failed on its own.
     """
-    scope=await _resource_scope(projectId,request,"finance.edit")
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice")
     attachment,existing=await request.app.state.finance_extraction_service.schedule(
         scope,fileId,lambda run:background.add_task(run),payload.hints)
     return {"fileId":str(fileId),"processingStatus":attachment.processing_status,
@@ -384,17 +419,17 @@ async def get_extraction(projectId:str,draftId:UUID,request:Request):
 
 @router.post("/extractions/{draftId}/reject",response_model=ExtractionDraftResponse,responses=FINANCE_ERROR_RESPONSES)
 async def reject_extraction(projectId:str,draftId:UUID,payload:ExtractionReject,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.edit")
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice")
     return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.reject(scope,draftId,payload))
 
 @router.post("/extractions/{draftId}/retry",response_model=ExtractionDraftResponse,status_code=201,responses=FINANCE_ERROR_RESPONSES)
 async def retry_extraction(projectId:str,draftId:UUID,payload:ExtractionRetry,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.edit")
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice")
     return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.retry(scope,draftId,payload.hints))
 
 @router.post("/extractions/{draftId}/confirm",response_model=InvoiceResponse,responses=FINANCE_ERROR_RESPONSES)
 async def confirm_extraction(projectId:str,draftId:UUID,payload:ExtractionConfirm,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.edit")
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice")
     return InvoiceResponse.from_domain(await request.app.state.finance_extraction_service.confirm(scope,draftId,payload))
 
 @router.get("/reports/live",response_model=LiveReportResponse)

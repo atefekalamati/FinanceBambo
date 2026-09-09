@@ -11,6 +11,18 @@ function exactInteger(value) {
   return /^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : 0n;
 }
 
+/**
+ * The same parse, but `null` where the value was never stated.
+ *
+ * `exactInteger` answers `0n` so the axis arithmetic above always has a number to work
+ * with, which is right for a scale and wrong for a figure: a category the Backend could
+ * not compute is not a category that came to nothing, and only one of the two may be
+ * drawn as a bar of no height.
+ */
+function statedInteger(value) {
+  return /^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : null;
+}
+
 function absolute(value) {
   return value < 0n ? -value : value;
 }
@@ -76,22 +88,28 @@ function toPercent(actual, estimate) {
 
 export function buildBulletPresentation(rows = []) {
   const normalized = rows.map((row) => {
-    const estimate = exactInteger(row.initialEstimateIrr);
-    const actual = exactInteger(row.actualCostIrr);
+    const estimate = statedInteger(row.initialEstimateIrr);
+    const actual = statedInteger(row.actualCostIrr);
     return {
       resourceType: row.resourceType,
       label: TYPE_LABELS[row.resourceType] ?? "نوع تعریف‌نشده",
-      initialEstimateIrr: String(row.initialEstimateIrr ?? "0"),
+      // Null is carried, not defaulted. A type whose estimate could not be worked out
+      // — this project's equipment lines state no quantity and no rate — is not a type
+      // budgeted at nothing, and the table beside this chart already prints "قابل محاسبه
+      // نیست" for it.
+      initialEstimateIrr: row.initialEstimateIrr == null ? null : String(row.initialEstimateIrr),
       revisedEstimateIrr: row.revisedEstimateIrr == null ? null : String(row.revisedEstimateIrr),
-      actualCostIrr: String(row.actualCostIrr ?? "0"),
-      forecastFinalIrr: String(row.forecastFinalIrr ?? "0"),
+      actualCostIrr: row.actualCostIrr == null ? null : String(row.actualCostIrr),
+      forecastFinalIrr: row.forecastFinalIrr == null ? null : String(row.forecastFinalIrr),
       estimate,
       actual,
     };
   });
 
   const ceilingSource = normalized.reduce((result, row) => {
-    const candidate = row.estimate > row.actual ? row.estimate : row.actual;
+    const estimate = row.estimate ?? 0n;
+    const actual = row.actual ?? 0n;
+    const candidate = estimate > actual ? estimate : actual;
     return candidate > result ? candidate : result;
   }, 0n);
   const axis = chooseAxisCeiling(ceilingSource);
@@ -106,18 +124,21 @@ export function buildBulletPresentation(rows = []) {
       // one whose estimate could not be worked out — most often because its
       // lines carry no estimate price — and saying "۰٪ مصرف شده" about it would
       // be an answer to a question nobody could answer.
-      const hasEstimate = estimate > 0n;
+      const hasEstimate = estimate !== null && estimate > 0n;
       return Object.freeze({
         ...row,
         hasEstimate,
         // A category whose reversals outweigh its documents has a negative
         // actual. It gets no bar rather than a bar drawn from its size.
-        actualBelowZero: actual < 0n,
+        actualBelowZero: actual !== null && actual < 0n,
         estimateMagnitude: hasEstimate ? magnitude(estimate) : null,
-        actualMagnitude: magnitude(actual),
-        consumedPercent: hasEstimate ? toPercent(actual, estimate) : null,
-        overBudget: hasEstimate && actual > estimate,
-        overspendIrr: hasEstimate && actual > estimate ? String(actual - estimate) : null,
+        // Null actual means the figure is unavailable, so there is no bar to draw --
+        // as opposed to a real zero, which draws a bar of no height and means it.
+        actualMagnitude: actual === null ? null : magnitude(actual),
+        consumedPercent: hasEstimate && actual !== null ? toPercent(actual, estimate) : null,
+        overBudget: hasEstimate && actual !== null && actual > estimate,
+        overspendIrr: hasEstimate && actual !== null && actual > estimate
+          ? String(actual - estimate) : null,
       });
     }),
   });

@@ -69,32 +69,71 @@ SIBLING_PROJECT = "annex_site_02"
 #: happened, and reading one as progress would report planned work as done.
 SNAPSHOT_TYPES = ("TARGET", "ACTUAL", "RESCHEDULED")
 
-#: The permission catalogue as the real Core has it today. `finance_report.issue` is absent
-#: from both, and that is the whole point of mirroring it faithfully.
+#: Finance's whole permission vocabulary. Two of these the host has NOT registered --
+#: `finance.manage_invoice` and `finance_report.issue` -- and they appear here anyway,
+#: because a local mirror that quietly omitted them would make the routes needing them look
+#: broken instead of look blocked. Which is exactly the distinction the demo has to show.
 PERMISSIONS = (
     ("finance", "view", "finance.view", "مشاهده مالی", "مالی"),
     ("finance", "edit", "finance.edit", "ویرایش مالی", "مالی"),
+    ("finance", "manage_invoice", "finance.manage_invoice", "مدیریت فاکتورها", "مالی"),
     ("finance_report", "view", "finance_report.view", "مشاهده گزارش مالی", "مالی"),
     ("finance_report", "export", "finance_report.export", "خروجی گزارش مالی", "مالی"),
+    ("finance_report", "issue", "finance_report.issue", "صدور گزارش مالی", "مالی"),
 )
 
-ROLES = (
+#: PROVENANCE: this list of role codes was SUPPLIED to us as the host's roles. It was not
+#: read from a live Core database by anything in this repository, and nothing here should be
+#: read as confirming it. The Persian labels and the category column are local placeholders
+#: chosen so the mirror's tables are populated; they are not host evidence either.
+HOST_ROLES = (
     ("org_chief", "رئیس سازمان", "customer"),
-    ("finance_manager", "مدیر مالی", "customer"),
-    ("finance_expert", "کارشناس مالی", "customer"),
-    ("viewer", "بیننده", "customer"),
+    ("project_manager", "مدیر پروژه", "customer"),
+    ("site_supervisor", "سرپرست کارگاه", "customer"),
+    ("technical_expert", "کارشناس فنی", "customer"),
+    ("guest", "مهمان", "customer"),
     ("bambo_admin", "مدیر بامبو", "internal"),
+    ("project_definition_expert", "کارشناس تعریف پروژه", "customer"),
+    ("project_control_expert", "کارشناس کنترل پروژه", "customer"),
+    ("capture_expert", "کارشناس برداشت", "customer"),
+    ("quantity_survey_expert", "کارشناس متره", "customer"),
+    ("finance_expert", "کارشناس مالی", "customer"),
+    ("support", "پشتیبانی", "internal"),
 )
 
-ROLE_PERMISSIONS = {
-    "org_chief": ("finance.view", "finance.edit", "finance_report.view", "finance_report.export"),
-    # The role the override-denial demo needs: it grants finance.edit and is *not*
-    # org_chief. See USER_ROLES for why that distinction decides what the demo proves.
-    "finance_manager": ("finance.view", "finance.edit", "finance_report.view"),
-    "finance_expert": ("finance.view", "finance_report.view"),
-    "viewer": ("finance.view",),
-    "bambo_admin": ("finance.view", "finance_report.view"),
+#: The ONLY host role whose finance permissions were supplied to us. Every other host role
+#: above is deliberately absent from this mapping rather than guessed at: an unmapped role
+#: grants nothing here, which is also what it does in Finance until Core says otherwise.
+#:
+#: `finance.manage_invoice` is NOT here, and adding the code to the vocabulary above did not
+#: put it here. An administrator-sounding name is not evidence of a grant, and inventing one
+#: would make the local demo disagree with the deployment it is supposed to describe.
+HOST_ROLE_PERMISSIONS = {
+    "bambo_admin": ("finance.view", "finance.edit",
+                    "finance_report.view", "finance_report.export"),
 }
+
+#: Host roles we hold no finance permission evidence for. Named rather than left implicit,
+#: so "we were not told" cannot be mistaken for "they have none".
+UNMAPPED_HOST_ROLES = tuple(code for code, _label, _category in HOST_ROLES
+                            if code not in HOST_ROLE_PERMISSIONS)
+
+#: Synthetic roles this demo needs and the host does not have. The `demo_` prefix is the
+#: point: a reader looking at the mirror's tables can tell at a glance which rows describe
+#: the host and which exist to make a local scenario runnable.
+DEMO_ROLES = (
+    ("demo_finance_editor", "ویرایشگر مالی (فقط دمو)", "customer"),
+    ("demo_finance_viewer", "بیننده مالی (فقط دمو)", "customer"),
+)
+
+DEMO_ROLE_PERMISSIONS = {
+    "demo_finance_editor": ("finance.view", "finance.edit",
+                            "finance_report.view", "finance_report.export"),
+    "demo_finance_viewer": ("finance.view",),
+}
+
+ROLES = HOST_ROLES + DEMO_ROLES
+ROLE_PERMISSIONS = {**HOST_ROLE_PERMISSIONS, **DEMO_ROLE_PERMISSIONS}
 
 USERS = (
     (FINANCE_EXPERT, "کارشناس مالی نمونه"),
@@ -106,20 +145,27 @@ USERS = (
 
 #: `user_roles` rows: (user, role code, organization, project). A NULL project means the
 #: role applies across the organization.
-#: `DENIED_EDITOR` holds `finance_manager`, deliberately not `org_chief`.
 #:
-#: The first attempt gave them `org_chief` and the demo failed to prove anything: editing
-#: settings still worked, because `settings_edit_permission` asks an org chief for
-#: `finance.view` rather than `finance.edit`, and only `finance.edit` had been denied.
+#: `FINANCE_EXPERT` holds TWO roles on purpose: `org_chief`, a host role this mirror grants
+#: no finance permission to, and `demo_finance_editor`, which carries the permissions. What
+#: they can do therefore comes entirely from the assignment and not at all from the title --
+#: which is now true in the application as well. It was not: `settings_edit_permission` used
+#: to ask an `org_chief` for `finance.view` instead of `finance.edit`, so a chief edited the
+#: gross built area holding read-only permission and denying them `finance.edit` changed
+#: nothing. That rule is gone; this pairing is what would catch it coming back.
 #:
-#: That is worth knowing on its own -- **denying `finance.edit` does not stop an org chief
-#: from editing project settings** -- and it is recorded as a risk in the demo documents
-#: rather than being hidden by picking a role that makes the demo look tidy.
+#: `SITE_SUPERVISOR` holds only an unmapped host role, so they can read nothing. That is the
+#: state every host role except `bambo_admin` is in until Core tells us otherwise, and the
+#: demo shows it rather than papering over it with a guess.
+#:
+#: `DENIED_EDITOR` holds `demo_finance_editor` plus a personal denial of `finance.edit`:
+#: the deny has to beat the grant.
 USER_ROLES = (
     (FINANCE_EXPERT, "org_chief", None),
-    (SITE_SUPERVISOR, "finance_expert", None),
-    (PLANNER, "viewer", None),
-    (DENIED_EDITOR, "finance_manager", None),
+    (FINANCE_EXPERT, "demo_finance_editor", None),
+    (SITE_SUPERVISOR, "site_supervisor", None),
+    (PLANNER, "demo_finance_viewer", None),
+    (DENIED_EDITOR, "demo_finance_editor", None),
 )
 
 MIRROR_TABLES = (
