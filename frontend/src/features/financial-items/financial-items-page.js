@@ -8,7 +8,7 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
-import { formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
+import { displayCurrencyNote, formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { compareDecimalStrings } from "../../shared/validation/decimal-validation.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
@@ -708,6 +708,11 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
   const fragment = document.createDocumentFragment();
   if (withheld) fragment.append(element("p", "table-note", withheld));
+  // «هزینه MSP فعالیت», «قیمت اولیه» and «قیمت روز» are formatted without a currency word
+  // so the column stays a column of numbers. Said once here instead, in the note style the
+  // table already uses, and read from the display-currency preference rather than typed --
+  // the reader can switch to rials and this follows.
+  fragment.append(element("p", "table-note", displayCurrencyNote()));
 
   fragment.append(createDataTable({
     className: "estimate-lines-table",
