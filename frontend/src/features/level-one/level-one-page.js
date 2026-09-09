@@ -1,6 +1,7 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
+import { defaultSnapshot } from "../../shared/progress/project-snapshot.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatCompactMoneyFromIrr, formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
@@ -35,7 +36,9 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
     paint();
     try {
       const snapshots = await adapters.progress.getSnapshots();
-      const snapshot = snapshots.find((entry) => entry.status === "ready") ?? null;
+      // The same snapshot the page that links here reads: a drilldown that quietly picked
+      // a different one would show phase shares that do not add up to the page above it.
+      const snapshot = defaultSnapshot(snapshots);
       if (!snapshot) {
         state = createRequestState(REQUEST_STATUS.EMPTY);
         paint();
