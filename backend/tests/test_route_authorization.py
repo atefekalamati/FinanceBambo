@@ -23,21 +23,42 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.finance.services.settings import SETTINGS_EDIT_PERMISSION  # noqa: E402
+
 ROUTER = BACKEND_ROOT / "app" / "finance" / "router.py"
 
 #: The complete permission vocabulary Finance may ask Core for. A route naming anything
 #: outside this list is either a typo or a permission nobody has agreed to create.
 KNOWN_PERMISSIONS = frozenset({
-    "finance.view", "finance.edit",
+    "finance.view", "finance.edit", "finance.manage_invoice",
     "finance_report.view", "finance_report.issue", "finance_report.export",
 })
 
-#: Permissions Core does not currently define. Routes needing them must fail closed rather
-#: than fall back to a weaker one -- see docs/CORE_PERMISSION_REQUIREMENTS_FA.md.
-ABSENT_IN_CORE = frozenset({"finance_report.issue"})
+#: Permissions Core does not currently define, per the host evidence supplied for this
+#: release. Routes needing them must fail closed rather than fall back to a weaker one --
+#: see docs/CORE_PERMISSION_REQUIREMENTS_FA.md.
+#:
+#: "Known to Finance" and "registered by Core" are different facts, and this pair is the
+#: place they are allowed to differ. `finance.manage_invoice` is deliberately here: until
+#: the host registers AND assigns it, every invoice mutation is denied, and that is the
+#: intended state rather than a defect to be worked around with a fallback.
+ABSENT_IN_CORE = frozenset({"finance_report.issue", "finance.manage_invoice"})
+
+#: The one read that costs more than `finance.view`, and why.
+#:
+#: Original invoice bytes -- a photograph of a supplier's paperwork, or a recording of
+#: somebody dictating it -- are not the same kind of thing as the metadata beside them. The
+#: verb-tier rule below is right for everything else and would be wrong here, so the
+#: exception is written down as a single named route rather than by widening the rule.
+CONTENT_READS_NEEDING_MANAGEMENT = frozenset({"GET /files/{fileId}/content"})
 
 #: The function every gated route must reach, however many helpers deep.
 GUARD = "authorize_finance_request"
+
+#: `PATCH /settings` names its permission through a module constant rather than a literal,
+#: so the literal-scanner below is told what that constant holds. It used to be a FUNCTION
+#: of the caller's role -- see `test_no_route_decides_its_permission_from_who_is_asking`.
+SETTINGS_PERMISSION_CONSTANT = "SETTINGS_EDIT_PERMISSION"
 
 #: A module that finishes a WHERE clause outside the SQL literal, by either syntax.
 COMPOSES = re.compile(r'{where}|WHERE\s*"\s*\+\s*where|" AND ".join\(clauses\)')
@@ -70,8 +91,12 @@ class RouterModel:
 
         text = self.body(node)
         permissions = set(re.findall(r'"(finance[a-z_]*\.[a-z_]+)"', text))
+        if SETTINGS_PERMISSION_CONSTANT in text:
+            permissions.add(SETTINGS_EDIT_PERMISSION)
         reaches = GUARD in text
-        dynamic = "settings_edit_permission" in text
+        # A permission chosen at request time from the caller's identity. Nothing does this
+        # any more, and the test below is what keeps it that way.
+        dynamic = "_edit_permission(" in text
 
         for called in ast.walk(node):
             if not isinstance(called, ast.Call):
@@ -146,24 +171,78 @@ class RouteGateTests(unittest.TestCase):
             if dynamic:
                 continue
             with self.subTest(route=f"{method} {path}"):
-                if method == "GET":
+                if method == "GET" and f"{method} {path}" in CONTENT_READS_NEEDING_MANAGEMENT:
+                    # Reading the original file is a read of the most sensitive thing here.
+                    # It is gated at the management tier on purpose; see the constant above.
+                    self.assertEqual({"finance.manage_invoice"}, permissions)
+                elif method == "GET":
                     self.assertTrue(permissions <= read_only,
                                     f"a read asks for a write permission: {sorted(permissions)}")
                 else:
                     self.assertFalse(permissions <= read_only,
                                      f"a write asks only for read permissions: {sorted(permissions)}")
 
-    def test_issuing_a_report_is_the_only_route_needing_a_permission_core_lacks(self):
-        """Fail-closed, and narrowly. If a second route started demanding an absent
-        permission, that is a new production blocker and should be noticed here first.
+    def test_exactly_the_expected_routes_wait_on_a_permission_core_lacks(self):
+        """Fail-closed, and enumerated. Each of these is a deployment prerequisite.
+
+        Until the host registers and assigns them, these routes deny everyone -- which is
+        the intended behaviour and not a reason to accept a weaker permission instead. The
+        set is asserted whole so that a route quietly joining or leaving it is a test
+        failure rather than a discovery made in production.
         """
         blocked = {f"{m} {p}" for m, p, permissions, _r, _d in ROUTES
                    if permissions & ABSENT_IN_CORE}
-        self.assertEqual({"POST /report-snapshots"}, blocked)
+        self.assertEqual({
+            "POST /report-snapshots",
+            "POST /invoices",
+            "PATCH /invoices/{invoiceId}",
+            "POST /invoices/{invoiceId}/confirm",
+            "POST /invoices/{invoiceId}/void",
+            "POST /invoices/{invoiceId}/corrective",
+            "POST /files",
+            "GET /files/{fileId}/content",
+            "POST /files/{fileId}/extractions",
+            "POST /files/{fileId}/extractions/async",
+            "POST /extractions/{draftId}/reject",
+            "POST /extractions/{draftId}/retry",
+            "POST /extractions/{draftId}/confirm",
+        }, blocked)
 
-    def test_the_settings_policy_is_the_only_dynamic_permission(self):
+    def test_invoice_work_never_falls_back_to_the_ordinary_edit_permission(self):
+        """`finance.edit` must not open an invoice route, and the reverse must hold too.
+
+        The transition shortcut nobody should take is `manage_invoice OR edit`: it would
+        make the new permission look deployed while the old one still did the work, and the
+        day Core finally granted `manage_invoice` nothing would change -- including for the
+        people who should have lost access. Separation only exists if neither implies
+        the other.
+        """
+        invoice_routes = {f"{m} {p}" for m, p, _perm, _r, _d in ROUTES
+                          if any(part in p for part in ("/invoices", "/files", "/extractions"))}
+        self.assertGreaterEqual(len(invoice_routes), 15, "the invoice surface was not found")
+        for method, path, permissions, _reaches, _dynamic in ROUTES:
+            route = f"{method} {path}"
+            if route not in invoice_routes:
+                continue
+            with self.subTest(route=route):
+                if "finance.manage_invoice" in permissions:
+                    self.assertNotIn("finance.edit", permissions,
+                                     "an invoice route accepts finance.edit as well")
+                else:
+                    # Everything else on this surface is a metadata read.
+                    self.assertEqual({"finance.view"}, permissions)
+
+    def test_no_route_decides_its_permission_from_who_is_asking(self):
+        """A permission chosen from the caller's role is not a permission.
+
+        `PATCH /settings` used to ask an `org_chief` for `finance.view` and everybody else
+        for `finance.edit`, so a role NAME decided who could change the gross built area and
+        revoking `finance.edit` from a chief did nothing. Every route now names a fixed
+        permission; roles still travel on the context for the host's own purposes and no
+        longer decide anything here.
+        """
         dynamic = {f"{m} {p}" for m, p, _perm, _r, d in ROUTES if d}
-        self.assertEqual({"PATCH /settings"}, dynamic)
+        self.assertEqual(set(), dynamic)
 
 
 class GuardShapeTests(unittest.TestCase):

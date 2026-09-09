@@ -208,11 +208,13 @@ class FinanceSettingsApiTests(unittest.TestCase):
         self.assertEqual("FINANCE_FORBIDDEN", response.json()["error"]["code"])
 
     def test_reported_edit_capability_matches_what_the_patch_gate_enforces(self):
-        # An org chief holding only finance.view may revise the area; a plain viewer may not.
-        # The response has to say so, because the browser cannot know the role policy.
+        # `canEdit` is a claim the browser renders a disabled button from, so it has to
+        # equal what the gate does. The org chief is the case that used to differ: the role
+        # name granted the edit and the permission list did not mention it.
         cases = (
-            (("finance.view",), "org_chief", True),
+            (("finance.view",), "org_chief", False),
             (("finance.view",), "finance_viewer", False),
+            (("finance.view", "finance.edit"), "org_chief", True),
             (("finance.view", "finance.edit"), "finance_viewer", True),
         )
         for permission_codes, organization_role, expected in cases:

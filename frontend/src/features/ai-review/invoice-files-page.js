@@ -1,6 +1,6 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
-import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { MANAGE_INVOICE_NOTICE, capabilitiesFor } from "../../core/auth/capabilities.js";
 import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -162,7 +162,7 @@ function renderFiles(files, { adapter, canUpload, onChanged }) {
 
 export function createInvoiceFilesPage({ context, adapter }) {
   const root = element("div", "invoice-files-page");
-  const canUpload = capabilitiesFor(context).writeFinance;
+  const canUpload = capabilitiesFor(context).manageInvoice;
   let state = createRequestState(REQUEST_STATUS.LOADING);
 
   async function load() {
@@ -184,7 +184,10 @@ export function createInvoiceFilesPage({ context, adapter }) {
     manual.href = "#/invoices";
     actions.append(manual);
 
-    root.replaceChildren(header, actions, renderPageState(state, { renderContent, onRetry: load }));
+    const children = [header, actions];
+    if (!canUpload) children.push(element("p", "inline-notice", MANAGE_INVOICE_NOTICE));
+    children.push(renderPageState(state, { renderContent, onRetry: load }));
+    root.replaceChildren(...children);
   }
 
   function renderContent(files) {

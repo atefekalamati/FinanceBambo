@@ -22,10 +22,17 @@ export function capabilitiesFor(context) {
     // Reading the project's financial data. Every route in the module is behind
     // this, because every page opens with a GET.
     viewFinance: hasPermission(context, "finance.view"),
-    // Changing any of it: prices, estimate lines, quantities, invoices, uploads,
-    // the gross built area and the conversion rules. The Backend gates all of
-    // them on this one code, so the interface asks one question too.
+    // Changing the cost model: prices, estimate lines, quantities, the gross
+    // built area and the conversion rules. It no longer covers invoices --
+    // maintaining a cost breakdown and approving a supplier's bill are different
+    // jobs, and in most organizations different people.
     writeFinance: hasPermission(context, "finance.edit"),
+    // Invoices, their uploaded images and recordings, and the extraction drafts
+    // between them -- including opening the original file. Separate from
+    // writeFinance in BOTH directions: neither implies the other, and the
+    // interface must not offer either as a substitute for the other, because the
+    // Backend will not accept one for the other.
+    manageInvoice: hasPermission(context, "finance.manage_invoice"),
     viewReport: hasPermission(context, "finance_report.view"),
     // Freezing a report into an immutable record, and taking a copy away.
     issueReport: hasPermission(context, "finance_report.issue"),
@@ -33,14 +40,19 @@ export function capabilitiesFor(context) {
   });
 }
 
+/** Shown wherever an invoice control is disabled, so the reason is not a mystery. */
+export const MANAGE_INVOICE_NOTICE =
+  "نیازمند مجوز مدیریت فاکتورها؛ این حساب می‌تواند اطلاعات را ببیند ولی فاکتور ثبت، تأیید یا اصلاح نکند.";
+
 /**
- * The five codes the host can grant, in the order the settings page lists them.
+ * The codes the host can grant, in the order the settings page lists them.
  * Kept beside the mapping above so a code cannot be added to one and forgotten
  * in the other.
  */
 export const FINANCE_PERMISSIONS = Object.freeze([
   Object.freeze({ code: "finance.view", label: "مشاهده اطلاعات مالی" }),
   Object.freeze({ code: "finance.edit", label: "ویرایش اطلاعات و تنظیمات مالی" }),
+  Object.freeze({ code: "finance.manage_invoice", label: "مدیریت فاکتورها و فایل‌های اصلی" }),
   Object.freeze({ code: "finance_report.view", label: "مشاهده گزارش‌های مالی" }),
   Object.freeze({ code: "finance_report.issue", label: "ثبت گزارش دوره‌ای" }),
   Object.freeze({ code: "finance_report.export", label: "دریافت خروجی گزارش‌ها" }),

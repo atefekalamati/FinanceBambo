@@ -14,7 +14,8 @@ from app.finance.domain.settings import FinanceProjectSettings, StaleSettingsVer
 from app.finance.schemas.settings import FinanceSettingsPatch, FinanceSettingsResponse
 from app.finance.security.context import AuthContext
 from app.finance.security.guards import FinanceScope
-from app.finance.services.settings import FinanceSettingsService, settings_edit_permission
+from app.finance.services.settings import (SETTINGS_EDIT_PERMISSION,
+                                           FinanceSettingsService, may_edit_settings)
 
 
 ORG_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -183,25 +184,40 @@ class FinanceSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("IRR", payload["currency"])
         self.assertEqual(1, payload["revision"])
 
-    def test_settings_edit_permission_follows_prd_roles_and_existing_permissions(self):
-        head = AuthContext(
-            userId=ACTOR_ID,
-            organizationId=ORG_ID,
-            projectId="sample_site_01",
-            organizationRole="org_chief",
-            projectRole="project_admin",
-            permissionCodes=["finance.view"],
-            locale="fa-IR",
-            timezone="Asia/Tehran",
-        )
-        editor = head.model_copy(
-            update={
-                "organization_role": "finance_viewer",
-                "permission_codes": ("finance.view", "finance.edit"),
-            }
-        )
-        self.assertEqual("finance.view", settings_edit_permission(head))
-        self.assertEqual("finance.edit", settings_edit_permission(editor))
+    def test_editing_settings_costs_finance_edit_whatever_the_caller_is_called(self):
+        """A role name is not a permission.
+
+        The rule here used to be `finance.view if organization_role == "org_chief" else
+        finance.edit`. An org chief therefore edited the gross built area -- the divisor
+        under every per-square-metre figure this module publishes -- holding read-only
+        permission, and taking `finance.edit` away from them changed nothing at all. Two
+        things made that worse than an ordinary over-grant: the bypass was invisible from
+        the permission list, and it moved whenever the host renamed a role.
+        """
+        chief = FinanceScope(
+            organization_id=ORG_ID, project_id="sample_site_01", actor_user_id=ACTOR_ID,
+            organization_role="org_chief", permission_codes=("finance.view",))
+        editor = FinanceScope(
+            organization_id=ORG_ID, project_id="sample_site_01", actor_user_id=ACTOR_ID,
+            organization_role="guest", permission_codes=("finance.view", "finance.edit"))
+
+        self.assertEqual("finance.edit", SETTINGS_EDIT_PERMISSION)
+        # The chief holds the grander title and the weaker permission. Title loses.
+        self.assertFalse(may_edit_settings(chief))
+        self.assertTrue(may_edit_settings(editor))
+
+    def test_no_role_name_can_stand_in_for_the_edit_permission(self):
+        """Whatever the host calls somebody, only the permission opens the gate."""
+        for role in ("org_chief", "bambo_admin", "project_manager", "finance_expert",
+                     "support", "guest"):
+            with self.subTest(role=role):
+                viewer = FinanceScope(
+                    organization_id=ORG_ID, project_id="sample_site_01",
+                    actor_user_id=ACTOR_ID, organization_role=role,
+                    permission_codes=("finance.view", "finance_report.view",
+                                      "finance_report.export", "finance.manage_invoice"))
+                self.assertFalse(may_edit_settings(viewer),
+                                 "%s edited settings without finance.edit" % role)
 
 
 if __name__ == "__main__":
