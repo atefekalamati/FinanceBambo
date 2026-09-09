@@ -180,6 +180,19 @@ export const REPORTS = Object.freeze([
     summary: "مقایسه ردیف‌های تغییرکرده با مقدار اولیه؛ این مقایسه جایگزین تاریخچه تمام بازنگری‌ها نیست",
     needs: ["financialItems"], period: false,
   },
+  // The two the period report drew and nothing here did. They are the only
+  // entries that read the project at two dates rather than one, which is what
+  // makes a range mean something for them and why both are period: true.
+  {
+    key: "periodMetrics", category: "summary", title: "شاخص‌های مالی در ابتدا و پایان بازه",
+    summary: "هر شاخص اصلی در دو سر بازه و تغییر آن؛ با تفکیک شاخص انباشتی از وضعیتی",
+    needs: ["periodOverview"], period: true,
+  },
+  {
+    key: "periodBreakdown", category: "cost", title: "تفکیک هزینه در بازه بر اساس نوع قلم",
+    summary: "سهم مصالح، نیروی انسانی، تجهیزات و هزینه عمومی از آنچه همین بازه افزوده است",
+    needs: ["periodOverview"], period: true,
+  },
 ]);
 
 export function reportsByCategory(categoryKey) {

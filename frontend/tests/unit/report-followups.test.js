@@ -4,11 +4,17 @@ import { readFileSync } from "node:fs";
 import { changedEstimateRows, supplierDocumentRows } from "../../src/features/report-builder/report-followups.js";
 import { REPORTS, featuredReports, datasetsFor } from "../../src/features/report-builder/report-catalog.js";
 
-test("twenty reports keep the six shortcuts and share existing datasets", () => {
-  assert.equal(REPORTS.length, 20);
+test("the catalogue keeps the six shortcuts and shares existing datasets", () => {
+  assert.equal(REPORTS.length, 22);
   assert.equal(featuredReports().length, 6);
   assert.deepEqual(datasetsFor(["supplierDocuments", "pendingDocuments", "correctiveDocuments"]), ["invoices"]);
   assert.deepEqual(datasetsFor(["completionBudget", "areaCosts"]), ["overview"]);
+  // The two that replaced the period report read the project at two dates, and
+  // are the only entries that do. They share one dataset with each other and
+  // with nothing else, so choosing either does not drag the rest of the module
+  // into the request.
+  assert.deepEqual(datasetsFor(["periodMetrics", "periodBreakdown"]), ["periodOverview"]);
+  assert.deepEqual(datasetsFor(["overview", "periodMetrics"]), ["overview", "periodOverview"]);
 });
 
 test("supplier register separates statuses and sources and sums exact nominal amounts", () => {

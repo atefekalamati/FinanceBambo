@@ -2,7 +2,6 @@ import { element } from "../../shared/dom/elements.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
-import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
 
 /**
  * امور مالی — the operations home.
@@ -39,20 +38,6 @@ const WORK_AREAS = Object.freeze([
     description: "نسخه‌های پیشرفت پروژه، کیفیت داده و اصلاح دستی مقدار",
     meta: "نسخه پیشرفت · مقدار انجام‌شده · هشدار",
     href: "#/progress",
-  },
-  {
-    key: "invoice-files",
-    title: "ورودی تصویر و صدا",
-    description: "بارگذاری تصویر یا صدای فاکتور برای استخراج هوشمند",
-    meta: "بارگذاری · فایل اصلی · استخراج",
-    href: "#/invoice-files",
-  },
-  {
-    key: "ai-review",
-    title: "بررسی هوشمند فاکتور",
-    description: "بازبینی و تأیید داده‌ای که از فایل استخراج شده است",
-    meta: "پیش‌نویس · بازبینی · تأیید",
-    href: "#/ai-review",
   },
   {
     key: "audit",
@@ -137,9 +122,6 @@ export function createOperationsHomePage({ progressAdapter }) {
 
     const header = element("header", "finance-page-header");
     header.append(element("h1", "finance-page-title", "امور مالی"));
-    const toReport = element("a", "button button--ghost finance-surface-link", "رفتن به گزارش مالی");
-    toReport.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
-    header.append(toReport);
 
     const intro = element("section", "section-heading");
     const copy = element("div");

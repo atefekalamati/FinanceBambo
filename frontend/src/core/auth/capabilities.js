@@ -22,10 +22,17 @@ export function capabilitiesFor(context) {
     // Reading the project's financial data. Every route in the module is behind
     // this, because every page opens with a GET.
     viewFinance: hasPermission(context, "finance.view"),
-    // Changing any of it: prices, estimate lines, quantities, invoices, uploads,
-    // the gross built area and the conversion rules. The Backend gates all of
-    // them on this one code, so the interface asks one question too.
+    // Authoring what the figures are built from: prices, estimate lines,
+    // quantities, the gross built area and the conversion rules — the whole of
+    // امور مالی behind one code, because the account trusted with one of those
+    // numbers is trusted with the rest of the same plan.
     writeFinance: hasPermission(context, "finance.edit"),
+    // Recording what was actually spent, by every route a document takes into
+    // the ledger: typed by hand, photographed, spoken, or read out of a file by
+    // the extractor — then reviewed, submitted and confirmed. Separate from the
+    // code above because a receipt is not one of the plan's numbers, and an
+    // account may be trusted with either without the other.
+    manageInvoice: hasPermission(context, "finance.manage_invoice"),
     viewReport: hasPermission(context, "finance_report.view"),
     // Freezing a report into an immutable record, and taking a copy away.
     issueReport: hasPermission(context, "finance_report.issue"),
@@ -34,13 +41,14 @@ export function capabilitiesFor(context) {
 }
 
 /**
- * The five codes the host can grant, in the order the settings page lists them.
+ * The six codes the host can grant, in the order the settings page lists them.
  * Kept beside the mapping above so a code cannot be added to one and forgotten
  * in the other.
  */
 export const FINANCE_PERMISSIONS = Object.freeze([
   Object.freeze({ code: "finance.view", label: "مشاهده اطلاعات مالی" }),
   Object.freeze({ code: "finance.edit", label: "ویرایش اطلاعات و تنظیمات مالی" }),
+  Object.freeze({ code: "finance.manage_invoice", label: "مدیریت فاکتورها" }),
   Object.freeze({ code: "finance_report.view", label: "مشاهده گزارش‌های مالی" }),
   Object.freeze({ code: "finance_report.issue", label: "ثبت گزارش دوره‌ای" }),
   Object.freeze({ code: "finance_report.export", label: "دریافت خروجی گزارش‌ها" }),

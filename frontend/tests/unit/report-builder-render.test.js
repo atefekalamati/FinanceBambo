@@ -99,3 +99,66 @@ test("breakdown does not print chart-helper zero defaults as missing forecast or
   assert.equal(cells[3].textContent, "قابل مقایسه نیست");
   assert.equal(cells[4].textContent, "قابل محاسبه نیست");
 }));
+
+/**
+ * The two sections that replaced the period report. Both read the project at two
+ * dates, and both have an end the project may be unable to report on — which is
+ * the case worth holding still, because a missing opening measured as zero would
+ * print a period that spent the whole project's money.
+ *
+ * Amounts are IRR in and Toman out, so every figure below reads a tenth of what
+ * it was given.
+ */
+const periodReading = ({ opening = null } = {}) => ({
+  periodOverview: {
+    openingDate: "2026-05-31",
+    closingDate: "2026-06-30",
+    opening,
+    closing: {
+      metrics: { actualCostIrr: "3000", initialEstimateIrr: "10000", forecastFinalCostIrr: "9000" },
+      breakdown: [{ resourceType: "material", initialEstimateIrr: "6000", actualCostIrr: "2500",
+                    remainingPhysicalCostIrr: "4000", forecastFinalIrr: "6500" }],
+    },
+  },
+});
+
+const PERIOD_OPENING = Object.freeze({
+  metrics: { actualCostIrr: "1000", initialEstimateIrr: "10000", forecastFinalCostIrr: "8000" },
+  breakdown: [{ resourceType: "material", initialEstimateIrr: "6000", actualCostIrr: "900",
+                remainingPhysicalCostIrr: "5000", forecastFinalIrr: "6900" }],
+});
+
+test("a period reports what it added, not what the project has spent", () => withDocument(() => {
+  const rendered = text(REPORT_SECTIONS.periodMetrics(periodReading({ opening: PERIOD_OPENING })));
+  // 3000 - 1000 IRR. The difference is this period's own spending; the closing
+  // reading of 300 Toman is the project's total and must not be read as either.
+  assert.match(rendered, /۲۰۰ تومان/);
+  // A state measure is captioned as one, so a forecast that moved by 100 Toman
+  // is never read as money the period cost.
+  assert.match(rendered, /وضعیتی/);
+  assert.match(rendered, /انباشتی/);
+
+  const breakdown = text(REPORT_SECTIONS.periodBreakdown(periodReading({ opening: PERIOD_OPENING })));
+  assert.match(breakdown, /مصالح/);
+  // 2500 - 900 added this period, against 4000 still standing at the close.
+  assert.match(breakdown, /۱۶۰ تومان/);
+  assert.match(breakdown, /۴۰۰ تومان/);
+}));
+
+test("an opening the project cannot report is declared, never measured from zero", () => withDocument(() => {
+  const nodes = REPORT_SECTIONS.periodMetrics(periodReading());
+  const rendered = text(nodes);
+  assert.match(rendered, /مقایسه با ابتدای بازه ممکن نیست/);
+  // Every row says so, rather than one of them quietly showing the whole
+  // project's total as this period's change.
+  const rows = flatten(nodes).filter((node) => node.tag === "tr");
+  const changes = rendered.match(/قابل مقایسه نیست/g) ?? [];
+  assert.equal(changes.length, rows.length - 1, "a row reported a change it could not compute");
+}));
+
+test("a period with no closing report refuses rather than inventing one", () => withDocument(() => {
+  [REPORT_SECTIONS.periodMetrics, REPORT_SECTIONS.periodBreakdown].forEach((render) => {
+    assert.match(text(render({ periodOverview: null })), /گزارشی در دسترس نیست/);
+    assert.match(text(render({})), /گزارشی در دسترس نیست/);
+  });
+}));
