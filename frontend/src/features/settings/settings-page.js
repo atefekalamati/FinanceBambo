@@ -1,5 +1,6 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { capabilitiesFor, describeAccess } from "../../core/auth/capabilities.js";
-import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
+import { SURFACES } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -148,22 +149,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
   }
 
   function renderHeader() {
-    const header = element("header", "feature-header");
-    const home = homeRouteFor(surface);
-    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[surface] ?? "امور مالی"}`);
-    back.classList.add("finance-back-link");
-    back.href = `#${home?.path ?? "/finance"}`;
-    const navigation = element("div", "feature-header__navigation");
-    const otherActions = element("div", "feature-header__other-actions");
-    navigation.append(otherActions, back);
-    const copy = element("div", "feature-header__copy");
-    const eyebrow = element("span", "feature-header__eyebrow", readerOnly ? "نمایش گزارش مالی" : "پیکربندی پروژه جاری");
-    const title = element("h1", "", readerOnly ? "تنظیمات نمایش" : "تنظیمات مالی پروژه");
-    copy.append(eyebrow, title, element("p", "", readerOnly
-      ? "واحدی که مبالغ با آن نمایش داده می‌شوند را انتخاب کنید و ببینید این حساب چه دسترسی‌های مالی دارد. این تنظیمات هیچ عددی از پروژه را تغییر نمی‌دهند."
-      : "قواعد پایه محاسبات مالی، نحوه نمایش پول، زیربنا و تبدیل واحدهای پروژه را از یک محل مدیریت کنید."));
-    header.append(copy, navigation);
-    return header;
+    return createFinancePageHeader(readerOnly ? "تنظیمات نمایش" : "تنظیمات مالی پروژه");
   }
 
   function renderEmpty() {

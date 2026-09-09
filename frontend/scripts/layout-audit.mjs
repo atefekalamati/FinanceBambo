@@ -28,7 +28,9 @@ const routes = [
   "settings",
 ];
 
-const widths = [1440, 1280, 1024, 900, 768, 600, 480, 390, 360];
+const widths = process.env.BAMBO_AUDIT_WIDTHS
+  ? process.env.BAMBO_AUDIT_WIDTHS.split(",").map(Number)
+  : [1440, 1280, 1024, 900, 768, 600, 480, 390, 360, 320];
 const port = 49333;
 const profile = await mkdtemp(join(tmpdir(), "bambo-layout-audit-"));
 // A CI runner has no usable Chrome sandbox and a small /dev/shm, and Chrome
@@ -214,7 +216,21 @@ const measurementExpression = `(() => {
     })
     .filter(Boolean)
     .slice(0, 12);
-  return { viewportWidth, pageOverflow, unexpected, clippedLabels, cardOverlaps, tableFillGaps, title: document.title };
+  const headerIssues = [...document.querySelectorAll('.finance-internal-header')].flatMap((header) => {
+    const [title, back] = header.children;
+    if (header.children.length !== 2 || title?.tagName !== 'H1' || back?.tagName !== 'A') {
+      return [{ issue: 'header must contain only an h1 and a back link' }];
+    }
+    const headingRect = title.getBoundingClientRect();
+    const backRect = back.getBoundingClientRect();
+    const headerRect = header.getBoundingClientRect();
+    const sameRow = Math.abs((headingRect.top + headingRect.bottom) / 2 - (backRect.top + backRect.bottom) / 2) < 2;
+    const separated = backRect.right <= headingRect.left + 1;
+    const contained = backRect.left >= headerRect.left - 1 && headingRect.right <= headerRect.right + 1;
+    const unclipped = title.scrollWidth <= title.clientWidth + 2 && back.scrollWidth <= back.clientWidth + 2;
+    return sameRow && separated && contained && unclipped ? [] : [{ issue: 'header alignment or overflow', sameRow, separated, contained, unclipped }];
+  });
+  return { viewportWidth, pageOverflow, unexpected, clippedLabels, cardOverlaps, tableFillGaps, headerIssues, title: document.title };
 })()`;
 
 const failures = [];
@@ -245,7 +261,7 @@ try {
         returnByValue: true,
       });
       const measurement = result.result.value;
-      if (measurement.pageOverflow > 2 || measurement.unexpected.length || measurement.clippedLabels.length || measurement.cardOverlaps.length || measurement.tableFillGaps.length || cdp.exceptions.length) {
+      if (measurement.pageOverflow > 2 || measurement.unexpected.length || measurement.clippedLabels.length || measurement.cardOverlaps.length || measurement.tableFillGaps.length || measurement.headerIssues.length || cdp.exceptions.length) {
         failures.push({ width, route, measurement, exceptions: cdp.exceptions });
       }
       cdp.close();

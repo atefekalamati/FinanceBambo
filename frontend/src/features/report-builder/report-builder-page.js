@@ -1,7 +1,8 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { element } from "../../shared/dom/elements.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
-import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
+import { SURFACES, homeRouteFor } from "../../core/config/routes.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { buildPeriodPresets, validatePeriod } from "../../shared/dates/reporting-periods.js";
 import { findReport, normalizeSelection } from "./report-catalog.js";
@@ -51,25 +52,17 @@ export function createReportBuilderPage({ context, adapters, selection = [], per
   }
 
   function renderHeader() {
-    const header = element("header", "feature-header report-builder-page__header");
-    const copy = element("div", "feature-header__copy");
-    copy.append(
-      element("span", "feature-header__eyebrow", "گزارش‌ساز هوشمند"),
-      element("h1", "", "گزارش اختصاصی مالی"),
-      element("p", "", "این سند از بخش‌هایی ساخته شده که خودتان انتخاب کرده‌اید. برای گرفتن خروجی PDF، دستور چاپ را اجرا کنید."),
-    );
-    const navigation = element("div", "feature-header__navigation");
-    const actions = element("div", "feature-header__other-actions");
+    const header = createFinancePageHeader("گزارش اختصاصی مالی", "feature-header report-builder-page__header");
+    const actions = element("div", "finance-page-actions");
     const print = element("button", "button button--primary", "چاپ یا ذخیره PDF");
     print.type = "button";
     print.disabled = state.status !== REQUEST_STATUS.SUCCESS;
     print.addEventListener("click", () => window.print());
     actions.append(print);
-    const back = element("a", "button button--ghost finance-back-link", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
-    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
-    navigation.append(actions, back);
-    header.append(copy, navigation);
-    return header;
+    const fragment = document.createDocumentFragment();
+    fragment.append(header);
+    if (actions.childElementCount) fragment.append(actions);
+    return fragment;
   }
 
   function renderEmpty() {

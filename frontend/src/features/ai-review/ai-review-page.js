@@ -1,3 +1,4 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
@@ -207,23 +208,15 @@ export function createAiReviewPage({ context, adapter }) {
   }
 
   function paint() {
-    const header = element("header", "feature-header");
-    const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "کنترل انسانی الزامی"), element("h1", "", "بررسی هوشمند فاکتور"), element("p", "", "اطلاعات خوانده‌شده را با فایل اصلی تطبیق دهید؛ موارد کم‌اطمینان را اصلاح و سپس تصمیم نهایی را ثبت کنید."));
-    const actions = element("div", "feature-header__actions feature-header__other-actions");
+    const header = createFinancePageHeader("بررسی هوشمند فاکتور");
+    const actions = element("div", "finance-page-actions");
     const files = element("a", "button button--ghost", "بازگشت به فایل‌ها");
     files.href = "#/invoice-files";
     const manual = element("a", "button button--ghost", "ورود دستی فاکتور");
     manual.href = "#/invoices";
     actions.append(files, manual);
-    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
-    back.classList.add("finance-back-link");
-    back.href = "#/finance";
-    const navigation = element("div", "feature-header__navigation");
-    navigation.append(actions, back);
-    header.append(copy, navigation);
 
-    root.replaceChildren(header, renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    root.replaceChildren(header, actions, renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }
 
   function renderContent(data) {

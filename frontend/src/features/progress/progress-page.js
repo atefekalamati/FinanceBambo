@@ -1,3 +1,4 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -390,17 +391,7 @@ export function createProgressPage({ context, adapter }) {
   }
 
   function renderHeader() {
-    const header = element("header", "feature-header");
-    const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "پیشرفت اجرایی پروژه"), element("h1", "", "نسخه‌های پیشرفت پروژه"), element("p", "", "نسخه‌های ثبت‌شده گزارش پیشرفت و تخصیص‌های فعالیت و قلم هزینه را به‌صورت فقط‌خواندنی مشاهده کنید."));
-    const back = element("a", "button button--ghost", "بازگشت به امور مالی");
-    back.classList.add("finance-back-link");
-    back.href = "#/finance";
-    const navigation = element("div", "feature-header__navigation");
-    const otherActions = element("div", "feature-header__other-actions");
-    navigation.append(otherActions, back);
-    header.append(copy, navigation);
-    return header;
+    return createFinancePageHeader("نسخه‌های پیشرفت پروژه");
   }
 
   function renderEmpty() {
