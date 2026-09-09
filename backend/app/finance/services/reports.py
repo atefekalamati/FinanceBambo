@@ -260,7 +260,7 @@ class FinanceLiveReportService:
 
         assignments=feed.get("assignments",[])
         items=[]
-        for code in wbs_tree.select(nodes,level,parent_wbs_code):
+        for code in wbs_tree.select(nodes,level,parent_wbs_code,occupied=estimates_by_code):
             covered=wbs_tree.subtree(nodes,code)
             rows=[row for child in covered for row in estimates_by_code.get(child,[])]
             invoices=[line for row in rows for line in linked.get(row["id"],[])]

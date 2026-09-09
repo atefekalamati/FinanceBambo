@@ -134,13 +134,54 @@ def sort_key(code):
     return tuple(key)
 
 
-def select(nodes, level=None, parent_wbs_code=None):
+#: MS Project's project summary task. When "show project summary task" is on it is written
+#: into the plan as a row like any other, carrying the project's own name and this code. It
+#: is not a stage of the work and no plan numbers a real stage zero.
+PROJECT_SUMMARY_CODE = "0"
+
+
+def project_root(nodes, occupied=()):
+    """The one stage that holds the whole plan, when the file wraps it in one.
+
+    A planner may put every phase at the top of the plan -- `1` foundations, `2` structure,
+    `3` finishes -- or wrap the lot in a single task named after the project, with the
+    phases inside it at `1.1`, `1.2`, `1.3`. Both are ordinary, and the difference is
+    invisible to a rule that only counts dots: in the second shape "the top of the tree" is
+    the project itself, and a report of it is one row saying the project costs what the
+    project costs.
+
+    BAMBO's own MSP report resolves this the same way. Its «پیشرفت سطح ۱» lists `1.1`,
+    `1.2`, `1.3` and its «پیشرفت سطح ۲» lists `1.2.1`, `1.5.4` -- one step deeper than the
+    dots alone would say, because it counts from inside the wrapper. Two reports of one
+    project that disagree about which rows are its phases is the outcome worth avoiding.
+
+    `occupied` is the codes that carry estimate lines of their own. A wrapper is a
+    container; one that has been costed directly is a stage, and reporting its children in
+    its place would drop that cost out of every row while the totals still counted it.
+
+    Returns the wrapper's code, or None when the plan has real stages at its top.
+    """
+    roots = [code for code in nodes
+             if level_of(code) == 1 and code != PROJECT_SUMMARY_CODE]
+    if len(roots) != 1:
+        return None
+    only = roots[0]
+    # A lone root with nothing under it is the whole plan, not a wrapper around it.
+    if not nodes[only]["children"]:
+        return None
+    return None if only in set(occupied) else only
+
+
+def select(nodes, level=None, parent_wbs_code=None, occupied=()):
     """The codes to report, in natural order.
 
     `parent_wbs_code` wins over `level` when both are given: it is the more specific
     request, and answering the broader one would silently ignore what the caller asked for.
     Direct children only -- never the whole subtree, so a level-2 request stays a level-2
     answer.
+
+    A `level` is counted from the project, not from the string. Where the plan wraps itself
+    in a single task, level 1 is that task's children -- see `project_root`.
     """
     if parent_wbs_code is not None:
         parent = normalize(parent_wbs_code)
@@ -149,7 +190,15 @@ def select(nodes, level=None, parent_wbs_code=None):
         chosen = nodes[parent]["children"]
     else:
         depth = 1 if level is None else int(level)
-        chosen = [code for code in nodes if level_of(code) == depth]
+        root = project_root(nodes, occupied)
+        if root is None:
+            chosen = [code for code in nodes if level_of(code) == depth]
+        else:
+            # Measured from inside the wrapper, and kept inside it: a stage of this depth
+            # somewhere else in the tree is not a level of this project.
+            inside = root + SEPARATOR
+            chosen = [code for code in nodes
+                      if level_of(code) == depth + level_of(root) and code.startswith(inside)]
     return sorted(chosen, key=sort_key)
 
 

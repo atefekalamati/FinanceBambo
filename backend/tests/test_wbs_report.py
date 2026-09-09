@@ -198,6 +198,49 @@ class WbsTreeTests(unittest.TestCase):
         self.assertEqual(["1.8.1", "1.8.2", "1.8.10"],
                          wbs.select(nodes, parent_wbs_code="1.8"))
 
+    def test_a_plan_wrapped_in_one_task_reports_the_stages_inside_it(self):
+        """The shape a real BAMBO plan arrives in.
+
+        MS Project writes its project summary task as WBS `0` carrying the project's name,
+        and this planner put every phase inside a single task at `1`. Counting dots, level 1
+        is `0` and `1` -- the project twice over, and no stage at all. BAMBO's own
+        «پیشرفت سطح ۱» lists `1.1` … `1.6` for this file, and «پیشرفت سطح ۲» lists `1.2.1`
+        and its siblings, so this is what agreeing with it looks like.
+        """
+        plan = wbs.build_tree([
+            activity("ACT-000", "0", "پروژه تقاطع غیر همسطح شاهنامه"),
+            activity("ACT-100", "1", "پروژه احداث پل"),
+            activity("ACT-110", "1.1", "شروع"),
+            activity("ACT-120", "1.2", "تحویل زمین"),
+            activity("ACT-121", "1.2.1", "تخریب ساختمان قدیمی"),
+            activity("ACT-130", "1.3", "تجهیز کارگاه"),
+            activity("ACT-131", "1.3.1", "تجهیز کارگاه"),
+        ])
+        self.assertEqual("1", wbs.project_root(plan))
+        self.assertEqual(["1.1", "1.2", "1.3"], wbs.select(plan, level=1))
+        self.assertEqual(["1.2.1", "1.3.1"], wbs.select(plan, level=2))
+
+    def test_a_plan_with_real_stages_at_its_top_keeps_them(self):
+        """Not every plan wraps itself, and one that does not must not lose a level."""
+        plan = wbs.build_tree([
+            activity("ACT-100", "1", "کارهای مقدماتی"),
+            activity("ACT-110", "1.1", "تجهیز کارگاه"),
+            activity("ACT-900", "2", "نازک‌کاری"),
+        ])
+        self.assertIsNone(wbs.project_root(plan))
+        self.assertEqual(["1", "2"], wbs.select(plan, level=1))
+
+    def test_a_lone_stage_with_nothing_under_it_is_the_plan_not_a_wrapper(self):
+        plan = wbs.build_tree([activity("ACT-100", "1", "تنها مرحله")])
+        self.assertIsNone(wbs.project_root(plan))
+        self.assertEqual(["1"], wbs.select(plan, level=1))
+
+    def test_the_summary_task_alone_is_not_mistaken_for_a_project(self):
+        """A plan that is only MS Project's own summary row has no stages to report."""
+        plan = wbs.build_tree([activity("ACT-000", "0", "پروژه")])
+        self.assertIsNone(wbs.project_root(plan))
+        self.assertEqual(["0"], wbs.select(plan, level=1))
+
     def test_a_parent_request_wins_over_a_level_request(self):
         nodes = wbs.build_tree(ACTIVITIES)
         self.assertEqual(["1.8.1", "1.8.2", "1.8.10"],
@@ -285,6 +328,70 @@ class WbsReportTests(unittest.IsolatedAsyncioTestCase):
             result["totals"]["actualCostIrr"],
             roots + result["unattributed_actual_irr"] + result["unmapped_wbs_actual_irr"])
 
+    async def test_a_wrapped_plan_reports_its_stages_and_still_reconciles(self):
+        """The shape a real BAMBO file arrives in, end to end through the service."""
+        rows = [
+            activity("ACT-000", "0", "پروژه"),
+            activity("ACT-100", "1", "پروژه احداث پل"),
+            activity("ACT-110", "1.1", "شروع"),
+            activity("ACT-120", "1.2", "تحویل زمین"),
+            activity("ACT-121", "1.2.1", "تخریب ساختمان قدیمی"),
+        ]
+        estimates = [
+            estimate(line(1), CONCRETE, "material", "ACT-110", "10", "1000"),
+            estimate(line(2), CONCRETE, "material", "ACT-121", "20", "1000"),
+        ]
+        invoices = [
+            invoice(line(1), CONCRETE, "material", "9000", quantity="9"),
+            invoice(line(2), CONCRETE, "material", "18000", quantity="18"),
+        ]
+        service = build(Repository(estimates=estimates, invoices=invoices),
+                        activities=Activities(rows))
+        result = await service.by_wbs(SCOPE, WHEN, level=1)
+        self.assertEqual(["1.1", "1.2"], [item["wbs_code"] for item in result["items"]])
+        # `1.2` carries nothing itself; its figure is its subtree, which is where the 18000 is.
+        self.assertEqual(Decimal("18000"), result["items"][1]["actual_cost_irr"])
+        reported = sum((item["actual_cost_irr"] for item in result["items"]), Decimal(0))
+        self.assertEqual(
+            result["totals"]["actualCostIrr"],
+            reported + result["unattributed_actual_irr"] + result["unmapped_wbs_actual_irr"])
+
+    async def test_a_wrapper_that_carries_cost_is_a_stage_not_a_container(self):
+        """Level 1 moving inside the wrapper must not lose money on the way.
+
+        The three figures partition the project exactly, and that claim is about whatever
+        level 1 turns out to be. A cost booked against the wrapper's own task -- which is a
+        real thing a planner can do -- sits above every row now reported, so this is the
+        case where a silent gap would open.
+        """
+        rows = [
+            activity("ACT-000", "0", "پروژه"),
+            activity("ACT-100", "1", "پروژه احداث پل"),
+            activity("ACT-110", "1.1", "شروع"),
+            activity("ACT-120", "1.2", "تحویل زمین"),
+        ]
+        estimates = [
+            estimate(line(1), CONCRETE, "material", "ACT-110", "10", "1000"),
+            estimate(line(2), CONCRETE, "material", "ACT-120", "20", "1000"),
+            # Booked against the wrapper itself, not against any stage inside it.
+            estimate(line(3), CONCRETE, "material", "ACT-100", "5", "1000"),
+        ]
+        invoices = [
+            invoice(line(1), CONCRETE, "material", "9000", quantity="9"),
+            invoice(line(2), CONCRETE, "material", "18000", quantity="18"),
+            invoice(line(3), CONCRETE, "material", "4000", quantity="4"),
+        ]
+        service = build(Repository(estimates=estimates, invoices=invoices),
+                        activities=Activities(rows))
+        result = await service.by_wbs(SCOPE, WHEN, level=1)
+        # Costed directly, `1` is a stage rather than a container, so it stays at level 1
+        # and the 4000 booked against it is inside a reported row instead of nowhere.
+        self.assertEqual(["0", "1"], [item["wbs_code"] for item in result["items"]])
+        reported = sum((item["actual_cost_irr"] for item in result["items"]), Decimal(0))
+        self.assertEqual(
+            result["totals"]["actualCostIrr"],
+            reported + result["unattributed_actual_irr"] + result["unmapped_wbs_actual_irr"])
+
     async def test_a_reversal_subtracts_from_the_unattributed_total(self):
         # 5000 purchased, 1000 reversed. A reversal that added would be invisible in a sum.
         result = await build().by_wbs(SCOPE, WHEN, level=1)
@@ -338,14 +445,18 @@ class WbsReportTests(unittest.IsolatedAsyncioTestCase):
             invoices.append(invoice(line(1000 + index), CONCRETE, "material", "50"))
         service = build(Repository(estimates=estimates, invoices=invoices),
                         activities=Activities(rows))
+        # Every task in this plan hangs under `5`, so `5` is the project and level 1 is
+        # the stages inside it -- the same reading BAMBO's own MSP report takes.
         result = await service.by_wbs(SCOPE, WHEN, level=1)
-        root = next(item for item in result["items"] if item["wbs_code"] == "5")
-        self.assertEqual(260, root["activity_count"])
-        self.assertEqual(260, root["child_count"])
-        self.assertEqual(Decimal("26000"), root["initial_estimate_irr"])
-        self.assertEqual(Decimal("13000"), root["actual_cost_irr"])
+        self.assertEqual(260, len(result["items"]))
+        self.assertEqual(Decimal("26000"),
+                         sum((item["initial_estimate_irr"] for item in result["items"]), Decimal(0)))
+        self.assertEqual(Decimal("13000"),
+                         sum((item["actual_cost_irr"] for item in result["items"]), Decimal(0)))
+        # The point of the fixture: a catalogue past one page is still read whole.
         children = await service.by_wbs(SCOPE, WHEN, parent_wbs_code="5")
         self.assertEqual(260, len(children["items"]))
+        self.assertEqual(260, len(wbs.build_tree(rows)["5"]["activityCodes"]))
 
     async def test_without_an_activity_catalogue_no_stage_is_invented(self):
         service = FinanceLiveReportService(Repository(), Provider())
