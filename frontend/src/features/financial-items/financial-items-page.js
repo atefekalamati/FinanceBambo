@@ -19,7 +19,7 @@ import { element } from "../../shared/dom/elements.js";
 import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
 import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
-import { ABSENT, activityBlockStarts, activityLabel, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
+import { ABSENT, activityBlockStarts, activityLabel, assignmentCostOf, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
   const wrapper = element("div", "form-field");
@@ -773,7 +773,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
         unit: isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit),
         originalQuantity: isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original),
         revisedQuantity: revisedCell,
-        scheduleCost: "",
+        scheduleCost: formatTomanFromIrr(assignmentCostOf(line), { withCurrency: false }),
         originalPrice: formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false }),
         currentPrice: formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false }),
         source: sourceLabel(line),

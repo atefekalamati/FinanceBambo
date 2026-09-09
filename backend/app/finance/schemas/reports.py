@@ -9,7 +9,9 @@ from .base import ApiModel
 
 
 class LiveMetrics(ApiModel):
-    initial_estimate_irr: Decimal
+    #: None when a line in the project states no baseline of its own. A total built
+    #: from some of its lines is not the total, and a number is not the way to say so.
+    initial_estimate_irr: Decimal | None
     actual_cost_irr: Decimal
     current_executed_value_irr: Decimal | None
     remaining_physical_cost_irr: Decimal | None
@@ -24,15 +26,15 @@ class LiveMetrics(ApiModel):
 
 class TypeBreakdown(ApiModel):
     resource_type: Literal["material","labor","equipment","general_cost"]
-    initial_estimate_irr: Decimal
-    revised_estimate_irr: Decimal = Decimal(0)
+    initial_estimate_irr: Decimal | None
+    revised_estimate_irr: Decimal | None = Decimal(0)
     actual_cost_irr: Decimal
     remaining_physical_cost_irr: Decimal = Decimal(0)
     forecast_final_irr: Decimal
     calculation_status: Literal["complete","incomplete"] = "complete"
     excluded_estimate_line_count: int = 0
     @field_serializer("initial_estimate_irr","revised_estimate_irr","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr")
-    def serialize_money(self,value): return format(value,"f")
+    def serialize_money(self,value): return None if value is None else format(value,"f")
 
 
 class PriceVariance(ApiModel):
@@ -243,7 +245,7 @@ class MonthlyBreakdown(ApiModel):
     equipment:Decimal
     general_cost:Decimal
     @field_serializer("material","labor","equipment","general_cost")
-    def serialize_money(self,value):return format(value,"f")
+    def serialize_money(self,value):return None if value is None else format(value,"f")
 
 
 class MonthlyPoint(ApiModel):
@@ -295,8 +297,8 @@ class WbsNode(ApiModel):
     activity_count:int=0
     child_count:int=0
     estimate_line_count:int=0
-    initial_estimate_irr:Decimal
-    revised_estimate_irr:Decimal=Decimal(0)
+    initial_estimate_irr:Decimal|None
+    revised_estimate_irr:Decimal|None=Decimal(0)
     actual_cost_irr:Decimal
     remaining_physical_cost_irr:Decimal|None=None
     money_required_irr:Decimal|None=None
@@ -311,7 +313,7 @@ class WbsNode(ApiModel):
 
     @field_serializer("breakdown")
     def serialize_breakdown(self,value):
-        return {kind:format(amount,"f") for kind,amount in value.items()}
+        return {kind:(None if amount is None else format(amount,"f")) for kind,amount in value.items()}
 
 
 class WbsReportResponse(ApiModel):
@@ -338,4 +340,4 @@ class WbsReportResponse(ApiModel):
     warnings:list[ReportWarning]=Field(default_factory=list)
 
     @field_serializer("unattributed_actual_irr","unmapped_wbs_actual_irr")
-    def serialize_money(self,value):return format(value,"f")
+    def serialize_money(self,value):return None if value is None else format(value,"f")

@@ -22,6 +22,11 @@ function mapLine(value, resources, activities = [], currentPrices = new Map()) {
     sourceTaskUid: value.sourceTaskUid ?? null,
     // The activity's cost in the schedule -- the activity's, not this item's.
     mppTaskCostIrr: activity?.mppTaskCostIrr ?? null,
+    // THIS item's own cost in the schedule, from its own assignment. A separate
+    // field from the activity's above because they are separate numbers: the
+    // activity's is the sum of its items' and repeating it down them would count
+    // it once per item.
+    mppAssignmentCostIrr: value.mppCostIrr ?? null,
     // The price a person entered for this item today, if anyone has. Separate
     // from the schedule's cost above and from the frozen original below; the
     // three are different numbers and are never derived from one another.
