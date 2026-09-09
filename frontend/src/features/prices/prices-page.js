@@ -749,12 +749,6 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
     currentHeading.append(element("div", "", ""), currentMeta);
     currentHeading.firstElementChild.append(element("h2", "", "قیمت روز اقلام"), element("p", "prices-section__hint", `قیمت‌ها به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند و نمودار کوچک، روند تغییرات هر قلم را نشان می‌دهد.`));
     current.append(currentHeading, filters);
-    // What the list is not showing, and why it is still in the database. A page
-    // that quietly shows fewer rows reads as a page that has fewer rows.
-    if (workspace.withheldResourceCount) {
-      current.append(element("p", "table-note",
-        `${formatDisplayNumber(String(workspace.withheldResourceCount))} قلم ساخته‌شدهٔ داده آزمایشی (کد MSP-T، برگرفته از فعالیت‌های برنامه زمانی) در این فهرست نمایش داده نمی‌شود؛ این ردیف‌ها و ${formatDisplayNumber(String(workspace.withheldPriceCount ?? 0))} نسخه قیمت آن‌ها حذف نشده‌اند و قلمی که کسی برای آن قیمت یا فاکتور ثبت کرده باشد همچنان نمایش داده می‌شود.`));
-    }
     if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history, focusResourceId, priceColumns, visiblePriceColumns));
     else current.append(element("div", "state-card price-filter-empty", "قلمی مطابق فیلترهای انتخاب‌شده پیدا نشد."));
     const history = element("section", "prices-section");
