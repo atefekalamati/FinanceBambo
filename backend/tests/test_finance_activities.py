@@ -25,7 +25,7 @@ VERSION = UUID("afe50159-86e5-4e65-9f31-e0fd01ef29e7")
 
 
 class Cursor:
-    """Answers the two statements the provider issues, as the database would."""
+    """Answers the three statements the provider issues, as the database would."""
 
     def __init__(self, connection):
         self._c = connection
@@ -42,6 +42,8 @@ class Cursor:
         self._c.statements.append(text)
         if "FROM finance_mpp_source_versions" in text:
             self._rows = [] if self._c.version is None else [{"id": self._c.version}]
+        elif "source_assignment_units" in text:
+            self._rows = list(self._c.assignments)
         else:
             self._rows = list(self._c.catalogue)
 
@@ -50,8 +52,9 @@ class Cursor:
 
 
 class Connection:
-    def __init__(self, catalogue=(), version=VERSION):
+    def __init__(self, catalogue=(), version=VERSION, assignments=()):
         self.catalogue, self.version = list(catalogue), version
+        self.assignments = list(assignments)
         self.statements = []
 
     def cursor(self, **_kwargs):
@@ -67,8 +70,8 @@ def run(coro):
 
 
 class ActivityCatalogueTests(unittest.TestCase):
-    def catalogue(self, rows, version=VERSION):
-        connection = Connection(rows, version)
+    def catalogue(self, rows, version=VERSION, assignments=()):
+        connection = Connection(rows, version, assignments)
         return connection, FinanceRowsActivityProvider(connection)
 
     def test_an_activity_carries_the_schedules_cost_for_it(self):
@@ -93,13 +96,15 @@ class ActivityCatalogueTests(unittest.TestCase):
         self.assertEqual(rows[0]["mppTaskCostIrr"], Decimal("0"))
         self.assertIsNotNone(rows[0]["mppTaskCostIrr"])
 
-    def test_the_cost_is_read_once_per_activity_and_never_summed(self):
-        # The column holds the task's cost repeated on every assignment row, so the
-        # statement must not add them up: `min` reads the figure, `sum` invents one.
+    def test_the_activity_total_sums_its_own_assignments_and_never_the_task_column(self):
+        # `source_cost` holds the TASK's figure repeated on every one of its rows, so
+        # adding it up counts it once per assignment -- and on a summary task it is a
+        # rollup of children that none of the visible rows accounts for. The assignment
+        # column is per assignment, so summing THAT is what the header means.
         statement = " ".join(finance_activities._ACTIVITIES.split())
-        self.assertIn("min(source_cost)", statement)
+        self.assertIn("sum(source_assignment_cost_irr)", statement)
         self.assertNotIn("sum(source_cost)", statement)
-        self.assertIn("count(DISTINCT source_cost) = 1", statement)
+        self.assertNotIn("min(source_cost)", statement)
 
     def test_no_imported_schedule_means_an_empty_catalogue_not_a_failure(self):
         _, provider = self.catalogue([row("1.1", "هر چیزی", 1, Decimal("5"))], version=None)

@@ -1,5 +1,6 @@
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from ..domain.active_prices import active_price_resource
 from ..domain.prices import PriceVersion
 
 class PsycopgFinancePriceRepository:
@@ -7,9 +8,16 @@ class PsycopgFinancePriceRepository:
  @staticmethod
  def map(r): return PriceVersion(r["id"],r["organization_id"],r["project_id"],r["resource_id"],r["scope_kind"],r["version"],r["unit_price_irr"],r["effective_from"],r["reason"],r["created_by"],r["created_at"])
  async def history(self,scope,resource_id=None):
-  sql="SELECT * FROM price_versions WHERE organization_id=%s AND project_id=%s"; args=[scope.organization_id,scope.project_id]
-  if resource_id is not None: sql+=" AND resource_id=%s";args.append(resource_id)
-  sql+=" ORDER BY effective_from DESC,version DESC,created_at DESC,id DESC"
+  # Scoped to the operational set, so the history a person reads is the history of the
+  # items they are shown. A withheld item keeps every version it ever had; this listing
+  # simply is not where they are read from. `current()` below is deliberately NOT scoped:
+  # resolving one item by id must keep working for invoices and reports for ever.
+  sql=("SELECT pv.* FROM price_versions pv JOIN finance_resources r"
+       " ON r.organization_id=pv.organization_id AND r.project_id=pv.project_id AND r.id=pv.resource_id"
+       " WHERE pv.organization_id=%s AND pv.project_id=%s AND r.deleted_at IS NULL AND "
+       + active_price_resource("r")); args=[scope.organization_id,scope.project_id]
+  if resource_id is not None: sql+=" AND pv.resource_id=%s";args.append(resource_id)
+  sql+=" ORDER BY pv.effective_from DESC,pv.version DESC,pv.created_at DESC,pv.id DESC"
   async with self.db.cursor(row_factory=dict_row) as c: await c.execute(sql,tuple(args)); return [self.map(x) for x in await c.fetchall()]
  async def current(self,scope,resource_id,as_of):
   async with self.db.cursor(row_factory=dict_row) as c:
@@ -17,7 +25,7 @@ class PsycopgFinancePriceRepository:
   return None if row is None else self.map(row)
  async def trend_history(self,scope,as_of):
   async with self.db.cursor(row_factory=dict_row) as c:
-   await c.execute("""SELECT r.id resource_id,pv.id,pv.organization_id,pv.project_id,pv.scope_kind,pv.version,pv.unit_price_irr,pv.effective_from,pv.reason,pv.created_by,pv.created_at FROM finance_resources r LEFT JOIN price_versions pv ON pv.organization_id=r.organization_id AND pv.project_id=r.project_id AND pv.resource_id=r.id AND pv.effective_from<=%s WHERE r.organization_id=%s AND r.project_id=%s AND r.deleted_at IS NULL ORDER BY r.id,pv.effective_from,pv.version,pv.created_at,pv.id""",(as_of,scope.organization_id,scope.project_id));rows=await c.fetchall()
+   await c.execute("""SELECT r.id resource_id,pv.id,pv.organization_id,pv.project_id,pv.scope_kind,pv.version,pv.unit_price_irr,pv.effective_from,pv.reason,pv.created_by,pv.created_at FROM finance_resources r LEFT JOIN price_versions pv ON pv.organization_id=r.organization_id AND pv.project_id=r.project_id AND pv.resource_id=r.id AND pv.effective_from<=%s WHERE r.organization_id=%s AND r.project_id=%s AND r.deleted_at IS NULL AND """+active_price_resource("r")+""" ORDER BY r.id,pv.effective_from,pv.version,pv.created_at,pv.id""",(as_of,scope.organization_id,scope.project_id));rows=await c.fetchall()
   grouped={}
   for row in rows:
    grouped.setdefault(row["resource_id"],[])

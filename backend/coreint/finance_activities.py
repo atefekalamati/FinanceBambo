@@ -48,12 +48,37 @@ _ACTIVITIES = """
            -- The rows of one task agree on it, and the CASE says so rather than assuming
            -- it: if they ever disagree the answer is no cost at all, because `min` would
            -- then be picking one of several figures and presenting the choice as fact.
-           CASE WHEN count(DISTINCT source_cost) = 1 THEN min(source_cost) END AS task_cost
+           -- The sum of THIS activity's own assignments, which is what the rows under the
+           -- header add up to. Not `source_cost`: that is MS Project's Task.getCost(), and
+           -- on a summary task it rolls the children in -- 83 of this file's 328 tasks
+           -- have a task cost and no assignments of their own, so a header taken from it
+           -- would state a figure none of its visible rows accounts for. Already in rials:
+           -- the column was converted at import, and converting again here is the other
+           -- way to get this wrong.
+           sum(source_assignment_cost_irr) AS task_cost
       FROM finance_mpp_rows
      WHERE source_version_id = %(version_id)s
        AND task_wbs IS NOT NULL AND btrim(task_wbs) <> ''
      GROUP BY task_wbs
      ORDER BY task_wbs
+"""
+
+
+#: What the file states for each assignment of an activity. Schedule facts, every one of
+#: them: a quantity here is not an approved estimate quantity and a cost here is not a
+#: price, so they travel under names that say `mpp` and are never joined to money.
+_ASSIGNMENTS = """
+    SELECT task_wbs AS code,
+           resource_name,
+           source_assignment_units AS quantity,
+           normalized_unit AS unit,
+           unit_confidence,
+           source_assignment_cost_irr AS cost_irr
+      FROM finance_mpp_rows
+     WHERE source_version_id = %(version_id)s
+       AND source_assignment_uid IS NOT NULL
+       AND task_wbs IS NOT NULL AND btrim(task_wbs) <> ''
+     ORDER BY task_wbs, source_assignment_uid
 """
 
 
@@ -76,12 +101,19 @@ class FinanceRowsActivityProvider:
             # still answers, and `by_wbs` reports no stages rather than failing.
             return {}
         rows = await self._rows(_ACTIVITIES, {"version_id": version[0]["id"]})
+        assignments = {}
+        for row in await self._rows(_ASSIGNMENTS, {"version_id": version[0]["id"]}):
+            assignments.setdefault(row["code"], []).append(
+                {"resourceName": row["resource_name"], "quantity": row["quantity"],
+                 "unit": row["unit"], "unitConfidence": row["unit_confidence"],
+                 "costIrr": row["cost_irr"]})
         return {row["code"]: {"activityExternalId": row["code"],
                               "taskExternalId": (None if row["task_uid"] is None
                                                  else str(row["task_uid"])),
                               "title": row["title"],
                               "wbsCode": row["code"],
                               "mppTaskCostIrr": row["task_cost"],
+                              "mppAssignments": assignments.get(row["code"], []),
                               "status": ACTIVE}
                 for row in rows}
 

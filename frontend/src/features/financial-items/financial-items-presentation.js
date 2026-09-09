@@ -282,3 +282,16 @@ export function scheduleCostOf(line) {
   const value = line?.mppTaskCostIrr;
   return value === null || value === undefined || value === "" ? null : value;
 }
+
+/**
+ * The schedule's own cost for THIS item, from its assignment, or null.
+ *
+ * Read, never derived: the file states a cost per assignment and Finance stores
+ * it per line, so nothing here divides an activity's total between its items or
+ * multiplies a quantity by a rate. A real zero stays zero — the schedule saying
+ * an item costs nothing is not the same as it saying nothing about the item.
+ */
+export function assignmentCostOf(line) {
+  const value = line?.mppAssignmentCostIrr;
+  return value === null || value === undefined || value === "" ? null : value;
+}
