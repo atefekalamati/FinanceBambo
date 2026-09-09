@@ -169,17 +169,40 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     # mappedLineCount + unmappedLineCount + generalCostLineCount is every estimate line
     # read for this date. General cost is counted separately because progress is
     # meaningless for it, so it belongs in neither of the other two.
+    #: Lines that state no baseline of their own. Counted rather than absorbed: a total
+    #: built from some of its lines is not the total, and a reader must be told which.
+    missing_estimate_count = 0
+    #: The same gap, per resource type, so a type made entirely of unstated lines does not
+    #: publish a confident zero beside a type that really was estimated.
+    missing_estimate_by_type = {kind: 0 for kind in actual_by_type}
     progress_quality={"complete":True,"manualOverrideCount":0,"taskFallbackCount":0,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":0,"unmappedLineCount":0,"generalCostLineCount":0,"workAsQuantityCount":0,"unmappedAssignmentCount":0,"unmappedActivityCount":0}
     for row in estimate_rows:
         kind = row["resource_type"]
-        original_price = Decimal(row["original_unit_price_irr"] or 0)
+        # Detected, not coerced. `or 0` read a line that states no price as a line
+        # priced at nothing, and 715 of this project's 835 lines state neither a price nor
+        # a quantity -- so the estimate was built from 120 of them and the other 715 were
+        # silently counted as worth zero. The arithmetic below still runs on ZERO, exactly
+        # as the missing-current-price guard does; what changes is that a total resting on
+        # a line like this is no longer published as if it were complete.
+        stated_price = row["original_unit_price_irr"]
+        original_price = ZERO if stated_price is None else Decimal(stated_price)
         if kind == "general_cost":
             progress_quality["generalCostLineCount"] += 1
+            # A general cost IS its amount: the price column holds it, and there is no
+            # quantity to multiply. So its baseline is known exactly when that is stated.
+            has_baseline = stated_price is not None
+            if not has_baseline:
+                missing_estimate_count += 1
+                missing_estimate_by_type[kind] += 1
+                warnings.append(_line_warning(row,"ESTIMATE_BASELINE_MISSING","The line states no original amount; estimate totals exclude it.",excluded=True,
+                    affected=("initialEstimateIrr","revisedEstimateIrr")))
             original_amount = original_price
             revised_amount = money(row["revised_quantity"]) if row.get("revised_quantity") is not None else original_amount
-            initial_total += original_amount; general_revised += revised_amount
-            breakdown[kind]["initialEstimateIrr"] += original_amount
-            breakdown[kind]["revisedEstimateIrr"] += revised_amount
+            general_revised += revised_amount
+            if has_baseline:
+                initial_total += original_amount
+                breakdown[kind]["initialEstimateIrr"] += original_amount
+                breakdown[kind]["revisedEstimateIrr"] += revised_amount
             linked_actual = actual_by_line.get(row["id"], ZERO)
             pooled_actual = resource_actual_remaining.get(row["resource_id"], ZERO)
             pooled_allocated = min(max(revised_amount - linked_actual, ZERO), pooled_actual) if pooled_actual > ZERO else ZERO
@@ -189,11 +212,22 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             if line_actual > revised_amount:
                 warnings.append(_line_warning(row,"GENERAL_COST_OVERRUN","General cost actual exceeds its revised estimate.",affected=("moneyRequiredToContinueIrr","forecastFinalCostIrr")))
             continue
-        original_quantity = Decimal(row["original_quantity"] or 0)
+        stated_quantity = row["original_quantity"]
+        original_quantity = ZERO if stated_quantity is None else Decimal(stated_quantity)
         revised_quantity = Decimal(row["revised_quantity"] if row.get("revised_quantity") is not None else original_quantity)
+        # An amount is a product, so it exists only where both its factors do. A quantity
+        # of zero with a price is an amount of zero -- a fact -- and is counted; a quantity
+        # nobody stated is not.
+        has_baseline = stated_quantity is not None and stated_price is not None
         initial = money(original_quantity * original_price)
         revised_estimate = money(revised_quantity * original_price)
-        initial_total += initial;breakdown[kind]["initialEstimateIrr"] += initial;breakdown[kind]["revisedEstimateIrr"] += revised_estimate
+        if has_baseline:
+            initial_total += initial;breakdown[kind]["initialEstimateIrr"] += initial;breakdown[kind]["revisedEstimateIrr"] += revised_estimate
+        else:
+            missing_estimate_count += 1
+            missing_estimate_by_type[kind] += 1
+            warnings.append(_line_warning(row,"ESTIMATE_BASELINE_MISSING","The line states no original quantity or no original price; estimate totals exclude it.",excluded=True,
+                affected=("initialEstimateIrr","revisedEstimateIrr")))
         assignment = pairing.match(*line_keys(row))
         # Three facts about the same line, deliberately separate. `_source` is the field the
         # number came from, `_measurement` is what kind of number it is, and `_status` is
@@ -298,7 +332,15 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     breakdown["general_cost"]["forecastFinalIrr"] += general_required
     for kind in breakdown:
         breakdown[kind]["excludedEstimateLineCount"] = excluded_lines_by_type[kind]
-        breakdown[kind]["calculationStatus"] = "incomplete" if excluded_lines_by_type[kind] or kind in missing_conversion_types else "complete"
+        if missing_estimate_by_type[kind]:
+            # This type has a line nobody estimated, so its estimate is unknown. Zero here
+            # read as "this type was estimated at nothing" -- and equipment, 426 lines of
+            # it, said exactly that.
+            breakdown[kind]["initialEstimateIrr"] = None
+            breakdown[kind]["revisedEstimateIrr"] = None
+        breakdown[kind]["calculationStatus"] = ("incomplete"
+            if excluded_lines_by_type[kind] or missing_estimate_by_type[kind] or kind in missing_conversion_types
+            else "complete")
     forecast = actual_total + money_required
     area = None if gross_area is None else Decimal(gross_area)
     # Lines whose executed quantity nobody could measure -- unmapped, or mapped to a row
@@ -311,13 +353,17 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     incomplete_metric_keys=[]
     if missing_price_count or missing_conversion_count or progress_unknown:
         incomplete_metric_keys=["currentExecutedValueIrr","remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr","forecastPerSquareMeterIrr"]
+    # The baseline is its own kind of gap and names its own metrics. A project can have
+    # every price and every measurement and still have lines nobody has estimated.
+    if missing_estimate_count:
+        incomplete_metric_keys=incomplete_metric_keys+["initialEstimateIrr","revisedEstimateIrr"]
     if area is None or area <= 0:
         actual_per_area = forecast_per_area = None
         warnings.append(_warning("GROSS_AREA_MISSING","Per-square-meter metrics are unavailable because gross built area is missing.",
             excluded=True,affected=("actualCostPerSquareMeterIrr","forecastPerSquareMeterIrr")))
     else:
         actual_per_area = money(actual_total / area);forecast_per_area = money(forecast / area)
-    metrics = {"initialEstimateIrr":money(initial_total),"actualCostIrr":money(actual_total),
+    metrics = {"initialEstimateIrr":None if missing_estimate_count else money(initial_total),"actualCostIrr":money(actual_total),
         "currentExecutedValueIrr":None if missing_price_count or progress_unknown else money(current_executed),
         "remainingPhysicalCostIrr":None if missing_price_count or progress_unknown else money(remaining_physical_cost),
         "moneyRequiredToContinueIrr":None if missing_price_count or missing_conversion_count or progress_unknown else money(money_required),
