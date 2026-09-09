@@ -25,12 +25,25 @@ class LiveMetrics(ApiModel):
 
 
 class TypeBreakdown(ApiModel):
+    """One resource type's share, with the same nullability as the totals above it.
+
+    `initialEstimateIrr` and `revisedEstimateIrr` were already nullable here, because a row
+    built from some of its lines is not that row's total. The two figures DERIVED from them
+    were not, and that was an inconsistency rather than a decision: whenever the estimate
+    behind a row is unknown, the remaining cost and the forecast computed from it are
+    unknown too, and the response could not say so -- it raised a validation error instead
+    of publishing "-". `LiveMetrics` and `WbsNode` both already carry the null; this row now
+    agrees with them.
+
+    Nullable is not the same as defaulted. `calculate_live_report` always states both
+    figures for a row it could compute, so a null here means the calculation said so.
+    """
     resource_type: Literal["material","labor","equipment","general_cost"]
     initial_estimate_irr: Decimal | None
     revised_estimate_irr: Decimal | None = Decimal(0)
     actual_cost_irr: Decimal
-    remaining_physical_cost_irr: Decimal = Decimal(0)
-    forecast_final_irr: Decimal
+    remaining_physical_cost_irr: Decimal | None = Decimal(0)
+    forecast_final_irr: Decimal | None
     calculation_status: Literal["complete","incomplete"] = "complete"
     excluded_estimate_line_count: int = 0
     @field_serializer("initial_estimate_irr","revised_estimate_irr","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr")
