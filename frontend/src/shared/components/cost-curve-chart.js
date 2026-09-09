@@ -88,7 +88,7 @@ export function createCostCurveChart({
     const nodes = ticks.map((tick) => {
       const node = element("span", "cost-curve__guide-value", formatValue(tick.valueIrr));
       const exact = formatExactValue(tick.valueIrr);
-      if (exact) node.dataset.exact = exact;
+      if (exact) node.title = exact;
       node.style.setProperty("--tick", `${tick.magnitude}`);
       return node;
     });

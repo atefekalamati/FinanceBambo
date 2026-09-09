@@ -417,35 +417,3 @@ a.vgroup__name:focus-visible {
   font-size: var(--font-size-xs);
 }
 
-/* --- exact amounts ------------------------------------------------------ */
-
-/* The figures on this page are compacted so the rows stay readable. The exact
-   amount is a hover away, through the same `::after` the other charts in this
-   module use rather than a second tooltip mechanism.
-
-   Named by element rather than by `[data-exact]` alone: a bare attribute
-   selector outweighs the single class the bars position themselves with, and
-   turned every bar from absolute back to relative — which left them inline, so
-   their width stopped applying and they vanished. The bars need no rule here;
-   they are already positioned, so their tooltip anchors to them as it is. */
-.level-one-page td[data-exact],
-.level-one-page strong[data-exact] {
-  position: relative;
-}
-
-.level-one-page [data-exact]:hover::after,
-.level-one-page [data-exact]:focus-visible::after {
-  content: attr(data-exact);
-  position: absolute;
-  inset-block-end: calc(100% + .35rem);
-  inset-inline-start: 0;
-  z-index: 40;
-  padding: .25rem .5rem;
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-elevated);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  white-space: nowrap;
-  box-shadow: var(--dash-shadow);
-}

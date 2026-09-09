@@ -380,6 +380,7 @@ class FinanceMppSyncService:
                 async with connection.cursor(row_factory=dict_row) as cursor:
                     await cursor.execute("""
                         SELECT v.id, v.row_count, v.source_file_name_safe,
+                               v.reporting_date,
                                (SELECT count(*) FROM finance_mpp_rows r
                                  WHERE r.source_version_id=v.id
                                    AND r.organization_id=v.organization_id
@@ -413,6 +414,12 @@ class FinanceMppSyncService:
                                 UPDATE finance_mpp_source_versions
                                    SET source_file_name_safe = %s WHERE id = %s
                             """, (resolved.relative_name, existing["id"]))
+                        if (existing.get("reporting_date") is None
+                                and getattr(parsed, "status_date", None) is not None):
+                            await cursor.execute("""
+                                UPDATE finance_mpp_source_versions
+                                   SET reporting_date = %s WHERE id = %s
+                            """, (parsed.status_date, existing["id"]))
                         return {"status": "unchanged",
                                 "sourceVersionId": str(existing["id"]),
                                 "fileSha256": resolved.sha256,
@@ -421,6 +428,10 @@ class FinanceMppSyncService:
                                 "fileName": resolved.relative_name}
                     if existing is not None:
                         version_id = str(existing["id"])
+                        await cursor.execute("""
+                            UPDATE finance_mpp_source_versions
+                               SET reporting_date = %s WHERE id = %s
+                        """, (getattr(parsed, "status_date", None), version_id))
                         await cursor.execute(
                             "DELETE FROM finance_mpp_rows WHERE source_version_id = %s",
                             (version_id,))
@@ -443,12 +454,12 @@ class FinanceMppSyncService:
                         INSERT INTO finance_mpp_source_versions
                             (id, organization_id, project_id, source_file_name_safe,
                              source_sha256, source_size_bytes, reader_engine, status,
-                             row_count, imported_by)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,'ready',%s,%s)
+                             row_count, imported_by, reporting_date)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,'ready',%s,%s,%s)
                     """, (version_id, organization_id, project_id,
                           resolved.relative_name, resolved.sha256, resolved.size_bytes,
                           getattr(parsed, "parser_engine", None), len(rows),
-                          actor_user_id))
+                          actor_user_id, getattr(parsed, "status_date", None)))
                     for row in rows:
                         await cursor.execute(
                             _INSERT_ROW,

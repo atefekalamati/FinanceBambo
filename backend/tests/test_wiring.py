@@ -67,6 +67,8 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/imports/estimate/preview", "post"),
                 ("/api/projects/{projectId}/finance/imports/estimate/commit", "post"),
                 ("/api/projects/{projectId}/finance/imports/prices/preview", "post"),
+                ("/api/projects/{projectId}/finance/imports/estimate/preview-link", "post"),
+                ("/api/projects/{projectId}/finance/imports/prices/preview-link", "post"),
                 ("/api/projects/{projectId}/finance/imports/prices/commit", "post"),
                 ("/api/projects/{projectId}/finance/invoices", "get"),
                 ("/api/projects/{projectId}/finance/invoices", "post"),

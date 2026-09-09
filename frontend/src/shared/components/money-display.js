@@ -37,7 +37,7 @@ export function createTomanDisplay(value, { compact = false } = {}) {
   display.append(unit, amount);
   if (compactValue?.compact) {
     display.classList.add("compact-money");
-    display.dataset.exact = exactValue;
+    display.title = exactValue;
     display.setAttribute("aria-label", exactValue);
     display.tabIndex = 0;
   }

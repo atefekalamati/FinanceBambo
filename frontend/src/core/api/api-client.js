@@ -1,4 +1,5 @@
 import { ApiError } from "./api-error.js";
+import { responseError } from "./response-error.js";
 
 function assertSameOrigin(url) {
   const resolved = new URL(url, window.location.origin);
@@ -18,14 +19,7 @@ export function createApiClient({ fetchImpl = window.fetch.bind(window) } = {}) 
     const response = await fetchImpl(url, { ...options, headers, credentials: "same-origin" });
     const payload = response.status === 204 ? null : await response.json().catch(() => null);
     if (!response.ok) {
-      const error = payload?.error ?? {};
-      throw new ApiError({
-        status: response.status,
-        code: error.code,
-        message: error.message || "دریافت اطلاعات مالی انجام نشد.",
-        requestId: error.request_id ?? error.requestId ?? null,
-        details: error.details ?? [],
-      });
+      throw responseError(response, payload, "دریافت اطلاعات مالی انجام نشد.");
     }
     return payload;
   }
@@ -37,14 +31,7 @@ export function createApiClient({ fetchImpl = window.fetch.bind(window) } = {}) 
 
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
-      const error = payload?.error ?? {};
-      throw new ApiError({
-        status: response.status,
-        code: error.code,
-        message: error.message || "دریافت فایل گزارش انجام نشد.",
-        requestId: error.request_id ?? error.requestId ?? null,
-        details: error.details ?? [],
-      });
+      throw responseError(response, payload, "دریافت فایل گزارش انجام نشد.");
     }
 
     return Object.freeze({

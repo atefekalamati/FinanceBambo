@@ -99,7 +99,7 @@ export function createCombinationChart({
       const node = element("span", `combo-chart__axis-value numeric${exact ? " compact-money" : ""}`, shown);
       node.style.fontSize = `${fontSize}px`;
       if (exact) {
-        node.dataset.exact = exact;
+        node.title = exact;
         node.setAttribute("aria-label", exact);
         node.tabIndex = 0;
       }

@@ -1,0 +1,99 @@
+/* Internal page headers keep their existing title/theme, with one shared row. */
+.finance-internal-header[class] {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  min-inline-size: 0;
+  direction: rtl;
+}
+
+.finance-internal-header > h1 {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  margin-block: 0;
+  overflow-wrap: anywhere;
+}
+
+.finance-internal-header > .finance-back-link {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  inline-size: auto;
+  min-inline-size: 0;
+  min-block-size: 2.75rem;
+  margin: 0;
+  padding: .5625rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: .875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: filter .15s, background .15s;
+}
+
+.finance-internal-header > .finance-back-link:hover {
+  background: var(--grad-accent-soft);
+  border-color: var(--brand-teal);
+}
+
+.finance-internal-header > .finance-back-link:focus-visible {
+  outline: 2px solid var(--brand-teal);
+  outline-offset: 3px;
+}
+
+.finance-page-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
+@media (max-width: 48rem) {
+  .finance-internal-header[class] {
+    gap: .625rem;
+  }
+
+  .finance-internal-header[class] > h1 {
+    font-size: 1.1rem;
+  }
+
+  .finance-internal-header > .finance-back-link {
+    padding-inline: .625rem;
+    font-size: .8125rem;
+  }
+}
+
+@media (max-width: 30rem) {
+  .finance-internal-header[class] {
+    gap: .5rem;
+  }
+
+  .finance-internal-header[class] > h1 {
+    font-size: .875rem;
+  }
+
+  .finance-internal-header > .finance-back-link {
+    padding-inline: .5rem;
+    font-size: .75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .finance-internal-header > .finance-back-link {
+    transition: none;
+  }
+}

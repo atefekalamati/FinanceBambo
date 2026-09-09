@@ -424,6 +424,13 @@
 .report-doc {
   display: grid;
   gap: var(--space-md);
+  min-inline-size: 0;
+}
+
+.report-doc__chapter {
+  display: grid;
+  gap: var(--space-sm);
+  min-inline-size: 0;
 }
 
 .report-doc__section {
@@ -524,7 +531,7 @@
   inset-block: 0;
   inset-inline-start: 0;
   inline-size: var(--bar-width);
-  min-inline-size: .2rem;
+  min-inline-size: 0;
   border-radius: var(--radius-pill);
 }
 
@@ -544,6 +551,7 @@
 }
 
 .report-doc__table-wrapper {
+  min-inline-size: 0;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
 }
@@ -558,6 +566,58 @@
   color: var(--color-text-muted);
   font-size: .68rem;
   text-align: center;
+}
+
+/* Financial S curve: the accompanying table carries the exact values. */
+.report-doc__curve {
+  margin: 0;
+  padding: .7rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.report-doc__curve figcaption {
+  text-align: center;
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+.report-doc__curve-svg {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  overflow: visible;
+  direction: ltr;
+}
+
+.report-doc__curve-svg text {
+  fill: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.report-doc__curve-grid {
+  stroke: var(--color-border-subtle);
+  stroke-width: 1;
+}
+
+.report-doc__curve-line {
+  stroke: var(--dash-actual);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.report-doc__curve-line--planned {
+  stroke: var(--dash-plan);
+  stroke-dasharray: 6 4;
+}
+
+.report-doc__curve-point {
+  fill: var(--dash-actual);
+}
+
+.report-doc__curve-point--planned {
+  fill: var(--dash-plan);
 }
 
 @media (max-width: 48rem) {
@@ -577,6 +637,14 @@
     font-size: .64rem;
     text-align: start;
   }
+
+  .report-doc__curve-svg text {
+    font-size: 24px;
+  }
+
+  .report-doc__curve-month[data-edge="false"] {
+    display: none;
+  }
 }
 
 /* Two columns all the way down. A single full-width chip reads as a menu row
@@ -584,29 +652,15 @@
    What gives way at this width is the type and the padding, not the shape. */
 @media (max-width: 30rem) {
 
+  .report-doc__curve-svg text {
+    font-size: 32px;
+  }
+
   .report-builder-section__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: .4rem;
   }
 
-}
-
-@media print {
-  /* Each chosen report is its own document in every other context, so on paper
-     they start on their own pages rather than running together. */
-  .report-doc__section {
-    break-before: page;
-    break-inside: avoid;
-  }
-
-
-
-
-
-  .report-builder-page__header,
-  .report-builder-section {
-    display: none;
-  }
 }
 
 /* --------------------------------------------------------------------------
@@ -794,7 +848,11 @@
 .report-builder-cats,
 .report-builder-level2 {
   min-block-size: 0;
+  max-block-size: min(24rem, 48vh);
+  max-block-size: min(24rem, 48dvh);
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
   padding-inline-end: .15rem;
 
   /* Only one of the two is on screen, so they share the same track. */

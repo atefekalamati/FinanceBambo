@@ -1,8 +1,8 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { createBreakdownChart } from "../../shared/components/breakdown-chart.js";
 import { buildBulletPresentation } from "../../shared/reports/report-presentation.js";
-import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -36,7 +36,7 @@ function renderMetrics(metrics) {
     const value = element("p", `summary-card__value${compactValue?.compact ? " compact-money" : ""}`, compactValue?.amount ?? "—");
     const unit = element("span", "summary-card__unit", compactValue?.unit ?? getDisplayCurrencyLabel());
     if (compactValue?.compact) {
-      value.dataset.exact = compactValue.exact;
+      value.title = compactValue.exact;
       value.setAttribute("aria-label", compactValue.exact);
       value.tabIndex = 0;
     }
@@ -111,7 +111,7 @@ function renderPriceVariances(rows = []) {
     bar.style.setProperty("--impact-width", `${row.magnitude}%`);
     track.append(bar);
     const value = element("span", "price-impact-chart__value numeric compact-money", formatCompactMoneyFromIrr(row.varianceIrr));
-    value.dataset.exact = formatTomanFromIrr(row.varianceIrr);
+    value.title = formatTomanFromIrr(row.varianceIrr);
     value.setAttribute("aria-label", formatTomanFromIrr(row.varianceIrr));
     value.append(element("small", "", row.directionLabel));
     link.append(identity, track, value);
@@ -334,8 +334,6 @@ export function createReportsPage({ context, adapter }) {
     letterhead.classList.add("report-header--print-only");
     fragment.append(letterhead);
     const toolbar = element("section", "report-toolbar");
-    const heading = element("div");
-    heading.append(element("h1", "", "گزارش وضعیت مالی"), element("p", "", "گزارش به‌روز پروژه بر پایه داده‌های قطعی مالی و نسخه پیشرفت پروژه"));
     const controls = element("div", "report-toolbar__controls");
     const picker = createPersianDatePicker({ id: "reportingDate", label: "تاریخ گزارش", value: reportingDate, hint: "تاریخ در رابط کاربری جلالی و در API به‌صورت استاندارد ارسال می‌شود." });
     const refresh = element("button", "button button--ghost", "به‌روزرسانی گزارش");
@@ -345,16 +343,14 @@ export function createReportsPage({ context, adapter }) {
       snapshot = null;
       load();
     });
-    const back = element("a", "button button--ghost finance-back-link", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
-    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
-    controls.append(picker.field, refresh, back);
+    controls.append(picker.field, refresh);
     if (capabilitiesFor(context).issueReport) {
       const issueButton = element("button", "button button--primary", "ثبت گزارش دوره‌ای");
       issueButton.type = "button";
       issueButton.addEventListener("click", openIssueDialog);
       controls.append(issueButton);
     }
-    toolbar.append(heading, controls);
+    toolbar.append(controls);
     const analysis = element("section", "report-analysis-grid");
     analysis.setAttribute("aria-label", "جزئیات اثر تغییرات و انحرافات مالی");
     analysis.append(renderPriceVariances(report.topPriceVariances), renderQuantityVariances(report.topQuantityVariances));
@@ -369,7 +365,7 @@ export function createReportsPage({ context, adapter }) {
   }
 
   function paint() {
-    root.replaceChildren(renderPageState(state, { renderContent, onRetry: load }));
+    root.replaceChildren(createFinancePageHeader("گزارش وضعیت مالی", "report-toolbar"), renderPageState(state, { renderContent, onRetry: load }));
   }
 
   load();

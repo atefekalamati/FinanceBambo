@@ -2,7 +2,8 @@ from datetime import datetime,timezone
 from uuid import uuid4
 from ..domain.progress import (ProgressOverride,ProgressPairing,ProgressReference,
  apply_progress_overrides,assignment_keys,consumed_quantity,line_keys,
- reference_from_header,resolve_progress_quantity,snapshot_assignments,snapshot_metadata)
+ finance_version_id,reference_from_header,resolve_progress_quantity,
+ snapshot_assignments,snapshot_metadata)
 from ..adapters.ports import supports_current_snapshot
 from ..domain.schedule import derive_snapshot_versions
 from ..domain.errors import FinanceDomainError
@@ -11,8 +12,31 @@ class ProgressMappingError(FinanceDomainError):status=422;code="PROGRESS_LINE_MA
 class ProgressService:
  def __init__(self,repo,provider,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.provider=provider;self.ids=id_factory;self.clock=clock
  async def list_snapshots(self,s):
-  """Newest first, each numbered by its place in this project's history."""
-  return derive_snapshot_versions(await self.repo.list_snapshots(s))
+  """Newest first, including a current Finance-owned version not pinned yet.
+
+  Reading a list must not write a reference row. A Finance-owned source version already
+  has a stable UUID that its provider resolves directly, so it can safely appear here
+  before an issued report pins it. Core snapshots are different: their public Finance UUID
+  exists only after pinning, therefore an unpinned Core row is deliberately not invented.
+  """
+  rows=list(await self.repo.list_snapshots(s))
+  if supports_current_snapshot(self.provider):
+   feed=await self.provider.current_snapshot(str(s.organization_id),s.project_id,None)
+   metadata=feed.get("snapshot") if isinstance(feed,dict) else None
+   value=reference_from_header(metadata,s,self.ids,self.clock)
+   if (value is not None and value.host_snapshot_id is None
+       and all(str(row["progress_snapshot_id"])!=str(value.progress_snapshot_id)
+               for row in rows)):
+    rows.append({"organization_id":value.organization_id,"project_id":value.project_id,
+                 "progress_snapshot_id":value.progress_snapshot_id,
+                 "source_file_version_id":value.source_file_version_id,
+                 "source_file_name_safe":value.source_file_name_safe,
+                 "imported_at":value.imported_at,"imported_by":value.imported_by,
+                 "status":value.snapshot_status,"reporting_date":value.reporting_date,
+                 "source_type":value.source_type,"host_snapshot_id":None,
+                 "host_file_version_id":None})
+    rows.sort(key=lambda row:(row["reporting_date"],str(row["imported_at"])),reverse=True)
+  return derive_snapshot_versions(rows)
 
  async def snapshot(self,s,snapshot_id):
   """One snapshot, with the version the list would have given it.
@@ -26,18 +50,28 @@ class ProgressService:
   raise FinanceRecordNotFound("progress snapshot not found")
  async def feed(self,s,snapshot_id):
   ref=await self.repo.get_snapshot(s,snapshot_id)
-  if ref is None:raise FinanceRecordNotFound("progress snapshot not found")
+  direct_feed=None
+  if ref is None:
+   # Finance-owned versions resolve by their own UUID even before they are pinned.
+   # This keeps the newest uploaded file usable without turning a GET into a write.
+   direct_feed=await self.provider.get_snapshot(
+       str(s.organization_id),s.project_id,str(snapshot_id))
+   direct_header=snapshot_metadata(
+       direct_feed,s.organization_id,s.project_id,snapshot_id)
+   if finance_version_id(direct_header)!=snapshot_id:
+    raise FinanceRecordNotFound("progress snapshot not found")
   # Ask the host with the identifier the host issued. `snapshot_id` is Finance's own UUID,
   # which a real provider has never seen: it mints nothing and only recognises its own
   # bigint. The reference row was just loaded and already carries that id, so use it. The
   # fourth site of the same mistake -- `_calculate` and `override` had it too -- and the
   # last one, because every provider call now goes through a reference that knows both.
-  lookup=ref.get("host_snapshot_id") or snapshot_id
-  feed=await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(lookup))
+  lookup=(ref.get("host_snapshot_id") or snapshot_id) if ref is not None else snapshot_id
+  feed=(direct_feed if direct_feed is not None else
+        await self.provider.get_snapshot(str(s.organization_id),s.project_id,str(lookup)))
   header=snapshot_metadata(feed,s.organization_id,s.project_id,lookup)
   # Overrides stay keyed by the Finance UUID: they are Finance's records about the host's
   # snapshot, not the host's records, so they are named the way Finance names things.
-  overrides=await self.repo.latest_overrides(s,ref["id"])
+  overrides=(await self.repo.latest_overrides(s,ref["id"]) if ref is not None else [])
   assignments=[]
   for row in apply_progress_overrides(snapshot_assignments(feed),overrides,snapshot_id):
    try:

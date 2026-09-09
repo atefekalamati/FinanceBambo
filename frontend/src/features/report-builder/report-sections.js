@@ -5,17 +5,16 @@ import { reportComparisonChart, reportFigures, reportTable } from "./report-docu
 import { buildBulletPresentation } from "../../shared/reports/report-presentation.js";
 import { buildMonthlyTrend, TREND_MODES } from "../../shared/reports/monthly-trend.js";
 import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/variances/variance-rollup.js";
-import { reportWarningText } from "../../shared/warnings/finance-warning-labels.js";
 import { isWithinPeriod } from "../../shared/dates/reporting-periods.js";
+import { renderLevelOne, renderQuality, renderSCurve } from "./report-analysis.js";
+import { FOLLOWUP_SECTIONS } from "./report-followups.js";
 
 /**
  * One renderer per catalogue entry. Each is handed the datasets its entry asked
  * for and returns the nodes that go under its numbered heading.
  *
- * Nothing here computes money. Every figure is one the service already worked
- * out, or one of the presentations the screens already use — so a report and
- * the screen it came from cannot disagree, which is the only way a printed
- * document stays trustworthy after it leaves the browser.
+ * Operational figures come from the service. Presentation-only differences and
+ * running totals use exact IRR arithmetic, never new forecast assumptions.
  */
 
 const money = (value) => (/^-?\d+$/.test(String(value ?? "")) ? formatTomanFromIrr(value) : "قابل محاسبه نیست");
@@ -56,9 +55,23 @@ function metricsOf(data) {
 }
 
 export const REPORT_SECTIONS = Object.freeze({
+  ...FOLLOWUP_SECTIONS,
+  pendingDocuments(data) {
+    return REPORT_SECTIONS.invoices({ ...data, invoices: { items: (data.invoices?.items ?? []).filter((item) => ["draft", "awaitingConfirmation"].includes(item.invoiceStatus)) } });
+  },
+  correctiveDocuments(data) {
+    return REPORT_SECTIONS.invoices({ ...data, invoices: { items: (data.invoices?.items ?? []).filter((item) => ["reversal", "corrective"].includes(item.source)) } });
+  },
+  levelOne: renderLevelOne,
+  sCurve: renderSCurve,
+  warnings: renderQuality,
+
   overview(data) {
     const metrics = metricsOf(data);
     return [
+      element("p", "report-doc__note", data.overview?.calculationStatus === "incomplete"
+        ? "محاسبات این گزارش ناقص است؛ مقادیر ناموجود صفر نیستند. پیش از تصمیم‌گیری، گزارش کیفیت داده و محاسبات را بررسی کنید."
+        : "این گزارش از داده‌های جاری زمان تولید ساخته شده است؛ بازکردن مجدد آن ممکن است نتیجه متفاوتی داشته باشد و معادل گزارش ثبت‌شده و قفل‌شده نیست."),
       reportFigures(SUMMARY_FIGURES.map(([key, label, note]) => ({
         label,
         note,
@@ -93,11 +106,23 @@ export const REPORT_SECTIONS = Object.freeze({
   },
 
   breakdown(data) {
-    const view = buildBulletPresentation(data.overview?.breakdown ?? []);
+    const source = data.overview?.breakdown ?? [];
+    const view = buildBulletPresentation(source);
+    // The shared chart helper has legacy zero defaults. Tables must retain the
+    // authoritative missing values, not print those drawing defaults as money.
+    const rows = view.rows.map((row, index) => ({
+      ...row,
+      initialEstimateIrr: source[index].initialEstimateIrr,
+      actualCostIrr: source[index].actualCostIrr,
+      forecastFinalIrr: source[index].forecastFinalIrr,
+      actualMagnitude: source[index].actualCostIrr == null ? null : row.actualMagnitude,
+      consumedPercent: source[index].actualCostIrr == null ? null : row.consumedPercent,
+    }));
     return [
+      element("p", "report-doc__note", "آبی: برآورد اولیه · سبز: هزینه واقعی ثبت‌شده. مقیاس هر دو سری و همه دسته‌ها یکسان است؛ مبلغ دقیق و پیش‌بینی نهایی در جدول آمده است."),
       reportComparisonChart({
         ariaLabel: "نمودار هزینه واقعی هر نوع قلم در برابر برآورد همان نوع",
-        rows: view.rows.map((row) => ({
+        rows: rows.map((row) => ({
           label: row.label,
           planMagnitude: row.estimateMagnitude,
           actualMagnitude: row.actualBelowZero ? null : row.actualMagnitude,
@@ -113,12 +138,12 @@ export const REPORT_SECTIONS = Object.freeze({
           { label: "نسبت به برآورد", numeric: true },
           { label: "پیش‌بینی نهایی", numeric: true },
         ],
-        rows: view.rows.map((row) => [
+        rows: rows.map((row) => [
           row.label,
           money(row.initialEstimateIrr),
           money(row.actualCostIrr),
           row.consumedPercent === null
-            ? (row.actualCostIrr === "0" ? "—" : "برآورد ثبت نشده")
+            ? (row.actualCostIrr == null ? "قابل مقایسه نیست" : row.actualCostIrr === "0" ? "—" : "برآورد ثبت نشده")
             : `${formatDisplayNumber(String(Math.round(row.consumedPercent)))}٪`,
           money(row.forecastFinalIrr),
         ]),
@@ -213,7 +238,13 @@ export const REPORT_SECTIONS = Object.freeze({
     const rows = (data.invoices?.items ?? [])
       .filter((invoice) => isWithinPeriod(invoice.invoiceDate, data.period))
       .sort((left, right) => String(right.invoiceDate).localeCompare(String(left.invoiceDate)));
-    return [reportTable({
+    const sources = { manual: "دستی", image: "تصویر", voice: "صوت", reversal: "برگشت", corrective: "اصلاحی" };
+    return [reportFigures([
+      { label: "کل اسناد بازه", value: formatDisplayNumber(String(rows.length)) },
+      { label: "فاکتور تأییدشده", value: formatDisplayNumber(String(rows.filter((row) => row.invoiceStatus === "confirmed").length)) },
+      { label: "سند برگشت / اصلاحی", value: formatDisplayNumber(String(rows.filter((row) => ["reversal", "corrective"].includes(row.source)).length)) },
+      { label: "منتظر تأیید یا پیش‌نویس", value: formatDisplayNumber(String(rows.filter((row) => ["draft", "awaitingConfirmation"].includes(row.invoiceStatus)).length)) },
+    ]), element("p", "report-doc__note", "بازه بر اساس تاریخ فاکتور است، نه زمان تأیید. این فهرست شامل اسناد بدون اثر مالی نیز هست؛ جمع ساده مبالغ آن هزینه واقعی پروژه نیست. سند برگشت یا اصلاحی با ارجاع به سند اصلی مشخص شده است."), reportTable({
       caption: "جدول فاکتورهای ثبت‌شده در بازه گزارش",
       columns: [
         { label: "شماره" },
@@ -230,6 +261,14 @@ export const REPORT_SECTIONS = Object.freeze({
         money(invoice.finalAmountIRR ?? invoice.finalAmountIrr),
       ]),
       empty: "در این بازه فاکتوری ثبت نشده است.",
+    }), reportTable({
+      caption: "شناسنامه و ارتباط اسناد مالی بازه",
+      columns: [{ label: "شماره / شناسه سند" }, { label: "منبع" }, { label: "تعداد ردیف", numeric: true }, { label: "سند اصلی" }, { label: "زمان تأیید" }],
+      rows: rows.map((invoice) => [invoice.invoiceNumber ?? invoice.invoiceId, sources[invoice.source] ?? invoice.source ?? "—",
+        invoice.lineCount == null ? "—" : formatDisplayNumber(String(invoice.lineCount)),
+        invoice.originalInvoiceId ?? invoice.relatedInvoiceId ?? "—",
+        invoice.confirmedAt ? formatSystemDateTime(invoice.confirmedAt) : "تأیید نشده"]),
+      empty: "در این بازه سند مالی ثبت نشده است.",
     })];
   },
 
@@ -247,16 +286,6 @@ export const REPORT_SECTIONS = Object.freeze({
         event.reason ?? "—",
       ]),
       empty: "در این بازه رویداد مالی ثبت نشده است.",
-    })];
-  },
-
-  warnings(data) {
-    const rows = data.overview?.warnings ?? [];
-    return [reportTable({
-      caption: "جدول هشدارهای کیفیت محاسبه در این گزارش",
-      columns: [{ label: "هشدار" }, { label: "ردیف برآورد" }],
-      rows: rows.map((warning) => [reportWarningText(warning), warning.resourceCode ?? warning.estimateLineId ?? "کل پروژه"]),
-      empty: "برای محاسبات این گزارش هشداری ثبت نشده است.",
     })];
   },
 

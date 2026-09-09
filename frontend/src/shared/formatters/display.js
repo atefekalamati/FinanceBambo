@@ -1,7 +1,11 @@
 import { CURRENCY_LABELS } from "../constants/currency.js";
 
 const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
-const persianDate = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { year: "numeric", month: "long", day: "numeric" });
+/* Pinned to Tehran, like persianDateTime below it. Without a zone this read the
+   viewer's clock: "2026-10-22" is 30 Mehr in Tehran and 29 Mehr west of UTC, so
+   the same business date printed as two different days depending on who was
+   looking. A reporting date is a calendar day this project already agreed on. */
+const persianDate = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Tehran" });
 const persianDateTime = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tehran" });
 
 // Codes come from the Backend UNIT_REGISTRY: kg, ton, m, m2, m3, each, hour, day.

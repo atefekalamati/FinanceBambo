@@ -82,6 +82,18 @@
             "title": "Activityexternalid",
             "type": "string"
           },
+          "mppTaskCostIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mpptaskcostirr"
+          },
           "status": {
             "default": "active",
             "enum": [
@@ -1139,6 +1151,28 @@
             ],
             "title": "Source",
             "type": "string"
+          },
+          "sourceAssignmentUid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceassignmentuid"
+          },
+          "sourceTaskUid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcetaskuid"
           },
           "wbsCode": {
             "anyOf": [
@@ -3108,6 +3142,18 @@
       "MonthlyReportResponse": {
         "additionalProperties": false,
         "properties": {
+          "actualDataThroughDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualdatathroughdate"
+          },
           "actualSource": {
             "const": "confirmed_financial_documents",
             "default": "confirmed_financial_documents",
@@ -3140,6 +3186,23 @@
             "title": "Months",
             "type": "array"
           },
+          "progressSnapshotId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progresssnapshotid"
+          },
+          "reportingDate": {
+            "format": "date",
+            "title": "Reportingdate",
+            "type": "string"
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/ReportWarning"
@@ -3161,7 +3224,8 @@
         "required": [
           "months",
           "windowStart",
-          "windowEnd"
+          "windowEnd",
+          "reportingDate"
         ],
         "title": "MonthlyReportResponse",
         "type": "object"
@@ -3878,9 +3942,16 @@
             "type": "string"
           },
           "importedBy": {
-            "format": "uuid",
-            "title": "Importedby",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importedby"
           },
           "isLatest": {
             "anyOf": [
@@ -3971,7 +4042,6 @@
           "progressSnapshotId",
           "sourceFileNameSafe",
           "importedAt",
-          "importedBy",
           "status",
           "reportingDate"
         ],
@@ -4832,6 +4902,17 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "sourceResourceUid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceresourceuid"
           },
           "title": {
             "minLength": 1,
@@ -7726,6 +7807,162 @@
         ]
       }
     },
+    "/api/projects/{projectId}/finance/files/{fileId}/extractions/async": {
+      "post": {
+        "description": "Queue an extraction and answer immediately.\n\nA local OCR or transcription takes seconds to minutes; the synchronous route holds the\nrequest open for all of it. Poll `GET /extractions?fileId=` -- the attachment status\nreturned here moves uploaded -> processing -> ready | failed on its own.",
+        "operationId": "start_extraction_async_api_projects__projectId__finance_files__fileId__extractions_async_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fileId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Fileid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractionStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
+          }
+        },
+        "summary": "Start Extraction Async",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/api/projects/{projectId}/finance/imports/estimate/commit": {
       "post": {
         "operationId": "commit_estimate_api_projects__projectId__finance_imports_estimate_commit_post",
@@ -9985,11 +10222,35 @@
           {
             "in": "query",
             "name": "reportingDate",
-            "required": true,
+            "required": false,
             "schema": {
-              "format": "date",
-              "title": "Reportingdate",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reportingdate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "progressSnapshotId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Progresssnapshotid"
             }
           },
           {
@@ -10533,6 +10794,67 @@
           }
         },
         "summary": "Get Finance Summary",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/task-resource-mappings": {
+      "get": {
+        "description": "MPP task <-> finance resource links, read-only, scoped through finance_resources.\n\ntask_id is msp_tasks.id -- the database identity of one task row in one snapshot, not\nthe Task ID printed inside the file. Task details come from the progress feed; this\nlists the linkage Finance owns.",
+        "operationId": "task_resource_mappings_api_projects__projectId__finance_task_resource_mappings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Task Resource Mappings",
         "tags": [
           "finance"
         ]

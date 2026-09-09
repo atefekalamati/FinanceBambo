@@ -1,5 +1,5 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
-import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
@@ -12,7 +12,7 @@ import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, createDataTable, createTableToolbar, defaultVisibleColumns, repaintPreservingFocus, updateFilterChips }
   from "../../shared/components/data-table.js";
 
 const STATUS_LABELS = Object.freeze({ draft: "پیش‌نویس", awaitingConfirmation: "در انتظار تأیید", confirmed: "تأییدشده", voided: "باطل‌شده", corrected: "اصلاح‌شده" });
@@ -38,7 +38,17 @@ const INVOICE_VIEWS = Object.freeze([
   { key: "awaiting", label: "در انتظار تأیید", tone: "pending", status: "awaitingConfirmation" },
   { key: "confirmed", label: "تأییدشده", tone: "positive", status: "confirmed" },
   { key: "corrected", label: "اصلاح‌شده", tone: "warning", status: "corrected" },
-  { key: "duplicates", label: "نیازمند بررسی تکرار", tone: "warning", duplicates: true },
+]);
+
+/* The lines of one invoice, inside its dialog. The row number is the identity --
+   it is how a line is referred to when someone asks about one. */
+const INVOICE_LINE_COLUMNS = Object.freeze([
+  { key: "identity", label: "ردیف", tier: IDENTITY },
+  { key: "target", label: "اتصال مالی", tier: PRIMARY },
+  { key: "quantity", label: "مقدار و واحد", tier: PRIMARY, cellClass: "numeric" },
+  { key: "unitPrice", label: "قیمت واحد", tier: SECONDARY, keepOnTablet: true, cellClass: "numeric" },
+  { key: "lineAmount", label: "مبلغ خط", tier: PRIMARY, cellClass: "numeric" },
+  { key: "description", label: "توضیح", tier: SECONDARY },
 ]);
 
 /** The most the list endpoint will return in one page, and so the most this can
@@ -53,27 +63,15 @@ function countInvoiceViews(items, totalItems) {
     awaiting: withStatus("awaitingConfirmation"),
     confirmed: withStatus("confirmed"),
     corrected: withStatus("corrected"),
-    duplicates: items.filter((invoice) => invoice.duplicateWarning).length,
   };
 }
 
-function renderInvoiceListSummary(counts, activeKey, onSelect) {
-  const section = element("section", "invoice-list-summary");
-  section.setAttribute("aria-label", "فیلتر فاکتورها بر اساس وضعیت");
-  INVOICE_VIEWS.forEach((view) => {
-    const item = element("button", `invoice-summary-item invoice-summary-item--${view.tone}`);
-    item.type = "button";
-    item.dataset.view = view.key;
-    const active = view.key === activeKey;
-    item.setAttribute("aria-pressed", String(active));
-    item.append(
-      element("span", "invoice-summary-item__label", view.label),
-      element("strong", "invoice-summary-item__value numeric", formatDisplayNumber(String(counts[view.key] ?? 0))),
-    );
-    item.addEventListener("click", () => onSelect(view.key));
-    section.append(item);
-  });
-  return section;
+/** The counts, written the way the rest of the page writes numbers. */
+function invoiceChipCounts(counts) {
+  return Object.fromEntries(INVOICE_VIEWS.map((view) => [
+    view.key,
+    formatDisplayNumber(String(counts?.[view.key] ?? 0)),
+  ]));
 }
 
 function option(value, label) {
@@ -379,29 +377,26 @@ function renderDetail(invoice, { canEdit, currentUserId, project, onSubmit, onCo
   if (invoice.originalInvoiceId) dialog.append(element("div", "inline-notice numeric", `فاکتور اصلی: ${invoice.originalInvoiceId} · اثر مالی: ${invoice.financialEffectSign === -1 ? "کاهنده" : "افزاینده"}`));
   if (invoice.correctionReason) dialog.append(element("div", "inline-notice", `دلیل اصلاح: ${invoice.correctionReason}`));
 
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table invoice-lines-table");
-  table.append(tableCaption("ریز خطوط فاکتور انتخاب‌شده"));
-  const thead = tableHead(["ردیف", "اتصال مالی", "مقدار و واحد", "قیمت واحد", "مبلغ خط", "توضیح"]);
-  const tbody = document.createElement("tbody");
-  invoice.lines.forEach((line, index) => {
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "numeric", formatDisplayNumber(String(index + 1))),
-      element("td", "", `${line.targetLabel} · ${line.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : "ردیف برآورد"}`),
-      element("td", "numeric", line.quantity === null ? "بدون مقدار فیزیکی" : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)}`),
-      element("td", "numeric", line.unitPriceIRR === null ? "—" : formatTomanFromIrr(line.unitPriceIRR)),
-      element("td", "numeric", formatTomanFromIrr(line.lineAmountIRR)),
-      element("td", "", line.description || "—"),
-    );
-    tbody.append(row);
+  const linesTable = createDataTable({
+    className: "invoice-lines-table",
+    caption: "ریز خطوط فاکتور انتخاب‌شده",
+    scrollLabel: "جدول ریز خطوط فاکتور",
+    columns: INVOICE_LINE_COLUMNS,
+    rows: invoice.lines,
+    visible: defaultVisibleColumns(INVOICE_LINE_COLUMNS),
+    cells: (line) => ({
+      identity: formatDisplayNumber(String(invoice.lines.indexOf(line) + 1)),
+      target: `${line.targetLabel} · ${line.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : "ردیف برآورد"}`,
+      quantity: line.quantity === null ? "بدون مقدار فیزیکی" : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)}`,
+      unitPrice: line.unitPriceIRR === null ? "—" : formatTomanFromIrr(line.unitPriceIRR),
+      lineAmount: formatTomanFromIrr(line.lineAmountIRR),
+      description: line.description || "—",
+    }),
   });
-  table.append(thead, tbody);
-  wrapper.append(table);
 
   const totals = element("dl", "invoice-totals");
   [["جمع خام خطوط", invoice.rawLinesTotalIRR], ["تخفیف", invoice.discountIRR], ["مالیات", invoice.taxIRR], ["حمل", invoice.shippingIRR], ["سایر هزینه‌ها", invoice.otherCostsIRR], ["مبلغ نهایی", invoice.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIrr(value))));
-  dialog.append(wrapper, totals);
+  dialog.append(linesTable, totals);
   // The detail dialog is a record anyone who can read the invoice may open.
   // What it offers to do with it is another matter.
   if (canEdit && invoice.invoiceStatus === "draft") {
@@ -606,7 +601,7 @@ function renderTable(items, onDetail, visible) {
 export function createInvoicesPage({ context, adapter }) {
   const root = element("div", "invoices-page");
   let state = createRequestState(REQUEST_STATUS.LOADING);
-  const filters = { status: "", page: 1, pageSize: 50 };
+  const filters = { status: "", query: "", page: 1, pageSize: 50 };
   // Which chip is pressed, and the counts behind all four. The counts describe
   // the project, not the current view, so they are read once per data change and
   // left alone while the reader moves between chips.
@@ -618,6 +613,33 @@ export function createInvoicesPage({ context, adapter }) {
   const canCreate = capabilitiesFor(context).writeFinance;
   const detailMessage = element("div", "form-message invoice-detail-message");
   detailMessage.setAttribute("aria-live", "assertive");
+
+  /* Built once, moved into each repaint. The chips are the only status filter
+     this page has and the search is the endpoint's own `query`, so the two are
+     applied together by the same read rather than narrowing each other's
+     results afterwards. */
+  const toolbar = createTableToolbar({
+    name: "invoices",
+    columns: INVOICE_COLUMNS,
+    visible: visibleColumns,
+    table: () => root.querySelector(".invoices-table"),
+    chips: {
+      label: "فیلتر فاکتورها بر اساس وضعیت",
+      items: INVOICE_VIEWS.map((view) => ({ key: view.key, label: view.label, tone: view.tone, count: "" })),
+      active: activeView,
+      onSelect: (key) => selectView(key),
+    },
+    search: {
+      placeholder: "جست‌وجوی شماره، فروشنده یا توضیح",
+      label: "جست‌وجو در فاکتورها",
+      onSearch: (value) => {
+        filters.query = value;
+        // A new question deserves its first page, not the page you were on.
+        filters.page = 1;
+        load();
+      },
+    },
+  });
 
   async function load({ refreshCounts = false } = {}) {
     state = createRequestState(REQUEST_STATUS.LOADING);
@@ -716,11 +738,8 @@ export function createInvoicesPage({ context, adapter }) {
   }
 
   function renderHeader() {
-    const header = element("header", "feature-header");
-    const copy = element("div", "feature-header__copy");
-    copy.append(element("span", "feature-header__eyebrow", "اسناد هزینه پروژه"), element("h1", "", "فاکتورها"), element("p", "", "فاکتورهای پروژه را براساس وضعیت، منبع و مشخصات سند جست‌وجو و جزئیات ثبت‌شده را مشاهده کنید."));
-    const navigation = element("div", "feature-header__navigation");
-    const actions = element("div", "feature-header__actions feature-header__other-actions");
+    const header = createFinancePageHeader("فاکتورها", "feature-header");
+    const actions = element("div", "finance-page-actions");
     if (canCreate) {
       const create = element("button", "button button--primary", "ثبت فاکتور دستی");
       create.type = "button";
@@ -737,12 +756,10 @@ export function createInvoicesPage({ context, adapter }) {
       upload.href = "#/invoice-files";
       actions.append(create, upload);
     }
-    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[SURFACES.REPORT]}`);
-    back.classList.add("finance-back-link");
-    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
-    navigation.append(actions, back);
-    header.append(copy, navigation);
-    return header;
+    const fragment = document.createDocumentFragment();
+    fragment.append(header);
+    if (actions.childElementCount) fragment.append(actions);
+    return fragment;
   }
 
   /* Only the body goes through the state switch. The heading -- and with it the
@@ -772,37 +789,43 @@ export function createInvoicesPage({ context, adapter }) {
     const heading = element("div", "invoice-list-heading");
     const title = element("div", "");
     title.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
-    const meta = element("div", "invoice-list-heading__meta");
-    meta.append(
-      renderInvoiceListSummary(summary.counts, activeView, selectView),
-      createColumnControl({
-        name: "invoices",
-        columns: INVOICE_COLUMNS,
-        visible: visibleColumns,
-        onToggle: (key, on) => {
-          if (on) visibleColumns.add(key);
-          else visibleColumns.delete(key);
-          applyColumnVisibility(root.querySelector(".invoices-table"), key, on);
-        },
-      }),
-    );
-    heading.append(title, meta);
-    section.append(heading, detailMessage, renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
+    heading.append(title);
+    // The toolbar is built once and moved, never rebuilt: a repaint that
+    // replaced it would take the search box out from under whoever is typing
+    // into it, along with their caret.
+    updateFilterChips(toolbar.querySelector(".data-table-chips"), {
+      active: activeView,
+      counts: invoiceChipCounts(summary.counts),
+    });
+    section.append(heading, detailMessage, toolbar,
+      renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
     return section;
   }
 
   function renderEmpty() {
     const section = element("section", "state-card");
-    section.append(element("h2", "", "فاکتوری پیدا نشد"), element("p", "", "برای این پروژه فاکتوری مطابق فیلترهای انتخاب‌شده وجود ندارد."));
+    // "Nothing here" and "nothing matched what you asked for" are different
+    // things to be told, and only one of them suggests changing the question.
+    const narrowed = Boolean(filters.query) || activeView !== "all";
+    section.append(
+      element("h2", "", "فاکتوری پیدا نشد"),
+      element("p", "", narrowed
+        ? "موردی مطابق جست‌وجو یا وضعیت انتخاب‌شده پیدا نشد. عبارت جست‌وجو را تغییر دهید یا چیپ «همه» را بزنید."
+        : "برای این پروژه هنوز فاکتوری ثبت نشده است."),
+    );
     return section;
   }
 
   function paint() {
     // Before the first read there are no counts to show, so there is no heading
     // to show them in -- the loading or error card is the whole page, as it was.
-    root.replaceChildren(renderHeader(), summary
-      ? renderSection()
-      : renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
+    // Wrapped, because this replaces the tree the search box is standing in and
+    // the reader may still be typing into it.
+    repaintPreservingFocus(() => {
+      root.replaceChildren(renderHeader(), summary
+        ? renderSection()
+        : renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
+    });
   }
 
   load();

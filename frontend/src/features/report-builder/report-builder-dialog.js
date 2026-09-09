@@ -137,6 +137,10 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
 
   /* ── Level one: the subjects ──────────────────────────────────────────── */
   const cats = element("div", "report-builder-cats");
+  cats.setAttribute("role", "region");
+  cats.setAttribute("aria-label", "دسته‌های گزارش قابل انتخاب");
+  cats.tabIndex = 0;
+  let activeCategory = null;
   const level2 = element("div", "report-builder-level2");
   level2.hidden = true;
   const level2Title = element("h4", "report-builder-level2__title");
@@ -169,6 +173,7 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
 
   /* ── Level two: one subject's reports ─────────────────────────────────── */
   function openCategory(category) {
+    activeCategory = category.key;
     level2Title.textContent = category.title;
     level2Note.textContent = category.description;
     level2Items.replaceChildren();
@@ -203,6 +208,7 @@ export function createReportBuilderDialog({ preselected = [], onBuild }) {
     cats.hidden = false;
     periodRow.hidden = false;
     refresh();
+    if (activeCategory) cats.querySelector(`[data-category="${activeCategory}"]`)?.focus();
   }
 
   build.addEventListener("click", () => {

@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- The module mounted the way the BAMBO dashboard will mount it.
+
+     This is the reference page for the host team: copy its body into
+     `/finance.html` and `/finance-report.html` beside the dashboard's own
+     `msp.html`, and the module runs. There is nothing else to write.
+
+     Three things make it a HOST page rather than the standalone preview:
+
+       * no `data-finance-runtime` on <body>. Host is the default, and the
+         standalone preview is the one that has to say so.
+       * no `window.__BAMBO_FINANCE_CONTEXT__`. If the host sets one it is used
+         as-is; when it does not, the module reads the project from `?project=`
+         (or `localStorage['bambo:project']`, the dashboard's own fallback) and
+         asks `/api/me`, `/api/projects/{id}` and `/api/rbac/my-permissions` for
+         the rest -- the endpoints the dashboard already serves.
+       * the two mount points below, which the module renders into.
+
+     Open it as `host.html?project=<id>` against a server that answers those
+     three endpoints. Against the mock server it will say no project is chosen,
+     which is the honest answer there.
+-->
+<html lang="fa" dir="rtl" data-theme="dark" style="background:#0a1120">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>مالی | BAMBO</title>
+  <link rel="icon" type="image/svg+xml" href="./public/assets/images/Logo Sign.svg">
+  <link rel="stylesheet" href="./src/shared/styles/index.css">
+</head>
+<!-- The host paints its own ground; this inline colour only keeps the reference
+     page readable on its own, and is the first thing to drop when copying. -->
+<body style="background:#0a1120">
+  <!-- Both are required. The module announces each page change into the live
+       region, and renders into the mount. -->
+  <div id="finance-live-region" class="sr-only" role="status" aria-live="polite"></div>
+  <main id="finance-module-root" tabindex="-1"></main>
+
+  <noscript>برای اجرای ماژول مالی، JavaScript مرورگر باید فعال باشد.</noscript>
+  <script type="module" src="./src/app/bootstrap.js"></script>
+</body>
+</html>

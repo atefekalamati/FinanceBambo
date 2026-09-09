@@ -326,5 +326,15 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
     return snapshot();
   }
 
-  return Object.freeze({ getWorkspace, getResourceSnapshot, createResource, createActivity, createEstimateLine, previewEstimateImport, commitEstimateImport, reviseEstimateLine });
+
+  /* The mock has no server to fetch a sheet, so a link becomes the same named
+     workbook an upload would have been. It proves the wiring, never the parse --
+     that only happens against the real service. */
+  async function previewEstimateImportFromLink(sourceUrl) {
+    if (!String(sourceUrl ?? "").trim()) {
+      throw new ApiError({ status: 422, code: "IMPORT_LINK_REQUIRED", message: "نشانی گوگل شیت الزامی است." });
+    }
+    return previewEstimateImport({ name: "estimate-import.xlsx" });
+  }
+  return Object.freeze({ getWorkspace, getResourceSnapshot, createResource, createActivity, createEstimateLine, previewEstimateImport, previewEstimateImportFromLink, commitEstimateImport, reviseEstimateLine });
 }
