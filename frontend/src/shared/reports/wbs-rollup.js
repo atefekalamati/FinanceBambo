@@ -110,11 +110,16 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null } = {}) 
   }, 0n);
 
   const rows = ordered.map((node) => {
-    const estimate = amount(node.initialEstimateIrr);
+    // Stated separately from the arithmetic value: a phase whose estimate the Backend
+    // could not work out reports null, and null must survive to the chart. Reading it as
+    // zero drew it as a bar of height nothing labelled ۰, which is what a phase budgeted
+    // at nothing looks like — two different facts wearing one picture.
+    const statedEstimate = exactInteger(node.initialEstimateIrr);
+    const estimate = statedEstimate ?? 0n;
     const revised = node.revisedEstimateIrr == null ? estimate : amount(node.revisedEstimateIrr);
     const actual = amount(node.actualCostIrr);
     const forecast = amount(node.forecastFinalIrr);
-    const hasEstimate = exactInteger(node.initialEstimateIrr) !== null && estimate > 0n;
+    const hasEstimate = statedEstimate !== null && estimate > 0n;
     const deviation = hasEstimate ? actual - estimate : null;
     return {
       wbsCode: node.wbsCode,
@@ -123,8 +128,9 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null } = {}) 
       activityCount: node.activityCount ?? 0,
       childCount: node.childCount ?? 0,
       hasChildren: (node.childCount ?? 0) > 0,
-      initialEstimateIrr: String(estimate),
-      revisedEstimateIrr: String(revised),
+      initialEstimateIrr: statedEstimate === null ? null : String(estimate),
+      revisedEstimateIrr: statedEstimate === null && node.revisedEstimateIrr == null
+        ? null : String(revised),
       actualCostIrr: String(actual),
       remainingPhysicalCostIrr: node.remainingPhysicalCostIrr ?? null,
       moneyRequiredIrr: node.moneyRequiredIrr ?? null,
@@ -137,14 +143,18 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null } = {}) 
       deviationIrr: deviation === null ? null : String(deviation),
       overBudget: deviation !== null && deviation > 0n,
       started: actual > 0n,
-      estimateMagnitude: magnitude(estimate, ceiling),
+      estimateMagnitude: statedEstimate === null ? null : magnitude(estimate, ceiling),
       actualMagnitude: magnitude(actual, ceiling),
       forecastMagnitude: magnitude(forecast, ceiling),
     };
   });
 
   const sum = (key) => rows.reduce((result, row) => result + amount(row[key]), 0n);
-  const totalEstimate = sum("initialEstimateIrr");
+  // A total is only a total when every phase is in it. With one phase unavailable the
+  // sum is a subtotal, and publishing it under "برآورد اولیه مراحل" would understate the
+  // project by however much the missing phases hold.
+  const estimateKnownEverywhere = rows.every((row) => row.initialEstimateIrr !== null);
+  const totalEstimate = estimateKnownEverywhere ? sum("initialEstimateIrr") : null;
   const totalActual = sum("actualCostIrr");
   const unattributed = exactInteger(unattributedActualIrr);
 
@@ -155,10 +165,10 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null } = {}) 
     hasEstimate: rows.some((row) => row.hasEstimate),
     overBudgetCount: rows.filter((row) => row.overBudget).length,
     totals: Object.freeze({
-      initialEstimateIrr: String(totalEstimate),
+      initialEstimateIrr: totalEstimate === null ? null : String(totalEstimate),
       actualCostIrr: String(totalActual),
       forecastFinalIrr: String(sum("forecastFinalIrr")),
-      consumedPercent: percentText(totalActual, totalEstimate),
+      consumedPercent: totalEstimate === null ? null : percentText(totalActual, totalEstimate),
       activityCount: rows.reduce((result, row) => result + (row.activityCount ?? 0), 0),
     }),
     /**
