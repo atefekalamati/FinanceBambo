@@ -5,9 +5,8 @@ import { WORK_AREAS, createWorkAreaCard } from "./work-areas.js";
 /**
  * بخش‌های گزارش مالی — the destinations, on a page of their own.
  *
- * Nothing here is new. It is the list that used to close the overview, moved so
- * the overview can be a dashboard: the same cards, the same links, reached from
- * the bar at the top of the report surface.
+ * The destinations that have no contextual entry point on the report overview.
+ * It stays reachable from the bar at the top of that surface.
  */
 export function createWorkAreasPage() {
   const root = element("div", "work-areas-page");

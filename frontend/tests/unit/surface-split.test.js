@@ -41,16 +41,43 @@ test("the operations home shows no money, and the report home shows no operation
   const reportPaths = routesForSurface(SURFACES.REPORT).map((route) => route.path.slice(1));
   linked(operations).forEach((path) => assert.ok(operationsPaths.includes(path), `امور مالی links to ${path}, which is not its own`));
   linked(report).forEach((path) => assert.ok(reportPaths.includes(path), `گزارش مالی links to ${path}, which is not its own`));
-  // Every destination of a surface, apart from its home, is offered by it as a
-  // card. Two are reached from the page furniture instead: the report builder is
-  // what its own section produces, and the destinations page is a button in the
-  // header — it is where the cards live, so it cannot also be one of them.
-  const FROM_FURNITURE = new Set(["report-builder", "work-areas"]);
+  // Every destination of a surface, apart from its home, stays reachable. The
+  // report overview owns contextual entries for level one, invoices, prices and
+  // display settings; its report builder and destinations link are furniture.
+  // Only routes with no such entry remain as destination cards.
+  const FROM_FURNITURE = new Set([
+    "report-builder",
+    "work-areas",
+    "level-one",
+    "invoices",
+    "report-prices",
+    "report-settings",
+  ]);
   const offered = (surface, home) => routesForSurface(surface)
     .map((route) => route.path.slice(1))
     .filter((path) => path !== home && !FROM_FURNITURE.has(path));
   assert.deepEqual(linked(operations).sort(), offered(SURFACES.OPERATIONS, homeRouteFor(SURFACES.OPERATIONS).path.slice(1)).sort());
   assert.deepEqual(linked(report).sort(), offered(SURFACES.REPORT, homeRouteFor(SURFACES.REPORT).path.slice(1)).sort());
+});
+
+test("work areas keeps only report destinations that the overview does not already link", () => {
+  const areas = read("../../src/features/work-areas/work-areas.js");
+  ["reports", "period-report", "report-items"].forEach((key) => {
+    assert.match(areas, new RegExp(`key: "${key}"`), `${key} lost its only overview-side entry point`);
+  });
+  ["level-one", "invoices", "report-prices", "report-settings"].forEach((key) => {
+    assert.doesNotMatch(areas, new RegExp(`key: "${key}"`), `${key} is duplicated on the destinations page`);
+  });
+
+  const overviewEntries = [
+    ["level-one", read("../../src/features/level-one/level-one-section.js"), /href = "#\/level-one"/],
+    ["invoices", read("../../src/features/finance-home/invoices-entry.js"), /href = "#\/invoices"/],
+    ["report-prices", read("../../src/features/finance-home/prices-summary.js"), /all\.href = "#\/report-prices"/],
+    ["report-settings", read("../../src/features/finance-home/finance-home-page.js"), /link\.href = "#\/report-settings"/],
+  ];
+  overviewEntries.forEach(([key, source, pattern]) => {
+    assert.match(source, pattern, `${key} has no replacement link on the report overview`);
+  });
 });
 
 test("the reader-only settings view offers nothing that changes a number", () => {
