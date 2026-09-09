@@ -70,5 +70,37 @@ class OperationalRecordsTests(unittest.TestCase):
                          "a row that does not answer has not said yes")
 
 
+class ScheduleCostSourceTests(unittest.TestCase):
+    """Where a row's schedule cost comes from, and where it must never come from."""
+
+    def statement(self):
+        source = (BACKEND_ROOT / "app" / "finance" / "repositories" / "resources.py").read_text(encoding="utf-8")
+        listing = source[source.index("async def list_estimate_lines"):]
+        return listing[:listing.index("async def", 10)]
+
+    def test_a_row_reads_the_assignment_column_and_not_the_task_column(self):
+        statement = self.statement()
+        self.assertIn("m.source_assignment_cost_irr", statement)
+        # `source_cost` is the TASK's figure repeated on every one of its rows. A row
+        # reading it would show its activity's total as its own, once per item.
+        self.assertNotIn("m.source_cost", statement)
+
+    def test_a_row_is_matched_to_exactly_one_assignment(self):
+        statement = self.statement()
+        self.assertIn("m.source_assignment_uid=l.source_assignment_uid", statement)
+        # Scoped to the version in force, so a re-import cannot pair a line with a row
+        # from a schedule the project has moved on from.
+        self.assertIn("v.status='ready'", statement)
+
+    def test_the_schedule_cost_is_declared_apart_from_every_financial_field(self):
+        from app.finance.schemas.resources import EstimateLineResponse
+        fields = EstimateLineResponse.model_fields
+        # Separate declarations, so neither can be filled from the other by accident.
+        for name in ("mpp_cost_irr", "actual_cost_irr", "original_unit_price_irr"):
+            self.assertIn(name, fields)
+        self.assertIsNone(fields["mpp_cost_irr"].default,
+                          "an unknown schedule cost is unknown, never zero")
+
+
 if __name__ == "__main__":
     unittest.main()

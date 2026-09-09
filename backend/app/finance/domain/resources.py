@@ -111,6 +111,20 @@ class EstimateLine:
     #: the same as nothing spent, and only a real sum of nothing may be shown as zero.
     #: A schedule cost is never this -- the schedule states a plan, an invoice a payment.
     actual_cost_irr: Decimal | None = None
+    #: What the SCHEDULE planned for this line's assignment. Read from the file, never
+    #: computed by Finance: `mpp_quantity` is the file's units, `mpp_cost_irr` the file's
+    #: own cost for that assignment. Neither is a financial figure -- a quantity here is
+    #: not an approved estimate quantity, and a cost here is not a price and not a spend.
+    mpp_quantity: Decimal | None = None
+    mpp_unit: str | None = None
+    mpp_unit_confidence: str | None = None
+    mpp_cost_irr: Decimal | None = None
+    #: Where `original_quantity` and `original_unit_price_irr` above came from.
+    #: `recorded` -- the line's own columns, written when it was created.
+    #: `source_completion` -- a documented completion from the source version the line was
+    #: mapped from, recorded because the mapper of the day wrote NULL and the file said
+    #: otherwise. None -- nothing states an original, and the line is unmeasured.
+    original_value_source: str | None = None
 
     def with_revised_quantity(self, quantity: Decimal | None):
         return replace(self, revised_quantity=quantity)

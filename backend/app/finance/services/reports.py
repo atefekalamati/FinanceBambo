@@ -253,8 +253,12 @@ class FinanceLiveReportService:
             node_report=calculate_live_report(rows,invoices,assignments,data["conversions"],
                                               data["gross_area"])
             metrics=node_report.metrics
-            revised=sum((entry["revisedEstimateIrr"] for entry in node_report.breakdown),
-                        wbs_tree.ZERO)
+            # One unknown type makes the node's revised estimate unknown. Skipping the
+            # None entries instead would publish the sum of the types that happened to be
+            # estimated, under the name of the node's whole revised estimate.
+            revised_parts=[entry["revisedEstimateIrr"] for entry in node_report.breakdown]
+            revised=(None if any(part is None for part in revised_parts)
+                     else sum(revised_parts, wbs_tree.ZERO))
             node=nodes[code]
             items.append({
                 "wbs_code":code,
