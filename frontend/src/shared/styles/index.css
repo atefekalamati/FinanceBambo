@@ -19,4 +19,6 @@
 @import url("../../features/report-builder/report-builder.css");
 @import url("../../features/audit/audit.css");
 @import url("./notices.css");
+@import url("./finance-page-header.css");
 @import url("./print.css");
+@import url("../../features/report-builder/report-builder-print.css");

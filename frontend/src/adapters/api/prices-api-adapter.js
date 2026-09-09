@@ -110,6 +110,11 @@ export function createApiPricesAdapter(context, client) {
   async function previewPriceImport(file) {
     return mapImportPreview(await client.request(`${base}/imports/prices/preview`, { method: "POST", body: formDataWithFile(file) }), "prices");
   }
+  /* The same preview, for a workbook the service fetches rather than the browser
+     uploading. Same shape back, same previewId, committed by the same call. */
+  async function previewPriceImportFromLink(sourceUrl) {
+    return mapImportPreview(await client.request(`${base}/imports/prices/preview-link`, jsonOptions("POST", { sourceUrl })), "prices");
+  }
   async function commitPriceImport({ previewId }) {
     await client.request(`${base}/imports/prices/commit`, jsonOptions("POST", { previewId }));
     return { workspace: await getPrices() };
@@ -118,5 +123,5 @@ export function createApiPricesAdapter(context, client) {
     await client.request(`${base}/unit-conversions`, jsonOptions("POST", { scopeKind: values.scope, sourceUnit: values.sourceUnit, targetUnit: values.targetUnit, dimension: getConversionDimension(values.sourceUnit, values.targetUnit) ?? "unknown", factor: values.factor, effectiveFrom: values.effectiveDate, reason: values.reason || "ثبت تبدیل واحد از رابط مالی" }));
     return getPrices();
   }
-  return Object.freeze({ getPrices, createPriceVersion, previewPriceImport, commitPriceImport, createUnitConversion });
+  return Object.freeze({ getPrices, createPriceVersion, previewPriceImport, previewPriceImportFromLink, commitPriceImport, createUnitConversion });
 }

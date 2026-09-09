@@ -909,7 +909,7 @@ function createCostCurvePanel({ trend, trendError }) {
 
   const view = buildCostCurve({ points: trendView.points });
   const axisScale = compactMoneyScale(view.ceilingIrr);
-  panel.append(curveLegend());
+  panel.append(curveLegend(view.hasPlan));
 
   const chart = createCostCurveChart({
     formatValue: (value) => axisScale?.format(value) ?? "",
@@ -924,7 +924,15 @@ function createCostCurvePanel({ trend, trendError }) {
   chart.setData(view);
   panel.append(chart.element);
 
-  if (view.hasPlan && view.planPartial) {
+  if (!view.hasPlan) {
+    panel.append(
+      element(
+        "p",
+        "inline-notice",
+        "\u0628\u0631\u0646\u0627\u0645\u0647 \u0645\u0627\u0644\u06cc \u062f\u0648\u0631\u0647\u200c\u0627\u06cc \u062f\u0631 \u0645\u0646\u0628\u0639 \u062b\u0628\u062a \u0646\u0634\u062f\u0647 \u0627\u0633\u062a\u061b \u0645\u0646\u062d\u0646\u06cc \u0641\u0642\u0637 \u0647\u0632\u06cc\u0646\u0647 \u0648\u0627\u0642\u0639\u06cc \u0627\u0633\u0646\u0627\u062f \u062a\u0623\u06cc\u06cc\u062f\u0634\u062f\u0647 \u0631\u0627 \u0646\u0634\u0627\u0646 \u0645\u06cc\u200c\u062f\u0647\u062f.",
+      ),
+    );
+  } else if (view.planPartial) {
     panel.append(
       element(
         "p",
@@ -937,14 +945,16 @@ function createCostCurvePanel({ trend, trendError }) {
 }
 
 /** Green fill for what was spent, dashed blue for what was planned. */
-function curveLegend() {
+function curveLegend(hasPlan) {
   const legend = element("ul", "breakdown-legend cost-curve-legend");
-  [
+  const series = [
     ["actual", "واقعی"],
     ["plan", "برنامه (هدف)"],
-  ].forEach(([series, label]) => {
+  ];
+  if (!hasPlan) series.pop();
+  series.forEach(([seriesName, label]) => {
     const item = element("li", "", label);
-    item.dataset.series = series;
+    item.dataset.series = seriesName;
     legend.append(item);
   });
   return legend;
@@ -1097,7 +1107,10 @@ export function createFinanceHomePage({
             progressSnapshotId: latest.progressSnapshotId,
           }),
           reportsAdapter
-            .getMonthlyTrend({ reportingDate: latest.reportingDate })
+            .getMonthlyTrend({
+              reportingDate: latest.reportingDate,
+              progressSnapshotId: latest.progressSnapshotId,
+            })
             .then(
               (value) => {
                 trendError = null;

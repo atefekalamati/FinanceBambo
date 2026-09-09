@@ -132,23 +132,16 @@ test("an unknown mode falls back to periodic rather than rendering nothing", () 
 
 test("the mock reports adapter derives its trend from the seeded invoices across several months", async () => {
   const trend = await createMockReportsAdapter(context).getMonthlyTrend({ reportingDate: "2026-08-20" });
-  assert.ok(trend.months.length > 1, "the seed must span more than one month or the chart has nothing to compare");
+  assert.ok(trend.months.length > 1, "the seed must span more than one month or the chart has no trend");
   assert.ok(trend.months.every((month) => /^-?\d+$/.test(month.actualCostIrr)), "amounts stay exact IRR strings");
-  // The reference dataset carries a per-period plan so the cumulative curve can
-  // be judged before the host's period files exist. What it must never do is
-  // pass that plan off as something the service produced: the source is named
-  // as a demo at the boundary, and the API adapter still answers `unavailable`
-  // on a real project — asserted in monthly-report-adapter.test.js.
-  assert.equal(trend.estimateSource, "demo_period_plan");
-  assert.ok(trend.months.every((month) => /^-?\d+$/.test(month.estimateIrr)), "the plan is exact IRR too");
-  // Distributed without losing a rial: the periods sum to the figure they were
-  // split from, so the last point of the plan curve is the project's estimate.
-  const planned = trend.months.reduce((sum, month) => sum + BigInt(month.estimateIrr), 0n);
-  assert.equal(String(planned), "18650000000");
+  // Mock and API now share the same honesty rule: no time-phased baseline means
+  // no comparison line, even in preview mode.
+  assert.equal(trend.estimateSource, "unavailable");
+  assert.ok(trend.months.every((month) => month.estimateIrr === null));
 
   const view = buildMonthlyTrend({ months: trend.months, mode: TREND_MODES.CUMULATIVE });
-  assert.equal(view.hasEstimate, true);
-  assert.equal(view.estimatePartial, false, "every period carries a plan or the curve breaks");
+  assert.equal(view.hasEstimate, false);
+  assert.equal(view.estimatePartial, true);
   // A cumulative total can still fall: a month whose reversals outweigh its
   // purchases takes the running total back down, and the chart has to say so.
   const totals = view.points.map((point) => BigInt(point.actualIrr));

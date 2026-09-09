@@ -59,7 +59,7 @@ function createBulletChart(view) {
     }
 
     const amount = element("span", "bullet-chart__value numeric compact-money", formatCompactMoneyFromIrr(row.actualCostIrr));
-    amount.dataset.exact = formatTomanFromIrr(row.actualCostIrr);
+    amount.title = formatTomanFromIrr(row.actualCostIrr);
     amount.setAttribute("aria-label", formatTomanFromIrr(row.actualCostIrr));
     amount.tabIndex = 0;
 

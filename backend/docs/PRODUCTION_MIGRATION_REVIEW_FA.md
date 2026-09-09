@@ -24,20 +24,21 @@
 11. `0011_finance_mpp_source`
 12. `0012_finance_mpp_row_fields`
 13. `0013_finance_mpp_source_identity`
-14. `0014_finance_mpp_assignment_facts`
-15. `0015_finance_mpp_estimate_basis` (head)
+14. `0014_mpp_reporting_date`
+15. `0015_finance_mpp_assignment_facts`
+16. `0016_finance_mpp_estimate_basis` (head)
 
 ```powershell
 alembic current      # این دیتابیس کجاست
 alembic upgrade head
-alembic current      # باید 0015 باشد
+alembic current      # باید 0016 باشد
 ```
 
 
 
 
 
-## 0014 — آنچه فایل دربارهٔ هر تخصیص می‌گوید
+## 0015 — آنچه فایل دربارهٔ هر تخصیص می‌گوید
 
 `finance_mpp_rows` تا اینجا ارقام **تسک** را روی هر ردیف می‌نوشت: `finance_mpp_sync` یک
 دیکشنری برای هر تسک می‌ساخت و روی تک‌تک تخصیص‌های آن کپی می‌کرد، پس تسکی با هفت تخصیص جمع
@@ -391,7 +392,7 @@ Adapter مرجع می‌سازد یا مرجع موجود را دوباره اس
 
 Matrix کامل در `PERMISSION_MATRIX_FA.md` است. تصویب و Seed `finance_report.issue` و تصمیم fallback برای Confirm/Void/Progress/File توسط تیم BAMBO الزامی است.
 
-## 0015 — مبنای برآورد: مقدار متریال و نرخ واحد
+## 0016 — مبنای برآورد: مقدار متریال و نرخ واحد
 
 MS Project مقدار **فیزیکی** یک تخصیص متریال را در فیلد مستقل خودش نگه می‌دارد (`Material` در
 MPXJ) و قیمت یک واحد از آن را روی خودِ منبع (`StandardRate`). هیچ‌کدام از این دو، `Units`

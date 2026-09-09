@@ -192,65 +192,58 @@
    Resource and estimate-line tables
    -------------------------------------------------------------------------- */
 
-.items-table {
-  min-inline-size: 42rem;
-}
-
-.items-table :is(th, td):nth-child(1) {
-  inline-size: 17%;
-}
-
-.items-table :is(th, td):nth-child(2) {
+.items-table :is(th, td)[data-col="title"] {
   inline-size: 29%;
 }
 
-.items-table :is(th, td):nth-child(3) {
+.items-table :is(th, td)[data-col="type"] {
   inline-size: 18%;
 }
 
-.items-table :is(th, td):nth-child(4) {
+.items-table :is(th, td)[data-col="unit"] {
   inline-size: 17%;
-}
-
-.items-table :is(th, td):nth-child(5) {
-  inline-size: 19%;
-}
-
-.items-table :is(th, td):nth-child(1),
-.items-table :is(th, td):nth-child(4) {
   overflow-wrap: anywhere;
 }
 
-.items-table :is(th, td):nth-child(3),
+.items-table :is(th, td)[data-col="source"] {
+  inline-size: 19%;
+}
+
+.items-table :is(th, td)[data-col="type"],
 .items-table__type {
   text-align: center;
   vertical-align: middle;
 }
 
-/* Named rather than counted. Counted was the bug: columns were added to this
-   table and the nth-child rules kept sizing the first seven, so the rest shared
-   whatever was left. A named width cannot drift when a column is added, and the
-   identity column's width is the component's -- a rule here would outrank its
-   responsive ladder. */
+/* Named rather than counted. Counted was the bug: three columns were added to
+   this table and the seven nth-child rules kept sizing the first seven, so the
+   last three shared whatever was left and were unreadable. A named width cannot
+   drift when a column is added, and the identity column's width is the
+   component's -- a rule here would outrank its responsive ladder. */
 .estimate-lines-table :is(th, td)[data-col="unit"] {
-  inline-size: 8%;
+  inline-size: 6%;
 }
 
-.estimate-lines-table :is(th, td)[data-col="quantity"],
-.estimate-lines-table :is(th, td)[data-col="price"] {
-  inline-size: 14%;
+.estimate-lines-table :is(th, td)[data-col="originalQuantity"] {
+  inline-size: 9%;
 }
 
-.estimate-lines-table :is(th, td)[data-col="amount"] {
-  inline-size: 16%;
+.estimate-lines-table :is(th, td)[data-col="revisedQuantity"],
+.estimate-lines-table :is(th, td)[data-col="scheduleCost"] {
+  inline-size: 10%;
 }
 
-.estimate-lines-table :is(th, td)[data-col="actualCost"] {
-  inline-size: 12%;
+.estimate-lines-table :is(th, td)[data-col="originalPrice"],
+.estimate-lines-table :is(th, td)[data-col="currentPrice"] {
+  inline-size: 9%;
+}
+
+.estimate-lines-table :is(th, td)[data-col="source"] {
+  inline-size: 7%;
 }
 
 .estimate-lines-table :is(th, td)[data-col="actions"] {
-  inline-size: 12%;
+  inline-size: 11%;
 }
 
 .line-actions .table-action + .table-action {
@@ -311,27 +304,26 @@
   background: rgb(0 136 151 / 10%);
 }
 
-/* The schedule's cost, written on the activity's own row and nowhere else.
-   The row itself is the table component's (.data-table__group); only what this
-   page puts inside it is styled here. */
-.activity-block__cost {
-  color: var(--color-text-muted);
-  font-size: .78rem;
-  font-weight: 500;
+/* One activity's items read as one block: a rule above the first row of each,
+   and the repeated name shown once. The rows stay separate rows -- nothing is
+   merged and no cell spans -- so a narrow screen and a screen reader both keep
+   working. */
+.estimate-lines-table tbody tr.estimate-lines-table__block > td {
+  border-block-start: 1px solid var(--color-border-strong, rgb(148 163 184 / 35%));
 }
 
-/* Two figures in one cell, one under the other: they are one fact about the
-   line, and two columns made a wide table where a tall cell would do. */
-.pair-cell__line {
-  display: block;
-  line-height: 1.75;
+.estimate-lines-table tbody tr.estimate-lines-table__block:first-child > td {
+  border-block-start: 0;
 }
 
-.pair-cell__change {
-  display: block;
-  margin-block-start: .15rem;
-  color: var(--dash-sev-med);
-  font-size: .72rem;
+/* A member stays visually tied to its open activity without changing the
+   table geometry or making the whole row louder than its parent. */
+.estimate-lines-table .data-table__child > [data-col="identity"] {
+  border-inline-start: .18rem solid rgb(0 172 88 / 30%);
+}
+
+.activity-cell--continued {
+  padding-block: .2rem;
 }
 
 /* Says which rows the table is not showing. Quiet, and above the table it
@@ -778,12 +770,6 @@ html[data-theme="light"] .workspace-form select {
    -------------------------------------------------------------------------- */
 
 @media print {
-  /* An activity must not print at the foot of a page with its items overleaf. */
-  .estimate-lines-table .data-table__group {
-    break-inside: avoid;
-    break-after: avoid;
-  }
-
   .items-section__actions,
   .workspace-dialog {
     display: none !important;

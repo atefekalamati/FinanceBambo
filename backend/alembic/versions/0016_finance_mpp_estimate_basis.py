@@ -1,7 +1,7 @@
 """The quantity and the rate the file states, and a place to record them for a line that predates them
 
-Revision ID: 0015
-Revises: 0014
+Revision ID: 0016
+Revises: 0015
 
 WHAT THE FILE ACTUALLY STATES
 
@@ -48,8 +48,8 @@ from alembic import op
 from sqlalchemy import DDL
 
 
-revision = "0015"
-down_revision = "0014"
+revision = "0016"
+down_revision = "0015"
 branch_labels = None
 depends_on = None
 

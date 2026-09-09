@@ -3,45 +3,6 @@ import { aggregateConfirmedInvoicesByMonth } from "../../shared/reports/monthly-
 import { buildSeedInvoices } from "./invoices-adapter.js";
 import { buildWbsNodes, unattributedActualIrr } from "./wbs-fixture.js";
 
-/**
- * The per-period plan, for the reference dataset only.
- *
- * The real figures come from the host platform's periodic files: each period
- * carries its own estimated quantities, this module prices them, and the
- * cumulative curve is the running sum. That pipe does not exist yet, so the
- * reference dataset models its shape — a construction ramp, slow at the start,
- * heaviest through the structural months, tapering at handover.
- *
- * The API adapter still reports the series as unavailable rather than deriving
- * a lookalike, so none of this can reach a real project. It exists so the
- * cumulative chart can be judged before the pipe is built, and it is labelled
- * `demo_period_plan` at the boundary rather than dressed up as a real source.
- */
-const PLAN_SHAPE = Object.freeze([2, 3, 5, 8, 11, 13, 14, 13, 11, 8, 7, 5]);
-
-function planWeights(count) {
-  if (count <= 0) return [];
-  return Array.from({ length: count }, (unused, index) => PLAN_SHAPE[Math.floor((index * PLAN_SHAPE.length) / count)]);
-}
-
-/**
- * Splits a total across periods without losing a rial: every period takes its
- * whole share and the last one absorbs the remainder, so the periods always sum
- * to exactly the figure they were divided from.
- */
-function distributePlan(count, totalIrr) {
-  const total = BigInt(totalIrr);
-  const weights = planWeights(count);
-  const sum = BigInt(weights.reduce((result, weight) => result + weight, 0));
-  if (sum === 0n) return weights.map(() => "0");
-  let allocated = 0n;
-  return weights.map((weight, index) => {
-    if (index === weights.length - 1) return String(total - allocated);
-    const share = (total * BigInt(weight)) / sum;
-    allocated += share;
-    return String(share);
-  });
-}
 function wait(duration = 320) {
   return new Promise((resolve) => setTimeout(resolve, duration));
 }
@@ -226,18 +187,15 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     await wait(280);
     if (initialState === "error") throw new ApiError({ status: 503, code: "MONTHLY_TREND_UNAVAILABLE", message: "دریافت روند ماهانه هزینه انجام نشد.", requestId: "mock-monthly-trend-001" });
     if (initialState === "empty") return { months: [], estimateSource: "unavailable" };
-    // The periodic plan the cumulative curve compares against. The real one
-    // arrives with the host's period files; this is the reference dataset's
-    // stand-in, named as such at the boundary so nothing downstream mistakes it
-    // for a figure the service produced.
     const actualMonths = aggregateConfirmedInvoicesByMonth(buildSeedInvoices(context));
-    const plan = distributePlan(actualMonths.length, "18650000000");
     return {
-      estimateSource: "demo_period_plan",
+      // Match the production contract: until a true time-phased baseline arrives,
+      // absence remains null and the chart must not draw a fabricated plan line.
+      estimateSource: "unavailable",
       actualSource: "confirmed_financial_documents",
-      months: actualMonths.map((month, index) => ({
+      months: actualMonths.map((month) => ({
         ...month,
-        estimateIrr: plan[index] ?? null,
+        estimateIrr: null,
       })),
     };
   }

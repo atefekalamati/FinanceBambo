@@ -1,0 +1,199 @@
+/* A4 chapters follow the host MSP documents, including long-table continuation. */
+@media print {
+  @page finance-built-report {
+    size: A4;
+    margin: 12mm 12mm 17mm;
+
+    @bottom-center {
+      content: counter(page) " / " counter(pages);
+      font-family: sans-serif;
+      font-size: 8pt;
+      color: #666;
+    }
+  }
+
+  .report-builder-page__header,
+  .report-builder-section {
+    display: none !important;
+  }
+
+  .report-doc {
+    page: finance-built-report;
+    display: block;
+    font-size: 9pt;
+  }
+
+  .report-doc__chapter {
+    display: block;
+    break-before: page;
+    break-inside: auto;
+  }
+
+  .report-doc__chapter:first-child {
+    break-before: auto;
+  }
+
+  .report-doc__section {
+    display: block;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    break-before: auto;
+    break-inside: auto;
+  }
+
+  .report-doc__section > * {
+    margin-block: 3mm;
+  }
+
+  .report-doc__section-title {
+    border-block-end: .5mm solid #17584b;
+    font-size: 11pt;
+    break-after: avoid;
+  }
+
+  .report-doc .report-header {
+    flex-direction: row;
+    align-items: center;
+    padding: 7mm;
+    margin-block-end: 5mm;
+    border-radius: 1mm;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  #finance-module-root .report-doc .report-header :is(h1, dt, dd) {
+    color: #fff;
+  }
+
+  #finance-module-root .report-doc .report-header__wordmark :is(strong, small) {
+    color: #7fd7b0;
+  }
+
+  .report-doc .report-header__title {
+    font-size: 15pt;
+  }
+
+  .report-doc .report-header__facts {
+    font-size: 8pt;
+  }
+
+  .report-doc__section-note,
+  .report-doc__note {
+    font-size: 8pt;
+    line-height: 1.65;
+  }
+
+  .report-doc__figures {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2mm;
+    break-inside: avoid;
+  }
+
+  .report-doc__figure {
+    padding: 2mm;
+  }
+
+  .report-doc__figure-value {
+    font-size: 10pt;
+    overflow-wrap: anywhere;
+  }
+
+  .report-doc__figure-label,
+  .report-doc__figure-note {
+    font-size: 8pt;
+  }
+
+  .report-doc__chart {
+    display: block;
+  }
+
+  .report-doc__chart-row {
+    grid-template-columns: 40mm minmax(0, 1fr) 38mm;
+    margin-block: 2mm;
+    break-inside: avoid;
+  }
+
+  .report-doc__chart-row h3,
+  .report-doc__chart-value {
+    font-size: 8pt;
+    white-space: normal;
+  }
+
+  .report-doc__curve {
+    padding: 3mm;
+    break-inside: avoid;
+  }
+
+  .report-doc__curve-svg text {
+    fill: #202a39;
+    font-size: 12px;
+  }
+
+  .report-doc__curve-month[data-edge="false"] {
+    display: block;
+  }
+
+  .report-doc__section[data-report-key="sCurve"] .report-doc__curve-svg {
+    max-block-size: 60mm;
+  }
+
+  .report-doc__curve-grid {
+    stroke: #ddd;
+  }
+
+  .report-doc__curve-line,
+  .report-doc__curve-point {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .report-doc__table-wrapper {
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+    break-inside: auto;
+  }
+
+  .report-doc__table {
+    table-layout: fixed;
+    inline-size: 100%;
+  }
+
+  .report-doc__table thead {
+    display: table-header-group;
+  }
+
+  .report-doc__table tr {
+    break-inside: avoid;
+  }
+
+  .report-doc__table :is(th, td, caption) {
+    padding: 1.7mm 1.5mm;
+    font-size: 8pt;
+    line-height: 1.5;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .report-doc__table caption {
+    break-after: avoid;
+    text-align: start;
+    font-weight: 700;
+  }
+
+  #finance-module-root .report-doc__table thead,
+  #finance-module-root .report-doc__table tbody tr:nth-child(even) {
+    background: #f4f5f7;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .report-doc__footer {
+    border-block-start: .2mm solid #ddd;
+    margin-block-start: 4mm;
+    padding-block: 2mm;
+    font-size: 7pt;
+    break-inside: avoid;
+  }
+}

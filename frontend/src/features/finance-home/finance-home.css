@@ -663,21 +663,6 @@
   white-space: normal;
 }
 
-/* The exact figure hangs below the value here, not above it.
-   The shared tooltip opens upward, but these values sit along the top edge of a
-   card whose height is fixed and which therefore clips — so upward meant
-   invisible. Below, it opens over the bars, which is empty space inside the
-   same card. */
-.managerial-combo-chart__value.compact-money::after {
-  inset-block-end: auto;
-  inset-block-start: calc(100% + .35rem);
-  transform: translateX(50%) translateY(-.2rem);
-}
-
-.managerial-combo-chart__value.compact-money:is(:hover, :focus-visible)::after {
-  transform: translateX(50%) translateY(0);
-}
-
 .managerial-combo-chart__value .money-display__amount {
   max-inline-size: 100%;
   min-inline-size: 0;
@@ -1036,23 +1021,6 @@ a.finance-variance-card__link:hover {
    card that always has more. */
 .bullet-chart-viewport {
   max-inline-size: 100%;
-}
-
-/* Three things stand between a tooltip and the page, and each one has to be
-   lifted or the tooltip's own z-index is capped inside it: the card, which is a
-   stacking context of its own; the row, so the rows after it stop painting over
-   it; and the value, which is what the tooltip is attached to. */
-.finance-breakdown:has(.bullet-chart__value:is(:hover, :focus-visible)) {
-  z-index: var(--z-calendar-popup);
-}
-
-.bullet-chart__row:has(.bullet-chart__value:is(:hover, :focus-visible)) {
-  position: relative;
-  z-index: 3;
-}
-
-.bullet-chart__value:is(:hover, :focus-visible) {
-  z-index: var(--z-calendar-popup);
 }
 
 .bullet-chart {
@@ -1466,14 +1434,6 @@ a.finance-variance-card__link:hover {
     padding-inline: .1rem;
   }
 
-  /* Centred on a column this narrow, the outermost tooltip reached past the
-     card and was clipped by it. Smaller type and tighter padding bring it back
-     inside rather than moving it off centre. */
-  .managerial-combo-chart__value.compact-money::after {
-    padding: .25rem .4rem;
-    font-size: .62rem;
-  }
-
   .managerial-combo-chart__scale-value {
     font-size: .52rem;
   }
@@ -1581,30 +1541,6 @@ a.finance-variance-card__link:hover {
   display: grid;
   gap: var(--space-sm);
   min-inline-size: 0;
-}
-
-/* A number's tooltip rises above the plot, and the card around it is a stacking
-   context, so the card is lifted while one is open — the same arrangement the
-   cost breakdown needs for the same reason. */
-.finance-analysis-card:has(.combo-chart__axis-value:is(:hover, :focus-visible)) {
-  z-index: var(--z-calendar-popup);
-}
-
-.combo-chart__axis-value:is(:hover, :focus-visible) {
-  z-index: var(--z-calendar-popup);
-}
-
-/* The numbers sit against the outer edge of the card, so a tooltip centred on
-   one would hang half outside it. These open inward instead: the panel's
-   inline-start edge meets the number's, and it grows across the plot, which is
-   the only direction with room. */
-.combo-chart__axis-value.compact-money::after {
-  inset-inline-start: 0;
-  transform: translateX(0) translateY(.2rem);
-}
-
-.combo-chart__axis-value.compact-money:is(:hover, :focus-visible)::after {
-  transform: translateX(0) translateY(0);
 }
 
 .monthly-trend-legend {
@@ -1967,24 +1903,6 @@ a.finance-variance-card__link:hover {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: auto;
-}
-
-/* The same exact-amount tooltip the other charts in this module use. */
-.cost-curve__guide-value[data-exact]:hover::after,
-.cost-curve__guide-value[data-exact]:focus-visible::after {
-  content: attr(data-exact);
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + .35rem);
-  z-index: 40;
-  padding: .25rem .5rem;
-  border-radius: var(--radius-sm, 6px);
-  background: var(--color-surface-elevated);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-xs, .7rem);
-  font-weight: 700;
-  white-space: nowrap;
-  box-shadow: var(--dash-shadow);
 }
 
 /* --- period labels ---------------------------------------------------- */
@@ -2681,7 +2599,6 @@ a.breakdown-donut:focus-visible {
 /* .dash-card--msp .dash-card__head: the title and its badge pack at the start
    rather than being pushed apart, eight apart. */
 .finance-board .level-one-section > .section-heading {
-  align-items: center;
   justify-content: flex-start;
   gap: 8px;
   margin: 0;
@@ -3458,7 +3375,7 @@ a.breakdown-donut:focus-visible {
     transparent
   );
   color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-lg);
   font-weight: 700;
   line-height: 1.35;
 }
@@ -4096,6 +4013,10 @@ body[data-finance-runtime="standalone"] .app-workspace {
     --font-size-2xs: .46rem;
   }
 
+  .finance-board .finance-figures .summary-card h2 {
+    font-size: var(--font-size-md);
+  }
+
   .finance-board .finance-figures .summary-card__value {
     font-size: clamp(.875rem, 1.5vw, 1.25rem);
   }
@@ -4252,6 +4173,11 @@ body[data-finance-runtime="standalone"] .app-workspace {
     --font-size-xs: .46rem;
     --font-size-2xs: .42rem;
   }
+
+  .finance-board .finance-figures .summary-card h2 {
+    font-size: 8px;
+  }
+
 
   .finance-board .finance-figures .summary-card__value {
     font-size: clamp(.7rem, 2.2vw, .95rem);
@@ -4554,6 +4480,11 @@ body[data-finance-runtime="standalone"] .app-workspace {
   .finance-board .finance-figures .summary-card__value {
     font-size: clamp(.7rem, 3.2vw, .9rem);
   }
+
+  .finance-board .finance-figures .summary-card h2 {
+    font-size: var(--font-size-sm);
+  }
+
 
   .finance-board .finance-figures {
     --font-size-xs: .5rem;

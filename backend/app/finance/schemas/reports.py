@@ -268,6 +268,11 @@ class MonthlyReportResponse(ApiModel):
     months:list[MonthlyPoint]
     window_start:date
     window_end:date
+    # reportingDate is the selected schedule period; actualDataThroughDate is the latest
+    # effective financial document inside it. They are intentionally not conflated.
+    reporting_date:date
+    actual_data_through_date:date|None=None
+    progress_snapshot_id:UUID|None=None
     estimate_source:Literal["unavailable","schedule","manual_plan"]="unavailable"
     actual_source:Literal["confirmed_financial_documents"]="confirmed_financial_documents"
     calculation_status:Literal["complete","incomplete"]="complete"

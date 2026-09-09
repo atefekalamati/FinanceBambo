@@ -271,7 +271,10 @@
 
 .period-invoice-total span { color: var(--color-text-muted); }
 
-.period-invoice-table td:last-child,
+/* Named, not positional: the invoice table's columns can be put away now, and
+   :last-child would follow whichever one happened to be last. The event table
+   is not on the component, so its rule stays as it was. */
+.period-invoice-table td[data-col="amount"],
 .period-event-table td:last-child {
   white-space: nowrap;
 }

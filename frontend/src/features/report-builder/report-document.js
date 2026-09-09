@@ -31,6 +31,7 @@ export function reportSection(index, title, description = "") {
 export function reportFooter(generatedAt) {
   const footer = element("footer", "report-doc__footer");
   footer.textContent = `بامبو — گزارش مالی پروژه · تولیدشده در ${formatSystemDateTime(generatedAt)}`;
+  footer.append(element("p", "", "مبنای این خروجی داده‌های زمان تولید است؛ بازکردن مجدد لینک، گزارش زنده را دوباره محاسبه می‌کند."));
   return footer;
 }
 

@@ -1,7 +1,7 @@
 """What the file says about one assignment, kept
 
-Revision ID: 0014
-Revises: 0013
+Revision ID: 0015
+Revises: 0014
 
 `finance_mpp_rows` records a schedule row, and until now it recorded the TASK's figures on
 every one of them: `finance_mpp_sync` builds one dict per task and copies it onto each of
@@ -44,8 +44,8 @@ from alembic import op
 from sqlalchemy import DDL
 
 
-revision = "0014"
-down_revision = "0013"
+revision = "0015"
+down_revision = "0014"
 branch_labels = None
 depends_on = None
 

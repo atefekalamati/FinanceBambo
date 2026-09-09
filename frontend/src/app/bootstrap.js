@@ -1,4 +1,6 @@
-import { getHostContext, subscribeHostProjectContext } from "../adapters/host/context-adapter.js";
+import { subscribeHostProjectContext } from "../adapters/host/context-adapter.js";
+import { resolveRuntimeContext } from "../adapters/host/runtime-context.js";
+import { discoverHostContext } from "../adapters/host/host-context-discovery.js";
 import { getStandaloneContext } from "../adapters/mock/standalone-context.js";
 import { createMockSettingsAdapter } from "../adapters/mock/settings-adapter.js";
 import { createMockFinancialItemsAdapter } from "../adapters/mock/financial-items-adapter.js";
@@ -55,10 +57,35 @@ function createHostAdapters(context) {
   });
 }
 
-function resolveContext() {
-  const hostContext = getHostContext();
-  document.body.dataset.financeRuntime = hostContext ? "host" : "standalone";
-  return hostContext ?? getStandaloneContext();
+/**
+ * The context, however the host is able to give it.
+ *
+ * A context set on `window` still wins: it is the stated contract, it needs no
+ * requests, and a host that adopts it keeps working unchanged. What follows is
+ * for the host as it is today, which sets nothing — the project is in the
+ * address bar and everything else is behind endpoints it already serves, so
+ * they are read rather than waited for.
+ *
+ * The standalone preview never reaches the network: it is marked, and a marked
+ * page has its own context.
+ */
+async function resolveContext() {
+  const mode = document.body.dataset.financeRuntime;
+  let hostContext = window.__BAMBO_FINANCE_CONTEXT__;
+  if (!hostContext && mode !== "standalone") {
+    hostContext = await discoverHostContext();
+    // Published where the contract says to look for it. Nothing here reads it
+    // back, but the project-change subscriber does -- and it is the first thing
+    // anyone opens a console to check when a page shows the wrong project.
+    if (hostContext) window.__BAMBO_FINANCE_CONTEXT__ = hostContext;
+  }
+  const { runtime, context } = resolveRuntimeContext({
+    mode,
+    hostContext,
+    createStandaloneContext: getStandaloneContext,
+  });
+  document.body.dataset.financeRuntime = runtime;
+  return context;
 }
 
 function renderDenied(context = null) {
@@ -164,7 +191,7 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
 }
 
 try {
-  let context = resolveContext();
+  let context = await resolveContext();
   const allowedMockStates = new Set(["success", "empty", "error"]);
   const requestedMockState = new URLSearchParams(window.location.search).get("settingsState");
   const settingsState = document.body.dataset.financeRuntime === "standalone" && allowedMockStates.has(requestedMockState) ? requestedMockState : "success";
@@ -219,7 +246,7 @@ try {
       liveRegion.textContent = `اطلاعات مالی پروژه ${context.projectName || context.projectId} بارگذاری شد.`;
     }, (error) => {
       liveRegion.textContent = `تغییر پروژه انجام نشد: ${error.message}`;
-    });
+    }, { rediscover: () => discoverHostContext() });
   }
 } catch (error) {
   const section = document.createElement("section");

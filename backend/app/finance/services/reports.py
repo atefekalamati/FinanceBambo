@@ -150,6 +150,21 @@ class FinanceLiveReportService:
         row=await self.repo.ensure_progress_reference(scope,value)
         return None if row is None else self._descriptor(row)
 
+    async def _read_named_finance_snapshot(self,scope,progress_snapshot_id):
+        """Resolve an unpinned Finance-owned source version without writing a ref."""
+        feed=await self.provider.get_snapshot(
+            str(scope.organization_id),scope.project_id,str(progress_snapshot_id))
+        metadata=snapshot_metadata(
+            feed,scope.organization_id,scope.project_id,progress_snapshot_id)
+        value=reference_from_header(metadata,scope,self.ids,self.clock)
+        if (value is None or value.host_snapshot_id is not None
+                or str(value.progress_snapshot_id)!=str(progress_snapshot_id)):
+            raise FinanceRecordNotFound("progress snapshot not found")
+        return {"progress_snapshot_ref_id":None,
+                "progress_snapshot_id":value.progress_snapshot_id,
+                "host_snapshot_id":None,
+                "reporting_date":value.reporting_date}
+
     async def _calculate(self,scope,reporting_date,progress_snapshot_id,pin=False):
         """Calculate the report. `pin` decides whether a missing reference may be created.
 
@@ -159,6 +174,8 @@ class FinanceLiveReportService:
         """
         data=await self.repo.load(scope,reporting_date)
         snapshot=data["snapshot"] if progress_snapshot_id is None else await self.repo.snapshot(scope,progress_snapshot_id)
+        if snapshot is None and progress_snapshot_id is not None:
+            snapshot=await self._read_named_finance_snapshot(scope,progress_snapshot_id)
         if snapshot is None and progress_snapshot_id is None:
             # Nothing recorded for this date. Ask the host what its current snapshot is,
             # rather than answering 404 for a project whose progress exists but has never
@@ -299,7 +316,8 @@ class FinanceLiveReportService:
     DEFAULT_MONTH_COUNT=DEFAULT_MONTH_COUNT
     MAX_MONTH_COUNT=MAX_MONTH_COUNT
 
-    async def monthly(self,scope,reporting_date:date,month_count=None):
+    async def monthly(self,scope,reporting_date:date|None,month_count=None,
+                      progress_snapshot_id=None):
         """The Persian-month cost series ending on `reporting_date`.
 
         The window closes on the reporting date rather than the end of its Persian month,
@@ -312,12 +330,21 @@ class FinanceLiveReportService:
         the window covers the whole project; both ends are in the response so a caller can
         tell which case it has.
         """
+        if progress_snapshot_id is not None:
+            snapshot=await self.repo.snapshot(scope,progress_snapshot_id)
+            if snapshot is None:
+                snapshot=await self._read_named_finance_snapshot(scope,progress_snapshot_id)
+            # The immutable snapshot is authoritative. A stale date cached by a caller
+            # must not make the S-curve extend beyond (or stop before) that period.
+            reporting_date=snapshot["reporting_date"]
+        if reporting_date is None:raise MonthlyWindowUnsupported("reportingDate is required")
         count=self.DEFAULT_MONTH_COUNT if month_count is None else int(month_count)
         if not 1<=count<=self.MAX_MONTH_COUNT:raise MonthlyWindowUnsupported("monthCount is out of range")
         try:window_start,year,month=persian_month_window(reporting_date,count)
         except ValueError as error:raise MonthlyWindowUnsupported(str(error)) from error
         amounts,documents=await self.repo.monthly_actuals(scope,window_start,reporting_date)
-        return monthly_report(amounts,documents,(window_start,year,month,count),reporting_date)
+        return monthly_report(amounts,documents,(window_start,year,month,count),reporting_date,
+                              progress_snapshot_id)
 
     async def variances(self,scope,reporting_date:date,progress_snapshot_id=None,variance_type="all",resource_type=None,query=None,page=1,page_size=50,sort_by=None,sort_direction="desc"):
         report,_data,_snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)

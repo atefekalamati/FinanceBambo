@@ -71,14 +71,16 @@ export function createApiReportsAdapter(context, client) {
    * Coercing it here would put a floor on the chart and turn every month into an
    * overrun.
    */
-  async function getMonthlyTrend({ reportingDate, monthCount = 12 } = {}) {
-    const query = new URLSearchParams({ reportingDate, monthCount: String(monthCount) });
+  async function getMonthlyTrend({ reportingDate, progressSnapshotId, monthCount = 12 } = {}) {
+    const query = new URLSearchParams({ monthCount: String(monthCount) });
+    if (reportingDate) query.set("reportingDate", reportingDate);
+    if (progressSnapshotId) query.set("progressSnapshotId", progressSnapshotId);
     const payload = await client.request(`${base}/reports/monthly?${query.toString()}`);
     return {
       months: (payload.months ?? []).map((month) => ({
         persianYear: month.persianYear,
         persianMonth: month.persianMonth,
-        actualCostIrr: String(month.actualCostIrr ?? "0"),
+        actualCostIrr: month.actualCostIrr == null ? null : String(month.actualCostIrr),
         estimateIrr: month.estimateIrr == null ? null : String(month.estimateIrr),
         invoiceCount: month.invoiceCount ?? 0,
         reversalCount: month.reversalCount ?? 0,
@@ -88,6 +90,9 @@ export function createApiReportsAdapter(context, client) {
       actualSource: payload.actualSource ?? "confirmed_financial_documents",
       windowStart: payload.windowStart ?? null,
       windowEnd: payload.windowEnd ?? null,
+      reportingDate: payload.reportingDate ?? payload.windowEnd ?? reportingDate ?? null,
+      actualDataThroughDate: payload.actualDataThroughDate ?? null,
+      progressSnapshotId: payload.progressSnapshotId ?? progressSnapshotId ?? null,
       warnings: payload.warnings ?? [],
     };
   }
@@ -95,8 +100,7 @@ export function createApiReportsAdapter(context, client) {
   /**
    * Cost rolled up the project's breakdown structure.
    *
-   * The endpoint is specified in docs/BACKEND_NEEDS_LEVEL1_REPORT_FA.md and is
-   * not built yet. A 404 is therefore not an error to show the reader — it is
+   * Older deployments may not have the endpoint. A 404 is
    * this project's answer to "is that report available", so it comes back as an
    * empty result carrying `available: false` and the page says what is missing.
    * Every other status still raises: a 500 here is a real fault and hiding it
@@ -117,17 +121,24 @@ export function createApiReportsAdapter(context, client) {
           parentWbsCode: node.parentWbsCode ?? null,
           activityCount: node.activityCount ?? 0,
           childCount: node.childCount ?? 0,
+          estimateLineCount: node.estimateLineCount ?? null,
+          calculationStatus: node.calculationStatus ?? null,
           weight: node.weight == null ? null : String(node.weight),
           progressPercent: node.progressPercent == null ? null : String(node.progressPercent),
           initialEstimateIrr: node.initialEstimateIrr == null ? null : String(node.initialEstimateIrr),
           revisedEstimateIrr: node.revisedEstimateIrr == null ? null : String(node.revisedEstimateIrr),
-          actualCostIrr: String(node.actualCostIrr ?? "0"),
+          actualCostIrr: node.actualCostIrr == null ? null : String(node.actualCostIrr),
           remainingPhysicalCostIrr: node.remainingPhysicalCostIrr == null ? null : String(node.remainingPhysicalCostIrr),
           moneyRequiredIrr: node.moneyRequiredIrr == null ? null : String(node.moneyRequiredIrr),
           forecastFinalIrr: node.forecastFinalIrr == null ? null : String(node.forecastFinalIrr),
           breakdown: node.breakdown ?? null,
         })),
         unattributedActualIrr: payload.unattributedActualIrr == null ? null : String(payload.unattributedActualIrr),
+        unmappedWbsActualIrr: payload.unmappedWbsActualIrr == null ? null : String(payload.unmappedWbsActualIrr),
+        unmappedEstimateLineCount: payload.unmappedEstimateLineCount ?? null,
+        totals: payload.totals ?? null,
+        calculationStatus: payload.calculationStatus ?? null,
+        warnings: payload.warnings ?? [],
         source: payload.source ?? "service",
       };
     } catch (error) {

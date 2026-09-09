@@ -1,5 +1,6 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
-import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
+import { SURFACES } from "../../core/config/routes.js";
 import { downloadCsvFile } from "../../shared/exports/csv.js";
 import { buildPricesCsv, pricesFileName } from "./prices-csv.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
@@ -17,7 +18,8 @@ import { validatePriceVersion } from "./prices-validation.js";
 import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition, validateUnitConversion } from "./unit-conversions-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
+import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 
 const SCOPE_LABELS = Object.freeze({ organization: "پایه سازمان", project: "اختصاصی پروژه" });
@@ -216,6 +218,19 @@ function createPriceImportDialog(adapter, onSaved) {
   error.setAttribute("aria-live", "polite");
   input.setAttribute("aria-describedby", `${hint.id} ${error.id}`);
   field.append(label, input, hint, error);
+
+  // The same import, from a link instead of a disk.
+  const sheetField = element("div", "form-field form-field--wide");
+  const sheetLabel = element("label", "form-label", "یا نشانی گوگل شیت");
+  sheetLabel.htmlFor = "priceImportSheet";
+  const sheetInput = element("input", "app-input");
+  sheetInput.id = "priceImportSheet";
+  sheetInput.type = "url";
+  sheetInput.placeholder = "نشانی برگه را از نوار آدرس مرورگر کپی کنید";
+  sheetInput.setAttribute("aria-describedby", "priceSheetHint");
+  const sheetHint = element("small", "form-hint", "برگه باید روی «هر کسی که لینک را دارد» باشد. اگر نشانی را از روی تب موردنظر کپی کنید، همان تب خوانده می‌شود.");
+  sheetHint.id = "priceSheetHint";
+  sheetField.append(sheetLabel, sheetInput, sheetHint);
   const previewButton = element("button", "button button--primary", "بررسی و نمایش پیش‌نمایش");
   previewButton.type = "submit";
   const status = element("div", "form-status");
@@ -223,7 +238,7 @@ function createPriceImportDialog(adapter, onSaved) {
   status.setAttribute("aria-live", "polite");
   const actions = element("div", "form-actions");
   actions.append(previewButton, status);
-  form.append(field, actions);
+  form.append(field, sheetField, actions);
   const resultRegion = element("section", "price-import-result");
   resultRegion.setAttribute("aria-live", "polite");
   resultRegion.hidden = true;
@@ -326,26 +341,35 @@ function createPriceImportDialog(adapter, onSaved) {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const file = input.files?.[0];
-    error.textContent = file ? "" : "انتخاب فایل اکسل الزامی است.";
-    input.setAttribute("aria-invalid", String(!file));
-    if (!file) {
+    const picked = input.files?.[0];
+    const link = sheetInput.value.trim();
+    error.textContent = picked || link ? "" : "یک فایل اکسل انتخاب کنید یا نشانی گوگل شیت را وارد کنید.";
+    input.setAttribute("aria-invalid", String(!picked && !link));
+    if (!picked && !link) {
       input.focus();
       return;
     }
     input.disabled = true;
+    sheetInput.disabled = true;
     previewButton.disabled = true;
     resultRegion.hidden = true;
-    status.textContent = "در حال بررسی فایل…";
+    status.textContent = link && !picked ? "در حال دریافت برگه از گوگل…" : "در حال بررسی فایل…";
     try {
-      const preview = await adapter.previewPriceImport(file);
+      // A picked file wins: it is the more deliberate of the two. A link goes to
+      // the service, which fetches the sheet -- this page never calls Google.
+      const preview = picked
+        ? await adapter.previewPriceImport(picked)
+        : await adapter.previewPriceImportFromLink(requireSheetLink(link));
       status.textContent = preview.canCommit ? "پیش‌نمایش معتبر آماده است." : "پیش‌نمایش دارای خطاست.";
       renderPreview(preview);
     } catch (previewError) {
-      error.textContent = formatApiErrorMessage(previewError);
+      error.textContent = previewError instanceof GoogleSheetError
+        ? previewError.message
+        : formatApiErrorMessage(previewError);
       status.textContent = "بررسی فایل انجام نشد.";
     } finally {
       input.disabled = false;
+      sheetInput.disabled = false;
       previewButton.disabled = false;
     }
   });
@@ -510,90 +534,104 @@ function renderPriceFilters(filters, onApply, onReset) {
   return form;
 }
 
-function renderHistory(history, currentPrices) {
-  const resourceMap = new Map(currentPrices.map((item) => [item.resource.resourceId, item.resource]));
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table price-history-table");
-  table.append(element("caption", "sr-only", "تاریخچه تغییرناپذیر قیمت‌ها"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["قلم هزینه", "سطح", `قیمت واحد (${getDisplayCurrencyLabel()})`, "تاریخ اعتبار", "ثبت‌کننده", "زمان ثبت"].forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  history.forEach((price) => {
-    const resource = resourceMap.get(price.resourceId);
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "", resource?.title ?? "قلم حذف‌شده"),
-      element("td", "", SCOPE_LABELS[price.scope] ?? "سطح نامشخص"),
-      element("td", "numeric", formatTomanFromIrr(price.unitPriceIRR, { withCurrency: false })),
-      element("td", "", formatBusinessDate(price.effectiveFrom)),
-      element("td", "", price.actorName || price.actorId),
-      element("td", "", formatSystemDateTime(price.createdAt)),
-    );
-    body.append(row);
-  });
-  table.append(head, body);
-  wrapper.append(table);
-  return wrapper;
+function priceHistoryColumns() {
+  return [
+    { key: "identity", label: "قلم هزینه", tier: IDENTITY },
+    { key: "scope", label: "سطح", tier: PRIMARY },
+    { key: "unitPrice", label: `قیمت واحد (${getDisplayCurrencyLabel()})`, tier: PRIMARY, cellClass: "numeric" },
+    { key: "effectiveFrom", label: "تاریخ اعتبار", tier: SECONDARY, keepOnTablet: true },
+    { key: "actor", label: "ثبت‌کننده", tier: SECONDARY },
+    { key: "createdAt", label: "زمان ثبت", tier: SECONDARY },
+  ];
 }
+
+function renderHistory(history, currentPrices, columns, visible) {
+  const resourceMap = new Map(currentPrices.map((item) => [item.resource.resourceId, item.resource]));
+  return createDataTable({
+    className: "price-history-table",
+    caption: "تاریخچه تغییرناپذیر قیمت‌ها",
+    scrollLabel: "جدول تاریخچه قیمت‌ها",
+    columns,
+    rows: history,
+    visible,
+    cells: (price) => ({
+      identity: resourceMap.get(price.resourceId)?.title ?? "قلم حذف‌شده",
+      scope: SCOPE_LABELS[price.scope] ?? "سطح نامشخص",
+      unitPrice: formatTomanFromIrr(price.unitPriceIRR, { withCurrency: false }),
+      effectiveFrom: formatBusinessDate(price.effectiveFrom),
+      actor: price.actorName || price.actorId,
+      createdAt: formatSystemDateTime(price.createdAt),
+    }),
+  });
+}
+
+/* These two are rendered by the settings page but built here, so their column
+   state lives with the module rather than being threaded through a caller that
+   has no other reason to know about columns. One page, one of each table. */
+const CONVERSION_COLUMNS = Object.freeze([
+  { key: "identity", label: "تبدیل", tier: IDENTITY },
+  { key: "dimension", label: "نوع واحد", tier: SECONDARY, keepOnTablet: true },
+  { key: "organization", label: "ضریب پایه سازمان", tier: SECONDARY, cellClass: "numeric" },
+  { key: "project", label: "تبدیل اختصاصی پروژه", tier: SECONDARY, cellClass: "numeric" },
+  { key: "current", label: "ضریب جاری", tier: PRIMARY, cellClass: "numeric conversion-current" },
+  { key: "scope", label: "مبنای جاری", tier: PRIMARY },
+  { key: "effectiveDate", label: "تاریخ اعتبار", tier: SECONDARY },
+]);
+const visibleConversionColumns = defaultVisibleColumns(CONVERSION_COLUMNS);
 
 export function renderCurrentConversions(items) {
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table current-conversions-table");
-  table.append(element("caption", "sr-only", "فهرست تبدیل‌های واحد جاری"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["تبدیل", "نوع واحد", "ضریب پایه سازمان", "تبدیل اختصاصی پروژه", "ضریب جاری", "مبنای جاری", "تاریخ اعتبار"].forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  items.forEach((item) => {
-    const definition = getUnitDefinition(item.sourceUnit);
-    const currentScope = item.currentConversion?.projectId ? "اختصاصی پروژه" : "پایه سازمان";
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "", `${formatUnitLabel(item.sourceUnit)} ← ${formatUnitLabel(item.targetUnit)}`),
-      element("td", "", definition?.dimensionLabel ?? "نامشخص"),
-      element("td", "numeric", item.organizationConversion ? formatDisplayNumber(item.organizationConversion.factor) : "—"),
-      element("td", "numeric", item.projectConversion ? formatDisplayNumber(item.projectConversion.factor) : "—"),
-      element("td", "numeric conversion-current", formatDisplayNumber(item.currentConversion.factor)),
-      element("td", "", currentScope),
-      element("td", "", formatBusinessDate(item.currentConversion.effectiveDate)),
-    );
-    body.append(row);
+  return createDataTableWithControl({
+    name: "current-conversions",
+    className: "current-conversions-table",
+    caption: "فهرست تبدیل‌های واحد جاری",
+    scrollLabel: "جدول تبدیل‌های واحد جاری",
+    columns: CONVERSION_COLUMNS,
+    visible: visibleConversionColumns,
+    rows: items,
+    cells: (item) => ({
+      identity: `${formatUnitLabel(item.sourceUnit)} ← ${formatUnitLabel(item.targetUnit)}`,
+      dimension: getUnitDefinition(item.sourceUnit)?.dimensionLabel ?? "نامشخص",
+      organization: item.organizationConversion ? formatDisplayNumber(item.organizationConversion.factor) : "—",
+      project: item.projectConversion ? formatDisplayNumber(item.projectConversion.factor) : "—",
+      current: formatDisplayNumber(item.currentConversion.factor),
+      scope: item.currentConversion?.projectId ? "اختصاصی پروژه" : "پایه سازمان",
+      effectiveDate: formatBusinessDate(item.currentConversion.effectiveDate),
+    }),
   });
-  table.append(head, body);
-  wrapper.append(table);
-  return wrapper;
 }
 
+const CONVERSION_HISTORY_COLUMNS = Object.freeze([
+  { key: "identity", label: "واحد مبدأ", tier: IDENTITY },
+  { key: "target", label: "واحد مقصد", tier: PRIMARY },
+  { key: "dimension", label: "نوع واحد", tier: SECONDARY },
+  { key: "factor", label: "ضریب تبدیل", tier: PRIMARY, cellClass: "numeric" },
+  { key: "scope", label: "سطح", tier: SECONDARY, keepOnTablet: true },
+  { key: "effectiveDate", label: "تاریخ اعتبار", tier: SECONDARY, keepOnTablet: true },
+  { key: "actor", label: "ثبت‌کننده", tier: SECONDARY },
+  { key: "createdAt", label: "زمان ثبت", tier: SECONDARY },
+]);
+const visibleConversionHistoryColumns = defaultVisibleColumns(CONVERSION_HISTORY_COLUMNS);
+
 export function renderConversionHistory(history) {
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table conversion-history-table");
-  table.append(element("caption", "sr-only", "تاریخچه نسخه‌های تبدیل واحد"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["واحد مبدأ", "واحد مقصد", "نوع واحد", "ضریب تبدیل", "سطح", "تاریخ اعتبار", "ثبت‌کننده", "زمان ثبت"].forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  history.forEach((conversion) => {
-    const definition = getUnitDefinition(conversion.sourceUnit);
-    const row = document.createElement("tr");
-    row.append(
-      element("td", "", formatUnitLabel(conversion.sourceUnit)),
-      element("td", "", formatUnitLabel(conversion.targetUnit)),
-      element("td", "", definition?.dimensionLabel ?? "نامشخص"),
-      element("td", "numeric", formatDisplayNumber(conversion.factor)),
-      element("td", "", conversion.projectId ? "اختصاصی پروژه" : "پایه سازمان"),
-      element("td", "", formatBusinessDate(conversion.effectiveDate)),
-      element("td", "", conversion.createdByName || conversion.createdBy),
-      element("td", "", formatSystemDateTime(conversion.createdAt)),
-    );
-    body.append(row);
+  return createDataTableWithControl({
+    name: "conversion-history",
+    className: "conversion-history-table",
+    caption: "تاریخچه نسخه‌های تبدیل واحد",
+    scrollLabel: "جدول تاریخچه تبدیل واحد",
+    columns: CONVERSION_HISTORY_COLUMNS,
+    visible: visibleConversionHistoryColumns,
+    rows: history,
+    cells: (conversion) => ({
+      identity: formatUnitLabel(conversion.sourceUnit),
+      target: formatUnitLabel(conversion.targetUnit),
+      dimension: getUnitDefinition(conversion.sourceUnit)?.dimensionLabel ?? "نامشخص",
+      factor: formatDisplayNumber(conversion.factor),
+      scope: conversion.projectId ? "اختصاصی پروژه" : "پایه سازمان",
+      effectiveDate: formatBusinessDate(conversion.effectiveDate),
+      actor: conversion.createdByName || conversion.createdBy,
+      createdAt: formatSystemDateTime(conversion.createdAt),
+    }),
   });
-  table.append(head, body);
-  wrapper.append(table);
-  return wrapper;
 }
 
 /**
@@ -616,6 +654,8 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
   // render would last only until the next filter.
   const priceColumns = currentPriceColumns();
   const visiblePriceColumns = defaultVisibleColumns(priceColumns);
+  const historyColumns = priceHistoryColumns();
+  const visibleHistoryColumns = defaultVisibleColumns(historyColumns);
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
@@ -630,23 +670,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
   }
 
   function renderHeader() {
-    const header = element("header", "feature-header");
-    const copy = element("div", "feature-header__copy");
-    copy.append(
-      element("span", "feature-header__eyebrow", readOnly ? "جدول قیمت‌های پروژه" : "قیمت روز و تاریخچه قیمت"),
-      element("h1", "", readOnly ? "جدول قیمت‌ها" : "قیمت روز"),
-      element("p", "", readOnly
-        ? "قیمت پایه سازمان، قیمت اختصاصی پروژه و قیمت روز هر قلم. این صفحه فقط‌خواندنی است و می‌توانید از آن خروجی اکسل بگیرید."
-        : "قیمت پایه سازمان و قیمت اختصاصی پروژه را بدون بازنویسی نسخه‌های قبلی مدیریت کنید."),
-    );
-    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[surface]}`);
-    back.classList.add("finance-back-link");
-    back.href = `#${homeRouteFor(surface)?.path ?? "/finance"}`;
-    const navigation = element("div", "feature-header__navigation");
-    const otherActions = element("div", "feature-header__other-actions");
-    navigation.append(otherActions, back);
-    header.append(copy, navigation);
-    return header;
+    return createFinancePageHeader(readOnly ? "جدول قیمت‌ها" : "قیمت روز");
   }
 
   function openEditor(workspace) {
@@ -719,11 +743,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
         name: "current-prices",
         columns: priceColumns,
         visible: visiblePriceColumns,
-        onToggle: (key, on) => {
-          if (on) visiblePriceColumns.add(key);
-          else visiblePriceColumns.delete(key);
-          applyColumnVisibility(root.querySelector(".current-prices-table"), key, on);
-        },
+        table: () => root.querySelector(".current-prices-table"),
       }),
     );
     currentHeading.append(element("div", "", ""), currentMeta);
@@ -738,7 +758,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
     if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history, focusResourceId, priceColumns, visiblePriceColumns));
     else current.append(element("div", "state-card price-filter-empty", "قلمی مطابق فیلترهای انتخاب‌شده پیدا نشد."));
     const history = element("section", "prices-section");
-    history.append(element("h2", "", "تاریخچه قیمت‌ها"), element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."), renderHistory(workspace.history, workspace.currentPrices));
+    history.append(element("h2", "", "تاریخچه قیمت‌ها"), element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."), renderHistory(workspace.history, workspace.currentPrices, historyColumns, visibleHistoryColumns));
     fragment.append(toolbar, current, history);
     return fragment;
   }

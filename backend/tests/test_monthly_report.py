@@ -337,6 +337,10 @@ class Repo:
                 [{"invoice_date": day, "financial_effect_sign": sign, "document_count": count}
                  for (day, sign), count in sorted(counts.items(), key=lambda item: item[0])])
 
+    async def snapshot(self, scope, snapshot_id):
+        return {"progress_snapshot_id": snapshot_id,
+                "reporting_date": date(2026, 5, 12)}
+
 
 def invoice(day, status, sign, lines):
     return {"invoice_date": date.fromisoformat(day), "status": status, "sign": sign, "lines": lines}
@@ -358,6 +362,20 @@ def service(invoices=FIXTURE):
 
 
 class MonthlyServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_a_snapshot_id_is_the_authority_for_the_curve_end_date(self):
+        snapshot_id = UUID(int=44)
+        instance = service()
+        report = await instance.monthly(
+            SCOPE, date(2026, 8, 21), 6, snapshot_id)
+        self.assertEqual(date(2026, 5, 12), report["reportingDate"])
+        self.assertEqual(snapshot_id, report["progressSnapshotId"])
+        self.assertEqual(date(2026, 5, 12), instance.repo.calls[0][1])
+
+    async def test_actual_data_date_is_separate_from_the_snapshot_period(self):
+        report = await service().monthly(SCOPE, ANCHOR, 12)
+        self.assertEqual(ANCHOR, report["reportingDate"])
+        self.assertEqual(date(2026, 5, 12), report["actualDataThroughDate"])
+
     async def test_draft_and_awaiting_confirmation_never_reach_actual_cost(self):
         report = await service().monthly(SCOPE, ANCHOR, 12)
         self.assertEqual(Decimal("800"), sum(m["actualCostIrr"] for m in report["months"]))

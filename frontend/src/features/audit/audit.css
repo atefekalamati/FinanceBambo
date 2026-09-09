@@ -51,40 +51,35 @@
   font-size: .75rem;
 }
 
-.audit-table {
-  min-inline-size: 72rem;
-}
-
-.audit-table :is(th, td):nth-child(1) {
-  inline-size: 14%;
-}
-
-.audit-table :is(th, td):nth-child(2) {
+/* Named rather than counted: a column can be put away now, and every nth-child
+   after it would shift. The floor and the pinned column are the component's. */
+.audit-table :is(th, td)[data-col="action"] {
   inline-size: 18%;
 }
 
-.audit-table :is(th, td):nth-child(3) {
+.audit-table :is(th, td)[data-col="entity"] {
   inline-size: 13%;
 }
 
-.audit-table :is(th, td):nth-child(4) {
+.audit-table :is(th, td)[data-col="actor"] {
   inline-size: 20%;
   overflow-wrap: anywhere;
 }
 
-.audit-table :is(th, td):nth-child(5) {
+.audit-table :is(th, td)[data-col="reason"] {
   inline-size: 27%;
 }
 
-.audit-table :is(th, td):nth-child(6) {
+.audit-table :is(th, td)[data-col="detail"] {
   inline-size: 8%;
   text-align: center;
 }
 
-.audit-table__empty {
-  padding: var(--space-xl) !important;
-  color: var(--color-text-muted);
-  text-align: center !important;
+.audit-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
 }
 
 .audit-detail-dialog {

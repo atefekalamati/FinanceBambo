@@ -38,6 +38,7 @@ from psycopg.types.json import Jsonb
 
 from .mpp_files import MppFileError, resolve_import_file
 from .mpp_reader import MppReaderError
+from app.finance.domain.persian_calendar import gregorian_to_persian
 
 LOG = logging.getLogger("coreint.mpp_import")
 
@@ -365,23 +366,29 @@ class MppImportService:
                     version = await cursor.fetchone()
                     result["fileVersionId"] = version["id"]
 
-                    # 8. The snapshot. `status_date_jalali` stays NULL on purpose: the
-                    # file states a Gregorian status date at best, and recording a
-                    # wrong-calendar guess would poison every reporting-date filter.
-                    # The documented fallback (created_at) is honest.
+                    # 8. The snapshot. MPXJ exposes the file's Gregorian status date;
+                    # Core stores that field in Jalali text, so convert it explicitly.
+                    # An absent date remains NULL and the feed's documented created_at
+                    # fallback applies. Import time must never replace a date the file did
+                    # state merely because the two calendars differ.
+                    status_date_jalali = None
+                    if getattr(parsed, "status_date", None) is not None:
+                        jy, jm, jd = gregorian_to_persian(parsed.status_date)
+                        status_date_jalali = f"{jy:04d}-{jm:02d}-{jd:02d}"
                     await cursor.execute("""
                         INSERT INTO msp_snapshots
                             (project_id, file_version_id, snapshot_type, source_filename,
                              source_version_number, display_label, task_count,
-                             parser_engine, parser_warnings, created_by)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                             parser_engine, parser_warnings, status_date_jalali, created_by)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         RETURNING id
                     """, (project_id, version["id"], detected_role,
                           resolved.relative_name, version["version_number"],
                           "MPP import v%s" % version["version_number"],
                           len(parsed.tasks),
                           getattr(parsed, "parser_engine", None) or PARSER_ENGINE,
-                          Jsonb({"warnings": parsed.warnings}), actor_user_id))
+                          Jsonb({"warnings": parsed.warnings}), status_date_jalali,
+                          actor_user_id))
                     snapshot_id = (await cursor.fetchone())["id"]
                     result["snapshotId"] = snapshot_id
 

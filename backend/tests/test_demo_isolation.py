@@ -133,7 +133,11 @@ class RepositoryBoundaryTests(unittest.TestCase):
         developer's machine -- which is how something quietly starts depending on a
         directory nobody else has.
         """
-        drive_letter = re.compile(r"[A-Za-z]:[/" + BACKSLASH + BACKSLASH + "]")
+        # A drive letter stands alone: `C:/Users/...`. Without the lookbehind this
+        # also matched the `s:/` inside `https://`, which is a scheme, not a path --
+        # and the only reason no rule had ever tripped on it is that nothing in
+        # `app/` had spelled out a URL before.
+        drive_letter = re.compile(r"(?<![A-Za-z])[A-Za-z]:[/" + BACKSLASH + BACKSLASH + "]")
         for root in ("app", "coreint"):
             for path in (BACKEND_ROOT / root).rglob("*.py"):
                 if "__pycache__" in path.parts:

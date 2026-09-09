@@ -17,6 +17,7 @@
  * shifting, and it is why the two can only be hidden together.
  */
 import { element, tableCaption, tableHead } from "../dom/elements.js";
+import { showAccessibleDialog } from "./accessible-dialog.js";
 
 /** A column the reader may not put away: it is how a row is identified at all. */
 export const IDENTITY = "identity";
@@ -45,43 +46,323 @@ export function defaultVisibleColumns(columns, matchMedia = globalThis.matchMedi
 export function applyColumnVisibility(table, key, visible) {
   if (!table) return;
   table.querySelectorAll(`:is(th, td)[data-col="${key}"]`).forEach((cell) => { cell.hidden = !visible; });
-  table.dataset.columns = String(table.querySelectorAll("thead th:not([hidden])").length);
+  const shown = table.querySelectorAll("thead th:not([hidden])").length;
+  table.dataset.columns = String(shown);
+  // The "nothing here" row spans the columns, so it has to follow them.
+  table.querySelectorAll("td[data-empty]").forEach((cell) => { cell.colSpan = shown; });
+}
+
+/**
+ * Where the chooser stops being a popover and becomes a sheet.
+ *
+ * 48rem is the module's own tablet break -- the width at which side-by-side
+ * layouts stack. A popover anchored to a control near the edge of a phone has
+ * nowhere to go; below this width the same controls open as a modal sheet
+ * instead of being pushed off screen.
+ */
+const SHEET_QUERY = "(max-width: 48rem)";
+
+/** A column the reader may not put away, either because it identifies the row or because its owner said so. */
+function isMandatory(column) {
+  return column.tier === IDENTITY || column.mandatory === true;
+}
+
+/** The <table> a control acts on, resolved late: the page may not have rendered it yet. */
+function resolveTable(table) {
+  const node = typeof table === "function" ? table() : table;
+  if (!node) return null;
+  if (typeof node.matches === "function" && node.matches("table")) return node;
+  return typeof node.querySelector === "function" ? node.querySelector("table") : null;
+}
+
+/**
+ * Keep the panel inside the window.
+ *
+ * Anchored to the reading edge it can still overrun the other one -- a control
+ * near the corner, or a panel wider than what is left beside it. The correction
+ * is measured rather than guessed: whatever crossed the edge is pushed back by
+ * exactly that much, and the gutter it stops short of is a stylesheet value, so
+ * the spacing stays with the rest of the design system.
+ *
+ * The shift is physical pixels on purpose. `getBoundingClientRect` reports the
+ * viewport's own axes, so translateX moves in the same direction the overflow
+ * was measured in -- which is what makes one calculation correct in both
+ * writing directions.
+ */
+function positionPanel(container, panel) {
+  panel.style.removeProperty("--data-table-popover-shift");
+  panel.style.removeProperty("--data-table-popover-max-block");
+  panel.classList.remove("data-table-columns__panel--above");
+
+  const gutter = Number.parseFloat(
+    getComputedStyle(panel).getPropertyValue("--data-table-popover-gutter"),
+  ) || 0;
+
+  const anchor = container.getBoundingClientRect();
+  const natural = panel.getBoundingClientRect();
+  // The offset the stylesheet puts between button and panel, measured rather
+  // than repeated here, so the two cannot drift apart.
+  const gap = natural.top - anchor.bottom;
+  const roomBelow = window.innerHeight - gutter - (anchor.bottom + gap);
+  const roomAbove = anchor.top - gap - gutter;
+
+  /* Flip only when above is genuinely roomier -- a panel that jumps to a side
+     with even less space has moved for nothing. Whichever side it ends on, it
+     is then capped to what that side actually has, so a long list scrolls
+     inside itself instead of running off the screen. */
+  let room = roomBelow;
+  if (natural.height > roomBelow && roomAbove > roomBelow) {
+    panel.classList.add("data-table-columns__panel--above");
+    room = roomAbove;
+  }
+  if (natural.height > room) {
+    panel.style.setProperty("--data-table-popover-max-block", `${Math.max(0, Math.floor(room))}px`);
+  }
+
+  // Measured after the height is settled: capping it can add a scrollbar, and
+  // a scrollbar changes the width this has to keep on screen.
+  const settled = panel.getBoundingClientRect();
+  const overflowStart = gutter - settled.left;
+  const overflowEnd = settled.right - (window.innerWidth - gutter);
+  const shift = overflowStart > 0 ? overflowStart : overflowEnd > 0 ? -overflowEnd : 0;
+  if (shift) panel.style.setProperty("--data-table-popover-shift", `${Math.round(shift)}px`);
 }
 
 /**
  * The control that puts columns away and brings them back.
  *
- * A button that owns a panel, told apart by aria-expanded -- the same disclosure
- * the items page uses for its resource list. The identity column is not offered.
+ * One list of checkboxes with two homes. On a wide screen it sits in a popover
+ * beside its button; below the tablet break the same element is moved into a
+ * modal sheet, where a touch has room and nothing can be pushed off screen.
+ *
+ * It is moved, not rebuilt. A reader who turns the phone while the chooser is
+ * open finds the same ticks in the other container, because they are the same
+ * inputs -- there is no second copy that could disagree with the first.
+ *
+ * Mandatory columns are listed and locked rather than hidden from the list: a
+ * reader looking for a column they can see needs to find it and learn that it
+ * stays, not fail to find it at all.
  */
-export function createColumnControl({ name, columns, visible, onToggle, label = "ستون‌ها" }) {
+export function createColumnControl({
+  name,
+  columns,
+  visible,
+  onToggle,
+  table,
+  label = "ستون‌ها",
+  title = "نمایش ستون‌ها",
+}) {
   const container = element("div", "data-table-columns");
+
   const panel = element("div", "data-table-columns__panel");
   panel.id = `${name}-columns-panel`;
   panel.hidden = true;
-  const toggle = element("button", "button button--ghost button--small data-table-columns__toggle", label);
+
+  const toggle = element("button", "button button--ghost button--small data-table-columns__toggle");
   toggle.type = "button";
+  toggle.append(element("span", "data-table-columns__icon", "☷"));
+  toggle.append(element("span", "data-table-columns__label", label));
   toggle.setAttribute("aria-controls", panel.id);
   toggle.setAttribute("aria-expanded", "false");
-  toggle.addEventListener("click", () => {
-    const open = panel.hidden;
-    panel.hidden = !open;
-    toggle.setAttribute("aria-expanded", String(open));
-  });
+  toggle.setAttribute("aria-haspopup", "dialog");
+  // The label is hidden on a small screen to leave the icon alone; the name has
+  // to survive that, so it is stated here rather than left to the text node.
+  toggle.setAttribute("aria-label", label);
+  toggle.title = label;
+
+  /* One change, applied everywhere it has to land. Callers that still pass
+     `onToggle` keep working: the set operations are idempotent, and the table
+     is only touched here when this control was given one. */
+  const applyColumn = (key, on) => {
+    if (on) visible.add(key);
+    else visible.delete(key);
+    if (table) applyColumnVisibility(resolveTable(table), key, on);
+    if (onToggle) onToggle(key, on);
+  };
+
   const set = element("fieldset", "data-table-columns__set");
-  set.append(element("legend", "", "ستون‌های قابل نمایش"));
-  columns.filter((column) => column.tier !== IDENTITY).forEach((column) => {
+  set.append(element("legend", "data-table-columns__title", title));
+  const list = element("div", "data-table-columns__list");
+  const boxes = new Map();
+
+  columns.forEach((column) => {
     const option = element("label", "data-table-columns__option");
     const box = document.createElement("input");
     box.type = "checkbox";
     box.value = column.key;
     box.checked = visible.has(column.key);
-    box.addEventListener("change", () => onToggle(column.key, box.checked));
-    option.append(box, element("span", "", column.label));
-    set.append(option);
+    if (isMandatory(column)) {
+      box.checked = true;
+      box.disabled = true;
+      option.classList.add("data-table-columns__option--locked");
+      option.title = "این ستون همیشه نمایش داده می‌شود.";
+    } else {
+      box.addEventListener("change", () => applyColumn(column.key, box.checked));
+    }
+    boxes.set(column.key, box);
+    option.append(box, element("span", "data-table-columns__option-label", column.label));
+    list.append(option);
   });
+  set.append(list);
+
+  const footer = element("div", "data-table-columns__footer");
+  const reset = element("button", "button button--ghost button--small", "بازنشانی");
+  reset.type = "button";
+  // Recomputed rather than remembered: the default for a phone is not the
+  // default for a desktop, and the reader is on one of them right now.
+  reset.addEventListener("click", () => {
+    const defaults = defaultVisibleColumns(columns);
+    columns.forEach((column) => {
+      const box = boxes.get(column.key);
+      if (!box || box.disabled) return;
+      const on = defaults.has(column.key);
+      if (box.checked === on) return;
+      box.checked = on;
+      applyColumn(column.key, on);
+    });
+  });
+  const done = element("button", "button button--primary button--small data-table-columns__done", "بستن");
+  done.type = "button";
+  done.hidden = true;
+  footer.append(reset, done);
+  set.append(footer);
+
   panel.append(set);
   container.append(toggle, panel);
+
+  /* --- opening, closing, and moving between the two homes ---------------- */
+
+  let sheet = null;
+  let watcher = null;
+
+  const sheetWanted = () =>
+    typeof globalThis.matchMedia === "function" && globalThis.matchMedia(SHEET_QUERY).matches;
+
+  const isOpen = () => toggle.getAttribute("aria-expanded") === "true";
+
+  const onDocumentPointerDown = (event) => {
+    if (!container.contains(event.target)) close();
+  };
+  const onDocumentKeyDown = (event) => {
+    if (event.key === "Escape") close();
+  };
+  /* The sheet is a child of <body>, not of the mount, so a route change tears
+     down the table it belongs to and leaves the sheet standing over the next
+     page. Routing here is the address bar, so that is what to listen to. */
+  const onNavigate = () => close();
+
+  function openPopover() {
+    panel.hidden = false;
+    container.append(panel);
+    if (!panel.contains(set)) panel.append(set);
+    done.hidden = true;
+    positionPanel(container, panel);
+    document.addEventListener("pointerdown", onDocumentPointerDown, true);
+    document.addEventListener("keydown", onDocumentKeyDown);
+  }
+
+  function closePopover() {
+    document.removeEventListener("pointerdown", onDocumentPointerDown, true);
+    document.removeEventListener("keydown", onDocumentKeyDown);
+    panel.hidden = true;
+    panel.style.removeProperty("--data-table-popover-shift");
+    panel.classList.remove("data-table-columns__panel--above");
+  }
+
+  function openSheet() {
+    // `confirm-dialog` is the module's dialog surface, and one of the three
+    // roots base.css scopes its element rules to -- a dialog outside that list
+    // would render with the host page's element styles instead of this one's.
+    const dialog = document.createElement("dialog");
+    dialog.className = "confirm-dialog data-table-columns__dialog";
+    dialog.setAttribute("aria-label", title);
+    dialog.append(set);
+    done.hidden = false;
+    document.body.append(dialog);
+    sheet = dialog;
+
+    /* A dialog's `close` event arrives in a later task, so this cannot be the
+       only place the button's state is put right -- anything that closed it
+       deliberately would look open until the event landed. Whoever closes it on
+       purpose clears `sheet` first and reports it themselves; reaching here
+       still holding it means Escape or the backdrop did it, and then this is
+       the only report there will be. */
+    dialog.addEventListener("close", () => {
+      if (!panel.contains(set)) panel.append(set);
+      dialog.remove();
+      if (sheet !== dialog) return;
+      sheet = null;
+      markClosed();
+    });
+
+    // Escape and the focus trap come from showModal; the return to the button
+    // that opened it comes from here.
+    showAccessibleDialog(dialog, {
+      opener: toggle,
+      initialFocus: () => dialog.querySelector("input:not(:disabled)"),
+    });
+  }
+
+  /** Take the sheet down without letting its late `close` event speak for us. */
+  function dismissSheet() {
+    const open = sheet;
+    sheet = null;
+    open?.close();
+  }
+
+  function markClosed() {
+    toggle.setAttribute("aria-expanded", "false");
+    window.removeEventListener("hashchange", onNavigate);
+    if (watcher) {
+      watcher.removeEventListener("change", onBreakpointChange);
+      watcher = null;
+    }
+  }
+
+  function onBreakpointChange() {
+    if (!isOpen()) return;
+    // Crossing the break with the chooser open: hand the same element to the
+    // other container rather than closing on the reader mid-choice.
+    if (sheetWanted()) {
+      if (sheet) return;
+      closePopover();
+      openSheet();
+    } else {
+      if (!sheet) return;
+      dismissSheet();
+      openPopover();
+    }
+  }
+
+  function open() {
+    if (sheetWanted()) openSheet();
+    else openPopover();
+    toggle.setAttribute("aria-expanded", "true");
+    window.addEventListener("hashchange", onNavigate);
+    if (typeof globalThis.matchMedia === "function") {
+      watcher = globalThis.matchMedia(SHEET_QUERY);
+      watcher.addEventListener("change", onBreakpointChange);
+    }
+  }
+
+  function close() {
+    if (sheet) {
+      // The sheet returns focus to its opener itself, so this must not.
+      markClosed();
+      dismissSheet();
+      return;
+    }
+    closePopover();
+    markClosed();
+    toggle.focus({ preventScroll: true });
+  }
+
+  done.addEventListener("click", close);
+  toggle.addEventListener("click", () => {
+    if (isOpen()) close();
+    else open();
+  });
+
   return container;
 }
 
@@ -135,6 +416,14 @@ function appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible,
       const cell = element("td", column.cellClass ?? "", typeof value === "string" ? value : "");
       cell.dataset.col = column.key;
       if (value != null && typeof value !== "string") cell.append(value);
+      const repeatedLabel = repeatedGroupColumnLabel(column, value, group.showColumnLabelsWhenOpen);
+      if (repeatedLabel) {
+        const label = element("span", "data-table__group-column-label", repeatedLabel);
+        // The table header already names this cell for assistive technology.
+        // This copy is only a visual wayfinding aid after a long vertical scroll.
+        label.setAttribute("aria-hidden", "true");
+        cell.append(label);
+      }
       cell.hidden = !visible.has(column.key);
       summary.append(cell);
     });
@@ -179,7 +468,190 @@ function appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible,
   });
 }
 
-export function createDataTable({ caption, scrollLabel, className = "", columns, rows, cells, rowAttributes, visible, group }) {
+/**
+ * A folded parent may repeat the names of its otherwise-empty columns while it
+ * is open. The page opts in; populated cells and the identity cell keep their
+ * real content, and an action column may use its accessible label when its
+ * visible heading is intentionally empty.
+ */
+export function repeatedGroupColumnLabel(column, value, enabled = false) {
+  if (!enabled || column.key === "identity" || (value !== null && value !== undefined && value !== "")) return "";
+  const [visibleLabel, accessibleLabel] = Array.isArray(column.label)
+    ? column.label
+    : [column.label, ""];
+  return String(visibleLabel || accessibleLabel || "");
+}
+
+/**
+ * The chips that say what the table is filtered to.
+ *
+ * They are the filter, not a description of one: pressing a chip is the whole
+ * gesture, which is why there is no apply button beside them. Each is a real
+ * button carrying aria-pressed, so what is on is announced rather than only
+ * coloured, and label and count sit on one line -- a chip is a word and a
+ * number, not a small card.
+ *
+ * Counts arrive already written. Formatting a number is the page's business
+ * (which digits, which locale); a chip only has to place it.
+ */
+export function createFilterChips({ items, active, onSelect, label = "فیلتر جدول" }) {
+  const rail = element("div", "data-table-chips");
+  rail.setAttribute("role", "group");
+  rail.setAttribute("aria-label", label);
+  items.forEach((item) => {
+    const chip = element("button", `data-table-chip${item.tone ? ` data-table-chip--${item.tone}` : ""}`);
+    chip.type = "button";
+    chip.dataset.chip = item.key;
+    chip.setAttribute("aria-pressed", String(item.key === active));
+    chip.append(element("span", "data-table-chip__label", item.label));
+    const count = element("span", "data-table-chip__count numeric");
+    count.hidden = item.count === undefined || item.count === null;
+    count.textContent = count.hidden ? "" : String(item.count);
+    chip.append(count);
+    chip.addEventListener("click", () => onSelect(item.key));
+    rail.append(chip);
+  });
+  return rail;
+}
+
+/**
+ * Move the pressed state and the counts without rebuilding the rail.
+ *
+ * A page that repaints on every read would otherwise replace the toolbar under
+ * the reader's hands -- and with it the search box they are typing into. Kept
+ * in place, the caret stays where it was.
+ */
+export function updateFilterChips(rail, { active, counts = {} } = {}) {
+  if (!rail) return;
+  rail.querySelectorAll(".data-table-chip").forEach((chip) => {
+    const key = chip.dataset.chip;
+    if (active !== undefined) chip.setAttribute("aria-pressed", String(key === active));
+    if (!(key in counts)) return;
+    const count = chip.querySelector(".data-table-chip__count");
+    if (!count) return;
+    count.hidden = counts[key] === undefined || counts[key] === null;
+    count.textContent = count.hidden ? "" : String(counts[key]);
+  });
+}
+
+/**
+ * Looking for something in the table.
+ *
+ * Reports after a pause rather than per keystroke, because the caller behind
+ * this may be a request. Enter and the input's own clear button skip the pause,
+ * since both are someone saying they have finished typing.
+ *
+ * What "matching" means is never decided here -- the caller is handed the text
+ * and does its own filtering, server-side or in the page, whichever it already
+ * did.
+ */
+export function createTableSearch({
+  value = "",
+  onSearch,
+  placeholder = "جست‌وجو در جدول…",
+  label = "جست‌وجو در جدول",
+  delay = 300,
+}) {
+  const field = element("div", "data-table-search");
+  const input = element("input", "app-input data-table-search__input");
+  input.type = "search";
+  input.value = value;
+  input.placeholder = placeholder;
+  input.setAttribute("aria-label", label);
+
+  let timer = null;
+  let reported = value.trim();
+  const report = () => {
+    clearTimeout(timer);
+    const next = input.value.trim();
+    if (next === reported) return;
+    reported = next;
+    onSearch(next);
+  };
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(report, delay);
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    report();
+  });
+  // Fired by the clear button a search input draws for itself.
+  input.addEventListener("search", report);
+
+  field.append(input);
+  return field;
+}
+
+/**
+ * Repaint without dropping the caret.
+ *
+ * A page that rebuilds its tree detaches whatever had focus, and a detached
+ * element is blurred even when the very same node goes straight back -- which
+ * is exactly what happens to a search box while someone is typing into it, on
+ * the reload their own typing asked for.
+ *
+ * Reaching for the element afterwards rather than before is what makes this
+ * work for a toolbar that is moved rather than rebuilt: the node is the same
+ * one, so restoring its focus restores the reader's place.
+ */
+export function repaintPreservingFocus(repaint) {
+  const active = document.activeElement;
+  let caret = null;
+  try {
+    caret = [active.selectionStart, active.selectionEnd, active.selectionDirection];
+  } catch {
+    // Not a field that carries a selection; focus alone is enough.
+  }
+
+  repaint();
+
+  if (!(active instanceof HTMLElement) || !active.isConnected || active === document.activeElement) return;
+  active.focus({ preventScroll: true });
+  if (!caret || caret[0] === null) return;
+  try {
+    active.setSelectionRange(caret[0], caret[1], caret[2] ?? "none");
+  } catch {
+    // The field kept its own idea of where the caret goes.
+  }
+}
+
+/**
+ * The row above a table: what it is filtered to, what is being looked for, and
+ * which columns are showing.
+ *
+ * Three controls with three jobs, in one row so the reader reads them as one
+ * set. Anything a table grows later belongs here too rather than beside it.
+ */
+export function createTableToolbar({ chips, search, name, columns, visible, table, controlLabel }) {
+  const toolbar = element("div", "data-table-toolbar");
+  if (chips) toolbar.append(createFilterChips(chips));
+  const tools = element("div", "data-table-toolbar__tools");
+  if (search) tools.append(createTableSearch(search));
+  if (columns) tools.append(createColumnControl({ name, columns, visible, label: controlLabel, table }));
+  toolbar.append(tools);
+  return toolbar;
+}
+
+/**
+ * A table with its own toolbar above it.
+ *
+ * For a table whose caller has nowhere obvious to put the controls -- no
+ * heading row of its own to hang them from. The toolbar is the table's, so the
+ * page that renders it needs to know nothing about columns.
+ */
+export function createDataTableWithControl({ name, columns, visible, controlLabel, chips, search, ...config }) {
+  const fragment = document.createDocumentFragment();
+  const table = createDataTable({ ...config, columns, visible });
+  fragment.append(
+    createTableToolbar({ chips, search, name, columns, visible, table, controlLabel }),
+    table,
+  );
+  return fragment;
+}
+
+export function createDataTable({ caption, scrollLabel, className = "", columns, rows, cells, rowAttributes, visible, group, emptyMessage }) {
   const scroll = element("div", "table-scroll data-table-scroll");
   // The same affordance the comparison chart's table uses: a named region the
   // keyboard can reach and scroll, not a pane only a pointer can move.
@@ -198,8 +670,15 @@ export function createDataTable({ caption, scrollLabel, className = "", columns,
   });
 
   const body = document.createElement("tbody");
-  if (group) appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible, group });
-  else rows.forEach((row) => {
+  if (!rows.length && emptyMessage) {
+    const tr = document.createElement("tr");
+    const cell = element("td", "data-table__empty", emptyMessage);
+    cell.colSpan = visible.size;
+    cell.dataset.empty = "true";
+    tr.append(cell);
+    body.append(tr);
+  } else if (group) appendGroupedRows({ body, columns, rows, cells, rowAttributes, visible, group });
+  else if (rows.length) rows.forEach((row) => {
     const tr = document.createElement("tr");
     const extra = rowAttributes ? rowAttributes(row) : null;
     if (extra?.className) tr.className = extra.className;

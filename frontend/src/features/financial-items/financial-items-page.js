@@ -1,5 +1,6 @@
+import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
-import { SURFACES, SURFACE_LABELS, homeRouteFor } from "../../core/config/routes.js";
+import { SURFACES } from "../../core/config/routes.js";
 import { downloadCsvFile } from "../../shared/exports/csv.js";
 import { buildEstimateLinesCsv, estimateLinesFileName } from "./financial-items-csv.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
@@ -15,9 +16,10 @@ import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js
 import { validateActivity, validateEstimateLine, validateEstimateRevision, validateResource } from "./financial-items-validation.js";
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, applyColumnVisibility, createColumnControl, createDataTable, defaultVisibleColumns }
+import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
+import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
-import { ABSENT, activityBlockStarts, activityLabel, amountChange, canonicalWbs, estimateAmount, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, withheldRowsNotice } from "./financial-items-presentation.js";
+import { ABSENT, activityBlockStarts, activityLabel, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
   const wrapper = element("div", "form-field");
@@ -342,12 +344,26 @@ function createEstimateImportDialog(adapter, onSaved) {
   input.type = "file";
   input.accept = ".xlsx";
   input.setAttribute("aria-describedby", "estimateImportHint estimateImportError");
-  const hint = element("small", "form-hint", "قالب دقیق ستون‌ها در منابع تعریف نشده است و پس از دریافت قرارداد سمت سرور نهایی می‌شود.");
+  const hint = element("small", "form-hint", "ستون‌ها: resourceCode، activityExternalId، assignmentExternalId، originalQuantity و source. ستون کم یا اضافه پذیرفته نمی‌شود و source باید excel_import باشد.");
   hint.id = "estimateImportHint";
   const error = element("small", "form-error");
   error.id = "estimateImportError";
   error.setAttribute("aria-live", "polite");
   field.append(label, input, hint, error);
+
+  // The same import, from a link instead of a disk. What is sent to the server
+  // is the same .xlsx either way -- only where the bytes came from differs.
+  const sheetField = element("div", "form-field form-field--wide");
+  const sheetLabel = element("label", "form-label", "یا نشانی گوگل شیت");
+  sheetLabel.htmlFor = "estimateImportSheet";
+  const sheetInput = element("input", "app-input");
+  sheetInput.id = "estimateImportSheet";
+  sheetInput.type = "url";
+  sheetInput.placeholder = "نشانی برگه را از نوار آدرس مرورگر کپی کنید";
+  sheetInput.setAttribute("aria-describedby", "estimateSheetHint");
+  const sheetHint = element("small", "form-hint", "برگه باید روی «هر کسی که لینک را دارد» باشد. اگر نشانی را از روی تب موردنظر کپی کنید، همان تب خوانده می‌شود.");
+  sheetHint.id = "estimateSheetHint";
+  sheetField.append(sheetLabel, sheetInput, sheetHint);
 
   const previewButton = element("button", "button button--primary", "بررسی و نمایش پیش‌نمایش");
   previewButton.type = "submit";
@@ -356,7 +372,7 @@ function createEstimateImportDialog(adapter, onSaved) {
   formStatus.setAttribute("aria-live", "polite");
   const formActions = element("div", "form-actions");
   formActions.append(previewButton, formStatus);
-  form.append(field, formActions);
+  form.append(field, sheetField, formActions);
 
   const resultRegion = element("section", "import-result");
   resultRegion.setAttribute("aria-live", "polite");
@@ -472,28 +488,37 @@ function createEstimateImportDialog(adapter, onSaved) {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const file = input.files?.[0];
-    error.textContent = file ? "" : "انتخاب فایل اکسل الزامی است.";
-    input.setAttribute("aria-invalid", String(!file));
-    if (!file) {
+    const picked = input.files?.[0];
+    const link = sheetInput.value.trim();
+    error.textContent = picked || link ? "" : "یک فایل اکسل انتخاب کنید یا نشانی گوگل شیت را وارد کنید.";
+    input.setAttribute("aria-invalid", String(!picked && !link));
+    if (!picked && !link) {
       input.focus();
       return;
     }
     previewButton.disabled = true;
     input.disabled = true;
-    formStatus.textContent = "در حال بررسی فایل…";
+    sheetInput.disabled = true;
+    formStatus.textContent = link && !picked ? "در حال دریافت برگه از گوگل…" : "در حال بررسی فایل…";
     resultRegion.hidden = true;
     try {
-      currentPreview = await adapter.previewEstimateImport(file);
+      // A picked file wins: it is the more deliberate of the two. A link goes to
+      // the service, which fetches the sheet -- this page never calls Google.
+      currentPreview = picked
+        ? await adapter.previewEstimateImport(picked)
+        : await adapter.previewEstimateImportFromLink(requireSheetLink(link));
       formStatus.textContent = currentPreview.canCommit ? "پیش‌نمایش معتبر آماده است." : "پیش‌نمایش دارای خطاست.";
       renderPreview(currentPreview);
     } catch (previewError) {
       currentPreview = null;
-      error.textContent = formatApiErrorMessage(previewError);
+      error.textContent = previewError instanceof GoogleSheetError
+        ? previewError.message
+        : formatApiErrorMessage(previewError);
       formStatus.textContent = "بررسی فایل انجام نشد.";
     } finally {
       previewButton.disabled = false;
       input.disabled = false;
+      sheetInput.disabled = false;
     }
   });
 
@@ -623,67 +648,58 @@ function createRevisionHistoryDialog(line, resource) {
   return dialog;
 }
 
+/* The code is the identity: it is what an item is referred to by everywhere else
+   in the module, and the title is what it is called. */
+const RESOURCE_COLUMNS = Object.freeze([
+  { key: "identity", label: "کد", tier: IDENTITY },
+  { key: "title", label: "عنوان", tier: PRIMARY },
+  { key: "type", label: "نوع", tier: PRIMARY, cellClass: "items-table__type" },
+  { key: "unit", label: "واحد پایه", tier: SECONDARY, keepOnTablet: true, cellClass: "numeric" },
+  { key: "source", label: "منبع ورود", tier: SECONDARY },
+]);
+const visibleResourceColumns = defaultVisibleColumns(RESOURCE_COLUMNS);
+
 function renderResourceTable(resources, withheld = null) {
   const fragment = document.createDocumentFragment();
   if (withheld) fragment.append(element("p", "table-note", withheld));
-  const wrapper = element("div", "table-scroll");
-  const table = element("table", "data-table items-table");
-  table.append(element("caption", "sr-only", "فهرست اقلام مالی"));
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  ["کد", "عنوان", "نوع", "واحد پایه", "منبع ورود"].forEach((label) => header.append(element("th", "", label)));
-  head.append(header);
-  const body = document.createElement("tbody");
-  resources.forEach((resource) => {
-    const row = document.createElement("tr");
-    const typeCell = element("td", "items-table__type");
-    typeCell.append(element("span", `type-badge type-badge--${resource.type}`, getResourceTypeLabel(resource.type)));
-    row.append(
-      element("td", "numeric", resource.code),
-      element("td", "", resource.title),
-      typeCell,
-      element("td", "numeric", formatUnitLabel(resource.baseUnit)),
-      element("td", "", resourceSourceLabel(resource)),
-    );
-    body.append(row);
-  });
-  table.append(head, body);
-  wrapper.append(table);
-  fragment.append(wrapper);
+  fragment.append(createDataTableWithControl({
+    name: "resources",
+    className: "items-table",
+    caption: "فهرست اقلام مالی",
+    scrollLabel: "جدول اقلام مالی پروژه",
+    columns: RESOURCE_COLUMNS,
+    visible: visibleResourceColumns,
+    rows: resources,
+    cells: (resource) => ({
+      identity: resource.code,
+      title: resource.title,
+      type: element("span", `type-badge type-badge--${resource.type}`, getResourceTypeLabel(resource.type)),
+      unit: formatUnitLabel(resource.baseUnit),
+      source: resourceSourceLabel(resource),
+    }),
+  }));
   return fragment;
 }
 
-/**
- * Two related figures in one cell — the first estimate and where it stands now.
- *
- * They belong together: the pair is one fact about the line, and splitting them
- * into two columns made a wide table out of a narrow one. Either may be
- * unknown, and an unknown one prints as an absence rather than as a zero.
- */
-function pairCell(firstLabel, firstValue, secondLabel, secondValue, extra = null) {
-  const cell = document.createDocumentFragment();
-  cell.append(element("span", "pair-cell__line", `${firstLabel}: ${firstValue}`),
-              element("span", "pair-cell__line", `${secondLabel}: ${secondValue}`));
-  if (extra) cell.append(extra);
-  return cell;
-}
-
-/* Seven columns, and three of them are money on purpose. «قیمت واحد» is what a
-   unit costs, «مبلغ برآورد» is quantity times that price, «هزینه واقعی» is what
-   confirmed invoices record. None is computed from another and an empty one
-   means unknown, not zero. The schedule's own cost for an activity is a fourth
-   figure again, and it is not a column at all: it belongs to the activity, so it
-   is written on the activity's row where it cannot be read as an item's. */
+/* The ten columns of ریز برآورد. Three of them are money and they are three on
+   purpose: «هزینه MSP فعالیت» is what the schedule says the activity costs,
+   «قیمت اولیه» is the unit price this line was estimated at and never changes,
+   «قیمت روز» is the price in force today. None is computed from another and an
+   empty one means unknown, not zero. */
 function estimateLineColumns() {
   return [
-    // The cost item identifies the row, so it is the pinned column and the one
-    // the activity's own row folds open.
-    { key: "resource", label: "قلم هزینه", tier: IDENTITY },
+    // The pinned column answers "what is this row": the activity on a summary
+    // row, the cost item on one of its items. They never appear together -- a
+    // summary row has no item and an item row has no activity -- so one column
+    // holds both and «قلم هزینه» is not a column of its own any more.
+    { key: "identity", label: "فعالیت و قلم هزینه", tier: IDENTITY },
     { key: "unit", label: "واحد", tier: SECONDARY, cellClass: "numeric" },
-    { key: "quantity", label: "مقدار برآورد", tier: PRIMARY, cellClass: "numeric pair-cell" },
-    { key: "price", label: "قیمت واحد", tier: PRIMARY, cellClass: "numeric pair-cell" },
-    { key: "amount", label: "مبلغ برآورد", tier: PRIMARY, cellClass: "numeric pair-cell" },
-    { key: "actualCost", label: "هزینه واقعی", tier: PRIMARY, cellClass: "numeric" },
+    { key: "originalQuantity", label: "مقدار برآورد اولیه", tier: SECONDARY, cellClass: "numeric" },
+    { key: "revisedQuantity", label: "آخرین مقدار برآورد", tier: PRIMARY, cellClass: "numeric" },
+    { key: "scheduleCost", label: "هزینه MSP فعالیت", tier: SECONDARY, keepOnTablet: true, cellClass: "numeric" },
+    { key: "originalPrice", label: "قیمت اولیه", tier: SECONDARY, cellClass: "numeric" },
+    { key: "currentPrice", label: "قیمت روز", tier: PRIMARY, cellClass: "numeric" },
+    { key: "source", label: "منبع", tier: SECONDARY },
     { key: "actions", label: "عملیات", tier: SECONDARY, keepOnTablet: true, cellClass: "line-actions" },
   ];
 }
@@ -711,56 +727,34 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
     group: {
       key: (line) => canonicalWbs(line) + "|" + activityLabel(line),
       countLabel: "قلم",
+      showColumnLabelsWhenOpen: true,
       cells: (rows) => {
         const first = rows[0];
         const name = document.createDocumentFragment();
         name.append(element("strong", "", activityLabel(first)),
                     element("small", "table-subtext numeric", canonicalWbs(first)));
-        // The schedule's figure for this activity, written here and nowhere else:
-        // it is one number for the whole activity, and a column of it would be
-        // the same number repeated once per item, inviting a reader to add it up.
-        const cost = element("small", "table-subtext activity-block__cost", "هزینه MSP فعالیت: ");
-        cost.append(element("bdi", "numeric", formatTomanFromIrr(scheduleCostOf(first))));
-        name.append(cost);
-        return { resource: name };
+        return {
+          identity: name,
+          // The schedule's figure belongs to the activity, so it is written on
+          // the activity's own row rather than repeated down its items.
+          scheduleCost: formatTomanFromIrr(scheduleCostOf(first), { withCurrency: false }),
+        };
       },
     },
     cells: (line) => {
       const resource = resourceMap.get(line.resourceId);
       const isGeneralCost = resource?.type === "general_cost";
+      const original = isGeneralCost ? line.originalAmount : line.originalQuantity;
+      const revised = isGeneralCost ? line.revisedAmount : line.revisedQuantity;
 
-      // The cost item names itself. It never borrows the activity's name: an
-      // activity is work and an item is a thing bought.
-      const resourceCell = document.createDocumentFragment();
-      resourceCell.append(element("strong", "", resourceLabel(resource)),
-                          element("small", "table-subtext numeric", resource?.code ?? ABSENT));
+      // Was the «قلم هزینه» cell; it is the identity of an item row now.
+      const identity = document.createDocumentFragment();
+      identity.append(element("strong", "", resourceLabel(resource)),
+                      element("small", "table-subtext numeric", resource?.code ?? ABSENT));
 
-      // A general cost carries a rial amount and no quantity, so it has neither a
-      // quantity nor a unit price to show -- its amount is the amount.
-      const quantity = isGeneralCost ? ABSENT : pairCell(
-        "اولیه", formatDisplayNumber(line.originalQuantity),
-        "جاری", formatDisplayNumber(line.revisedQuantity),
-        line.originalQuantity !== line.revisedQuantity
-          ? element("span", "change-badge", "اصلاح‌شده") : null);
-      const price = isGeneralCost ? ABSENT : pairCell(
-        "اولیه", formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false }),
-        "آخرین", formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false }));
-
-      // Derived, always: quantity x unit price, and nothing when either is
-      // missing. The schedule's cost is not a fallback for it.
-      const initialAmount = isGeneralCost
-        ? line.originalAmount
-        : estimateAmount(line.originalQuantity, line.originalUnitPriceIRR);
-      const currentAmount = isGeneralCost
-        ? line.revisedAmount
-        : estimateAmount(line.revisedQuantity, line.currentUnitPriceIRR);
-      const change = amountChange(initialAmount, currentAmount);
-      const amount = pairCell(
-        "اولیه", formatTomanFromIrr(initialAmount, { withCurrency: false }),
-        "جاری", formatTomanFromIrr(currentAmount, { withCurrency: false }),
-        change === null || change === "0" ? null
-          : element("span", "pair-cell__change",
-                    `تغییر: ${change.startsWith("-") ? "" : "+"}${formatTomanFromIrr(change, { withCurrency: false })}`));
+      const revisedCell = element("span", original !== revised ? "value-changed" : "",
+        isGeneralCost ? formatTomanFromIrr(revised, { withCurrency: false }) : formatDisplayNumber(revised));
+      if (original !== revised) revisedCell.append(element("span", "change-badge", "اصلاح‌شده"));
 
       const actions = document.createDocumentFragment();
       const history = element("button", "table-action", "تاریخچه");
@@ -775,14 +769,14 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
       }
 
       return {
-        resource: resourceCell,
+        identity,
         unit: isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit),
-        quantity,
-        price,
-        amount,
-        // Only a confirmed invoice records a cost actually incurred. No confirmed
-        // invoice line names this one, no figure -- not a zero.
-        actualCost: formatTomanFromIrr(line.actualCostIRR, { withCurrency: false }),
+        originalQuantity: isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original),
+        revisedQuantity: revisedCell,
+        scheduleCost: "",
+        originalPrice: formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false }),
+        currentPrice: formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false }),
+        source: sourceLabel(line),
         actions,
       };
     },
@@ -822,23 +816,7 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
   }
 
   function renderHeader() {
-    const header = element("header", "feature-header");
-    const back = element("a", "button button--ghost", `بازگشت به ${SURFACE_LABELS[surface]}`);
-    back.classList.add("finance-back-link");
-    back.href = `#${homeRouteFor(surface)?.path ?? "/finance"}`;
-    const navigation = element("div", "feature-header__navigation");
-    const otherActions = element("div", "feature-header__other-actions");
-    navigation.append(otherActions, back);
-    const copy = element("div", "feature-header__copy");
-    copy.append(
-      element("span", "feature-header__eyebrow", readOnly ? "جدول اقلام و ریز برآورد" : "اقلام پروژه و ریز برآورد"),
-      element("h1", "", readOnly ? "جدول اقلام و برآورد" : "اقلام و برآورد"),
-      element("p", "", readOnly
-        ? "هر ردیف، مقدار برآوردشده یک قلم هزینه برای یک فعالیت است. این صفحه فقط‌خواندنی است و می‌توانید از آن خروجی اکسل بگیرید."
-        : "هر اتصال فعالیت و قلم هزینه یک ردیف مستقل برآورد است؛ مقدار اولیه حفظ و آخرین مقدار برآورد جداگانه نمایش داده می‌شود."),
-    );
-    header.append(copy, navigation);
-    return header;
+    return createFinancePageHeader(readOnly ? "جدول اقلام و برآورد" : "اقلام و برآورد");
   }
 
   function renderEmpty() {
@@ -950,11 +928,7 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
       name: "estimate-lines",
       columns: lineColumns,
       visible: visibleLineColumns,
-      onToggle: (key, on) => {
-        if (on) visibleLineColumns.add(key);
-        else visibleLineColumns.delete(key);
-        applyColumnVisibility(root.querySelector(".estimate-lines-table"), key, on);
-      },
+      table: () => root.querySelector(".estimate-lines-table"),
     }), lineActions);
     linesHead.append(element("div", "", ""), linesMeta);
     linesHead.firstElementChild.append(element("h2", "", "ریز برآورد پروژه"), element("p", "", "هر ردیف، مقدار برآوردشده یک قلم هزینه را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا برآورد، اصلاحات و پیشرفت هر فعالیت مستقل و قابل پیگیری بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت روز و فاکتورهای تأییدشده محاسبه می‌شوند."));
