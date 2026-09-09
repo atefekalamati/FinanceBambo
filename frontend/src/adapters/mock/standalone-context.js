@@ -8,7 +8,9 @@ const STANDALONE_CONTEXT = Object.freeze({
   projectName: "پروژه نمایشی Frontend",
   projectCode: "project-demo",
   grossBuiltArea: null,
-  permissionCodes: ["finance.view", "finance.edit", "finance_report.view", "finance_report.export", "finance_report.issue"],
+  // The preview is an account holding everything the host can grant, so a
+  // developer opening it sees the whole module rather than a partial one.
+  permissionCodes: ["finance.view", "finance.edit", "finance.manage_invoice", "finance_report.view", "finance_report.export", "finance_report.issue"],
   locale: "fa-IR",
   timezone: "Asia/Tehran",
 });

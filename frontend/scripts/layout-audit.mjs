@@ -11,6 +11,9 @@ const routes = [
   "report-prices",
   "report-items",
   "report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines",
+  // The two that read the project at two dates. They only draw when a range is
+  // chosen, so the range is part of the address the audit measures.
+  "report-builder?sections=periodMetrics,periodBreakdown&from=2026-01-01&to=2026-06-31",
   "report-settings",
   "financial-items",
   "prices",
@@ -18,12 +21,12 @@ const routes = [
   "invoices",
   "invoice-files",
   "ai-review",
-  "reports",
-  "period-report",
+  // reports, period-report and work-areas are withdrawn: the router sends a
+  // reader who types one to their own home, so measuring them measures that
+  // home twice rather than the page.
   // Both shapes the level-1 report takes: the phase list, and one phase opened.
   "level-one",
   "level-one?wbs=1.8",
-  "work-areas",
   "audit",
   "settings",
 ];

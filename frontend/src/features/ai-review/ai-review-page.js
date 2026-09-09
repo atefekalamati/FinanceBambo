@@ -1,6 +1,7 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { createPermissionNotice } from "../../shared/components/permission-notice.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
@@ -59,7 +60,9 @@ function confirmationDialog({ title, message, confirmLabel, onConfirm }) {
   return dialog;
 }
 
-function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
+/* Exported for the test that holds the original-file rule still: the card must
+   not ask the service for a document this account may not have. */
+export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
   const card = element("article", "ai-review-card");
   const header = element("header", "ai-review-card__header");
   const title = element("div");
@@ -73,9 +76,18 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
 
   // PRD section 12 requires the original file beside the extracted fields, and
   // the card's own copy tells the reader to compare against it.
+  //
+  // The original is the one thing on this card an account may not merely read.
+  // Everything else here is data the extractor produced; this is the document
+  // itself, and the service answers 404 for an account without the grant — so
+  // asking for it anyway would draw a broken image where the invoice should be
+  // and leave the reader guessing whether the upload failed. The refusal is
+  // stated instead, in the same words as every other one in this module.
   const source = element("figure", "ai-review-source");
-  const contentUrl = adapter.getFileContentUrl?.(draft.file.fileId) ?? null;
-  if (!contentUrl) {
+  const contentUrl = canEdit ? (adapter.getFileContentUrl?.(draft.file.fileId) ?? null) : null;
+  if (!canEdit) {
+    source.append(element("figcaption", "", "نمایش فایل اصلی نیازمند مجوز «مدیریت فاکتورها» است."));
+  } else if (!contentUrl) {
     source.append(element("figcaption", "", "پیش‌نمایش فایل اصلی در این محیط در دسترس نیست."));
   } else if (draft.file.logicalType === "invoice_image") {
     const image = element("img", "ai-review-source__image");
@@ -192,7 +204,7 @@ function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }) {
 
 export function createAiReviewPage({ context, adapter }) {
   const root = element("div", "ai-review-page");
-  const canEdit = capabilitiesFor(context).writeFinance;
+  const canEdit = capabilitiesFor(context).manageInvoice;
   let state = createRequestState(REQUEST_STATUS.LOADING);
 
   async function load() {
@@ -220,9 +232,14 @@ export function createAiReviewPage({ context, adapter }) {
   }
 
   function renderContent(data) {
+    const fragment = document.createDocumentFragment();
+    // The cards already disable every field and button they own. What they
+    // cannot say on their own is why all of them are off at once.
+    if (!canEdit) fragment.append(createPermissionNotice("بازبینی و تأیید داده استخراج‌شده"));
     const list = element("div", "ai-review-list");
     data.drafts.forEach((draft) => list.append(reviewCard({ draft, targets: data.targets, adapter, canEdit, onChanged: load, root })));
-    return list;
+    fragment.append(list);
+    return fragment;
   }
 
   function renderEmpty() {
