@@ -16,13 +16,6 @@
   min-inline-size: 0;
 }
 
-/* The one link between the two surfaces. It sits opposite the page title, and
-   is never allowed to shrink into two lines — it is three words. */
-.finance-surface-link {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
 /* --------------------------------------------------------------------------
    امور مالی — the state of the inputs
    -------------------------------------------------------------------------- */
@@ -1383,8 +1376,7 @@ a.finance-variance-card__link:hover {
     flex-direction: column;
   }
 
-  .finance-project-settings-link,
-  .finance-surface-link {
+  .finance-project-settings-link {
     align-self: flex-end;
     inline-size: fit-content;
     max-inline-size: 100%;
@@ -2104,6 +2096,19 @@ a.finance-variance-card__link:hover {
   min-inline-size: 0;
 }
 
+/* The space formerly owned by the day-price card is now shared by two equal
+   compact tables. The wrapper is intentionally not a card: it changes no
+   column, row or surface outside this one slot in the insights grid. */
+.finance-summary-stack {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+  min-inline-size: 0;
+  min-block-size: 0;
+  block-size: 100%;
+  overflow: hidden;
+}
+
 /* --- row 0: the basis, full width, settings inside it ------------------- */
 
 .finance-basis {
@@ -2134,19 +2139,14 @@ a.finance-variance-card__link:hover {
   margin-inline-start: auto;
 }
 
-/* The two ways off this page sit in the basis bar beside the gear. They are
-   links, not buttons: a button's padding and border would make two more boxes
-   in a bar that already carries one, and nothing here is an action — both go
-   somewhere.
+/* The way off this page sits in the basis bar beside the gear. It is a link,
+   not a button: a button's padding and border would make another box in a bar
+   that already carries one, and nothing here is an action — it goes somewhere.
 
-   Losing the border means the space between them is the only thing telling the
-   reader they are two links and not one phrase, so they get their own gap
-   rather than the bar's — at the bar's .3rem, «بخش‌های گزارش رفتن به امور مالی»
-   reads as a single run of words. */
-.finance-basis__link + .finance-basis__link {
-  margin-inline-start: .65rem;
-}
-
+   The bar's own .3rem is too tight against the gear for a borderless link, so
+   the run of words and the icon get their own separation. Two links used to sit
+   here; the second crossed into امور مالی and that surface is reached from the
+   host's sidebar now, so the sibling gap that told them apart went with it. */
 .finance-basis__link:last-of-type {
   margin-inline-end: .35rem;
 }
@@ -2427,9 +2427,16 @@ a.breakdown-donut:focus-visible {
   --level-one-plot-height: 100%;
 
   display: grid;
-  /* The basis bar, then the three content rows. The heading above them is
-     visually hidden and out of flow, so it takes no track — leaving one here
-     for it would park an empty fifth of the board under the last row. */
+  /* Three tracks for three rows, and no more.
+     
+     There were four: an `auto` at the front for the basis bar that used to sit
+     above them. The bar is gone, and the only thing left above the rows is a
+     visually hidden heading, which is out of flow and takes no track — so the
+     leading `auto` stopped belonging to anything and started catching row one
+     instead. An `auto` track is sized by its content, so row one froze at the
+     height its cards happened to ask for (228px at every window height above
+     920) while rows two and three shared the rest, and the trailing 1.03fr
+     track — now matched by nothing — parked 405px of empty board under them. */
   /* Desktop, 1280 and up. The weights are the host dashboard's own row
      proportions, so the two boards read as one page rather than two that
      happen to sit in the same frame. Measured on a 2650x1055 screen, its
@@ -2450,7 +2457,7 @@ a.breakdown-donut:focus-visible {
      beside the phase chart now asks for 231px of a 355px row and leaves the
      rest empty; the phase chart pays for the change, since it is the one thing
      in this row that grows to fill whatever it is given. */
-  grid-template-rows: auto minmax(0, 1fr) minmax(0, .95fr) minmax(0, 1.03fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, .95fr) minmax(0, 1.03fr);
   gap: var(--board-gap);
   block-size: 100%;
   min-block-size: 0;
@@ -2524,7 +2531,7 @@ a.breakdown-donut:focus-visible {
   padding: 16px;
 }
 
-.finance-board .finance-insight-cards > .prices-summary {
+.finance-board .finance-summary-stack > .prices-summary {
   padding: 16px;
 }
 
@@ -2695,7 +2702,7 @@ a.breakdown-donut:focus-visible {
 
 @media (max-width: 80rem) {
   .finance-board {
-    grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1.25fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1.5fr) minmax(0, 1.25fr) minmax(0, 1fr);
   }
 }
 
@@ -3482,11 +3489,30 @@ a.breakdown-donut:focus-visible {
   grid-template-rows: minmax(0, 1fr);
 }
 
+.finance-board .finance-insight-cards > .finance-summary-stack {
+  gap: var(--board-gap);
+  min-block-size: 0;
+  block-size: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.finance-board .finance-summary-stack > .overview-card {
+  min-block-size: 0;
+  block-size: 100%;
+  overflow-y: auto;
+}
+
 /* Either card can now be shorter than its content, so both scroll rather than
    losing their tail without saying so. */
 .finance-board .finance-insight-cards > .finance-warnings ul,
-.finance-board .finance-insight-cards > .prices-summary {
+.finance-board .finance-summary-stack > .prices-summary {
   overflow-y: auto;
+}
+
+.finance-board .items-summary__unit {
+  color: var(--color-text-muted);
+  font-weight: 700;
 }
 
 /* …and the card has to be a column before that can mean anything.
@@ -3962,6 +3988,10 @@ body[data-finance-runtime="standalone"] .app-workspace {
     grid-template-rows: repeat(2, minmax(0, 1fr));
   }
 
+  .finance-board .finance-summary-stack {
+    block-size: min(20rem, 42vh);
+  }
+
 }
 
 @media (min-width: 48rem) and (max-width: 64rem) {
@@ -4006,6 +4036,37 @@ body[data-finance-runtime="standalone"] .app-workspace {
 
   .finance-board .prices-summary__table th:nth-child(3) {
     inline-size: 33%;
+  }
+}
+
+/* At tablet width and below the board scrolls as one document, so the two
+   compact summaries no longer need to share a fixed-height viewport. Each
+   card takes the height of its heading and three rows; neither card introduces
+   an internal vertical scrollbar. */
+@media (max-width: 48rem) {
+  .finance-board .finance-grid--insights > .finance-insight-cards {
+    max-block-size: none;
+    block-size: auto;
+    overflow: visible;
+  }
+
+  .finance-board .finance-insight-cards {
+    grid-template-rows: none;
+  }
+
+  .finance-board .finance-insight-cards > .finance-summary-stack {
+    grid-template-rows: none;
+    max-block-size: none;
+    block-size: auto;
+    overflow: visible;
+  }
+
+  .finance-board .finance-summary-stack > .overview-card,
+  .finance-board .finance-summary-stack > .prices-summary {
+    min-block-size: max-content;
+    max-block-size: none;
+    block-size: auto;
+    overflow: visible;
   }
 }
 

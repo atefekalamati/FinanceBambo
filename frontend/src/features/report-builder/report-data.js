@@ -1,5 +1,6 @@
 import { datasetsFor } from "./report-catalog.js";
 import { defaultSnapshot } from "../../shared/progress/project-snapshot.js";
+import { openingDateFor } from "../../shared/dates/reporting-periods.js";
 
 // Do not silently print a truncated or changing register as a complete report.
 export async function loadAllInvoices(adapter) {
@@ -21,6 +22,34 @@ export async function loadAllInvoices(adapter) {
   return { ...first, items };
 }
 
+/**
+ * The two pictures a period is made of.
+ *
+ * Every input the service reads is bound by the reporting date, so a period is
+ * the project as it stood the day before it opened and the day it closed. The
+ * opening is asked for separately and is allowed to be missing: a project with
+ * no reportable day before the range still has an end-of-period reading, and
+ * saying so beats measuring a change from zero the project never had.
+ */
+async function readPeriodOverview(adapter, period) {
+  if (!period?.from || !period?.to) return null;
+  const read = async (reportingDate) => {
+    try {
+      return await adapter.getOverview({ reportingDate });
+    } catch {
+      // A date the project cannot report on is an answer, not a failure. The
+      // renderer says which end is missing; a thrown error would take the whole
+      // document down over one absent day.
+      return null;
+    }
+  };
+  const [opening, closing] = await Promise.all([
+    read(openingDateFor(period.from)),
+    read(period.to),
+  ]);
+  return { opening, closing, openingDate: openingDateFor(period.from), closingDate: period.to };
+}
+
 export async function loadReportData({ adapters, selection, period, today }) {
   const wanted = new Set(datasetsFor(selection));
   let snapshot = null;
@@ -33,7 +62,7 @@ export async function loadReportData({ adapters, selection, period, today }) {
   const reportingDate = snapshot?.reportingDate ?? today;
   const query = { reportingDate, progressSnapshotId: snapshot?.progressSnapshotId };
   const monthlyQuery = snapshot ? query : { reportingDate };
-  const [overview, monthly, invoices, audit, prices, financialItems, wbs] = await Promise.all([
+  const [overview, monthly, invoices, audit, prices, financialItems, wbs, periodOverview] = await Promise.all([
     wanted.has("overview") ? adapters.reports.getOverview(query) : null,
     wanted.has("monthly") ? adapters.reports.getMonthlyTrend(monthlyQuery) : null,
     wanted.has("invoices") ? loadAllInvoices(adapters.invoices) : null,
@@ -41,6 +70,7 @@ export async function loadReportData({ adapters, selection, period, today }) {
     wanted.has("prices") ? adapters.prices.getPrices() : null,
     wanted.has("financialItems") ? adapters.financialItems.getWorkspace() : null,
     wanted.has("wbs") ? adapters.reports.getWbsRollup({ ...query, level: 1 }) : null,
+    wanted.has("periodOverview") ? readPeriodOverview(adapters.reports, period) : null,
   ]);
-  return { snapshot, reportingDate, asOfDate: today, overview, monthly, invoices, audit, prices, financialItems, wbs, period };
+  return { snapshot, reportingDate, asOfDate: today, overview, monthly, invoices, audit, prices, financialItems, wbs, periodOverview, period };
 }

@@ -130,7 +130,7 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
   // those inputs produce. Both read the same adapters, so the report shows an
   // operations change as soon as the service has it.
   if (route.key === "finance-home") root.append(createOperationsHomePage({ progressAdapter: adapters.progress }));
-  if (route.key === "report-home") root.append(createFinanceHomePage({ context, reportsAdapter: adapters.reports, progressAdapter: adapters.progress, pricesAdapter: adapters.prices }));
+  if (route.key === "report-home") root.append(createFinanceHomePage({ reportsAdapter: adapters.reports, progressAdapter: adapters.progress, pricesAdapter: adapters.prices, financialItemsAdapter: adapters.financialItems }));
   if (route.key === "financial-items" || route.key === "report-items") {
     root.append(createFinancialItemsPage({
       context,
