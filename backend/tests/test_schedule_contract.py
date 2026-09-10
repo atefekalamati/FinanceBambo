@@ -28,7 +28,8 @@ from app.finance.adapters.schedule_ports import (
 from app.finance.domain.external_ids import (
     ExternalIdentifierError, activity_external_id, assignment_external_id, is_conventional)
 from app.finance.domain.schedule import (
-    ProgressSnapshotInput, SnapshotAssignment, SnapshotTask, derive_snapshot_versions)
+    ProgressSnapshotInput, SnapshotAssignment, SnapshotTask, derive_snapshot_versions,
+    mark_active_source)
 from app.finance.schemas.progress import ProgressSnapshotResponse
 from app.finance.security.context import AuthContext
 from app.finance.services.progress import ProgressService
@@ -162,8 +163,69 @@ class SnapshotVersioningTests(unittest.TestCase):
         self.assertEqual([], derive_snapshot_versions([]))
 
 
+#: The project's own schedule, imported by Finance. Deliberately the OLDEST reporting date
+#: here, because that is the shape the bug had in production: three snapshots ingested from
+#: the host carried later dates than the one file the estimate is actually mapped to.
+OURS = UUID(int=77)
+THEIRS = UUID(int=1)
+MIXED = [{**ref(SNAP_3, 3, 3), "source_file_name_safe": "AB11_V13.mpp"},
+         {**ref(SNAP_2, 2, 2), "source_file_name_safe": "B10.mpp"},
+         {**ref(SNAP_1, 1, 1), "source_file_version_id": OURS,
+          "source_file_name_safe": "test_progress.mpp"}]
+
+
+class ActiveSourceTests(unittest.TestCase):
+    """Which snapshot is the project's own, as distinct from which arrived last."""
+
+    def test_the_projects_own_schedule_is_marked_and_nothing_else_is(self):
+        marked = mark_active_source(MIXED, OURS)
+        self.assertEqual([False, False, True], [row["is_active_source"] for row in marked])
+        self.assertEqual("test_progress.mpp",
+                         next(r for r in marked if r["is_active_source"])["source_file_name_safe"])
+
+    def test_the_active_source_is_not_the_same_question_as_the_latest(self):
+        # Both flags on one list. The newest row is a snapshot of somebody else's file, and
+        # a reader following `is_latest` to choose what to report on lands on it.
+        marked = derive_snapshot_versions(mark_active_source(MIXED, OURS))
+        latest = next(row for row in marked if row["is_latest"])
+        active = next(row for row in marked if row["is_active_source"])
+        self.assertNotEqual(latest["progress_snapshot_id"], active["progress_snapshot_id"])
+        self.assertEqual("AB11_V13.mpp", latest["source_file_name_safe"])
+
+    def test_a_project_that_has_imported_nothing_marks_nothing(self):
+        marked = mark_active_source(MIXED, None)
+        self.assertEqual([False, False, False], [row["is_active_source"] for row in marked])
+
+    def test_a_host_snapshot_with_no_file_version_is_never_the_active_source(self):
+        # Core-ingested rows carry no Finance file version. A null must not be read as
+        # "matches whatever is active" -- that would flag every host row on the list.
+        rows = [{**ref(SNAP_2, 2, 2), "source_file_version_id": None}]
+        self.assertEqual([False], [r["is_active_source"] for r in mark_active_source(rows, OURS)])
+        self.assertEqual([False], [r["is_active_source"] for r in mark_active_source(rows, None)])
+
+    def test_the_comparison_survives_the_driver_returning_text(self):
+        # psycopg gives UUIDs, a fake or an older column type gives strings. The same row
+        # must not be the active source in one deployment and not in another.
+        rows = [{**ref(SNAP_1, 1, 1), "source_file_version_id": str(OURS)}]
+        self.assertTrue(mark_active_source(rows, OURS)[0]["is_active_source"])
+        self.assertTrue(mark_active_source(rows, str(OURS))[0]["is_active_source"])
+
+    def test_the_rows_handed_in_are_left_alone(self):
+        original = dict(MIXED[0])
+        mark_active_source(MIXED, OURS)
+        self.assertEqual(original, MIXED[0])
+        self.assertNotIn("is_active_source", MIXED[0])
+
+
 class Repo:
-    def __init__(self, refs=REFS): self.refs = refs
+    def __init__(self, refs=REFS, active=None):
+        self.refs = refs
+        self.active = active
+
+    async def active_source_version(self, scope):
+        """Which source version this project is running on, as the shared rule decides."""
+        return self.active
+
     async def list_snapshots(self, scope):
         return [row for row in self.refs
                 if row["organization_id"] == scope.organization_id
@@ -196,6 +258,21 @@ class ProgressSnapshotServiceTests(unittest.IsolatedAsyncioTestCase):
         other = SimpleNamespace(organization_id=OTHER_ORG, project_id=PROJECT, actor_user_id=ACTOR)
         with self.assertRaises(FinanceRecordNotFound):
             await self.service().snapshot(other, SNAP_2)
+
+    async def test_the_list_says_which_snapshot_is_the_projects_own_schedule(self):
+        rows = await ProgressService(Repo(MIXED, active=OURS), provider=None).list_snapshots(SCOPE)
+        self.assertEqual([False, False, True], [row["is_active_source"] for row in rows])
+        # And it is not the one a date-ordered reader would have taken.
+        self.assertTrue(rows[0]["is_latest"])
+        self.assertFalse(rows[0]["is_active_source"])
+
+    async def test_one_snapshot_reports_the_same_active_flag_as_the_list(self):
+        service = ProgressService(Repo(MIXED, active=OURS), provider=None)
+        listed = {str(r["progress_snapshot_id"]): r["is_active_source"]
+                  for r in await service.list_snapshots(SCOPE)}
+        row = await service.snapshot(SCOPE, SNAP_1)
+        self.assertTrue(row["is_active_source"])
+        self.assertEqual(listed[str(SNAP_1)], row["is_active_source"])
 
     async def test_an_unknown_snapshot_id_is_not_found(self):
         from app.finance.domain.resources import FinanceRecordNotFound

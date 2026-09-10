@@ -36,3 +36,4 @@ backend/.release-validation/
 # Local database backups and dumps (never committed)
 backups/
 *.dump
+backend/devhost/.release-*.backup

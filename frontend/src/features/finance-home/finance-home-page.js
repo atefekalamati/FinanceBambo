@@ -3,6 +3,7 @@ import {
   REQUEST_STATUS,
 } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
+import { defaultSnapshot, reportableSnapshots } from "../../shared/progress/project-snapshot.js";
 import {
   formatBusinessDate,
   formatDisplayNumber,
@@ -904,18 +905,16 @@ export function createFinanceHomePage({
     paint();
     try {
       snapshots = await progressAdapter.getSnapshots();
-      // Only a ready snapshot can be reported on. Defaulting to snapshots[0]
-      // would ask the Backend for a superseded one and be answered with a 404.
-      const reportable = snapshots.filter(
-        (snapshot) => snapshot.status === "ready",
-      );
-      if (!reportable.length) {
+      // The reader's own choice first; otherwise the one snapshot the whole application
+      // agrees is this project's, which is not always the newest -- see defaultSnapshot.
+      const chosen =
+        reportableSnapshots(snapshots).find(
+          (snapshot) => snapshot.progressSnapshotId === selectedSnapshotId,
+        ) ?? defaultSnapshot(snapshots);
+      if (!chosen) {
         state = createRequestState(REQUEST_STATUS.EMPTY);
       } else {
-        const latest =
-          reportable.find(
-            (snapshot) => snapshot.progressSnapshotId === selectedSnapshotId,
-          ) ?? reportable[0];
+        const latest = chosen;
         selectedSnapshotId = latest.progressSnapshotId;
         // The trend is independent of the overview: a failure there must not
         // take the eight headline metrics down with it.

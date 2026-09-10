@@ -12,18 +12,21 @@ function wait(duration = 300) {
 }
 
 export function createMockFinancialItemsAdapter(context, { initialState = "success" } = {}) {
-  let resourceSequence = 5;
-  let lineSequence = 6;
+  let resourceSequence = 11;
+  let lineSequence = 12;
   let revisionSequence = 6;
   let activitySequence = 3;
   let importSequence = 1;
   const importPreviews = new Map();
 
   const activities = [
-    { activityExternalId: "ACT-102", taskExternalId: "task-foundation", title: "اجرای فونداسیون", wbsCode: "1.2" },
-    { activityExternalId: "ACT-201", taskExternalId: "task-floor1-slab", title: "سقف طبقه اول", wbsCode: "2.1" },
-    { activityExternalId: "ACT-202", taskExternalId: "task-formwork", title: "قالب‌بندی", wbsCode: "2.2" },
-    { activityExternalId: "ACT-002", taskExternalId: "task-permit", title: "مجوزهای پروژه", wbsCode: "0.2" },
+    { activityExternalId: "ACT-002", taskExternalId: "task-permits", title: "مجوزها و بیمه پروژه", wbsCode: "0.2", status: "active" },
+    { activityExternalId: "ACT-101", taskExternalId: "task-earthworks", title: "تجهیز کارگاه و خاکبرداری", wbsCode: "1.1", status: "active" },
+    { activityExternalId: "ACT-102", taskExternalId: "task-foundation", title: "اجرای فونداسیون", wbsCode: "1.2", status: "active" },
+    { activityExternalId: "ACT-201", taskExternalId: "task-floor1-slab", title: "سقف طبقه اول", wbsCode: "2.1", status: "active" },
+    { activityExternalId: "ACT-202", taskExternalId: "task-formwork", title: "قالب‌بندی", wbsCode: "2.2", status: "active" },
+    { activityExternalId: "ACT-203", taskExternalId: "task-rebar-fixing", title: "آرماتوربندی", wbsCode: "2.3", status: "active" },
+    { activityExternalId: "ACT-301", taskExternalId: "task-walls", title: "دیوارچینی", wbsCode: "3.1", status: "active" },
   ];
 
   const unitRegistry = [
@@ -35,19 +38,32 @@ export function createMockFinancialItemsAdapter(context, { initialState = "succe
     { code: "hour", label: "نفر-ساعت", dimension: "labor_time", dimensionLabel: "زمان کار", decimalPrecision: 4 },
   ];
 
+  // Mirrors devhost/seed.py; changing fixture identities must preserve cross-adapter links.
   let resources = initialState === "empty" ? [] : [
-    { resourceId: "20000000-0000-4000-8000-000000000001", type: "material", code: "MAT-REBAR", title: "میلگرد", baseUnit: "kg", dimension: "جرم", externalResourceId: "res-rebar", source: "progress_feed" },
-    { resourceId: "20000000-0000-4000-8000-000000000002", type: "labor", code: "LAB-FORM", title: "اکیپ قالب‌بندی", baseUnit: "hour", dimension: "زمان کار", externalResourceId: "res-formwork-team", source: "progress_feed" },
-    { resourceId: "20000000-0000-4000-8000-000000000003", type: "equipment", code: "EQ-CRANE", title: "جرثقیل", baseUnit: "hour", dimension: "زمان تجهیز", externalResourceId: "res-crane", source: "progress_feed" },
-    { resourceId: "20000000-0000-4000-8000-000000000004", type: "general_cost", code: "GEN-PERMIT", title: "هزینه مجوز", baseUnit: null, dimension: null, externalResourceId: "res-permit", source: "manual_entry" },
+    { resourceId: "20000000-0000-4000-8000-000000000001", type: "material", code: "MAT-REBAR", title: "میلگرد آجدار A3", baseUnit: "kg", dimension: "mass", externalResourceId: "res-rebar", source: "progress_feed" },
+    { resourceId: "20000000-0000-4000-8000-000000000002", type: "material", code: "MAT-CONCRETE", title: "بتن آماده C30", baseUnit: "m3", dimension: "volume", externalResourceId: "res-concrete", source: "progress_feed" },
+    { resourceId: "20000000-0000-4000-8000-000000000003", type: "material", code: "MAT-BLOCK", title: "بلوک سفالی دیوارچینی", baseUnit: "each", dimension: "count", externalResourceId: "res-block", source: "progress_feed" },
+    { resourceId: "20000000-0000-4000-8000-000000000004", type: "material", code: "MAT-CEMENT", title: "سیمان تیپ ۲", baseUnit: "ton", dimension: "mass", externalResourceId: "res-cement", source: "progress_feed" },
+    { resourceId: "20000000-0000-4000-8000-000000000005", type: "labor", code: "LAB-FORM", title: "اکیپ قالب‌بندی", baseUnit: "person_hour", dimension: "labor_time", externalResourceId: "res-formwork-team", source: "progress_feed" },
+    { resourceId: "20000000-0000-4000-8000-000000000006", type: "labor", code: "LAB-REBAR", title: "اکیپ آرماتوربندی", baseUnit: "person_hour", dimension: "labor_time", externalResourceId: "res-rebar-team", source: "progress_feed" },
+    { resourceId: "20000000-0000-4000-8000-000000000007", type: "equipment", code: "EQ-CRANE", title: "جرثقیل برجی", baseUnit: "hour", dimension: "time", externalResourceId: "res-crane", source: "progress_feed" },
+    { resourceId: "20000000-0000-4000-8000-000000000008", type: "equipment", code: "EQ-EXCAV", title: "بیل مکانیکی", baseUnit: "hour", dimension: "time", externalResourceId: "res-excavator", source: "progress_feed" },
+    { resourceId: "20000000-0000-4000-8000-000000000009", type: "general_cost", code: "GEN-PERMIT", title: "مجوز و عوارض شهرداری", baseUnit: null, dimension: null, externalResourceId: "res-permit", source: "manual_entry" },
+    { resourceId: "20000000-0000-4000-8000-000000000010", type: "general_cost", code: "GEN-INSURANCE", title: "بیمه و تضامین پروژه", baseUnit: null, dimension: null, externalResourceId: "res-insurance", source: "manual_entry" },
   ];
 
   let estimateLines = initialState === "empty" ? [] : [
-    { lineId: "30000000-0000-4000-8000-000000000001", activityExternalId: "ACT-102", taskExternalId: "task-foundation", activityTitle: "اجرای فونداسیون", wbsCode: "1.2", resourceId: resources[0].resourceId, originalQuantity: "10000.0000", revisedQuantity: "11250.0000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
-    { lineId: "30000000-0000-4000-8000-000000000002", activityExternalId: "ACT-201", taskExternalId: "task-floor1-slab", activityTitle: "سقف طبقه اول", wbsCode: "2.1", resourceId: resources[0].resourceId, originalQuantity: "8500.0000", revisedQuantity: "8500.0000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
-    { lineId: "30000000-0000-4000-8000-000000000003", activityExternalId: "ACT-202", taskExternalId: "task-formwork", activityTitle: "قالب‌بندی", wbsCode: "2.2", resourceId: resources[1].resourceId, originalQuantity: "900.0000", revisedQuantity: "980.0000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
-    { lineId: "30000000-0000-4000-8000-000000000004", activityExternalId: "ACT-201", taskExternalId: "task-floor1-slab", activityTitle: "سقف طبقه اول", wbsCode: "2.1", resourceId: resources[2].resourceId, originalQuantity: "160.0000", revisedQuantity: "160.0000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
-    { lineId: "30000000-0000-4000-8000-000000000005", activityExternalId: "ACT-002", taskExternalId: "task-permit", activityTitle: "مجوزهای پروژه", wbsCode: "0.2", resourceId: resources[3].resourceId, originalQuantity: null, revisedQuantity: null, originalAmount: "250000000", revisedAmount: "250000000", source: "manual_entry" },
+    { lineId: "30000000-0000-4000-8000-000000000001", activityExternalId: "ACT-102", taskExternalId: "task-foundation", activityTitle: "اجرای فونداسیون", wbsCode: "1.2", assignmentExternalId: "asg-foundation-rebar", resourceId: "20000000-0000-4000-8000-000000000001", originalQuantity: "380000.0000", revisedQuantity: "410000.0000", originalUnitPriceIRR: "290000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
+    { lineId: "30000000-0000-4000-8000-000000000002", activityExternalId: "ACT-201", taskExternalId: "task-floor1-slab", activityTitle: "سقف طبقه اول", wbsCode: "2.1", assignmentExternalId: "asg-floor1-concrete", resourceId: "20000000-0000-4000-8000-000000000002", originalQuantity: "8600.0000", revisedQuantity: "8900.0000", originalUnitPriceIRR: "14500000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
+    { lineId: "30000000-0000-4000-8000-000000000003", activityExternalId: "ACT-301", taskExternalId: "task-walls", activityTitle: "دیوارچینی", wbsCode: "3.1", assignmentExternalId: "asg-walls-block", resourceId: "20000000-0000-4000-8000-000000000003", originalQuantity: "95000.0000", revisedQuantity: "105000.0000", originalUnitPriceIRR: "420000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
+    { lineId: "30000000-0000-4000-8000-000000000004", activityExternalId: "ACT-102", taskExternalId: "task-foundation", activityTitle: "اجرای فونداسیون", wbsCode: "1.2", assignmentExternalId: "asg-foundation-cement", resourceId: "20000000-0000-4000-8000-000000000004", originalQuantity: "1200.0000", revisedQuantity: "1460.0000", originalUnitPriceIRR: "13000000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
+    { lineId: "30000000-0000-4000-8000-000000000005", activityExternalId: "ACT-202", taskExternalId: "task-formwork", activityTitle: "قالب‌بندی", wbsCode: "2.2", assignmentExternalId: "asg-labor-formwork", resourceId: "20000000-0000-4000-8000-000000000005", originalQuantity: "240000.0000", revisedQuantity: "252000.0000", originalUnitPriceIRR: "375000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
+    { lineId: "30000000-0000-4000-8000-000000000006", activityExternalId: "ACT-203", taskExternalId: "task-rebar-fixing", activityTitle: "آرماتوربندی", wbsCode: "2.3", assignmentExternalId: "asg-labor-rebar", resourceId: "20000000-0000-4000-8000-000000000006", originalQuantity: "150000.0000", revisedQuantity: "158750.0000", originalUnitPriceIRR: "400000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
+    { lineId: "30000000-0000-4000-8000-000000000007", activityExternalId: "ACT-201", taskExternalId: "task-floor1-slab", activityTitle: "سقف طبقه اول", wbsCode: "2.1", assignmentExternalId: "asg-crane-floor1", resourceId: "20000000-0000-4000-8000-000000000007", originalQuantity: "4000.0000", revisedQuantity: "4200.0000", originalUnitPriceIRR: "12500000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
+    { lineId: "30000000-0000-4000-8000-000000000008", activityExternalId: "ACT-101", taskExternalId: "task-earthworks", activityTitle: "تجهیز کارگاه و خاکبرداری", wbsCode: "1.1", assignmentExternalId: "asg-excavation", resourceId: "20000000-0000-4000-8000-000000000008", originalQuantity: "2500.0000", revisedQuantity: "2625.0000", originalUnitPriceIRR: "12000000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
+    { lineId: "30000000-0000-4000-8000-000000000009", activityExternalId: "ACT-002", taskExternalId: "task-permits", activityTitle: "مجوزها و بیمه پروژه", wbsCode: "0.2", assignmentExternalId: "asg-permit", resourceId: "20000000-0000-4000-8000-000000000009", originalQuantity: null, revisedQuantity: null, originalUnitPriceIRR: "52000000000", originalAmount: "52000000000", revisedAmount: "55000000000", source: "manual_entry" },
+    { lineId: "30000000-0000-4000-8000-000000000010", activityExternalId: "ACT-002", taskExternalId: "task-permits", activityTitle: "مجوزها و بیمه پروژه", wbsCode: "0.2", assignmentExternalId: "asg-insurance", resourceId: "20000000-0000-4000-8000-000000000010", originalQuantity: null, revisedQuantity: null, originalUnitPriceIRR: "38000000000", originalAmount: "38000000000", revisedAmount: "40500000000", source: "manual_entry" },
+    { lineId: "30000000-0000-4000-8000-000000000011", activityExternalId: "ACT-201", taskExternalId: "task-floor1-slab", activityTitle: "سقف طبقه اول", wbsCode: "2.1", assignmentExternalId: "asg-slab-rebar", resourceId: "20000000-0000-4000-8000-000000000001", originalQuantity: "240000.0000", revisedQuantity: "255000.0000", originalUnitPriceIRR: "290000", originalAmount: null, revisedAmount: null, source: "progress_feed" },
   ];
 
   if (estimateLines.length) {
