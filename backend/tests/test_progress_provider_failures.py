@@ -76,6 +76,10 @@ class Repository:
     def __init__(self, known=True):
         self.known = known
 
+    async def active_source_version(self, _scope):
+        """No Finance-side import here: this fixture exercises the host provider's replies."""
+        return None
+
     async def list_snapshots(self, _scope):
         if not self.known:
             return []

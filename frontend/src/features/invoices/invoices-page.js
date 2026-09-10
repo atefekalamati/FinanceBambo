@@ -806,7 +806,8 @@ export function createInvoicesPage({ context, adapter }) {
       active: activeView,
       counts: invoiceChipCounts(summary.counts),
     });
-    section.append(heading, detailMessage, toolbar,
+    section.append(heading, detailMessage);
+    section.append(toolbar,
       renderPageState(state, { renderContent: renderListBody, renderEmpty, onRetry: load }));
     return section;
   }

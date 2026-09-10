@@ -84,6 +84,9 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
   // and leave the reader guessing whether the upload failed. The refusal is
   // stated instead, in the same words as every other one in this module.
   const source = element("figure", "ai-review-source");
+  // Not requested at all without the permission. The Backend answers 404 either way, but
+  // asking would put a broken image where an explanation belongs, and the reader would be
+  // left guessing whether the file is missing or they are.
   const contentUrl = canEdit ? (adapter.getFileContentUrl?.(draft.file.fileId) ?? null) : null;
   if (!canEdit) {
     source.append(element("figcaption", "", "نمایش فایل اصلی نیازمند مجوز «مدیریت فاکتورها» است."));
@@ -204,6 +207,7 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
 
 export function createAiReviewPage({ context, adapter }) {
   const root = element("div", "ai-review-page");
+  // Reviewing an extraction IS invoice work: accepting one writes an invoice.
   const canEdit = capabilitiesFor(context).manageInvoice;
   let state = createRequestState(REQUEST_STATUS.LOADING);
 

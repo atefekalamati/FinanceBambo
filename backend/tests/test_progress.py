@@ -43,6 +43,9 @@ class Provider:
 
 class Repo:
  def __init__(self,overrides=None):self.overrides=overrides or [];self.appended=None
+ #: This project has imported no schedule of its own, so nothing here is its active
+ #: source. test_schedule_contract.py covers the flag when one does exist.
+ async def active_source_version(self,scope):return None
  async def get_snapshot(self,scope,snapshot_id):return {"id":REF,"progress_snapshot_id":SNAPSHOT}
  async def get_line_mapping(self,scope,line_id):return {"id":LINE,"activity_external_id":"A1","assignment_external_id":"AS1"}
  async def latest_overrides(self,scope,ref_id):return self.overrides

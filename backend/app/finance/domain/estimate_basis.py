@@ -61,14 +61,20 @@ ORIGINAL_VALUE_SOURCE = """CASE
     ELSE NULL END"""
 
 
-def effective_original_quantity(alias="l"):
+def effective_original_quantity(alias="l", cutoff_sql=None):
     """The effective original quantity expression for a given table alias."""
-    return EFFECTIVE_ORIGINAL_QUANTITY.format(l=alias)
+    expression = EFFECTIVE_ORIGINAL_QUANTITY.format(l=alias)
+    if cutoff_sql:
+        expression = expression[:-2] + " AND (c.completed_at AT TIME ZONE 'Asia/Tehran')::date <= " + cutoff_sql + "))"
+    return expression
 
 
-def effective_original_price(alias="l"):
+def effective_original_price(alias="l", cutoff_sql=None):
     """The effective original unit rate expression for a given table alias."""
-    return EFFECTIVE_ORIGINAL_PRICE.format(l=alias)
+    expression = EFFECTIVE_ORIGINAL_PRICE.format(l=alias)
+    if cutoff_sql:
+        expression = expression[:-2] + " AND (c.completed_at AT TIME ZONE 'Asia/Tehran')::date <= " + cutoff_sql + "))"
+    return expression
 
 
 def original_value_source(alias="l"):

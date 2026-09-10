@@ -1,6 +1,8 @@
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from ..domain.mpp_source_version import active_source_version as active_source_version_sql
+
 #: Columns a reference row is read back with. Listed once so the two callers below cannot
 #: return different shapes for the same row.
 REFERENCE_COLUMNS = ("id,organization_id,project_id,progress_snapshot_id,source_file_version_id,"
@@ -57,6 +59,17 @@ class PsycopgProgressRepository:
  def __init__(self,db):self.db=db
  async def list_snapshots(self,s):
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT organization_id,project_id,progress_snapshot_id,source_file_version_id,source_file_name_safe,imported_at,imported_by,snapshot_status status,reporting_date,source_type,host_snapshot_id,host_file_version_id FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s ORDER BY reporting_date DESC,imported_at DESC",(s.organization_id,s.project_id));return await c.fetchall()
+ async def active_source_version(self,s):
+  """The source version this project is running on, or None if it has imported none.
+
+  Deliberately the shared statement and not a second one written here: the estimate is
+  priced from whatever this returns, so a copy of the rule that drifted would let the page
+  read progress from one file while the money beside it came from another."""
+  async with self.db.cursor() as c:
+   await c.execute(active_source_version_sql(organization="%s",project="%s"),
+                   (s.organization_id,s.project_id))
+   row=await c.fetchone()
+  return None if row is None else row[0]
  async def get_snapshot(self,s,sid):
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT * FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s AND progress_snapshot_id=%s",(s.organization_id,s.project_id,sid));return await c.fetchone()
  async def ensure_reference(self,s,value):

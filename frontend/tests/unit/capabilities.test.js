@@ -42,6 +42,21 @@ test("a reader has every capability except the ones that write", () => {
   assert.deepEqual(Object.values(capabilitiesFor(null)), [false, false, false, false, false, false]);
 });
 
+test("editing the cost model and managing invoices are separate rights", () => {
+  // The whole point of the split. If either of these leaked into the other, the
+  // interface would offer a button whose only possible answer is 403 -- or worse,
+  // hide one that the account is entitled to use.
+  const editor = capabilitiesFor({ permissionCodes: ["finance.view", "finance.edit"] });
+  assert.equal(editor.writeFinance, true);
+  assert.equal(editor.manageInvoice, false, "finance.edit leaked into invoice management");
+
+  const invoiceManager = capabilitiesFor({
+    permissionCodes: ["finance.view", "finance.manage_invoice"],
+  });
+  assert.equal(invoiceManager.manageInvoice, true);
+  assert.equal(invoiceManager.writeFinance, false, "manage_invoice leaked into cost editing");
+});
+
 test("the access list shows every code the module honours", () => {
   const shown = describeAccess({ permissionCodes: ["finance.edit"] });
   assert.deepEqual(shown.map((item) => item.code), FINANCE_PERMISSIONS.map((item) => item.code));

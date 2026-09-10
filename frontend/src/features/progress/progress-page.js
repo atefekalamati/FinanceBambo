@@ -1,5 +1,6 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
+import { defaultSnapshot } from "../../shared/progress/project-snapshot.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
@@ -281,6 +282,30 @@ const PROGRESS_COLUMNS = Object.freeze([
   { key: "override", label: "اصلاح دستی مقدار", tier: SECONDARY, keepOnTablet: true },
 ]);
 
+/**
+ * The structure line under an activity's name.
+ *
+ * `wbsCode` and `activityCode` are two different fields of the task -- the breakdown code
+ * and the outline number -- and on this file they hold the same string, so printing both
+ * read as "1.11.1.12 · 1.11.1.12". They are joined only when they actually differ, which
+ * is the only case where the second one tells the reader anything.
+ *
+ * The identifiers that used to sit beneath it -- the task's own id, its parent's, the
+ * resource's and the assignment's -- are still on every row object and still what the
+ * override flow sends to the Backend. They are not printed: a GUID under an activity name
+ * is a debugging aid wearing the clothes of information.
+ */
+export function activityStructureLabel(task) {
+  // An empty string is not a code. `??` alone would let one through and print a blank
+  // line where a code belongs, which reads as "there is one, and it is nothing".
+  const stated = (value) => (typeof value === "string" && value.trim() ? value : null);
+  const wbs = stated(task?.wbsCode);
+  const activity = stated(task?.activityCode);
+  if (wbs && activity && wbs !== activity) return `${wbs} · ${activity}`;
+  return wbs ?? activity ?? "ساختار شکست موجود نیست";
+}
+
+
 function renderAssignments(assignments, { canOverride, onOverride, columns, visible }) {
   const valueList = (pairs, render) => {
     const list = element("dl", "feed-values");
@@ -298,15 +323,11 @@ function renderAssignments(assignments, { canOverride, onOverride, columns, visi
     cells: (assignment) => {
       const task = document.createDocumentFragment();
       task.append(element("strong", "", assignment.task.taskName),
-        element("small", "table-subtext numeric", `${assignment.task.wbsCode ?? "ساختار شکست موجود نیست"} · ${assignment.task.activityCode ?? "کد فعالیت موجود نیست"}`),
-        element("small", "table-subtext numeric", `شناسه فعالیت: ${assignment.task.taskExternalId}`),
-        element("small", "table-subtext numeric", `فعالیت والد: ${assignment.task.parentTaskExternalId ?? "ندارد"}`));
+        element("small", "table-subtext numeric", activityStructureLabel(assignment.task)));
 
       const resource = document.createDocumentFragment();
       resource.append(element("strong", "", assignment.resourceName),
-        element("small", "table-subtext", RESOURCE_TYPE_LABELS[assignment.resourceType] ?? "نوع نامشخص"),
-        element("small", "table-subtext numeric", `قلم: ${assignment.resourceExternalId}`),
-        element("small", "table-subtext numeric", `تخصیص: ${assignment.assignmentExternalId}`));
+        element("small", "table-subtext", RESOURCE_TYPE_LABELS[assignment.resourceType] ?? "نوع نامشخص"));
 
       const amount = (value) => element("dd", value === null ? "missing-value" : "numeric", valueOrMissing(value));
       const percent = (value) => element("dd", value === null ? "missing-value" : "numeric",
@@ -370,8 +391,16 @@ export function createProgressPage({ context, adapter }) {
     paint();
     try {
       const feed = await adapter.getFeed(snapshotId);
+      // A reply for a version the reader has already moved off is not this page's data any
+      // more. Two clicks in quick succession can be answered out of order, and rendering
+      // the loser would put one schedule's rows under another schedule's heading -- the
+      // reader would be looking at a version the card beside it says is not selected.
+      if (selectedId !== snapshotId) return;
       feedState = createRequestState(feed.assignments.length ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, feed);
     } catch (error) {
+      // The same applies to a failure: an error from an abandoned request would report the
+      // version now on screen as broken when nothing was ever wrong with it.
+      if (selectedId !== snapshotId) return;
       feedState = createRequestState(REQUEST_STATUS.ERROR, null, error);
     }
     paint();
@@ -383,7 +412,11 @@ export function createProgressPage({ context, adapter }) {
     try {
       const snapshots = await adapter.getSnapshots();
       snapshotsState = createRequestState(snapshots.length ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, snapshots);
-      if (snapshots.length) await selectSnapshot(snapshots[0].progressSnapshotId);
+      // Open on the project's own schedule. The fallback to the first row is what this
+      // page already did and is kept for the case where nothing is ready at all: the
+      // reader still gets the Backend's answer about it rather than a blank selection.
+      const opening = defaultSnapshot(snapshots) ?? snapshots[0];
+      if (opening) await selectSnapshot(opening.progressSnapshotId);
     } catch (error) {
       snapshotsState = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
       paint();

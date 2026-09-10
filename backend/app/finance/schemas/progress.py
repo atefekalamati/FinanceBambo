@@ -27,6 +27,12 @@ class ProgressSnapshotResponse(ApiModel):
  # because the feed's header comes from the host provider, which cannot know it.
  version:int|None=None
  is_latest:bool|None=None
+ # Whether this snapshot came from the project's ACTIVE source version -- the schedule
+ # its estimate lines are mapped to and priced from. Distinct from `is_latest`, which is
+ # about arrival order: a snapshot of an unrelated file can be the newest row and still not
+ # be this project's schedule. False also means "no active source version", which is why it
+ # defaults rather than being optional.
+ is_active_source:bool=False
  # Where the snapshot came from. None means it was not recorded, which is the honest
  # answer for rows imported before the column existed -- a filename extension is not
  # evidence of a tool.

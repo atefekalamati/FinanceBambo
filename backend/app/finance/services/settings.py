@@ -7,20 +7,27 @@ from uuid import UUID, uuid4
 from ..domain.settings import FinanceProjectSettings, FinanceSettingsNotFound
 from ..repositories.settings import FinanceSettingsRepository
 from ..schemas.settings import FinanceSettingsPatch, FinanceSettingsRevisionResponse
-from ..security.context import AuthContext
 from ..security.guards import FinanceScope
 
 
-def settings_edit_permission(context: AuthContext) -> str:
-    """Apply PRD role policy using only existing coarse host permissions."""
-
-    return "finance.view" if context.organization_role == "org_chief" else "finance.edit"
+#: What editing project settings costs. One permission, for everybody.
+#:
+#: This used to read `finance.view if context.organization_role == "org_chief" else
+#: finance.edit`, which meant a role NAME decided what a caller could change: an org chief
+#: edited the gross built area -- the divisor under every per-square-metre figure in the
+#: module -- holding read-only permission, and revoking `finance.edit` from them changed
+#: nothing. A permission that can be bypassed by being called something is not a permission,
+#: and a host that renames its roles would have silently moved the gate.
+#:
+#: Roles still exist and still travel on the context; the host needs them and other
+#: interfaces read them. They simply no longer decide authorization here.
+SETTINGS_EDIT_PERMISSION = "finance.edit"
 
 
 def may_edit_settings(scope) -> bool:
     """Answer the same question the PATCH gate asks, so the UI cannot drift from enforcement."""
 
-    return settings_edit_permission(scope) in scope.permission_codes
+    return SETTINGS_EDIT_PERMISSION in scope.permission_codes
 
 
 class FinanceSettingsService:
