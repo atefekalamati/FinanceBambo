@@ -821,7 +821,7 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
   }
 
   function renderHeader() {
-    return createFinancePageHeader(readOnly ? "جدول اقلام و برآورد" : "اقلام و برآورد");
+    return createFinancePageHeader(readOnly ? "جدول اقلام و برآورد" : "اقلام و برآورد", "feature-header", surface);
   }
 
   function renderEmpty() {

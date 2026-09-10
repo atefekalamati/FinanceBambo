@@ -1,4 +1,5 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
+import { SURFACES } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { defaultSnapshot } from "../../shared/progress/project-snapshot.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -424,7 +425,7 @@ export function createProgressPage({ context, adapter }) {
   }
 
   function renderHeader() {
-    return createFinancePageHeader("نسخه‌های پیشرفت پروژه");
+    return createFinancePageHeader("نسخه‌های پیشرفت پروژه", "feature-header", SURFACES.OPERATIONS);
   }
 
   function renderEmpty() {
