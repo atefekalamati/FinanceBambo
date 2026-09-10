@@ -40,7 +40,6 @@ import { createAuditPage } from "../features/audit/audit-page.js";
 import { DISPLAY_CURRENCY_CHANGED_EVENT } from "../shared/preferences/currency-preference.js";
 
 const root = document.querySelector("#finance-module-root");
-const liveRegion = document.querySelector("#finance-live-region");
 
 function createHostAdapters(context) {
   const client = createApiClient();
@@ -186,7 +185,13 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
       surface: route.surface,
     }));
   }
-  liveRegion.textContent = `صفحه ${route.label} نمایش داده شد.`;
+  /* Moving focus is what tells a screen reader the page changed. There was a
+     live region above this line saying so in words as well; it asked the host
+     for a second element beside the mount, and a missing one -- an empty,
+     invisible div nobody would notice -- took the whole module down with a
+     TypeError on the first render. The mount carries tabindex="-1" and every
+     page opens with its own heading, so the announcement survives the element
+     that used to carry it. */
   root.focus();
 }
 
@@ -243,9 +248,13 @@ try {
       context = nextContext;
       adapters = createHostAdapters(context);
       if (activeRoute) renderRoute(activeRoute, context, adapters, activeRouteQuery);
-      liveRegion.textContent = `اطلاعات مالی پروژه ${context.projectName || context.projectId} بارگذاری شد.`;
     }, (error) => {
-      liveRegion.textContent = `تغییر پروژه انجام نشد: ${error.message}`;
+      // The re-render above is what a successful switch shows; a failed one
+      // changes nothing on screen, so it would leave no trace at all. This is
+      // not a message for the reader -- the page they are looking at is still
+      // the project they were looking at -- but a switch that failed silently
+      // is the kind nobody reports.
+      console.warn("[BAMBO Finance] تغییر پروژه انجام نشد.", error);
     }, { rediscover: () => discoverHostContext() });
   }
 } catch (error) {
