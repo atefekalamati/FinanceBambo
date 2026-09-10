@@ -32,9 +32,9 @@
 <!-- The host paints its own ground; this inline colour only keeps the reference
      page readable on its own, and is the first thing to drop when copying. -->
 <body style="background:#0a1120">
-  <!-- Both are required. The module announces each page change into the live
-       region, and renders into the mount. -->
-  <div id="finance-live-region" class="sr-only" role="status" aria-live="polite"></div>
+  <!-- The one element the module needs. It renders here, and moves focus here
+       after every page change -- which is what tabindex="-1" is for, and what
+       tells a screen reader the page changed. -->
   <main id="finance-module-root" tabindex="-1"></main>
 
   <noscript>برای اجرای ماژول مالی، JavaScript مرورگر باید فعال باشد.</noscript>
