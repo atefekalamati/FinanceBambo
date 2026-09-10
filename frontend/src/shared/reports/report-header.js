@@ -65,13 +65,27 @@ export function createReportHeader({ title, facts = [] }) {
   return header;
 }
 
-/** The facts every document repeats, in the order the control reports use. */
+/**
+ * The facts every document repeats, in the order the control reports use.
+ *
+ * The date carries two different meanings depending on where it came from, and both used
+ * to wear the same word inside one document. A chapter built from a progress snapshot is
+ * as of THAT snapshot's own date -- the schedule's Status Date, which can be a year behind
+ * today -- while the chapter beside it covering a period is as of the period's close. A
+ * reader who asked for a 1405 range and read «تاریخ گزارش: ۱۰ مهر ۱۴۰۴» at the top of the
+ * first chapter had nothing on the page telling them which of the two they were seeing.
+ *
+ * So the label follows the source: when the date came from a progress version it says so,
+ * directly under the line naming that version; otherwise it is the report's own date and
+ * keeps the plain word. No value changes -- only which of the two is being named.
+ */
 export function projectFacts({ project, snapshot, reportingDate, period } = {}) {
   return [
     ["پروژه", project?.name ?? null],
     ["کد", project?.code ?? null],
     ["نسخه پیشرفت", snapshot ?? null],
-    ["تاریخ گزارش", reportingDate ? formatBusinessDate(reportingDate) : null],
+    [snapshot ? "تاریخ مبنای نسخه پیشرفت" : "تاریخ گزارش",
+      reportingDate ? formatBusinessDate(reportingDate) : null],
     ["بازه", period?.from && period?.to ? `${formatBusinessDate(period.from)} تا ${formatBusinessDate(period.to)}` : null],
   ];
 }
