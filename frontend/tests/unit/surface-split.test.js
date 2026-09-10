@@ -210,8 +210,8 @@ test("the read-only mode follows the route, not the account", () => {
     const source = read(path);
     assert.match(source, /const readOnly = surface === SURFACES\.REPORT;/, `${path} does not read its surface`);
     assert.match(source, /const canEdit = !readOnly && capabilitiesFor\(context\)\.writeFinance;/, `${path} lets the permission alone decide`);
-    // All internal pages now return to the report dashboard. Editing remains
-    // gated by the route and capability, independently of this navigation.
+    // Both twins use the shared header; the surface passed to the page decides
+    // whether its back link returns to operations or to the report dashboard.
     assert.match(source, /createFinancePageHeader\(/, `${path} bypasses the shared report navigation`);
   });
   const bootstrap = read("../../src/app/bootstrap.js");

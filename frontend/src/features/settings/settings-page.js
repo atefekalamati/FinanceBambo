@@ -149,7 +149,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
   }
 
   function renderHeader() {
-    return createFinancePageHeader(readerOnly ? "تنظیمات نمایش" : "تنظیمات مالی پروژه");
+    return createFinancePageHeader(readerOnly ? "تنظیمات نمایش" : "تنظیمات مالی پروژه", "feature-header", surface);
   }
 
   function renderEmpty() {

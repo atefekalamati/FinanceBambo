@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createFinancePageHeader } from "../../src/shared/components/finance-page-header.js";
+import { SURFACES } from "../../src/core/config/routes.js";
 
 test("internal headers contain only the unchanged h1 and the report back link", () => {
   const previous = globalThis.document;
@@ -24,6 +25,27 @@ test("internal headers contain only the unchanged h1 and the report back link", 
       assert.equal(back.textContent, "بازگشت به گزارش مالی");
       assert.match(back.className, /finance-back-link/);
     }
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});
+
+test("an operations page returns to operations while report pages keep their report home", () => {
+  const previous = globalThis.document;
+  globalThis.document = {
+    createElement(tagName) {
+      return { tagName, children: [], append(...nodes) { this.children.push(...nodes); } };
+    },
+  };
+  try {
+    const operationsBack = createFinancePageHeader("قیمت روز", "feature-header", SURFACES.OPERATIONS).children[1];
+    assert.equal(operationsBack.href, "#/finance");
+    assert.equal(operationsBack.textContent, "بازگشت به امور مالی");
+
+    const reportBack = createFinancePageHeader("جدول قیمت‌ها", "feature-header", SURFACES.REPORT).children[1];
+    assert.equal(reportBack.href, "#/finance-report");
+    assert.equal(reportBack.textContent, "بازگشت به گزارش مالی");
   } finally {
     if (previous === undefined) delete globalThis.document;
     else globalThis.document = previous;

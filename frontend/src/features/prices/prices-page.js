@@ -670,7 +670,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
   }
 
   function renderHeader() {
-    return createFinancePageHeader(readOnly ? "جدول قیمت‌ها" : "قیمت روز");
+    return createFinancePageHeader(readOnly ? "جدول قیمت‌ها" : "قیمت روز", "feature-header", surface);
   }
 
   function openEditor(workspace) {

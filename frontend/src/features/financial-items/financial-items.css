@@ -318,8 +318,13 @@
 
 /* A member stays visually tied to its open activity without changing the
    table geometry or making the whole row louder than its parent. */
+.estimate-lines-table .data-table__child > :is(th, td) {
+  background: var(--color-border);
+}
+
 .estimate-lines-table .data-table__child > [data-col="identity"] {
-  border-inline-start: .18rem solid rgb(0 172 88 / 30%);
+  border-inline-start: .22rem solid var(--brand-green);
+  background: color-mix(in srgb, var(--brand-teal) 9%, var(--color-surface-canvas));
 }
 
 .activity-cell--continued {
