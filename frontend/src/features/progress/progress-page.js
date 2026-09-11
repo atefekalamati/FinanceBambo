@@ -9,8 +9,9 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
 import { element } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createPagedDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
+import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { feedWarningText } from "../../shared/warnings/finance-warning-labels.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "آماده", superseded: "جایگزین‌شده" });
@@ -307,14 +308,19 @@ export function activityStructureLabel(task) {
 }
 
 
-function renderAssignments(assignments, { canOverride, onOverride, columns, visible }) {
+function renderAssignments(assignments, { canOverride, onOverride, columns, visible, paging }) {
   const valueList = (pairs, render) => {
     const list = element("dl", "feed-values");
     pairs.forEach(([label, value]) => list.append(element("dt", "", label), render(value)));
     return list;
   };
 
-  return createDataTable({
+  return createPagedDataTable({
+    name: "progress-assignments",
+    page: paging.page,
+    pageSize: paging.pageSize,
+    onChange: paging.onChange,
+    paginationLabel: "صفحه‌بندی تخصیص‌های پیشرفت",
     className: "progress-feed-table",
     caption: "اطلاعات فقط‌خواندنی پیشرفت اجرایی و تخصیص‌های مالی",
     scrollLabel: "جدول پیشرفت اجرایی و تخصیص‌های مالی",
@@ -383,6 +389,8 @@ export function createProgressPage({ context, adapter }) {
   const feedColumns = PROGRESS_COLUMNS;
   const visibleFeedColumns = defaultVisibleColumns(feedColumns);
   let feedState = createRequestState(REQUEST_STATUS.IDLE);
+  /* Held by the page, not the component: paint() rebuilds the tree. */
+  let feedPaging = { page: 1, pageSize: getRowsPerPage("progress-assignments") };
   let selectedId = null;
   const canOverride = capabilitiesFor(context).writeFinance;
 
@@ -452,6 +460,7 @@ export function createProgressPage({ context, adapter }) {
     head.append(element("div", "", ""), headMeta);
     head.firstElementChild.append(element("h2", "", "تخصیص‌های مالی"), element("p", "", "هر اتصال فعالیت و قلم هزینه یک ردیف مستقل است؛ مقدار ثبت‌نشده هرگز به صفر تبدیل نمی‌شود."));
     section.append(head, renderAssignments(feed.assignments, {
+      paging: { ...feedPaging, onChange: (next) => { feedPaging = next; paint(); } },
       canOverride,
       columns: feedColumns,
       visible: visibleFeedColumns,

@@ -17,6 +17,15 @@
  * shifting, and it is why the two can only be hidden together.
  */
 import { element, tableCaption, tableHead } from "../dom/elements.js";
+import { formatDisplayNumber } from "../formatters/display.js";
+import {
+  ROW_COUNT_OPTIONS,
+  clampPage,
+  getRowsPerPage,
+  pageCount,
+  resolveSize,
+  setRowsPerPage,
+} from "../preferences/rows-per-page.js";
 import { showAccessibleDialog } from "./accessible-dialog.js";
 
 /** A column the reader may not put away: it is how a row is identified at all. */
@@ -635,18 +644,147 @@ export function createTableToolbar({ chips, search, name, columns, visible, tabl
 }
 
 /**
+ * The strip under a table: which page of it is shown, and how much of it fits
+ * on a page.
+ *
+ * ONE FOOTER, TWO KINDS OF TABLE
+ * Most tables here arrive whole -- the server answers `GET /price-history` with
+ * every version and the browser holds all of them -- so turning a page is
+ * slicing an array it already has. فاکتورها is the exception and always was:
+ * invoices have no ceiling, one row per purchase for the life of a project, so
+ * that endpoint pages server-side and the browser never holds more than the
+ * page it asked for.
+ *
+ * The difference is real and cannot be hidden from the caller, but it can be
+ * hidden from the reader, and this is where. A caller that pages server-side
+ * passes `onPageChange` and gets a footer that calls it; one that slices its own
+ * array passes the same callback and slices instead. Both draw the same controls
+ * in the same place, so two kinds of table are not two kinds of page to learn.
+ *
+ * WHY THE SIZE CONTROL IS HERE AND NOT IN THE TOOLBAR ABOVE
+ * It answers a question about the bottom of the table -- "how far do I scroll
+ * before this ends" -- and it is asked on arriving there. The toolbar carries
+ * what narrows the rows; this carries what portions them.
+ */
+export function createTablePagination({
+  name,
+  page = 1,
+  total = 0,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  label = "صفحه‌بندی جدول",
+} = {}) {
+  const chosen = pageSize ?? getRowsPerPage(name);
+  const size = resolveSize(chosen, total);
+  const pages = pageCount(total, size);
+  const current = clampPage(page, total, size);
+
+  const nav = element("nav", "table-pagination");
+  nav.setAttribute("aria-label", label);
+
+  const steps = element("div", "table-pagination__steps");
+  const previous = element("button", "button button--ghost", "صفحه قبل");
+  previous.type = "button";
+  previous.disabled = current <= 1;
+  previous.addEventListener("click", () => onPageChange?.(current - 1));
+  const position = element("span", "table-pagination__position numeric",
+    `صفحه ${formatDisplayNumber(String(current))} از ${formatDisplayNumber(String(pages))}`);
+  const next = element("button", "button button--ghost", "صفحه بعد");
+  next.type = "button";
+  next.disabled = current >= pages;
+  next.addEventListener("click", () => onPageChange?.(current + 1));
+  steps.append(previous, position, next);
+
+  const sizing = element("div", "table-pagination__sizing");
+  const selectId = `rows-per-page-${name}`;
+  const caption = element("label", "table-pagination__label", "سطر در هر صفحه");
+  caption.htmlFor = selectId;
+  const select = element("select", "app-input table-pagination__select");
+  select.id = selectId;
+  ROW_COUNT_OPTIONS.forEach((option) => {
+    const item = element("option", "", option === "all" ? "همه" : formatDisplayNumber(String(option)));
+    item.value = String(option);
+    item.selected = String(option) === String(chosen);
+    select.append(item);
+  });
+  select.addEventListener("change", () => {
+    const stored = setRowsPerPage(name, select.value);
+    // Back to the first page, not the same number on a different scale: page 7
+    // of 9 at ten rows and page 7 of 1 at a hundred are not the same place, and
+    // the reader chose a size, not a destination.
+    onPageSizeChange?.(stored);
+  });
+  sizing.append(caption, select);
+
+  // How many of how many, so a capped "all" says so rather than looking like the
+  // whole list.
+  const shown = Math.min(size, Math.max(total - (current - 1) * size, 0));
+  const counted = element("span", "table-pagination__count numeric",
+    `${formatDisplayNumber(String(shown))} از ${formatDisplayNumber(String(total))} سطر`);
+
+  nav.append(steps, counted, sizing);
+  return nav;
+}
+
+/**
+ * A table that arrived whole, drawn one page at a time.
+ *
+ * The page holds the number; this holds everything that follows from it. Given
+ * every row and which page is wanted, it slices, builds the table from the same
+ * factory every other table uses, and puts the footer under it. The caller's
+ * `onChange` is handed the page to move to, and re-renders however it already
+ * re-renders -- this owns no state, because a component that remembered which
+ * page it was on would disagree with the page that also remembered.
+ *
+ * `rows` is whatever the caller has already filtered. Paging is the last thing
+ * that happens to a list, never the first: slicing before filtering would search
+ * one page and report the rest as absent.
+ */
+export function createPagedDataTable({ name, rows, page = 1, pageSize, onChange, paginationLabel, ...config }) {
+  const chosen = pageSize ?? getRowsPerPage(name);
+  const size = resolveSize(chosen, rows.length);
+  const current = clampPage(page, rows.length, size);
+  const start = (current - 1) * size;
+
+  const fragment = document.createDocumentFragment();
+  fragment.append(createDataTable({ ...config, rows: rows.slice(start, start + size) }));
+  // A list that fits on one page has nothing to turn, but it still has a size to
+  // choose -- that is how a reader gets back from ten rows to a hundred.
+  fragment.append(createTablePagination({
+    name,
+    page: current,
+    total: rows.length,
+    pageSize: chosen,
+    label: paginationLabel,
+    onPageChange: (next) => onChange?.({ page: next, pageSize: chosen }),
+    onPageSizeChange: (next) => onChange?.({ page: 1, pageSize: next }),
+  }));
+  return fragment;
+}
+
+/**
  * A table with its own toolbar above it.
  *
  * For a table whose caller has nowhere obvious to put the controls -- no
  * heading row of its own to hang them from. The toolbar is the table's, so the
  * page that renders it needs to know nothing about columns.
  */
-export function createDataTableWithControl({ name, columns, visible, controlLabel, chips, search, ...config }) {
+export function createDataTableWithControl({ name, columns, visible, controlLabel, chips, search, onChange, page, pageSize, paginationLabel, ...config }) {
   const fragment = document.createDocumentFragment();
-  const table = createDataTable({ ...config, columns, visible });
+  // Paging is opt-in by passing a handler, so a table that has never needed it
+  // is unchanged -- no footer, no slice, the rows it was given.
+  const body = onChange
+    ? createPagedDataTable({ ...config, name, columns, visible, page, pageSize, onChange, paginationLabel })
+    : createDataTable({ ...config, columns, visible });
+  // The toolbar's column control acts on a <table> it resolves late, and a
+  // fragment cannot be queried for one -- so it is given the element itself
+  // when there is one, and the document otherwise, which is what the paged
+  // branch leaves behind once its fragment is appended.
+  const table = body instanceof DocumentFragment ? body.querySelector("table") : body;
   fragment.append(
     createTableToolbar({ chips, search, name, columns, visible, table, controlLabel }),
-    table,
+    body,
   );
   return fragment;
 }
