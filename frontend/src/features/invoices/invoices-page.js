@@ -9,11 +9,12 @@ import { getDialogOpener, showAccessibleDialog } from "../../shared/components/a
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
+import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { createPermissionNotice } from "../../shared/components/permission-notice.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
-import { IDENTITY, PRIMARY, SECONDARY, createDataTable, createTableToolbar, defaultVisibleColumns, repaintPreservingFocus, updateFilterChips }
+import { IDENTITY, PRIMARY, SECONDARY, createDataTable, createTablePagination, createTableToolbar, defaultVisibleColumns, repaintPreservingFocus, updateFilterChips }
   from "../../shared/components/data-table.js";
 
 const STATUS_LABELS = Object.freeze({ draft: "پیش‌نویس", awaitingConfirmation: "در انتظار تأیید", confirmed: "تأییدشده", voided: "باطل‌شده", corrected: "اصلاح‌شده" });
@@ -53,7 +54,13 @@ const INVOICE_LINE_COLUMNS = Object.freeze([
 ]);
 
 /** The most the list endpoint will return in one page, and so the most this can
- *  count exactly. `totalItems` is the project's real total either way. */
+ *  count exactly. `totalItems` is the project's real total either way.
+ *
+ *  It is also what «همه» resolves to in the footer below. The register has no
+ *  ceiling -- one row per purchase for the life of a project -- so unlike every
+ *  other table here, "all of it" is not something a page can ask for. The
+ *  footer's own count then reads «۲۰۰ از ۳۰۰۰ سطر», which is the honest
+ *  answer. */
 const SUMMARY_PAGE_SIZE = 200;
 
 function countInvoiceViews(items, totalItems) {
@@ -609,7 +616,14 @@ function renderTable(items, onDetail, visible) {
 export function createInvoicesPage({ context, adapter }) {
   const root = element("div", "invoices-page");
   let state = createRequestState(REQUEST_STATUS.LOADING);
-  const filters = { status: "", query: "", page: 1, pageSize: 50 };
+  // A stored «همه» is this endpoint's maximum, not the word: `getInvoices`
+  // would coerce it to NaN and fall back to 50, which is a different number
+  // from the one the reader chose.
+  // Fifty, not the module's twenty-five: the PRD states the register opens at
+  // fifty rows with a ceiling of two hundred, and that is a decision about this
+  // list rather than a preference of the interface.
+  const storedSize = getRowsPerPage("invoices", 50);
+  const filters = { status: "", query: "", page: 1, pageSize: storedSize === "all" ? SUMMARY_PAGE_SIZE : storedSize };
   // Which chip is pressed, and the counts behind all four. The counts describe
   // the project, not the current view, so they are read once per data change and
   // left alone while the reader moves between chips.
@@ -777,19 +791,28 @@ export function createInvoicesPage({ context, adapter }) {
   function renderListBody(data) {
     const body = element("div", "invoices-list-body");
     const table = renderTable(data.items, showDetail, visibleColumns);
-    const pagination = element("nav", "invoice-pagination");
-    pagination.setAttribute("aria-label", "صفحه‌بندی فاکتورها");
-    const previous = element("button", "button button--ghost", "صفحه قبل");
-    previous.type = "button";
-    previous.disabled = data.page <= 1;
-    previous.addEventListener("click", () => { filters.page = data.page - 1; load(); });
-    const label = element("span", "numeric", `صفحه ${formatDisplayNumber(String(data.page))} از ${formatDisplayNumber(String(data.totalPages))}`);
-    const next = element("button", "button button--ghost", "صفحه بعد");
-    next.type = "button";
-    next.disabled = data.page >= data.totalPages;
-    next.addEventListener("click", () => { filters.page = data.page + 1; load(); });
-    pagination.append(previous, label, next);
-    body.append(table, pagination);
+    /* The one table in this module the server pages. Every other table arrives
+       whole and slices what it already has; here `totalItems` is the register's
+       size and `data.items` is only the page asked for, so both controls send a
+       request rather than re-slicing.
+
+       The size is capped at what the endpoint accepts. `getInvoices` clamps to
+       200 anyway, so «همه» is 200 here and the footer's count says so -- an
+       option that quietly meant something narrower would be worse than one that
+       says what it did. */
+    body.append(table, createTablePagination({
+      name: "invoices",
+      page: data.page,
+      total: data.totalItems ?? data.items.length,
+      pageSize: filters.pageSize,
+      label: "صفحه‌بندی فاکتورها",
+      onPageChange: (next) => { filters.page = next; load(); },
+      onPageSizeChange: (next) => {
+        filters.pageSize = next === "all" ? SUMMARY_PAGE_SIZE : next;
+        filters.page = 1;
+        load();
+      },
+    }));
     return body;
   }
 
