@@ -100,8 +100,8 @@ const RELATED_SUMMARY_KEYS = new Set([
 /* Keyed on the metric rather than on the card's position, so reordering the
    four figures cannot put the wrong mark on a number. */
 const SUMMARY_MARKS = Object.freeze({
-  initialEstimateIrr: "estimateLines",
-  actualCostIrr: "invoices",
+  initialEstimateIrr: "estimateCalculator",
+  actualCostIrr: "registeredCost",
   remainingPhysicalCostIrr: "levelOne",
   actualCostPerSquareMeterIrr: "area",
 });
@@ -341,7 +341,7 @@ function createManagerialComparisonPanel(
   value.textContent =
     deviation === null || deviation === 0n
       ? label
-      : `${formatCompactMoneyFromIrr((deviation < 0n ? -deviation : deviation).toString())} ${label}`;
+      : `${label} ${formatCompactMoneyFromIrr((deviation < 0n ? -deviation : deviation).toString())}`;
   if (deviation !== null && deviation !== 0n)
     value.title = formatTomanFromIrr(
       (deviation < 0n ? -deviation : deviation).toString(),

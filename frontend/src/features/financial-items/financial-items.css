@@ -246,6 +246,13 @@
   inline-size: 11%;
 }
 
+/* Column labels repeated on an open activity row and the values beneath them
+   share one centre line. The identity column keeps its intentional nesting. */
+.estimate-lines-table :is(th, td):not([data-col="identity"]) {
+  text-align: center;
+  vertical-align: middle;
+}
+
 .line-actions .table-action + .table-action {
   margin-inline-start: .35rem;
 }
