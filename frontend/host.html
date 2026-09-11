@@ -20,7 +20,11 @@
      three endpoints. Against the mock server it will say no project is chosen,
      which is the honest answer there.
 -->
-<html lang="fa" dir="rtl" data-theme="dark" style="background:#0a1120">
+<!-- Painted from the token, with the literal only as the pre-stylesheet
+     fallback, so this reference page follows the theme it is stamped with. A
+     real host paints its own ground and stamps its own data-theme; both are
+     here so the page stands alone. -->
+<html lang="fa" dir="rtl" data-theme="dark" style="background:var(--color-surface-page,#0a1120)">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -29,9 +33,9 @@
   <link rel="icon" type="image/svg+xml" href="./public/assets/images/Logo Sign.svg">
   <link rel="stylesheet" href="./src/shared/styles/index.css">
 </head>
-<!-- The host paints its own ground; this inline colour only keeps the reference
-     page readable on its own, and is the first thing to drop when copying. -->
-<body style="background:#0a1120">
+<!-- The host paints its own ground; this only keeps the reference page
+     readable on its own, and is the first thing to drop when copying. -->
+<body style="background:var(--color-surface-page,#0a1120)">
   <!-- The one element the module needs. It renders here, and moves focus here
        after every page change -- which is what tabindex="-1" is for, and what
        tells a screen reader the page changed. -->

@@ -1,10 +1,16 @@
 <!doctype html>
-<!-- The page ground is painted inline so the first frame is already dark.
-     The stylesheet sets it too, from --color-surface-page, but a link element
-     is fetched before it applies: until then the browser paints its own white
-     canvas, which is the flash this removes. The literal matches the dark
-     token in tokens.css; change both together. -->
-<html lang="fa" dir="rtl" data-theme="dark" style="background:#0a1120">
+<!-- The page ground is painted inline so the first frame is already dark: the
+     stylesheet paints it too, but a link element is fetched before it applies,
+     and until then the browser shows its own white canvas.
+
+     It reads the token with the literal only as a fallback. Before the
+     stylesheet arrives the custom property is undefined and the literal paints;
+     after it arrives the property resolves, so switching to the light theme
+     repaints this ground with it instead of leaving a dark frame around a light
+     board. A bare literal here cannot follow a theme, and inline styles win
+     over every stylesheet rule, so it would have been the one colour on the
+     page no theme could change. -->
+<html lang="fa" dir="rtl" data-theme="dark" style="background:var(--color-surface-page,#0a1120)">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,7 +19,7 @@
   <link rel="icon" type="image/svg+xml" href="./public/assets/images/Logo Sign.svg">
   <link rel="stylesheet" href="./src/shared/styles/index.css">
 </head>
-<body data-finance-runtime="standalone" style="background:#0a1120">
+<body data-finance-runtime="standalone" style="background:var(--color-surface-page,#0a1120)">
   <div id="finance-app" class="app-shell">
     <section class="app-workspace">
       <main id="finance-module-root" tabindex="-1"></main>
