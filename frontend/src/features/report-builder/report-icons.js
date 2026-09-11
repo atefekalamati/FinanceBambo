@@ -53,11 +53,59 @@ const PATHS = Object.freeze({
 
 const FALLBACK = PATHS.overview;
 
+/* The overview's large watermarks have their own 64px drawings. They stay out
+   of PATHS so replacing a summary-card icon cannot also replace the smaller
+   report-builder or navigation version of the same concept. */
+const SUMMARY_ICONS = Object.freeze({
+  estimateCalculator: [
+    ["path", { d: "M12 7H35L44 16V35" }],
+    ["path", { d: "M35 7V16H44" }],
+    ["path", { d: "M12 7V51H30" }],
+    ["path", { d: "M19 23H35" }],
+    ["path", { d: "M19 30H32" }],
+    ["path", { d: "M19 37H27" }],
+    ["rect", { x: "31", y: "32", width: "22", height: "25", rx: "4" }],
+    ["rect", { x: "36", y: "37", width: "12", height: "5", rx: "1" }],
+    ["path", { d: "M37 47H39" }],
+    ["path", { d: "M45 47H47" }],
+    ["path", { d: "M37 52H39" }],
+    ["path", { d: "M45 52H47" }],
+  ],
+  registeredCost: [
+    ["rect", { x: "7", y: "14", width: "42", height: "29", rx: "5" }],
+    ["path", { d: "M7 23H49" }],
+    ["path", { d: "M14 34H24" }],
+    ["circle", { cx: "47", cy: "44", r: "11", fill: "#12611d81", stroke: "none" }],
+    ["circle", { cx: "47", cy: "44", r: "11" }],
+    ["path", { d: "M42 44L46 48L53 40" }],
+  ],
+});
+
+function appendSummaryIcon(icon, nodes) {
+  const group = document.createElementNS(SVG_NS, "g");
+  group.setAttribute("stroke", "currentColor");
+  group.setAttribute("stroke-width", "2.8");
+  group.setAttribute("stroke-linecap", "round");
+  group.setAttribute("stroke-linejoin", "round");
+  nodes.forEach(([tag, attributes]) => {
+    const node = document.createElementNS(SVG_NS, tag);
+    Object.entries(attributes).forEach(([name, value]) => node.setAttribute(name, value));
+    group.append(node);
+  });
+  icon.append(group);
+}
+
 export function reportIcon(key) {
   const icon = document.createElementNS(SVG_NS, "svg");
-  icon.setAttribute("viewBox", "0 0 24 24");
+  const summaryIcon = SUMMARY_ICONS[key];
+  icon.setAttribute("viewBox", summaryIcon ? "0 0 64 64" : "0 0 24 24");
+  icon.setAttribute("fill", "none");
   icon.setAttribute("aria-hidden", "true");
   icon.setAttribute("focusable", "false");
+  if (summaryIcon) {
+    appendSummaryIcon(icon, summaryIcon);
+    return icon;
+  }
   (PATHS[key] ?? FALLBACK).forEach((d) => {
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", d);
