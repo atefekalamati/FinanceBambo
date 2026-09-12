@@ -21,11 +21,6 @@ export const SURFACES = Object.freeze({
   REPORT: "report",
 });
 
-export const SURFACE_LABELS = Object.freeze({
-  [SURFACES.OPERATIONS]: "امور مالی",
-  [SURFACES.REPORT]: "گزارش مالی",
-});
-
 /**
  * What opens a surface: any one of the codes listed for it.
  *
@@ -69,8 +64,6 @@ export const ROUTES = Object.freeze([
   // to look and two places to keep agreeing with each other. The routes stay
   // declared so the pages behind them keep their dispatch and their tests, and
   // so turning either back on is one word.
-  { key: "reports", path: "/reports", label: "گزارش وضعیت مالی", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: false },
-  { key: "period-report", path: "/period-report", label: "گزارش دوره‌ای", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: false },
   { key: "level-one", path: "/level-one", label: "گزارش مالی سطح ۱", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
   // Every way a document reaches the ledger sits on one surface: typed by hand,
   // photographed, spoken, or read out of a file by the extractor. امور مالی
@@ -88,8 +81,13 @@ export const ROUTES = Object.freeze([
   { key: "report-builder", path: "/report-builder", label: "گزارش اختصاصی مالی", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
   // The destinations page listed the pages above. With them withdrawn and the
   // strip that opened it gone, it lists nothing anyone cannot already reach.
-  { key: "work-areas", path: "/work-areas", label: "بخش‌های گزارش مالی", permission: "finance.view", surface: SURFACES.REPORT, enabled: false },
-  { key: "report-settings", path: "/report-settings", label: "تنظیمات نمایش", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
+  /* Withdrawn with the bar that held its gear. The settings a reader could
+     change here were the display ones -- which currency to read amounts in, and
+     a read-back of what this account may do -- and neither is worth a page of
+     its own on the customer's surface. What changes the figures lives on امور
+     مالی and always did. Declared and dispatched, offered nowhere: bringing it
+     back is this one word. */
+  { key: "report-settings", path: "/report-settings", label: "تنظیمات نمایش", permission: "finance.view", surface: SURFACES.REPORT, enabled: false },
 ]);
 
 export function routesForSurface(surface) {

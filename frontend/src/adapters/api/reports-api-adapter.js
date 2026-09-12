@@ -147,5 +147,11 @@ export function createApiReportsAdapter(context, client) {
     }
   }
 
+  /* `getSnapshot` is exported although no page calls it yet: it is the read half
+   of an issued report. The write half exists -- `issueSnapshot` freezes one --
+   and the Backend lists and serves them, but no screen was ever built to open
+   one back, so a report could be frozen for ever and never found again. The
+   method stays because it is the piece that half is missing, not a leftover of
+   something removed. See the report-snapshot item in the open list. */
   return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv, getMonthlyTrend, getWbsRollup });
 }

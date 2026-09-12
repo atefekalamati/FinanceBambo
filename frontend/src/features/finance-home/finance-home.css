@@ -88,51 +88,13 @@
   margin: 0;
 }
 
-.finance-project-settings-link {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  min-block-size: 2.5rem;
-  min-inline-size: 2.5rem;
-  padding: .5rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text-secondary);
-  background: var(--app-card-navy);
-  box-shadow: var(--dash-shadow), var(--dash-inner);
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  white-space: nowrap;
-  transition:
-    transform var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard),
-    background var(--duration-fast) var(--ease-standard),
-    box-shadow var(--duration-fast) var(--ease-standard);
-}
 
-.finance-project-settings-link__icon {
-  inline-size: 1.15rem;
-  block-size: 1.15rem;
-}
 
-.finance-project-settings-link:hover {
-  transform: translateY(-1px);
-  border-color: var(--brand-teal);
-  color: var(--color-text-primary);
-  background: color-mix(in srgb, var(--app-card-navy) 92%, var(--brand-teal));
-  box-shadow:
-    var(--dash-shadow),
-    var(--dash-inner),
-    0 0 0 1px rgb(0 136 151 / 12%),
-    0 0 1rem rgb(0 136 151 / 12%);
-}
 
-.finance-project-settings-link:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
+
+
+
+
 
 .finance-home-page .section-heading {
   margin-block: .75rem var(--space-sm);
@@ -166,77 +128,27 @@
    that say least drop out as the room runs out, and the file name — the only
    value with no natural length — truncates rather than pushing anything to a
    second row. */
-.finance-snapshot-provenance {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: clamp(.3rem, .8vw, .8rem);
-  min-inline-size: 0;
-  padding: .4rem clamp(.4rem, 1vw, .85rem);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  background: rgb(4 13 32 / 22%);
-  font-size: clamp(.52rem, 1.55vw, .76rem);
-  line-height: 1.6;
-  white-space: nowrap;
-}
 
-.finance-snapshot-provenance__lead {
-  flex: 0 0 auto;
-  color: var(--brand-teal);
-  font-weight: 700;
-}
 
-.finance-snapshot-provenance__facts {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: clamp(.3rem, .8vw, .8rem);
-  /* Takes the room the picker does not need. Left to shrink freely it was
-     crushed to zero width, and its contents then painted over the picker. */
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  margin: 0;
-}
 
-.finance-snapshot-provenance__fact {
-  display: flex;
-  align-items: baseline;
-  gap: .3em;
-  flex: 0 0 auto;
-  min-inline-size: 0;
-}
+
+
+
+
 
 /* The file name is the one that gives way, because it is the one whose length
    nobody controls. */
-.finance-snapshot-provenance__fact--file {
-  flex: 0 1 auto;
-  overflow: hidden;
-}
+
 
 /* A hairline between facts instead of a bullet, so a fact that drops out at a
    narrower width leaves no orphaned separator behind. */
-.finance-snapshot-provenance__fact + .finance-snapshot-provenance__fact {
-  padding-inline-start: clamp(.3rem, .8vw, .8rem);
-  border-inline-start: 1px solid var(--color-border-subtle);
-}
 
-.finance-snapshot-provenance__fact dt {
-  flex: 0 0 auto;
-  color: var(--color-text-muted);
-}
 
-.finance-snapshot-provenance__fact dd {
-  margin: 0;
-  min-inline-size: 0;
-  overflow: hidden;
-  font-weight: 700;
-  text-overflow: ellipsis;
-}
 
-.finance-snapshot-provenance__label--short {
-  display: none;
-}
+
+
+
+
 
 /* Written against .app-select as well as the strip's own class, because the
    shared control carries `min-width: 150px` — a third of a phone screen, and
@@ -255,9 +167,7 @@
 
 /* Sits below the strip, not in it, and only when the service used a snapshot
    other than the one that was asked for. */
-.finance-snapshot-provenance__notice {
-  margin: 0;
-}
+
 
 /* Each tier gives up the fact that says least, in order. */
 @media (max-width: 80rem) {
@@ -2111,33 +2021,11 @@ a.finance-variance-card__link:hover {
 
 /* --- row 0: the basis, full width, settings inside it ------------------- */
 
-.finance-basis {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-sm) var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--app-card-navy);
-  box-shadow: var(--dash-shadow), var(--dash-inner);
-}
 
-.finance-basis > .finance-snapshot-provenance {
-  flex: 1 1 22rem;
-  min-inline-size: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-}
 
-.finance-basis__meta {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-inline-start: auto;
-}
+
+
+
 
 /* The way off this page sits in the basis bar beside the gear. It is a link,
    not a button: a button's padding and border would make another box in a bar
@@ -2147,21 +2035,9 @@ a.finance-variance-card__link:hover {
    the run of words and the icon get their own separation. Two links used to sit
    here; the second crossed into امور مالی and that surface is reached from the
    host's sidebar now, so the sibling gap that told them apart went with it. */
-.finance-basis__link:last-of-type {
-  margin-inline-end: .35rem;
-}
 
-.finance-basis__link {
-  flex: 0 0 auto;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  text-decoration: none;
-  white-space: nowrap;
-}
+
+
 
 /* --- the cumulative curve card ----------------------------------------- */
 

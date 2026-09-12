@@ -61,12 +61,8 @@
     color: #000;
   }
 
-  /* Direction still has to read on paper, so the two verdicts keep a colour —
-     darkened until it survives greyscale. */
-  .period-change--up { color: #8a4b00 !important; }
-  .period-change--down { color: #14532d !important; }
-
-  .period-change--unknown,
+  /* Direction still has to read on paper, so an unavailable figure keeps a
+     colour — darkened until it survives greyscale. */
   .money-display--unavailable {
     color: #555 !important;
   }
@@ -140,58 +136,4 @@
     break-inside: avoid;
   }
 
-  /* ── Period report ──────────────────────────────────────────────────────
-     What prints is the report, not the tool that made it: the builder, the
-     page's own heading and the export buttons all belong to the screen. */
-  .period-builder,
-  .period-report-topbar,
-  .period-report-actions,
-  .period-report-header__note {
-    display: none !important;
-  }
-
-  .period-report-header,
-  .period-report-page > .report-section,
-  .period-report-output > .report-section {
-    padding: 0;
-    border: none;
-    box-shadow: none;
-    break-inside: auto;
-  }
-
-  .period-report-header {
-    padding-block-end: 2mm;
-    border-block-end: .4pt solid #000;
-    margin-block-end: 3mm;
-  }
-
-
-
-
-  /* On paper the cards would waste a page; the table they exist alongside says
-     the same thing in a quarter of the space, so it comes out of hiding. */
-  .period-metric-grid {
-    display: none;
-  }
-
-  .period-metric-table {
-    position: static;
-    inline-size: auto;
-    block-size: auto;
-    margin: 0;
-    overflow: visible;
-    clip: auto;
-    white-space: normal;
-  }
-
-  .period-report-output > .report-section {
-    break-inside: avoid;
-    margin-block-end: 3mm;
-  }
-
-  .period-invoice-total {
-    padding: 1.5mm 2mm;
-    border: .4pt solid #000;
-    background: none;
-  }
 }

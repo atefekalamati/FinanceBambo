@@ -334,9 +334,7 @@
   background: color-mix(in srgb, var(--brand-teal) 9%, var(--color-surface-canvas));
 }
 
-.activity-cell--continued {
-  padding-block: .2rem;
-}
+
 
 /* Says which rows the table is not showing. Quiet, and above the table it
    qualifies, because a reader who misses it reads a partial table as a whole one. */
