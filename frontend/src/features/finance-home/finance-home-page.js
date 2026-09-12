@@ -434,20 +434,6 @@ const SNAPSHOT_SOURCE_LABELS = Object.freeze({
 export function logSnapshotProvenance({ selected, report }) {
   if (!selected) return null;
   const answered = report?.progressSnapshotId ?? null;
-  console.info("[BAMBO Finance] مبنای محاسبه گزارش مالی", {
-    "مبنای محاسبه": "نسخه پیشرفت پروژه",
-    "نسخه": selected.version == null
-      ? null
-      : `${formatDisplayNumber(String(selected.version))}${selected.isLatest ? " (آخرین)" : ""}`,
-    "تاریخ گزارش نسخه": formatBusinessDate(selected.reportingDate),
-    "منبع": SNAPSHOT_SOURCE_LABELS[selected.sourceType] ??
-      (selected.sourceType == null ? null : "منبع ثبت‌نشده"),
-    "وضعیت": SNAPSHOT_STATUS_LABELS[selected.status] ?? "نامشخص",
-    "فایل مبدأ": selected.sourceFileNameSafe ?? null,
-    "ورود به سیستم": formatSystemDateTime(selected.importedAt),
-    "شناسه نسخه انتخاب‌شده": selected.progressSnapshotId,
-    "شناسه نسخه استفاده‌شده در گزارش": answered,
-  });
   if (answered && answered !== selected.progressSnapshotId) {
     console.warn(
       "[BAMBO Finance] نسخه پاسخ سرویس با نسخه انتخاب‌شده یکسان نیست.",

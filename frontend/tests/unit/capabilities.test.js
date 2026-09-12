@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { capabilitiesFor, describeAccess, FINANCE_PERMISSIONS } from "../../src/core/auth/capabilities.js";
 import { buildPricesCsv, pricesFileName } from "../../src/features/prices/prices-csv.js";
 import { buildEstimateLinesCsv } from "../../src/features/financial-items/financial-items-csv.js";
+import { csvCell } from "../../src/shared/exports/csv.js";
 
 const featuresDir = fileURLToPath(new URL("../../src/features/", import.meta.url));
 const featureFiles = readdirSync(featuresDir, { withFileTypes: true })
@@ -188,4 +189,31 @@ test("no write control is offered disabled with an excuse instead of withheld", 
     if (name.startsWith("ai-review/")) return; // whole page is an upload; it says so once, in a notice.
     assert.doesNotMatch(source, /بدون مجوز/, `${name} still offers a disabled control with a permission excuse`);
   });
+});
+
+test("a spreadsheet reads an exported cell as a value, never as an instruction", () => {
+  // Excel, LibreOffice and Sheets treat a cell opening with = + - @ as a
+  // formula, and CSV quoting does not stop them: the quotes belong to the CSV
+  // parser and are gone before the formula detector looks. An item named
+  // `=HYPERLINK(...)` — a name a colleague can type into the module — would
+  // otherwise become a live link in whoever opens the export.
+  assert.equal(csvCell('=HYPERLINK("http://evil","x")'), '"\'=HYPERLINK(""http://evil"",""x"")"');
+  assert.equal(csvCell("=cmd|calc"), "'=cmd|calc");
+  assert.equal(csvCell("+1+1"), "'+1+1");
+  assert.equal(csvCell("@SUM(A1)"), "'@SUM(A1)");
+  // Tab and CR open one too, and both can arrive inside a pasted name.
+  assert.equal(csvCell("\t=1"), "'\t=1");
+});
+
+test("a number in an export is still a number", () => {
+  // `-` opens a formula and also opens every negative amount here: a reversal's
+  // effect, a downward revision, a variance below the estimate. Guarding those
+  // would turn a column of money into captions and break every SUM in the sheet
+  // this export exists to feed.
+  assert.equal(csvCell("-5000"), "-5000");
+  assert.equal(csvCell("-12.50"), "-12.50");
+  assert.equal(csvCell("+9"), "+9");
+  assert.equal(csvCell("1234567"), "1234567");
+  // And the exact-rial rule the exports are built on is unaffected.
+  assert.equal(csvCell("293904958"), "293904958");
 });

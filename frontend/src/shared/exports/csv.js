@@ -11,10 +11,35 @@
 const BOM = "﻿";
 const CRLF = "\r\n";
 
+/**
+ * A cell a spreadsheet reads as a value, never as an instruction.
+ *
+ * Excel, LibreOffice and Sheets all treat a cell opening with `=`, `+`, `-` or
+ * `@` as a formula, and CSV quoting does not stop them: the quotes belong to the
+ * CSV parser and are gone before the formula detector looks. So an item named
+ * `=HYPERLINK("http://…","اینجا")` -- a name a colleague can type into the
+ * module and nobody would query -- becomes a live link in the workbook of
+ * whoever opens the export.
+ *
+ * The guard is a leading apostrophe, which every one of them reads as "the rest
+ * is text" and none of them prints.
+ *
+ * WHY A NUMBER IS LEFT ALONE
+ * `-` opens a formula and also opens every negative amount in this module: a
+ * reversal's effect, a downward revision, a variance below the estimate.
+ * Guarding those would turn a column of money into a column of captions and
+ * break every SUM in the sheet the export exists to feed -- which is the whole
+ * reason money is written here as the exact integer rial rather than the
+ * compacted form on screen. A plain number, signed or not, stays a number.
+ */
+const FORMULA_LEAD = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^[-+]?\d+(\.\d+)?$/;
+
 export function csvCell(value) {
   if (value === null || value === undefined) return "";
   const text = String(value);
-  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  const guarded = FORMULA_LEAD.test(text) && !PLAIN_NUMBER.test(text) ? `'${text}` : text;
+  return /[",\r\n]/.test(guarded) ? `"${guarded.replaceAll('"', '""')}"` : guarded;
 }
 
 export function csvRow(values) {
