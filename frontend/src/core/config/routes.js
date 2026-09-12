@@ -42,27 +42,28 @@ export const SURFACES = Object.freeze({
  * report". Any one of a surface's codes opens it; the routes inside then answer
  * for themselves.
  *
- * WHY finance.view IS ON THE REPORT DOOR
- * Because the paragraph above promises it. «Reading is never taken away; it is moved to
- * the surface built for reading» is the whole reason امور مالی may close on an account
- * that cannot edit -- the reader is supposed to land here instead, on the read-only
- * twins this door was widened to carry.
+ * WHY finance.view IS NOT ON THE REPORT DOOR
+ * Decision pack D-1, decided by the product owner on 2026-09-12: «each surface has its
+ * own permission». کارشناس متره و برآورد works inside امور مالی and must not be handed
+ * گزارش مالی along with it -- and holding finance.view is exactly how that used to
+ * happen, because reading the figures is something that account needs to do its own job.
  *
- * It was dropped by accident. The door used to be the single code `finance.view`; the
- * commit that let an invoice recorder in replaced it with a list and wrote
- * `finance_report.view` where `finance.view` had been. Adding the invoice code was the
- * point and is recorded; removing the reader's was neither. Measured afterwards, an
- * account holding finance.view alone was refused at BOTH doors: it could still read
- * every figure through the API and could open no page at all, and each refusal offered
- * it a button to the other closed door.
+ * This door was briefly `finance.view` alone, then a list with finance.view in it, and
+ * the measurement behind that second version is worth keeping: an account holding
+ * finance.view and nothing else was refused at BOTH doors, could read every figure
+ * through the API, could open no page at all, and was offered a button to the other
+ * closed door at each refusal. That is a real failure and it has not gone away -- what
+ * changed is what it means. It is now a misconfiguration rather than a supported state:
+ * a reader is given finance_report.view, which is the door to the surface built for
+ * reading, and finance.view is what lets them see figures once inside.
  *
- * The three codes answer three separate needs and none implies another. The routes
- * inside still carry their own permission, so this opens the surface and grants nothing:
- * گزارش مالی سطح ۱ and the report builder keep asking for finance_report.view.
+ * The codes answer separate needs and none implies another. The routes inside still
+ * carry their own permission, so this opens the surface and grants nothing: گزارش مالی
+ * سطح ۱ and the report builder keep asking for finance_report.view.
  */
 export const SURFACE_REQUIREMENTS = Object.freeze({
   [SURFACES.OPERATIONS]: Object.freeze(["finance.edit"]),
-  [SURFACES.REPORT]: Object.freeze(["finance.view", "finance_report.view", "finance.manage_invoice"]),
+  [SURFACES.REPORT]: Object.freeze(["finance_report.view", "finance.manage_invoice"]),
 });
 
 export const ROUTES = Object.freeze([
