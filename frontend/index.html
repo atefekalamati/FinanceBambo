@@ -18,6 +18,38 @@
   <title>مالی | BAMBO</title>
   <link rel="icon" type="image/svg+xml" href="./public/assets/images/Logo Sign.svg">
   <link rel="stylesheet" href="./src/shared/styles/index.css">
+
+  <!-- The leaves of the module graph, fetched from the first byte of HTML
+       instead of from the fourth round trip.
+
+       A browser cannot ask for a module until it has downloaded AND parsed the
+       one importing it, so a 104-module graph arrives in waves: measured here,
+       six of them, the last starting 260ms after the first. These twelve are
+       the most-imported files in the module — elements.js alone is pulled in by
+       34 others — and every one of them was discovered in the last two waves,
+       because they are leaves and nothing points at them until a feature page
+       has been read.
+
+       Preloading them collapses those waves: the fetch starts with the HTML and
+       the module that needs it finds it already in the cache. No bundler, no
+       build step, no CDN — the Integration Kit forbids all three, and this is
+       none of them, only the same files asked for earlier.
+
+       Order is by how many modules import each, so the highest-fanout leaf is
+       requested first. Keep this list short: preloading a module that is not
+       needed on first paint costs bandwidth the critical path wanted. -->
+  <link rel="modulepreload" href="./src/shared/dom/elements.js">
+  <link rel="modulepreload" href="./src/shared/formatters/display.js">
+  <link rel="modulepreload" href="./src/shared/formatters/money.js">
+  <link rel="modulepreload" href="./src/shared/preferences/currency-preference.js">
+  <link rel="modulepreload" href="./src/shared/errors/error-presentation.js">
+  <link rel="modulepreload" href="./src/core/state/request-state.js">
+  <link rel="modulepreload" href="./src/core/api/api-error.js">
+  <link rel="modulepreload" href="./src/shared/components/page-state.js">
+  <link rel="modulepreload" href="./src/shared/dates/persian-date.js">
+  <link rel="modulepreload" href="./src/core/config/routes.js">
+  <link rel="modulepreload" href="./src/shared/constants/currency.js">
+  <link rel="modulepreload" href="./src/core/auth/capabilities.js">
 </head>
 <body data-finance-runtime="standalone" style="background:var(--color-surface-page,#0a1120)">
   <div id="finance-app" class="app-shell">
