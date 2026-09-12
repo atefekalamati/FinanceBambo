@@ -348,6 +348,51 @@ a.vgroup__name:focus-visible {
   font-weight: 800;
 }
 
+/* --- an estimate that is a subtotal ------------------------------------- */
+
+/*
+ * The same severity colour the unattributed notice uses, because it is the same
+ * kind of statement: money the page can account for, next to money it cannot.
+ */
+.level-one-partial {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid color-mix(in srgb, var(--dash-sev-med) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--dash-sev-med) 8%, transparent);
+}
+
+.level-one-partial h3 {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.level-one-partial p {
+  flex: 1 1 18rem;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+}
+
+.level-one-totals__card[data-partial="true"] {
+  border-color: color-mix(in srgb, var(--dash-sev-med) 45%, transparent);
+}
+
+.level-one-totals__note {
+  color: var(--dash-sev-med);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+.level-one-table td[data-partial="true"] {
+  color: var(--color-text-muted);
+}
+
 /* --- tables ------------------------------------------------------------ */
 
 .level-one-table tr[data-state="over"] td {

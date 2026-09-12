@@ -116,6 +116,9 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null } = {}) 
     // at nothing looks like — two different facts wearing one picture.
     const statedEstimate = exactInteger(node.initialEstimateIrr);
     const estimate = statedEstimate ?? 0n;
+    // Lines of this phase that state no baseline. The estimate beside it is the sum
+    // of the rest, so the two numbers only mean anything together.
+    const missingEstimateLines = Number(node.missingEstimateLineCount ?? 0) || 0;
     const revised = node.revisedEstimateIrr == null ? estimate : amount(node.revisedEstimateIrr);
     const actual = amount(node.actualCostIrr);
     const forecast = amount(node.forecastFinalIrr);
@@ -128,6 +131,8 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null } = {}) 
       activityCount: node.activityCount ?? 0,
       childCount: node.childCount ?? 0,
       hasChildren: (node.childCount ?? 0) > 0,
+      missingEstimateLineCount: missingEstimateLines,
+      estimateIsPartial: statedEstimate !== null && missingEstimateLines > 0,
       initialEstimateIrr: statedEstimate === null ? null : String(estimate),
       revisedEstimateIrr: statedEstimate === null && node.revisedEstimateIrr == null
         ? null : String(revised),
@@ -150,6 +155,8 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null } = {}) 
   });
 
   const sum = (key) => rows.reduce((result, row) => result + amount(row[key]), 0n);
+  const missingEstimateLines = rows.reduce(
+    (result, row) => result + row.missingEstimateLineCount, 0);
   // A total is only a total when every phase is in it. With one phase unavailable the
   // sum is a subtotal, and publishing it under "برآورد اولیه مراحل" would understate the
   // project by however much the missing phases hold.
@@ -170,6 +177,10 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null } = {}) 
       forecastFinalIrr: String(sum("forecastFinalIrr")),
       consumedPercent: totalEstimate === null ? null : percentText(totalActual, totalEstimate),
       activityCount: rows.reduce((result, row) => result + (row.activityCount ?? 0), 0),
+      // The project-wide version of the same qualification. A total that adds up
+      // across every phase can still be missing lines inside them.
+      missingEstimateLineCount: missingEstimateLines,
+      estimateIsPartial: totalEstimate !== null && missingEstimateLines > 0,
     }),
     /**
      * Cost that reaches no phase at all.

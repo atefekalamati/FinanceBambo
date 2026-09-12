@@ -122,6 +122,9 @@ export function createApiReportsAdapter(context, client) {
           activityCount: node.activityCount ?? 0,
           childCount: node.childCount ?? 0,
           estimateLineCount: node.estimateLineCount ?? null,
+          // Of those lines, how many state no baseline. Without it the estimate below
+          // is a subtotal nobody can tell apart from a total.
+          missingEstimateLineCount: node.missingEstimateLineCount ?? 0,
           calculationStatus: node.calculationStatus ?? null,
           weight: node.weight == null ? null : String(node.weight),
           progressPercent: node.progressPercent == null ? null : String(node.progressPercent),

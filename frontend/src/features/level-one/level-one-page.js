@@ -75,6 +75,26 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
     return card;
   }
 
+  /**
+   * What the estimate on this page does NOT include.
+   *
+   * The service reports the sum of the lines that state a baseline, and says how
+   * many it could not include. Those two facts have to arrive together: the figure
+   * alone is a smaller number wearing the name of the whole, which is exactly the
+   * reason it used to be withheld entirely — and withholding it hid the estimate
+   * that WAS stated, which was most of it.
+   */
+  function renderPartialEstimateNotice(view) {
+    if (!view.totals?.estimateIsPartial) return null;
+    const count = formatDisplayNumber(String(view.totals.missingEstimateLineCount));
+    const notice = element("aside", "level-one-partial");
+    notice.append(
+      element("h3", "", "برآورد ناقص است"),
+      element("p", "", `${count} ردیف برآوردی مبلغ اولیه‌ای ثبت نکرده‌اند و در ارقام «برآورد اولیه» این صفحه نیامده‌اند. آنچه می‌بینید جمع ردیف‌هایی است که برآورد دارند، نه کل برآورد پروژه.`),
+    );
+    return notice;
+  }
+
   function renderTotals(view) {
     const grid = element("div", "level-one-totals");
     [
@@ -88,6 +108,13 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
         kind === "text" ? value : formatCompactMoneyFromIrr(value));
       if (kind !== "text") figure.title = formatTomanFromIrr(value);
       card.append(figure, element("span", "level-one-totals__label", label));
+      // The estimate card is the one figure on this grid that can be a subtotal, so
+      // it is the one that has to say so where it is read, not only in the notice.
+      if (label === "برآورد اولیه مراحل" && view.totals.estimateIsPartial) {
+        card.dataset.partial = "true";
+        card.append(element("span", "level-one-totals__note",
+          `ناقص — ${formatDisplayNumber(String(view.totals.missingEstimateLineCount))} ردیف بدون برآورد`));
+      }
       grid.append(card);
     });
     return grid;
@@ -115,7 +142,12 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
     const wrapper = element("div", "table-scroll");
     const table = element("table", "data-table level-one-table");
     const columns = ["کد", "عنوان", "تعداد فعالیت", "برآورد اولیه", "هزینه واقعی", "نسبت به برآورد", "پیش‌بینی نهایی"];
-    table.append(tableCaption(caption), tableHead(columns));
+    const marked = view.rows.some((row) => row.estimateIsPartial);
+    table.append(
+      tableCaption(marked
+        ? `${caption} — ٭ یعنی برآورد این مرحله ناقص است و ردیف‌های بدون برآورد در آن نیامده‌اند`
+        : caption),
+      tableHead(columns));
     const body = document.createElement("tbody");
     view.rows.forEach((row) => {
       const record = document.createElement("tr");
@@ -132,7 +164,12 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       const cells = [
         row.title,
         formatDisplayNumber(String(row.activityCount)),
-        formatCompactMoneyFromIrr(row.initialEstimateIrr),
+        // A phase whose estimate is a subtotal is marked in the cell itself. The
+        // mark is explained in the table's caption and in the notice above it, so
+        // it is never the only thing a reader has to go on.
+        row.estimateIsPartial
+          ? `${formatCompactMoneyFromIrr(row.initialEstimateIrr)}٭`
+          : formatCompactMoneyFromIrr(row.initialEstimateIrr),
         formatCompactMoneyFromIrr(row.actualCostIrr),
         row.hasEstimate ? percent(row.consumedPercent) : "—",
         formatCompactMoneyFromIrr(row.forecastFinalIrr),
@@ -143,6 +180,10 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
         cell.textContent = text;
         if (index === 2 || index === 3 || index === 5) {
           cell.title = formatTomanFromIrr([row.initialEstimateIrr, row.actualCostIrr, row.forecastFinalIrr][index === 2 ? 0 : index === 3 ? 1 : 2]);
+        }
+        if (index === 2 && row.estimateIsPartial) {
+          cell.dataset.partial = "true";
+          cell.title = `${cell.title} — ${formatDisplayNumber(String(row.missingEstimateLineCount))} ردیف این مرحله برآورد اولیه ندارند و در این مبلغ نیستند`;
         }
         record.append(cell);
       });
@@ -203,6 +244,8 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
         ariaLabel: "نمودار هزینه واقعی هر مرحله در برابر برآورد اولیه همان مرحله",
       }));
       fragment.append(renderTotals(topView), chartCard);
+      const partial = renderPartialEstimateNotice(topView);
+      if (partial) fragment.append(partial);
       if (topView.unattributed) fragment.append(renderUnattributed(topView));
       fragment.append(renderTable(topView, { caption: "هزینه مراحل سطح ۱", linked: true }));
       return fragment;
@@ -213,7 +256,10 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       fragment.append(element("p", "inline-notice", "این مرحله در ساختار پروژه پیدا نشد."));
       return fragment;
     }
-    fragment.append(renderTotals(buildWbsView({ nodes: [rawOf(data.top.nodes, wbsCode)] })));
+    const parentView = buildWbsView({ nodes: [rawOf(data.top.nodes, wbsCode)] });
+    fragment.append(renderTotals(parentView));
+    const parentPartial = renderPartialEstimateNotice(parentView);
+    if (parentPartial) fragment.append(parentPartial);
 
     const childView = buildWbsView({ nodes: data.children?.nodes ?? [] });
     const childCard = element("section", "level-one-card");

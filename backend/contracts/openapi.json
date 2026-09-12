@@ -3089,6 +3089,11 @@
           "metrics": {
             "$ref": "#/components/schemas/LiveMetrics"
           },
+          "missingEstimateLineCount": {
+            "default": 0,
+            "title": "Missingestimatelinecount",
+            "type": "integer"
+          },
           "missingPriceCount": {
             "default": 0,
             "title": "Missingpricecount",
@@ -3446,6 +3451,11 @@
           },
           "metrics": {
             "$ref": "#/components/schemas/LiveMetrics"
+          },
+          "missingEstimateLineCount": {
+            "default": 0,
+            "title": "Missingestimatelinecount",
+            "type": "integer"
           },
           "missingPriceCount": {
             "default": 0,
@@ -5250,7 +5260,7 @@
       },
       "TypeBreakdown": {
         "additionalProperties": false,
-        "description": "One resource type's share, with the same nullability as the totals above it.\n\n`initialEstimateIrr` and `revisedEstimateIrr` were already nullable here, because a row\nbuilt from some of its lines is not that row's total. The two figures DERIVED from them\nwere not, and that was an inconsistency rather than a decision: whenever the estimate\nbehind a row is unknown, the remaining cost and the forecast computed from it are\nunknown too, and the response could not say so -- it raised a validation error instead\nof publishing \"-\". `LiveMetrics` and `WbsNode` both already carry the null; this row now\nagrees with them.\n\nNullable is not the same as defaulted. `calculate_live_report` always states both\nfigures for a row it could compute, so a null here means the calculation said so.",
+        "description": "One resource type's share, with the same nullability as the totals above it.\n\n`initialEstimateIrr` and `revisedEstimateIrr` are nullable, and the two figures DERIVED\nfrom them are too -- whenever the estimate behind a row is unknown, the remaining cost\nand the forecast computed from it are unknown as well, and the response has to be able\nto say so rather than raise a validation error. `LiveMetrics` and `WbsNode` both carry\nthe same null.\n\nA row with lines that state no baseline is NOT one of those cases. It publishes the sum\nof the lines that do state one, `missingEstimateLineCount` says how many it could not\ninclude, and `calculationStatus` is `incomplete`. A subtotal a reader can see and\nqualify beats a blank they can only wonder about -- and the blank was reaching them for\nequipment, which this file states no price for anywhere, so the material estimate on the\nsame row disappeared with it.\n\nNullable is not the same as defaulted. `calculate_live_report` always states both\nfigures for a row it could compute, so a null here means the calculation said so.",
         "properties": {
           "actualCostIrr": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -5294,6 +5304,11 @@
               }
             ],
             "title": "Initialestimateirr"
+          },
+          "missingEstimateLineCount": {
+            "default": 0,
+            "title": "Missingestimatelinecount",
+            "type": "integer"
           },
           "remainingPhysicalCostIrr": {
             "anyOf": [
@@ -5501,6 +5516,11 @@
               }
             ],
             "title": "Initialestimateirr"
+          },
+          "missingEstimateLineCount": {
+            "default": 0,
+            "title": "Missingestimatelinecount",
+            "type": "integer"
           },
           "moneyRequiredIrr": {
             "anyOf": [

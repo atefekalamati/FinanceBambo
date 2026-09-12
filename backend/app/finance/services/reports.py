@@ -212,9 +212,9 @@ class FinanceLiveReportService:
 
     async def live(self,scope,reporting_date:date,progress_snapshot_id=None):
         report,_data,snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
-        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"host_snapshot_id":snapshot.get("host_snapshot_id"),"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality}
+        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"host_snapshot_id":snapshot.get("host_snapshot_id"),"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"missing_estimate_line_count":report.missing_estimate_line_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality}
 
-    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","host_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","excluded_estimate_line_count","progress_quality")
+    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","host_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","missing_estimate_line_count","excluded_estimate_line_count","progress_quality")
 
     async def overview(self,scope,reporting_date:date,progress_snapshot_id=None):
         """Project the live report down to the operational fields finance.view may read."""
@@ -273,9 +273,11 @@ class FinanceLiveReportService:
                                               data["gross_area"])
             node_report=require_estimate_coverage(node_report,data.get("estimate_coverage_known",True))
             metrics=node_report.metrics
-            # One unknown type makes the node's revised estimate unknown. Skipping the
-            # None entries instead would publish the sum of the types that happened to be
-            # estimated, under the name of the node's whole revised estimate.
+            # Still null when a type's revised estimate is genuinely unknowable -- a past
+            # reporting date whose estimate coverage cannot be proven nulls every type, and
+            # a sum over that would be a number with no meaning. A type with SOME unestimated
+            # lines is a different thing and no longer arrives as None: it arrives as the
+            # subtotal of the lines that state a baseline, counted by the field below.
             revised_parts=[entry["revisedEstimateIrr"] for entry in node_report.breakdown]
             revised=(None if any(part is None for part in revised_parts)
                      else sum(revised_parts, wbs_tree.ZERO))
@@ -287,6 +289,7 @@ class FinanceLiveReportService:
                 "activity_count":len(node["activityCodes"]),
                 "child_count":len(node["children"]),
                 "estimate_line_count":len(rows),
+                "missing_estimate_line_count":node_report.missing_estimate_line_count,
                 "initial_estimate_irr":metrics["initialEstimateIrr"],
                 "revised_estimate_irr":revised,
                 "actual_cost_irr":metrics["actualCostIrr"],
@@ -389,7 +392,7 @@ class FinanceLiveReportService:
             "topPriceVariances":report.price_variances,"topQuantityVariances":report.quantity_variances,
             "priceVariances":report.all_price_variances,"quantityVariances":report.all_quantity_variances,
             "calculationStatus":report.calculation_status,"incompleteMetricKeys":report.incomplete_metric_keys,
-            "missingPriceCount":report.missing_price_count,"excludedEstimateLineCount":report.excluded_estimate_line_count,
+            "missingPriceCount":report.missing_price_count,"missingEstimateLineCount":report.missing_estimate_line_count,"excludedEstimateLineCount":report.excluded_estimate_line_count,
             "excludedEstimateLineIds":report.excluded_estimate_line_ids,"progressQuality":report.progress_quality,"warnings":report.warnings})
         await self.repo.issue(scope,value,payload,self.ids())
         return self._response(scope,value)

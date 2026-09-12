@@ -56,6 +56,48 @@ test("a phase with no estimate reports nothing rather than nothing spent", () =>
   assert.equal(view.rows[0].deviationIrr, null);
 });
 
+test("a phase missing some of its lines reports a subtotal that says so", () => {
+  // The service sums the lines that state a baseline and counts the ones it could not
+  // include. The figure alone is a smaller number wearing the name of the whole, so the
+  // row has to carry the count with it or the page has nothing to qualify it with.
+  const view = buildWbsView({
+    nodes: [node("1.5", 1000, 400, { missingEstimateLineCount: 62 })],
+  });
+  assert.equal(view.rows[0].initialEstimateIrr, "1000");
+  assert.equal(view.rows[0].missingEstimateLineCount, 62);
+  assert.equal(view.rows[0].estimateIsPartial, true);
+});
+
+test("a phase with every line estimated is not marked partial", () => {
+  const view = buildWbsView({ nodes: [node("1.5", 1000, 400)] });
+  assert.equal(view.rows[0].missingEstimateLineCount, 0);
+  assert.equal(view.rows[0].estimateIsPartial, false);
+  assert.equal(view.totals.estimateIsPartial, false);
+});
+
+test("the project total counts every phase's missing lines", () => {
+  const view = buildWbsView({
+    nodes: [node("1.5", 1000, 400, { missingEstimateLineCount: 62 }),
+            node("1.7", 2000, 900, { missingEstimateLineCount: 64 }),
+            node("1.6", 500, 100)],
+  });
+  assert.equal(view.totals.initialEstimateIrr, "3500", "the phases that stated one still sum");
+  assert.equal(view.totals.missingEstimateLineCount, 126);
+  assert.equal(view.totals.estimateIsPartial, true);
+});
+
+test("a phase whose estimate is unknowable stays null rather than partial", () => {
+  // Different gap, different answer: a reporting date whose estimate coverage cannot be
+  // proven withholds the figure entirely, and there is no subtotal to qualify.
+  const view = buildWbsView({
+    nodes: [node("1.5", 0, 400, { initialEstimateIrr: null, missingEstimateLineCount: 0 })],
+  });
+  assert.equal(view.rows[0].initialEstimateIrr, null);
+  assert.equal(view.rows[0].estimateIsPartial, false);
+  assert.equal(view.totals.initialEstimateIrr, null);
+  assert.equal(view.totals.estimateIsPartial, false);
+});
+
 test("cost that reaches no phase is carried, not dropped", () => {
   const view = buildWbsView({
     nodes: [node("1.1", 1000, 600), node("1.2", 1000, 400)],
