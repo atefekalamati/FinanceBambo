@@ -12,15 +12,18 @@ class PsycopgInvoiceRepository:
   return "similar"
  async def are_general_costs(self,s,resource_ids):
   unique=set(resource_ids)
-  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT id FROM finance_resources WHERE organization_id=%s AND project_id=%s AND resource_type='general_cost' AND id=ANY(%s)",(s.organization_id,s.project_id,list(unique)));rows=await c.fetchall()
+  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT id FROM finance_resources WHERE organization_id=%s AND project_id=%s AND resource_type='general_cost' AND deleted_at IS NULL AND id=ANY(%s)",(s.organization_id,s.project_id,list(unique)));rows=await c.fetchall()
   return {r["id"] for r in rows}==unique
+ # A soft-deleted resource or estimate line is deleted. Without the filter these two
+ # checks accepted one, and an invoice line could be written against a record the
+ # rest of the module has already stopped reading -- a link nothing would resolve.
  async def valid_line_links(self,s,lines):
   async with self.db.cursor(row_factory=dict_row) as c:
    for line in lines:
     if line.estimate_line_id is None:
-     await c.execute("SELECT EXISTS(SELECT 1 FROM finance_resources WHERE organization_id=%s AND project_id=%s AND id=%s AND resource_type='general_cost') ok",(s.organization_id,s.project_id,line.resource_id))
+     await c.execute("SELECT EXISTS(SELECT 1 FROM finance_resources WHERE organization_id=%s AND project_id=%s AND id=%s AND resource_type='general_cost' AND deleted_at IS NULL) ok",(s.organization_id,s.project_id,line.resource_id))
     else:
-     await c.execute("SELECT EXISTS(SELECT 1 FROM estimate_lines WHERE organization_id=%s AND project_id=%s AND id=%s AND resource_id=%s) ok",(s.organization_id,s.project_id,line.estimate_line_id,line.resource_id))
+     await c.execute("SELECT EXISTS(SELECT 1 FROM estimate_lines WHERE organization_id=%s AND project_id=%s AND id=%s AND resource_id=%s AND deleted_at IS NULL) ok",(s.organization_id,s.project_id,line.estimate_line_id,line.resource_id))
     if not (await c.fetchone())["ok"]:return False
   return True
  async def list(self,s,page,page_size,query=None,status=None,source=None,invoice_date_from=None,invoice_date_to=None):
