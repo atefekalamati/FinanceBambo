@@ -49,13 +49,20 @@ MPP_IDENTITY = revision("0013_finance_mpp_source_identity")
 REPORTING_DATE = revision("0014_mpp_reporting_date")
 ASSIGNMENT_FACTS = revision("0015_finance_mpp_assignment_facts")
 ESTIMATE_BASIS = revision("0016_finance_mpp_estimate_basis")
+SNAPSHOT_STATUS = revision("0017_snapshot_status_check")
+MPP_FIXED_COST = revision("0019_finance_mpp_fixed_cost")
 
 #: The chain, oldest first. Order is part of the contract: 0004 backfills rows that 0001
 #: created, and 0005 alters a table 0001 defined.
+#:
+#: The jump from 0017 to 0019 is deliberate and documented in 0019 itself: 0018 belongs to
+#: a correction of 0017 written on another branch and not merged here. Taking the number
+#: would have given two revisions one id, which Alembic refuses outright.
 CHAIN = (CORE, CONFIRMATION, LINKED, REPORT, SOURCE, HOST_REFERENCE, MSP_RESOURCES,
          PRICE_INTELLIGENCE, TASK_RESOURCE_MAP, TASK_METRICS,
          FINANCE_MPP, MPP_ROW_FIELDS,
-         MPP_IDENTITY, REPORTING_DATE, ASSIGNMENT_FACTS, ESTIMATE_BASIS)
+         MPP_IDENTITY, REPORTING_DATE, ASSIGNMENT_FACTS, ESTIMATE_BASIS,
+         SNAPSHOT_STATUS, MPP_FIXED_COST)
 
 #: Revision id to the rest of its filename, so a test can find a revision's source.
 MODULE_SUFFIX = {"0001": "finance_core", "0002": "invoice_confirmation",
@@ -71,7 +78,9 @@ MODULE_SUFFIX = {"0001": "finance_core", "0002": "invoice_confirmation",
                  "0013": "finance_mpp_source_identity",
                  "0014": "mpp_reporting_date",
                  "0015": "finance_mpp_assignment_facts",
-                 "0016": "finance_mpp_estimate_basis"}
+                 "0016": "finance_mpp_estimate_basis",
+                 "0017": "snapshot_status_check",
+                 "0019": "finance_mpp_fixed_cost"}
 
 TABLES = (
     "finance_project_settings",
@@ -285,18 +294,18 @@ class AlembicChainTests(unittest.TestCase):
     def test_the_chain_is_linear_and_in_the_historical_order(self):
         self.assertEqual(
             ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009",
-             "0010", "0011", "0012", "0013", "0014", "0015", "0016"],
+             "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0019"],
             [module.revision for module in CHAIN])
         expected_parents = [None, "0001", "0002", "0003", "0004", "0005", "0006", "0007",
                             "0008", "0009", "0010", "0011", "0012", "0013", "0014",
-                            "0015"]
+                            "0015", "0016", "0017"]
         self.assertEqual(expected_parents, [module.down_revision for module in CHAIN])
 
     def test_there_is_exactly_one_head(self):
         # A second head means two branches of schema history and an ambiguous "latest".
         revisions = {module.revision for module in CHAIN}
         parents = {module.down_revision for module in CHAIN} - {None}
-        self.assertEqual({"0016"}, revisions - parents)
+        self.assertEqual({"0019"}, revisions - parents)
 
     def test_every_revision_file_is_named_for_the_revision_it_declares(self):
         for path in sorted(VERSIONS.glob("*.py")):
@@ -319,7 +328,8 @@ class AlembicChainTests(unittest.TestCase):
              "0014_mpp_reporting_date",
              "0015_finance_mpp_assignment_facts",
              "0016_finance_mpp_estimate_basis",
-             "0017_snapshot_status_check"],
+             "0017_snapshot_status_check",
+             "0019_finance_mpp_fixed_cost"],
             sorted(path.stem for path in VERSIONS.glob("*.py")))
 
     def test_every_revision_runs_both_directions(self):

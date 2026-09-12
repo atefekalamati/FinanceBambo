@@ -6,6 +6,13 @@ Finance owns. This is the one place that carries a row across that line, and it 
 identity alone: the MPP resource uid names the financial item, the MPP assignment uid names
 the estimate line, and anything without those identifiers is left alone.
 
+WHAT A TASK'S OWN MONEY IS
+An assignment is not the only place MS Project puts a cost. A task carries a Fixed Cost of
+its own -- money that belongs to the ACTIVITY and to no resource on it -- and that becomes a
+general cost line keyed on the task instead of on an assignment. See `_map_fixed_costs`; it
+is a second reading of the same file, not a second guess at the same money, and the two
+never touch the same rial.
+
 WHAT AN ASSIGNMENT IS
 "This resource, on this activity" -- which is exactly what an estimate line is, so the two
 correspond one to one. That is why the assignment uid is the key and not the task: one
@@ -40,6 +47,7 @@ which is what makes a re-sync safe to run on a timer.
 """
 
 import logging
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import uuid4
 
 from psycopg.rows import dict_row
@@ -102,6 +110,78 @@ _INSERT_LINE = """
          assignment_external_id, original_quantity, original_unit_price_irr, source,
          source_assignment_uid, source_task_uid, created_by)
     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'progress_feed',%s,%s,%s)
+    ON CONFLICT DO NOTHING
+"""
+
+#: The code of the one financial item that carries a schedule's task-level fixed costs.
+#: Not `RESOURCE_CODE_PREFIX + something`: that prefix means "the MPP resource with this
+#: uid", and a fixed cost names no resource at all -- which is the whole point of it.
+FIXED_COST_RESOURCE_CODE = "MPP-FIXEDCOST"
+
+#: What that item is called on screen. A general cost, so it carries no unit and no
+#: dimension -- the same rule the resource form applies, and the CHECK on the table.
+FIXED_COST_RESOURCE_TITLE = "هزینه ثابت فعالیت (برنامه زمان‌بندی)"
+
+#: Below one whole unit of the file's own currency, a Fixed Cost is not an amount anybody
+#: entered.
+#:
+#: MS Project holds the identity `Task.Cost = sum of its assignments + Fixed Cost`, and
+#: stores all three as doubles. Where a planner entered no fixed cost, what remains in the
+#: column is the residue of that reconciliation. This project's file shows the two kinds
+#: side by side and they are not close: twenty-four tasks state a non-zero Fixed Cost, and
+#: twenty-one of them state values between -0.25 and 0.5 of a toman, while the other three
+#: state 2,829,688,000, -2,972,160,000 and 5,290,960,000.5 -- the whole of it.
+#:
+#: So the rule is stated in the file's OWN units, where "one unit of the currency someone
+#: typed in" is a sentence that means something, rather than in rials, where the same
+#: threshold would silently depend on the currency decision. Residue is counted and
+#: reported, never quietly dropped.
+FIXED_COST_MINIMUM_FILE_UNITS = Decimal(1)
+
+#: Every task of a source version that states a fixed cost, once per task.
+#:
+#: `DISTINCT ON` is load-bearing. A task's fixed cost is repeated on every row the task
+#: has -- `source_cost` has the same shape, and summing it across rows overcounts by the
+#: number of assignments -- so the de-duplication belongs here, in the one query that
+#: reads it, rather than in the arithmetic downstream.
+_FIXED_COST_TASKS = """
+    SELECT DISTINCT ON (source_task_uid)
+           source_task_uid, task_wbs, task_name,
+           source_fixed_cost, source_fixed_cost_irr
+      FROM finance_mpp_rows
+     WHERE source_version_id = %(version_id)s
+       AND organization_id = %(organization_id)s AND project_id = %(project_id)s
+       AND source_task_uid IS NOT NULL
+       AND source_fixed_cost_irr IS NOT NULL
+       AND source_fixed_cost IS NOT NULL
+       AND source_fixed_cost <> 0
+     ORDER BY source_task_uid
+"""
+
+_FIND_FIXED_COST_RESOURCE = """
+    SELECT id FROM finance_resources
+     WHERE organization_id=%s AND project_id=%s AND code=%s AND deleted_at IS NULL
+"""
+
+_INSERT_FIXED_COST_RESOURCE = """
+    INSERT INTO finance_resources
+        (id, organization_id, project_id, resource_type, code, title, base_unit,
+         dimension, created_by)
+    VALUES (%s,%s,%s,'general_cost',%s,%s,NULL,NULL,%s)
+    ON CONFLICT DO NOTHING
+"""
+
+#: A fixed cost line, keyed on the TASK. `original_quantity` is NULL because a general cost
+#: has no quantity to measure -- the amount is the whole of it, and it goes in the price
+#: column, which is exactly the shape the Excel importer already gives a general cost.
+#: `assignment_external_id` is NULL because there is no assignment; the report pairs
+#: progress by that column and skips general cost lines before it ever looks.
+_INSERT_FIXED_COST_LINE = """
+    INSERT INTO estimate_lines
+        (id, organization_id, project_id, resource_id, activity_external_id,
+         assignment_external_id, original_quantity, original_unit_price_irr, source,
+         source_assignment_uid, source_task_uid, created_by)
+    VALUES (%s,%s,%s,%s,%s,NULL,NULL,%s,'progress_feed',NULL,%s,%s)
     ON CONFLICT DO NOTHING
 """
 
@@ -409,6 +489,18 @@ class FinanceMppMappingService:
                   # difference is not a failure: a row the file states no material quantity
                   # for has no estimate to give, and says so by staying NULL.
                   "linesWithEstimate": 0,
+                  # The task's own money, which belongs to no resource on it. Counted
+                  # apart from the assignment lines because it is a different reading of
+                  # the file, and a reader comparing a total against MS Project needs to
+                  # know which half moved.
+                  "fixedCostLinesCreated": 0, "fixedCostLinesMatched": 0,
+                  "fixedCostIrr": "0",
+                  # What was read and NOT turned into money, and why. See
+                  # FIXED_COST_MINIMUM_FILE_UNITS: below one unit of the file's own
+                  # currency a fixed cost is reconciliation residue, not an amount. Said
+                  # out loud so the difference between this and MS Project's own total is
+                  # a number a reader can see rather than one they have to discover.
+                  "fixedCostResidueRows": 0, "fixedCostResidueFileUnits": "0",
                   "unmappedRows": 0, "unclassifiedResources": []}
 
         async with await self._connect() as connection:
@@ -493,7 +585,102 @@ class FinanceMppMappingService:
                             result["linesWithEstimate"] += 1
                         result["linesCreated"] += 1
 
-        LOG.info("finance mpp mapping project=%s resources=+%d/=%d lines=+%d/=%d unmapped=%d",
+                    # 3. One estimate line per task that states a fixed cost of its own.
+                    #    Separate from the loop above because a fixed cost is the task's,
+                    #    not any resource's: it has no assignment to be keyed on and no
+                    #    resource to be attributed to, which is exactly why the two
+                    #    readings cannot share a pass.
+                    await self._map_fixed_costs(cursor, organization_id, project_id,
+                                                version_id, actor_user_id, result)
+
+        LOG.info("finance mpp mapping project=%s resources=+%d/=%d lines=+%d/=%d "
+                 "fixed=+%d/=%d unmapped=%d",
                  project_id, result["resourcesCreated"], result["resourcesMatched"],
-                 result["linesCreated"], result["linesMatched"], result["unmappedRows"])
+                 result["linesCreated"], result["linesMatched"],
+                 result["fixedCostLinesCreated"], result["fixedCostLinesMatched"],
+                 result["unmappedRows"])
         return result
+
+    async def _map_fixed_costs(self, cursor, organization_id, project_id, version_id,
+                               actor_user_id, result):
+        """The money the file puts on the task itself, as general cost estimate lines.
+
+        MS Project states a task's cost in two places: on its assignments, and on the task
+        as Fixed Cost. The first is a resource's money and became the lines above; the
+        second is the ACTIVITY'S -- a permit, a mobilisation, a lump sum nobody broke into
+        resources -- and has no resource to be attributed to. PRD FR-010 already has the
+        shape for that: a general cost carries an amount and no quantity or unit, and §9
+        defines its initial estimate as the amount itself.
+
+        What this refuses to do is the same list as everywhere else in this module. It does
+        not attribute the money to a resource on the task: every one of this project's
+        equipment assignments shares its task with a material assignment, so anything moved
+        from the task to a resource would be the material's cost counted twice. It does not
+        invent a quantity for it -- there is none, and NULL says so. And it does not read
+        `source_fixed_cost` as rials: `source_fixed_cost_irr` is the same figure through the
+        file's own currency decision, and a file whose currency was never decided has NULL
+        there and produces nothing here.
+        """
+        await cursor.execute(_FIXED_COST_TASKS, {"version_id": str(version_id),
+                                                 "organization_id": organization_id,
+                                                 "project_id": project_id})
+        tasks = await cursor.fetchall()
+        priced = []
+        residue = Decimal(0)
+        for row in tasks:
+            stated = Decimal(row["source_fixed_cost"])
+            if abs(stated) < FIXED_COST_MINIMUM_FILE_UNITS:
+                result["fixedCostResidueRows"] += 1
+                residue += stated
+                continue
+            priced.append(row)
+        result["fixedCostResidueFileUnits"] = format(residue, "f")
+        if not priced:
+            return
+
+        # The item they hang on, created once per project. Looked up first and inserted
+        # only if absent, the same order the resource loop above uses and for the same
+        # reason: a project that already has it must not get a second one.
+        await cursor.execute(_FIND_FIXED_COST_RESOURCE,
+                             (organization_id, project_id, FIXED_COST_RESOURCE_CODE))
+        found = await cursor.fetchone()
+        if found is None:
+            await cursor.execute(
+                _INSERT_FIXED_COST_RESOURCE,
+                (str(self._ids()), organization_id, project_id, FIXED_COST_RESOURCE_CODE,
+                 FIXED_COST_RESOURCE_TITLE, actor_user_id))
+            # Read back rather than trusting the insert: ON CONFLICT DO NOTHING means a
+            # concurrent pass may have won, and then the id to use is theirs, not ours.
+            await cursor.execute(_FIND_FIXED_COST_RESOURCE,
+                                 (organization_id, project_id, FIXED_COST_RESOURCE_CODE))
+            found = await cursor.fetchone()
+            if found is not None:
+                result["resourcesCreated"] += 1
+        if found is None:
+            return
+        resource_id = found["id"]
+
+        total = Decimal(0)
+        for row in priced:
+            task_uid = row["source_task_uid"]
+            await cursor.execute("""
+                SELECT id FROM estimate_lines
+                 WHERE organization_id=%s AND project_id=%s
+                   AND source_task_uid=%s AND source_assignment_uid IS NULL
+                   AND deleted_at IS NULL
+            """, (organization_id, project_id, task_uid))
+            if await cursor.fetchone() is not None:
+                result["fixedCostLinesMatched"] += 1
+                continue
+            # Whole rials, like every other amount Finance stores, and like the standard
+            # rate the assignment lines carry. The column is numeric(18,0) and would round
+            # anyway; doing it here means the number written is the number decided.
+            amount = Decimal(row["source_fixed_cost_irr"]).quantize(
+                Decimal(1), rounding=ROUND_HALF_UP)
+            await cursor.execute(
+                _INSERT_FIXED_COST_LINE,
+                (str(self._ids()), organization_id, project_id, resource_id,
+                 row["task_wbs"], amount, task_uid, actor_user_id))
+            result["fixedCostLinesCreated"] += 1
+            total += amount
+        result["fixedCostIrr"] = format(total, "f")

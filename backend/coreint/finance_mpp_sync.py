@@ -81,6 +81,14 @@ def finance_rows(parsed, *, source_sha256=None):
             "source_cost": _decimal(metrics.get("task_cost")),
             "source_actual_cost": _decimal(metrics.get("task_actual_cost")),
             "source_fixed_cost": _decimal(metrics.get("task_fixed_cost")),
+            # The same figure in the unit Finance counts in. The raw column above is the
+            # file's own number and stays that way; this one has been through the same
+            # currency decision the assignment cost passes through, so the two amounts on
+            # one row can finally be added together. Read by the mapper, never summed
+            # across rows without de-duplicating by task: like `source_cost`, a task's
+            # fixed cost is repeated on every row the task has.
+            "source_fixed_cost_irr": _file_fixed_cost_rials(
+                metrics.get("task_fixed_cost"), currency_scale),
             # Absent here on purpose. These belong to an assignment, and a task that has
             # none -- a stage heading -- has none of them either. The loop below fills them
             # for the rows that do.
@@ -275,6 +283,22 @@ def _file_rials(value, currency_scale=None):
     return number * currency_scale
 
 
+def _file_fixed_cost_rials(value, currency_scale):
+    """The task's own fixed cost in rials, or None when the file states none.
+
+    Zero is exempt from the currency decision, and only zero: nothing is nothing in every
+    currency, and MS Project writes 0.0 here for every task nobody entered a fixed cost on
+    -- which is almost all of them. Refusing a whole file over those would make an
+    undecided currency fatal to schedules that state no task money at all, which is a
+    stricter rule than the one the amounts themselves are held to. Any other amount goes
+    through exactly the decision the assignment cost goes through, and refuses the same way.
+    """
+    number = _decimal(value)
+    if number is None or number == 0:
+        return number
+    return _file_rials(number, currency_scale)
+
+
 _COLUMNS = ("source_task_uid", "source_assignment_uid", "source_resource_uid",
             "task_name", "task_wbs", "task_start", "task_finish",
             "resource_name", "resource_type", "resource_unit",
@@ -283,6 +307,7 @@ _COLUMNS = ("source_task_uid", "source_assignment_uid", "source_resource_uid",
             "actual_progress_percent", "physical_progress", "planned_progress",
             "progress_variance",
             "source_cost", "source_actual_cost", "source_fixed_cost",
+            "source_fixed_cost_irr",
             "source_assignment_units", "source_assignment_cost_irr",
             "normalized_unit", "unit_source", "unit_confidence",
             "source_material_quantity", "source_resource_rate_irr", "source_rate_basis")

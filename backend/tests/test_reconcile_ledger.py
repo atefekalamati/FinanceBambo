@@ -73,9 +73,13 @@ class ObjectDiscoveryTests(unittest.TestCase):
         found = revisions()
         walk = chain(found, "0013", head(found)[0])
         tables, _data = objects_touched(found, walk)
+        # `estimate_lines` and `finance_resources` are here because 0019 adds an index to
+        # each: a revision that only indexes still changes the object the reconciler must
+        # compare, and an index is exactly the kind of difference an environment drifts on.
         self.assertEqual(
-            ["estimate_line_source_completions", "finance_mpp_rows",
-             "finance_mpp_source_versions", "progress_snapshot_refs"], tables)
+            ["estimate_line_source_completions", "estimate_lines", "finance_mpp_rows",
+             "finance_mpp_source_versions", "finance_resources",
+             "progress_snapshot_refs"], tables)
 
     def test_each_ddl_shape_the_revisions_use_is_recognised(self):
         """A shape the pattern misses is a table altered and never compared."""
