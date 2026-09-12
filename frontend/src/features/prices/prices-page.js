@@ -668,6 +668,26 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
      component because `paint()` rebuilds the whole tree: a component that
      remembered its own page would lose it on every repaint, and one that both
      remembered would disagree. */
+  /* Held beside the workspace rather than inside it: the workspace is replaced
+     whole on every reload, and a history the reader asked to see should survive
+     one -- adding a price version should not close the section again. */
+  let priceHistory = null;
+  let historyLoading = false;
+  let historyError = null;
+
+  async function loadHistory() {
+    historyLoading = true;
+    historyError = null;
+    paint();
+    try {
+      priceHistory = await adapter.getPriceHistory();
+    } catch (error) {
+      historyError = error;
+    }
+    historyLoading = false;
+    paint();
+  }
+
   let pricePaging = { page: 1, pageSize: getRowsPerPage("current-prices") };
   let historyPaging = { page: 1, pageSize: getRowsPerPage("price-history") };
   // Lives with the page: paint() rebuilds the tree, so a choice held inside a
@@ -682,7 +702,12 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
     paint();
     try {
       const workspace = await adapter.getPrices();
-      state = createRequestState(workspace.history.length || workspace.conversionHistory.length ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, workspace);
+      /* The history no longer arrives with the page, so it cannot decide whether
+         the page has anything on it. What it has is items and their prices. */
+      const hasSomething = workspace.currentPrices.length
+        || workspace.currentConversions.length
+        || workspace.conversionHistory.length;
+      state = createRequestState(hasSomething ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, workspace);
     } catch (error) {
       state = createRequestState(REQUEST_STATUS.ERROR, null, error);
     }
@@ -774,11 +799,37 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
       onChange: (next) => { pricePaging = next; paint(); },
     }));
     else current.append(element("div", "state-card price-filter-empty", "قلمی مطابق فیلترهای انتخاب‌شده پیدا نشد."));
+    /* Asked for, not assumed. The history is append-only and only grows, and
+       nothing on this page reads it -- the current price and its sparkline both
+       come from `/prices/current`. A reader who opened this page to check one
+       item's price today should not wait for every price it ever had. */
     const history = element("section", "prices-section");
-    history.append(element("h2", "", "تاریخچه قیمت‌ها"), element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."), renderHistory(workspace.history, workspace.currentPrices, historyColumns, visibleHistoryColumns, {
-      ...historyPaging,
-      onChange: (next) => { historyPaging = next; paint(); },
-    }));
+    history.append(
+      element("h2", "", "تاریخچه قیمت‌ها"),
+      element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."),
+    );
+    if (historyError) {
+      const failed = element("div", "state-card state-card--danger", formatApiErrorMessage(historyError, "دریافت تاریخچه قیمت‌ها انجام نشد."));
+      const again = element("button", "button button--ghost", "تلاش دوباره");
+      again.type = "button";
+      again.addEventListener("click", loadHistory);
+      failed.append(again);
+      history.append(failed);
+    } else if (historyLoading) {
+      history.append(element("div", "inline-notice", "در حال دریافت تاریخچه قیمت‌ها…"));
+    } else if (priceHistory === null) {
+      const ask = element("div", "prices-history-ask");
+      const show = element("button", "button button--primary", "نمایش تاریخچه قیمت‌ها");
+      show.type = "button";
+      show.addEventListener("click", loadHistory);
+      ask.append(show);
+      history.append(ask);
+    } else {
+      history.append(renderHistory(priceHistory, workspace.currentPrices, historyColumns, visibleHistoryColumns, {
+        ...historyPaging,
+        onChange: (next) => { historyPaging = next; paint(); },
+      }));
+    }
     fragment.append(toolbar, current, history);
     return fragment;
   }

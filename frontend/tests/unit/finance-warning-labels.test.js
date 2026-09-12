@@ -104,24 +104,21 @@ test("a refused progress request reads as a permission answer, not a fault", () 
   assert.match(source, /error\.status === 403 \? REQUEST_STATUS\.DENIED/);
 });
 
-test("the snapshot source is named from the record, never guessed from a file name", () => {
-  // The strip that used to carry these facts is gone -- the provenance goes to
-  // the console for developers now. What the strip must never do, the log must
-  // never do either: sourceType is null for rows imported before the Backend
-  // began recording it, and a filename extension is not evidence of a tool.
+test("nothing invents a snapshot's source from its file name", () => {
+  // The strip that carried these facts came off the board, and the console log
+  // that replaced it was dropped too -- the progress page shows them, in the
+  // interface, where a reader can act on them. What the strip must never have
+  // done, nothing else may start doing: a filename extension is not evidence of
+  // the tool that produced a schedule, and sourceType is null for rows imported
+  // before the Backend began recording it.
   const source = read("../../src/features/finance-home/finance-home-page.js");
-  assert.match(source, /microsoft_project: "Microsoft Project"/);
-  assert.match(source, /primavera: "Primavera"/);
-  // The label is keyed on what the service recorded, and the file name is never
-  // inspected for an extension to stand in for it.
-  assert.match(source, /SNAPSHOT_SOURCE_LABELS\[selected\.sourceType\]/);
-  assert.doesNotMatch(source, /sourceFileNameSafe.{0,60}?(endsWith|includes\(|match\()/, "the page must not read a tool out of a file name");
-  // An unrecorded source says so rather than borrowing a label that would read
-  // as a fact. In a diagnostic log an empty field is worth keeping -- it says
-  // the field exists and is unknown -- so nothing is filtered away here.
-  assert.match(source, /selected\.sourceType == null \? null : "منبع ثبت‌نشده"/,
-    "an unrecorded source must not be given a tool's name");
+  assert.doesNotMatch(source, /sourceFileNameSafe.{0,60}?(endsWith|includes\(|match\()/,
+    "the page must not read a tool out of a file name");
+  // And the one thing the log still says is the one thing not visible anywhere
+  // else: the figures would be right numbers from the wrong version.
+  assert.match(source, /answered !== selected\.progressSnapshotId/);
 });
+
 
 test("the page never works out the snapshot pairing for itself", () => {
   // The mapped/unmapped counts are no longer shown, and if they come back they

@@ -408,30 +408,22 @@ function createManagerialComparisonPanel(
   return section;
 }
 
-const SNAPSHOT_STATUS_LABELS = Object.freeze({
-  ready: "آماده",
-  superseded: "جایگزین‌شده",
-});
 
 /**
- * Where the snapshot came from. The Backend records this rather than letting a
- * filename extension stand in for it, and answers null for rows imported before
- * it started recording — so a missing source is shown as unrecorded, never
- * guessed from the `.mpp` on the end of a name.
+ * Say so when the service answered from a different snapshot than the one the
+ * reader picked.
+ *
+ * This used to log the whole basis of the calculation -- version, reporting
+ * date, source tool, file name, import time -- after that strip came off the
+ * board and the facts had nowhere to go. They were dropped: a console line
+ * nobody reads is not documentation, and every one of those facts is on the
+ * progress page, in the interface, where a reader can act on it.
+ *
+ * The mismatch stayed, because it is the one thing that is not visible anywhere
+ * else: the figures on screen would be the right numbers from the wrong
+ * version, and nothing about them would look wrong.
  */
-const SNAPSHOT_SOURCE_LABELS = Object.freeze({
-  microsoft_project: "Microsoft Project",
-  primavera: "Primavera",
-  manual: "ثبت دستی",
-  other: "منبع دیگر",
-});
-
-/**
- * Keep the calculation provenance available to developers while the temporary
- * top strip carries navigation only. This is diagnostic output, not a second
- * source of truth and not data rendered for the customer.
- */
-export function logSnapshotProvenance({ selected, report }) {
+export function warnOnSnapshotMismatch({ selected, report }) {
   if (!selected) return null;
   const answered = report?.progressSnapshotId ?? null;
   if (answered && answered !== selected.progressSnapshotId) {
@@ -1010,7 +1002,7 @@ export function createFinanceHomePage({
       const prices = { workspace: priceWorkspace, error: priceError };
       const items = { workspace: itemsWorkspace, error: itemsError };
       chart = built.chart;
-      const provenance = logSnapshotProvenance({
+      const provenance = warnOnSnapshotMismatch({
         selected:
           snapshots.find(
             (snapshot) => snapshot.progressSnapshotId === selectedSnapshotId,
