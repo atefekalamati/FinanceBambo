@@ -13,6 +13,8 @@ from .schemas.settings import (
     FinanceSummaryResponse,
 )
 from .security.guards import FinanceNotFound, authorize_finance_request
+from .adapters.ports import supports_actor_names
+from .domain.actors import apply_actor_names, collect_actor_ids
 from .services.settings import SETTINGS_EDIT_PERMISSION, may_edit_settings
 from .schemas.resources import (EstimateLineCreate, EstimateLineResponse,
     EstimateRevisionCreate, ResourceCreate, ResourcePatch, ResourceResponse)
@@ -90,7 +92,7 @@ async def get_finance_settings_revisions(projectId: str, request: Request):
         scope_authorizer,
         permission_authorizer,
     )
-    return await request.app.state.finance_settings_service.revisions(scope)
+    return await _named(request, await request.app.state.finance_settings_service.revisions(scope))
 
 
 @router.get("/summary", response_model=FinanceSummaryResponse)
@@ -111,6 +113,30 @@ async def get_finance_summary(projectId: str, request: Request):
 async def _resource_scope(project_id, request, permission):
     auth, scope_authorizer, permission_authorizer = _host_ports(request)
     return await authorize_finance_request(request, project_id, permission, auth, scope_authorizer, permission_authorizer)
+
+
+async def _named(request, payload):
+    """Put the host's name beside every actor id in this response, then return it.
+
+    One call per response, never one per row: the ids are collected first and looked up
+    together, so a page of fifty invoices written by three people costs three names and one
+    query rather than fifty. See `domain.actors` for what is traversed and what is not.
+
+    Every failure mode ends as "no names": a host with no directory, a directory that does
+    not know an id, a lookup that raises. The payload is returned either way, carrying the
+    ids it always carried -- a decoration is never worth failing a report for.
+    """
+    directory = getattr(request.app.state, "actor_directory", None)
+    if not supports_actor_names(directory):
+        return payload
+    ids = collect_actor_ids(payload)
+    if not ids:
+        return payload
+    try:
+        names = await directory.names(ids)
+    except Exception:  # noqa: BLE001 -- see the docstring
+        return payload
+    return apply_actor_names(payload, names or {})
 
 
 async def _conceal_unless_permitted(project_id, request, permission):
@@ -205,32 +231,32 @@ async def create_project_activity(projectId: str, payload: ActivityCreate, reque
 @router.get("/estimate-lines", response_model=list[EstimateLineResponse])
 async def list_estimate_lines(projectId: str, request: Request):
     scope = await _resource_scope(projectId, request, "finance.view")
-    return [EstimateLineResponse.from_domain(x) for x in await request.app.state.finance_resources_service.list_estimate_lines(scope)]
+    return await _named(request, [EstimateLineResponse.from_domain(x) for x in await request.app.state.finance_resources_service.list_estimate_lines(scope)])
 
 @router.post("/estimate-lines", response_model=EstimateLineResponse, status_code=201)
 async def create_estimate_line(projectId: str, payload: EstimateLineCreate, request: Request):
     scope = await _resource_scope(projectId, request, "finance.edit")
-    return EstimateLineResponse.from_domain(await request.app.state.finance_resources_service.create_estimate_line(scope, payload))
+    return await _named(request, EstimateLineResponse.from_domain(await request.app.state.finance_resources_service.create_estimate_line(scope, payload)))
 
 @router.post("/estimate-lines/{lineId}/revisions", response_model=EstimateLineResponse, status_code=201)
 async def revise_estimate_line(projectId: str, lineId: UUID, payload: EstimateRevisionCreate, request: Request):
     scope = await _resource_scope(projectId, request, "finance.edit")
-    return EstimateLineResponse.from_domain(await request.app.state.finance_resources_service.revise_estimate_line(scope, lineId, payload))
+    return await _named(request, EstimateLineResponse.from_domain(await request.app.state.finance_resources_service.revise_estimate_line(scope, lineId, payload)))
 
 @router.get("/resources/{resourceId}/prices", response_model=list[PriceResponse])
 async def resource_prices(projectId:str,resourceId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
-    return [PriceResponse.from_domain(x) for x in await request.app.state.finance_price_service.history(scope,resourceId)]
+    return await _named(request, [PriceResponse.from_domain(x) for x in await request.app.state.finance_price_service.history(scope,resourceId)])
 
 @router.post("/resources/{resourceId}/prices", response_model=PriceResponse,status_code=201)
 async def create_price(projectId:str,resourceId:UUID,payload:PriceCreate,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit")
-    return PriceResponse.from_domain(await request.app.state.finance_price_service.create(scope,resourceId,payload))
+    return await _named(request, PriceResponse.from_domain(await request.app.state.finance_price_service.create(scope,resourceId,payload)))
 
 @router.get("/price-history", response_model=list[PriceResponse])
 async def price_history(projectId:str,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
-    return [PriceResponse.from_domain(x) for x in await request.app.state.finance_price_service.history(scope)]
+    return await _named(request, [PriceResponse.from_domain(x) for x in await request.app.state.finance_price_service.history(scope)])
 
 @router.get("/prices/current",response_model=list[CurrentPriceTrendResponse])
 async def current_price_trends(projectId:str,asOf:date,request:Request):
@@ -240,44 +266,44 @@ async def current_price_trends(projectId:str,asOf:date,request:Request):
 @router.get("/unit-conversions",response_model=list[ConversionResponse])
 async def unit_conversions(projectId:str,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
-    return [ConversionResponse.from_domain(x) for x in await request.app.state.unit_conversion_service.list(scope)]
+    return await _named(request, [ConversionResponse.from_domain(x) for x in await request.app.state.unit_conversion_service.list(scope)])
 
 @router.post("/unit-conversions",response_model=ConversionResponse,status_code=201)
 async def create_unit_conversion(projectId:str,payload:ConversionCreate,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit")
-    return ConversionResponse.from_domain(await request.app.state.unit_conversion_service.create(scope,payload))
+    return await _named(request, ConversionResponse.from_domain(await request.app.state.unit_conversion_service.create(scope,payload)))
 
 @router.patch("/unit-conversions/{conversionId}",response_model=ConversionResponse)
 async def revise_unit_conversion(projectId:str,conversionId:UUID,payload:ConversionPatch,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit")
-    return ConversionResponse.from_domain(await request.app.state.unit_conversion_service.revise(scope,conversionId,payload))
+    return await _named(request, ConversionResponse.from_domain(await request.app.state.unit_conversion_service.revise(scope,conversionId,payload)))
 
 @router.get("/progress-snapshots",response_model=list[ProgressSnapshotResponse])
 async def progress_snapshots(projectId:str,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
-    return await request.app.state.progress_service.list_snapshots(scope)
+    return await _named(request, await request.app.state.progress_service.list_snapshots(scope))
 
 @router.get("/progress-snapshots/{snapshotId}",response_model=ProgressSnapshotResponse)
 async def progress_snapshot(projectId:str,snapshotId:UUID,request:Request):
     """One snapshot's metadata, including its version, without pulling the whole feed."""
     scope=await _resource_scope(projectId,request,"finance.view")
-    return await request.app.state.progress_service.snapshot(scope,snapshotId)
+    return await _named(request, await request.app.state.progress_service.snapshot(scope,snapshotId))
 
 @router.get("/progress-snapshots/{snapshotId}/feed",response_model=ProgressFeedResponse)
 async def progress_feed(projectId:str,snapshotId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
-    return await request.app.state.progress_service.feed(scope,snapshotId)
+    return await _named(request, await request.app.state.progress_service.feed(scope,snapshotId))
 
 @router.get("/estimate-lines/{lineId}/progress-overrides",response_model=list[ProgressOverrideResponse])
 async def progress_override_history(projectId:str,lineId:UUID,request:Request):
     """Expose the append-only override trail so the UI can show what was replaced and why."""
     scope=await _resource_scope(projectId,request,"finance.view")
-    return [ProgressOverrideResponse.from_row(row) for row in await request.app.state.progress_service.override_history(scope,lineId)]
+    return await _named(request, [ProgressOverrideResponse.from_row(row) for row in await request.app.state.progress_service.override_history(scope,lineId)])
 
 @router.post("/estimate-lines/{lineId}/progress-override",response_model=ProgressOverrideResponse,status_code=201)
 async def progress_override(projectId:str,lineId:UUID,payload:ProgressOverrideCreate,request:Request):
     scope=await _resource_scope(projectId,request,"finance.edit")
-    return ProgressOverrideResponse.from_domain(await request.app.state.progress_service.override(scope,lineId,payload))
+    return await _named(request, ProgressOverrideResponse.from_domain(await request.app.state.progress_service.override(scope,lineId,payload)))
 
 async def _preview_import(projectId,request,kind,file):
     scope=await _resource_scope(projectId,request,"finance.edit")
@@ -317,25 +343,25 @@ async def commit_prices(projectId:str,payload:ImportCommit,request:Request):retu
 async def invoices(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),query:str|None=Query(None,min_length=1,max_length=200),status:str|None=Query(None,pattern="^(draft|awaitingConfirmation|confirmed|voided|corrected)$"),source:str|None=Query(None,pattern="^(manual|image|voice|reversal|corrective)$"),
     invoiceDateFrom:date|None=None,invoiceDateTo:date|None=None):
     scope=await _resource_scope(projectId,request,"finance.view");items,total=await request.app.state.invoice_service.list(scope,page,pageSize,query,status,source,invoiceDateFrom,invoiceDateTo)
-    return InvoiceListResponse(items=[InvoiceResponse.from_domain(x) for x in items],page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
+    return await _named(request, InvoiceListResponse(items=[InvoiceResponse.from_domain(x) for x in items],page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize))
 @router.post("/invoices",response_model=InvoiceResponse,status_code=201)
 async def create_invoice(projectId:str,payload:InvoiceCreate,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return InvoiceResponse.from_domain(await request.app.state.invoice_service.create(scope,payload))
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return await _named(request, InvoiceResponse.from_domain(await request.app.state.invoice_service.create(scope,payload)))
 @router.get("/invoices/{invoiceId}",response_model=InvoiceResponse)
 async def invoice(projectId:str,invoiceId:UUID,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.view");return InvoiceResponse.from_domain(await request.app.state.invoice_service.get(scope,invoiceId))
+    scope=await _resource_scope(projectId,request,"finance.view");return await _named(request, InvoiceResponse.from_domain(await request.app.state.invoice_service.get(scope,invoiceId)))
 @router.patch("/invoices/{invoiceId}",response_model=InvoiceResponse)
 async def patch_invoice(projectId:str,invoiceId:UUID,payload:InvoicePatch,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return InvoiceResponse.from_domain(await request.app.state.invoice_service.update(scope,invoiceId,payload))
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return await _named(request, InvoiceResponse.from_domain(await request.app.state.invoice_service.update(scope,invoiceId,payload)))
 @router.post("/invoices/{invoiceId}/confirm",response_model=InvoiceResponse)
 async def confirm_invoice(projectId:str,invoiceId:UUID,payload:InvoiceConfirm,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return InvoiceResponse.from_domain(await request.app.state.invoice_service.confirm(scope,invoiceId,payload))
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return await _named(request, InvoiceResponse.from_domain(await request.app.state.invoice_service.confirm(scope,invoiceId,payload)))
 @router.post("/invoices/{invoiceId}/void",response_model=InvoiceResponse,status_code=201)
 async def void_invoice(projectId:str,invoiceId:UUID,payload:InvoiceVoid,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return InvoiceResponse.from_domain(await request.app.state.invoice_service.void(scope,invoiceId,payload))
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return await _named(request, InvoiceResponse.from_domain(await request.app.state.invoice_service.void(scope,invoiceId,payload)))
 @router.post("/invoices/{invoiceId}/corrective",response_model=InvoiceResponse,status_code=201)
 async def corrective_invoice(projectId:str,invoiceId:UUID,payload:CorrectiveInvoiceCreate,request:Request):
-    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return InvoiceResponse.from_domain(await request.app.state.invoice_service.corrective(scope,invoiceId,payload))
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice");return await _named(request, InvoiceResponse.from_domain(await request.app.state.invoice_service.corrective(scope,invoiceId,payload)))
 
 @router.post("/files",response_model=AttachmentResponse,status_code=201,responses=FINANCE_ERROR_RESPONSES)
 async def upload_finance_file(projectId:str,request:Request,logicalType:str=Form(...),file:UploadFile=File(...)):
@@ -505,4 +531,4 @@ async def audit_events(projectId:str,request:Request,page:int=Query(1,ge=1),page
     action:str|None=Query(None,min_length=1,max_length=100),entityType:str|None=Query(None,min_length=1,max_length=100),
     occurredFrom:date|None=None,occurredTo:date|None=None,query:str|None=Query(None,min_length=1,max_length=200)):
     scope=await _resource_scope(projectId,request,"finance.view")
-    return await request.app.state.finance_audit_service.list(scope,page,pageSize,action,entityType,occurredFrom,occurredTo,query)
+    return await _named(request, await request.app.state.finance_audit_service.list(scope,page,pageSize,action,entityType,occurredFrom,occurredTo,query))

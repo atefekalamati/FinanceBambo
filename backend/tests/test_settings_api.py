@@ -188,11 +188,14 @@ class FinanceSettingsApiTests(unittest.TestCase):
         )
         # The oldest revision replaced nothing, so the UI can render it as the initial entry.
         self.assertIsNone(rows[-1]["previousGrossBuiltArea"])
+        # `createdByName` travels BESIDE `createdBy`, never instead of it: a client that
+        # matches on the id keeps working, and a reader gets a name when the host knows one.
         self.assertEqual(
             {"id", "revision", "grossBuiltArea", "previousGrossBuiltArea",
-             "effectiveFrom", "reason", "createdBy", "createdAt"},
+             "effectiveFrom", "reason", "createdBy", "createdByName", "createdAt"},
             set(rows[0]),
         )
+        self.assertIn("createdBy", rows[0], "the id is still the identifier")
 
     def test_revision_trail_needs_only_view_permission_and_stays_tenant_scoped(self):
         with client(permission_codes=("finance.view",)) as api:

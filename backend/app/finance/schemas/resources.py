@@ -99,6 +99,10 @@ class EstimateRevisionResponse(ApiModel):
     new_quantity: Decimal | None
     reason: str
     created_by: UUID
+    # What the host calls this actor, filled at the API boundary and never stored. None when
+    # the host has no directory or does not know the id; the reader then sees the id, exactly
+    # as before. See `app.finance.domain.actors`.
+    created_by_name: str | None = None
     created_at: datetime
 
     @field_serializer("previous_quantity", "new_quantity")

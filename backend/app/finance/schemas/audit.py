@@ -10,6 +10,10 @@ class AuditEventResponse(ApiModel):
     organization_id:UUID
     project_id:str
     actor_user_id:UUID
+    # What the host calls that actor, filled at the boundary and never stored. None whenever
+    # the host has no directory or does not know this id; the reader then sees the id, which
+    # is what it saw before. See `app.finance.domain.actors`.
+    actor_user_name:str|None=None
     action:str
     entity_type:str
     entity_id:UUID

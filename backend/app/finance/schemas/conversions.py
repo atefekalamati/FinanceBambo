@@ -27,6 +27,10 @@ class ConversionPatch(ApiModel):
   return v.strip()
 class ConversionResponse(ConversionCreate):
  id:UUID;version:int;created_by:UUID;created_at:datetime
+ # What the host calls this actor, filled at the API boundary and never stored.
+ # None when the host has no directory or does not know the id; the reader then sees
+ # the id, exactly as before. See `app.finance.domain.actors`.
+ created_by_name:str|None=None
  @field_serializer("factor")
  def decimal_string(self,v):return format(v,"f")
  @classmethod

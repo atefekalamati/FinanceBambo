@@ -6,6 +6,7 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
+import { actorLabel } from "../../shared/formatters/actor.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
 import { element } from "../../shared/dom/elements.js";
@@ -103,7 +104,7 @@ function renderSnapshotMetadata(snapshot, assignmentCount) {
     ["نام امن فایل مبدأ", snapshot.sourceFileNameSafe],
     ["تعداد تخصیص", formatDisplayNumber(String(assignmentCount))],
     ["زمان ورود", formatSystemDateTime(snapshot.importedAt)],
-    ["ثبت‌کننده ورود", snapshot.importedBy],
+    ["ثبت‌کننده ورود", actorLabel(snapshot.importedByName, snapshot.importedBy)],
     ["شناسه نسخه پیشرفت پروژه", snapshot.progressSnapshotId],
     ["شناسه نسخه فایل", snapshot.sourceFileVersionId],
   ];
@@ -126,7 +127,7 @@ function renderOverrideDetails(override) {
     ["مقدار محاسبه‌شده", formatDisplayNumber(override.previousCalculatedValue)],
     ["مقدار جایگزین", formatDisplayNumber(override.newValue)],
     ["دلیل", override.reason],
-    ["کاربر", override.userId],
+    ["کاربر", actorLabel(override.userName, override.userId)],
     ["زمان", formatSystemDateTime(override.occurredAt)],
     ["شناسه نسخه پیشرفت پروژه", override.progressSnapshotId],
   ].forEach(([label, value]) => list.append(element("dt", "", label), element("dd", "", value)));
@@ -182,7 +183,7 @@ function createOverrideDialog({ assignment, snapshotId, adapter, onSaved }) {
         item.append(
           element("strong", "numeric", `${formatDisplayNumber(entry.previousCalculatedValue ?? "—")} ← ${formatDisplayNumber(entry.newValue)}`),
           element("span", "", entry.reason || "بدون دلیل ثبت‌شده"),
-          element("small", "", `${entry.userId ?? "کاربر نامشخص"} · ${entry.occurredAt ? formatSystemDateTime(entry.occurredAt) : "زمان نامشخص"}`),
+          element("small", "", `${actorLabel(entry.userName, entry.userId, "کاربر نامشخص")} · ${entry.occurredAt ? formatSystemDateTime(entry.occurredAt) : "زمان نامشخص"}`),
         );
         list.append(item);
       });

@@ -8,6 +8,7 @@ import { createPersianDatePicker } from "../../shared/components/persian-date-pi
 import { getDialogOpener, showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
+import { actorLabel } from "../../shared/formatters/actor.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { createPermissionNotice } from "../../shared/components/permission-notice.js";
@@ -368,8 +369,8 @@ export function renderDetail(invoice, { canEdit, currentUserId, project, onSubmi
     ["تاریخ فاکتور", formatBusinessDate(invoice.invoiceDate)], ["فروشنده یا ارائه‌دهنده", invoice.vendorName],
     ["منبع ثبت", SOURCE_LABELS[invoice.source] ?? "نامشخص"], ["تعداد خطوط", formatDisplayNumber(String(invoice.lines.length))],
     ["نسخه سند", formatDisplayNumber(String(invoice.version))], ["شناسه یکتای ثبت", invoice.idempotencyKey],
-    ["ثبت‌کننده", invoice.submittedBy], ["زمان ثبت", formatSystemDateTime(invoice.createdAt)],
-    ["تأییدکننده", invoice.confirmedBy ?? "تأیید نشده"], ["زمان تأیید", invoice.confirmedAt ? formatSystemDateTime(invoice.confirmedAt) : "تأیید نشده"],
+    ["ثبت‌کننده", actorLabel(invoice.submittedByName, invoice.submittedBy)], ["زمان ثبت", formatSystemDateTime(invoice.createdAt)],
+    ["تأییدکننده", actorLabel(invoice.confirmedByName, invoice.confirmedBy, "تأیید نشده")], ["زمان تأیید", invoice.confirmedAt ? formatSystemDateTime(invoice.confirmedAt) : "تأیید نشده"],
   ].forEach(([label, value], index) => {
     const printSecondary = [5, 6, 7].includes(index) ? " invoice-detail-grid__item--print-secondary" : "";
     const item = element("div", `invoice-detail-grid__item${printSecondary}`);

@@ -7,6 +7,7 @@ import { showAccessibleDialog } from "../../shared/components/accessible-dialog.
 import { formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
+import { actorLabel } from "../../shared/formatters/actor.js";
 import { ACTION_LABELS, ENTITY_LABELS, filterAuditEvents } from "./audit-model.js";
 import { element } from "../../shared/dom/elements.js";
 import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, defaultVisibleColumns }
@@ -68,7 +69,7 @@ function createDetailDialog(event) {
   close.addEventListener("click", () => dialog.close());
   head.append(title, close);
   const identity = element("dl", "audit-detail__identity");
-  [["شناسه رویداد", event.id], ["کاربر", event.actorUserId], ["شناسه موجودیت", event.entityId]].forEach(([label, value]) => {
+  [["شناسه رویداد", event.id], ["کاربر", actorLabel(event.actorUserName, event.actorUserId)], ["شناسه موجودیت", event.entityId]].forEach(([label, value]) => {
     const row = element("div");
     row.append(element("dt", "", label), element("dd", "numeric", value));
     identity.append(row);
@@ -208,7 +209,7 @@ export function createAuditPage({ adapter }) {
           identity: formatSystemDateTime(auditEvent.occurredAt),
           action: ACTION_LABELS[auditEvent.action] ?? "عملیات تعریف‌نشده",
           entity: ENTITY_LABELS[auditEvent.entityType] ?? "موجودیت تعریف‌نشده",
-          actor: auditEvent.actorUserId,
+          actor: actorLabel(auditEvent.actorUserName, auditEvent.actorUserId),
           reason: auditEvent.reason || "بدون دلیل ثبت‌شده",
           detail,
         };
