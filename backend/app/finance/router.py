@@ -292,7 +292,7 @@ async def progress_snapshot(projectId:str,snapshotId:UUID,request:Request):
 @router.get("/progress-snapshots/{snapshotId}/feed",response_model=ProgressFeedResponse)
 async def progress_feed(projectId:str,snapshotId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
-    return await request.app.state.progress_service.feed(scope,snapshotId)
+    return await _named(request, await request.app.state.progress_service.feed(scope,snapshotId))
 
 @router.get("/estimate-lines/{lineId}/progress-overrides",response_model=list[ProgressOverrideResponse])
 async def progress_override_history(projectId:str,lineId:UUID,request:Request):

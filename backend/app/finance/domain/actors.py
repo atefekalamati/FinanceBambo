@@ -29,10 +29,8 @@ keys in `CONTAINER_KEYS`, and steps into nothing else.
 
 from typing import Any, Iterable, Mapping
 
-#: Every actor column the API exposes, paired with the field its name travels in. Both
-#: spellings appear in practice -- services hand the router snake_case rows straight from
-#: psycopg, while schema objects carry the same fields as attributes -- so lookup tries the
-#: attribute first and the mapping key second, and one table drives both.
+#: Every actor column the API exposes, paired with the field its name travels in, written in
+#: the snake_case the database and the schema attributes use.
 ACTOR_FIELDS: tuple[tuple[str, str], ...] = (
     ("imported_by", "imported_by_name"),
     ("submitted_by", "submitted_by_name"),
@@ -44,7 +42,22 @@ ACTOR_FIELDS: tuple[tuple[str, str], ...] = (
 #: The only dict keys traversal descends through. Everything else -- notably an audit
 #: event's recorded `before_values`/`after_values` -- is evidence to be carried unchanged,
 #: not a container to be decorated. See the module docstring.
-CONTAINER_KEYS: tuple[str, ...] = ("items", "lines", "revisions")
+CONTAINER_KEYS: tuple[str, ...] = ("items", "lines", "revisions", "snapshot")
+
+
+def _camel(name: str) -> str:
+    head, *tail = name.split("_")
+    return head + "".join(part.capitalize() for part in tail)
+
+
+#: Each pair in both spellings, because both really arrive here. A service hands the router
+#: rows straight from psycopg, whose keys are snake_case; a progress feed's header is the
+#: HOST's JSON, whose keys are camelCase and which is exactly where the progress page reads
+#: its importer. Matching one spelling silently skipped the other. `to_camel` is reimplemented
+#: rather than imported, because the domain layer does not depend on the schema layer.
+ACTOR_SPELLINGS: tuple[tuple[str, str], ...] = tuple(
+    dict.fromkeys([(i, n) for i, n in ACTOR_FIELDS]
+                  + [(_camel(i), _camel(n)) for i, n in ACTOR_FIELDS]))
 
 
 def _read(payload: Any, key: str) -> Any:
@@ -59,15 +72,27 @@ def _has(payload: Any, key: str) -> bool:
     return hasattr(payload, key)
 
 
+def _traversable(value: Any) -> bool:
+    """Whether a child is something to walk into rather than a leaf to leave alone."""
+    if value is None or isinstance(value, (str, bytes, int, float, bool)):
+        return False
+    return isinstance(value, (list, tuple, Mapping)) or hasattr(value, "__dict__")
+
+
 def _children(payload: Any) -> Iterable[Any]:
-    """The sub-payloads traversal is allowed to visit."""
+    """The sub-payloads traversal is allowed to visit.
+
+    A container key may hold a list (`items`, `lines`, `revisions`) or a single object
+    (`snapshot`, the header a progress feed wraps). Both are walked -- the feed's header is
+    where the reported screen actually reads its importer from, and a list-only rule silently
+    skipped it.
+    """
     if isinstance(payload, (list, tuple)):
         return payload
     if isinstance(payload, Mapping):
-        return [payload[key] for key in CONTAINER_KEYS
-                if isinstance(payload.get(key), (list, tuple, Mapping))]
+        return [payload[key] for key in CONTAINER_KEYS if _traversable(payload.get(key))]
     return [value for value in (getattr(payload, key, None) for key in CONTAINER_KEYS)
-            if isinstance(value, (list, tuple))]
+            if _traversable(value)]
 
 
 def collect_actor_ids(payload: Any) -> set[str]:
@@ -84,7 +109,7 @@ def collect_actor_ids(payload: Any) -> set[str]:
         return found
     if payload is None or isinstance(payload, (str, bytes, int, float, bool)):
         return found
-    for id_field, _ in ACTOR_FIELDS:
+    for id_field, _ in ACTOR_SPELLINGS:
         value = _read(payload, id_field)
         if value is not None:
             found.add(str(value))
@@ -110,7 +135,7 @@ def apply_actor_names(payload: Any, names: Mapping[str, str]) -> Any:
         return payload
     if payload is None or isinstance(payload, (str, bytes, int, float, bool)):
         return payload
-    for id_field, name_field in ACTOR_FIELDS:
+    for id_field, name_field in ACTOR_SPELLINGS:
         value = _read(payload, id_field)
         if value is None:
             continue

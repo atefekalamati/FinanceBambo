@@ -50,6 +50,20 @@ class CollectTests(unittest.TestCase):
         self.assertEqual({ADMIN}, collect_actor_ids(rows),
                          "fifty rows by one person is one lookup, not fifty")
 
+    def test_a_host_header_in_camel_case_is_found_too(self):
+        # A progress feed's header is the HOST's JSON, not a psycopg row, so its keys are
+        # camelCase -- and that header is exactly where the progress page reads its importer.
+        # Matching only snake_case skipped it and the page kept printing the id.
+        feed = {"snapshot": {"importedBy": ADMIN, "status": "ready"}, "assignments": []}
+        self.assertEqual({ADMIN}, collect_actor_ids(feed))
+        apply_actor_names(feed, NAMES)
+        self.assertEqual("مدیر سیستم", feed["snapshot"]["importedByName"])
+        self.assertEqual(ADMIN, feed["snapshot"]["importedBy"], "the id is never replaced")
+
+    def test_a_nested_single_object_is_walked_not_only_a_list(self):
+        feed = {"snapshot": {"importedBy": ADMIN}}
+        self.assertEqual({ADMIN}, collect_actor_ids(feed))
+
     def test_recorded_audit_values_are_not_searched(self):
         # before_values/after_values are evidence written by whatever recorded the event.
         # An id in there names a subject, not the actor, and must not reach the lookup.
