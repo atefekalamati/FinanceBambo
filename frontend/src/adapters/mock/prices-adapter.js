@@ -105,7 +105,9 @@ export function createMockPricesAdapter(context, { initialState = "success", res
     });
     return {
       currentPrices,
-      history: clone([...prices].sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom) || right.sequence - left.sequence)),
+      // null, not [], for the same reason the API adapter says: "not asked for
+      // yet" is a different answer from "this project has no price changes".
+      history: null,
       currentConversions,
       conversionHistory: clone([...conversions].sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate)
         || right.createdAt.localeCompare(left.createdAt)
@@ -113,6 +115,13 @@ export function createMockPricesAdapter(context, { initialState = "success", res
       asOfDate,
       scope: { organizationId: context.organizationId, projectId: context.projectId },
     };
+  }
+
+  /* The same deferral the API adapter makes, so the preview exercises the
+     shape a reader actually gets rather than a fuller one only the mock has. */
+  async function getPriceHistory() {
+    await wait();
+    return clone([...prices].sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom) || right.sequence - left.sequence));
   }
 
   async function getPrices() {
@@ -257,5 +266,5 @@ export function createMockPricesAdapter(context, { initialState = "success", res
     }
     return previewPriceImport({ name: "price-import.xlsx" });
   }
-  return Object.freeze({ getPrices, createPriceVersion, previewPriceImport, previewPriceImportFromLink, commitPriceImport, createUnitConversion });
+  return Object.freeze({ getPrices, getPriceHistory, createPriceVersion, previewPriceImport, previewPriceImportFromLink, commitPriceImport, createUnitConversion });
 }
