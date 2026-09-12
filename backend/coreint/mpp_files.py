@@ -19,9 +19,9 @@ inside the fully-resolved import root.** Everything below is that rule plus repo
 
 One thing this module cannot promise on its own: that the bytes it hashed are the bytes
 somebody later parses. It hands back a path, and opening that path again is a second read
-of a file that may have moved on. `FinanceMppSyncService.sync` closes that by resolving the
-file a second time after the parse and refusing when the digest has changed -- the check
-lives there because that is where both halves are in one place.
+of a file that may have moved on. `FinanceMppSyncService._parse_a_private_copy` closes that
+by copying the file, checking the copy against this digest, and parsing the copy -- so the
+question stops being about timing and becomes about there having been one set of bytes.
 
 Errors carry stable ``code`` values (the contract the API and logs use). The MESSAGE never
 contains the absolute filesystem path -- callers log and return ``relative_name`` only, so

@@ -5,6 +5,11 @@ import { join } from "node:path";
 
 const chromePath = process.env.CHROME_PATH ?? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const baseUrl = process.env.BAMBO_AUDIT_URL ?? "http://127.0.0.1:43127";
+// Which cases to run, by key. Unset means all of them, so CI behaves exactly as before.
+// A comma-separated list narrows the run -- useful when one case cannot render on the data
+// at hand and would otherwise block every case behind it.
+const onlyKeys = (process.env.BAMBO_AUDIT_ONLY ?? "")
+  .split(",").map((key) => key.trim()).filter(Boolean);
 const port = 49334;
 const profile = await mkdtemp(join(tmpdir(), "bambo-print-audit-"));
 const chrome = spawn(chromePath, [
@@ -112,20 +117,22 @@ const documents = [
     maxPages: 1,
   },
   {
-    // The period report only exists once it is built, so the audit builds one
-    // the same way a reader would before checking what comes off the printer.
+    // The period report, through the surface that replaced it.
+    //
+    // `period-report` was withdrawn from the router -- see the comment in
+    // layout-audit.mjs -- and this case used to drive it, so the audit failed on a page
+    // that does not exist and the period report's print coverage was lost with it. The
+    // approved workflow is the report builder with the two period sections and the range
+    // in the address, which is what layout-audit measures.
+    //
+    // No click sequence: the builder reads the range from the URL, so there is no preset
+    // to press and nothing to submit. Waiting is `chapters`, the mechanism this file
+    // already has -- one chapter per chosen section, so two -- which also makes a section
+    // that stopped rendering a failure rather than a shorter document.
     key: "period-report",
-    route: "period-report",
-    prepare: `(() => {
-      const preset = [...document.querySelectorAll('.period-presets button')]
-        .find((button) => button.textContent.includes('ابتدای سال'));
-      if (!preset) return false;
-      preset.click();
-      const form = document.querySelector('.period-builder__form');
-      if (!form) return false;
-      form.requestSubmit();
-      return true;
-    })()`,
+    route: "report-builder?sections=periodMetrics,periodBreakdown"
+           + "&from=2026-09-01&to=2026-10-31",
+    chapters: 2,
     settle: 4200,
     maxPages: 6,
   },
@@ -145,7 +152,13 @@ const results = [];
 
 try {
   await waitForDebugger();
-  for (const documentCase of documents) {
+  const selected = onlyKeys.length
+  ? documents.filter((entry) => onlyKeys.includes(entry.key))
+  : documents;
+if (onlyKeys.length && selected.length !== onlyKeys.length) {
+  throw new Error(`BAMBO_AUDIT_ONLY names a case that does not exist: ${onlyKeys.join(",")}`);
+}
+for (const documentCase of selected) {
     const page = await createPage(`${baseUrl}/#/${documentCase.route}`);
     const cdp = connect(page.webSocketDebuggerUrl);
     await cdp.ready;

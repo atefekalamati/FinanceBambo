@@ -7,6 +7,7 @@ persisted rows carry the file's own identifiers, never a database id from anothe
 """
 
 import asyncio
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -18,6 +19,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from coreint.finance_mpp_sync import FinanceMppSyncRefused, FinanceMppSyncService
+from coreint.mpp_files import ResolvedMppFile
 
 ORG = "c4ee6a23-b2a8-4afe-94c8-63baba552ca4"
 VERSION = UUID("afe50159-86e5-4e65-9f31-e0fd01ef29e7")
@@ -240,48 +242,104 @@ class SyncTests(unittest.TestCase):
 class HashedBytesAreParsedBytesTests(SyncTests):
     """The sha a version is stored under must describe the rows stored beside it.
 
-    `resolve_import_file` hashes the file; the reader then opens it AGAIN. Nothing used to
-    compare the two, so a file replaced between them produced a version whose identity
-    named one schedule and whose rows came from another -- and since that sha is the
-    idempotency key of the whole import, the next sync of the real bytes would answer
-    "unchanged" and never correct it.
+    The first version of this guarantee compared digests before and after the parse. That
+    was close and measurably not all the way: on an isolated database, a file changed
+    DURING the parse and changed back before it returned satisfied both digests, was
+    accepted, and stored a version whose sha described bytes nobody had parsed.
 
-    Inherits the suite's own fixture so the file, the connection and the reader are the
-    ones every other test here uses.
+    So the parse reads a private copy instead. The copy is made under a directory only that
+    call knows, its digest is checked against the staged file's before the parser is allowed
+    near it, and it is removed afterwards. "The sha describes the bytes parsed" is then true
+    because there was only ever one set of bytes -- a structural answer rather than a
+    timing one.
+
+    A consequence worth stating: changing the staged file while the parse runs is now
+    HARMLESS rather than fatal. The copy already holds bytes that really existed, and the
+    version describing them is correct; the next sync picks up the new bytes. The old test
+    asserted a refusal there, and that refusal was over-strict.
     """
 
-    class ReplacingReader(Reader):
-        """Overwrites the staged file at the moment the parse happens.
+    class RecordingReader(Reader):
+        """Notes which path it was handed and what was in it."""
 
-        Exactly what a host restaging a schedule looks like, at exactly the instant that
-        used to go unnoticed.
-        """
-
-        def __init__(self, parsed, path):
+        def __init__(self, parsed):
             super().__init__(parsed)
-            self._path = path
+            self.seen_path = None
+            self.seen_bytes = None
 
         def read(self, file_path):
-            self._path.write_bytes(OLE2 + b"the host replaced this while we were reading")
+            self.seen_path = Path(file_path)
+            self.seen_bytes = self.seen_path.read_bytes()
             return super().read(file_path)
 
-    def test_a_file_replaced_between_the_hash_and_the_parse_stores_nothing(self):
-        connection = Connection()
-        staged = Path(self.root.name) / "terrace.mpp"
-        reader = self.ReplacingReader(self.parsed, staged)
-        with self.assertRaises(FinanceMppSyncRefused) as caught:
-            run(self.service(connection, reader).sync(ORG, "terrace"))
-        self.assertEqual("MPP_FILE_NOT_STABLE", caught.exception.code)
-        self.assertEqual(1, reader.reads, "the file was parsed once, then questioned")
-        writes = [s for s in connection.statements
-                  if s.startswith(("INSERT", "UPDATE", "DELETE"))]
-        self.assertEqual([], writes, "nothing may be written when the bytes are in doubt")
+    class MeddlingReader(RecordingReader):
+        """Overwrites the STAGED file while the parse is under way."""
 
-    def test_a_file_that_stays_put_syncs_exactly_as_before(self):
-        # The second resolve must not make an ordinary import cost anything but a hash.
+        def __init__(self, parsed, staged):
+            super().__init__(parsed)
+            self._staged = staged
+
+        def read(self, file_path):
+            result = super().read(file_path)
+            self._staged.write_bytes(OLE2 + b"the host restaged this mid-parse")
+            return result
+
+    def staged(self):
+        return Path(self.root.name) / "terrace.mpp"
+
+    def test_the_parser_is_handed_a_private_copy_and_never_the_staged_file(self):
         connection = Connection()
-        result = run(self.service(connection, Reader(self.parsed)).sync(ORG, "terrace"))
+        reader = self.RecordingReader(self.parsed)
+        result = run(self.service(connection, reader).sync(ORG, "terrace"))
         self.assertEqual("imported", result["status"])
+        self.assertIsNotNone(reader.seen_path)
+        self.assertNotEqual(self.staged().resolve(), reader.seen_path.resolve(),
+                            "the parse must not read the file a host can still write")
+        self.assertEqual(self.staged().read_bytes(), reader.seen_bytes,
+                         "and the copy must be the same bytes")
+
+    def test_the_private_copy_does_not_outlive_the_parse(self):
+        # A temporary directory per sync that nobody removes is a disk that fills up
+        # quietly, on a timer.
+        connection = Connection()
+        reader = self.RecordingReader(self.parsed)
+        run(self.service(connection, reader).sync(ORG, "terrace"))
+        self.assertFalse(reader.seen_path.exists())
+        self.assertFalse(reader.seen_path.parent.exists())
+
+    def test_a_file_changed_after_it_was_hashed_is_refused(self):
+        # Driven through the digest the resolver reported rather than by racing the disk:
+        # a `resolved` whose sha does not match the bytes on disk is exactly the state a
+        # file replaced between hashing and copying leaves behind.
+        connection = Connection()
+        service = self.service(connection, Reader(self.parsed))
+        wrong = ResolvedMppFile(self.staged(), "terrace.mpp",
+                                self.staged().stat().st_size, "0" * 64)
+        with self.assertRaises(FinanceMppSyncRefused) as caught:
+            service._parse_a_private_copy(wrong)
+        self.assertEqual("MPP_FILE_NOT_STABLE", caught.exception.code)
+        self.assertEqual([], [s for s in connection.statements
+                              if s.startswith(("INSERT", "UPDATE", "DELETE"))],
+                         "nothing may be written when the bytes are in doubt")
+
+    def test_changing_the_staged_file_during_the_parse_no_longer_refuses(self):
+        # The case the digest-before/after design got wrong in both directions: it refused
+        # a change that did not matter, and accepted a change-and-revert that did.
+        connection = Connection()
+        reader = self.MeddlingReader(self.parsed, self.staged())
+        result = run(self.service(connection, reader).sync(ORG, "terrace"))
+        self.assertEqual("imported", result["status"])
+        self.assertEqual(hashlib.sha256(reader.seen_bytes).hexdigest(),
+                         result["fileSha256"],
+                         "the stored sha describes the bytes the parser actually read")
+        self.assertNotEqual(reader.seen_bytes, self.staged().read_bytes(),
+                            "the staged file really did move on")
+
+    def test_an_ordinary_import_still_states_the_files_own_digest(self):
+        connection = Connection()
+        reader = self.RecordingReader(self.parsed)
+        result = run(self.service(connection, reader).sync(ORG, "terrace"))
+        self.assertEqual(hashlib.sha256(OLE2).hexdigest(), result["fileSha256"])
         self.assertEqual(2, result["rowCount"])
 
 

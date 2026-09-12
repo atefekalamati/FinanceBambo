@@ -22,6 +22,7 @@ report says so instead of inventing one.
 
 import logging
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from pathlib import Path
 from uuid import uuid4
 
 from psycopg.rows import dict_row
@@ -370,6 +371,41 @@ class FinanceMppSyncService:
         self._max_size_mb = max_size_mb
         self._ids = id_factory
 
+    def _parse_a_private_copy(self, resolved):
+        """Copy, verify the copy is the same bytes, parse the copy, remove it.
+
+        Returns the parsed project and the digest those exact bytes hashed to -- the same
+        value `resolved.sha256` carries when nothing moved, and a refusal when it did.
+
+        Runs on a worker thread as one unit: the copy, the check and the parse belong
+        together, and splitting them would put the gap back.
+        """
+        import hashlib
+        import shutil
+        import tempfile
+
+        workspace = tempfile.mkdtemp(prefix="finance-mpp-")
+        try:
+            private = Path(workspace) / resolved.path.name
+            shutil.copyfile(resolved.path, private)
+
+            digest = hashlib.sha256()
+            with private.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            copied_sha = digest.hexdigest()
+            if copied_sha != resolved.sha256:
+                # The staged file changed between being hashed and being copied. Nothing is
+                # stored, and the previous source version keeps being the active one.
+                raise FinanceMppSyncRefused(
+                    "MPP_FILE_NOT_STABLE",
+                    "the file changed between being hashed and being copied, so nothing "
+                    "was stored: %s" % resolved.relative_name)
+
+            return self._reader.read(private), copied_sha
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+
     def _file_name(self, project_id, file_name=None):
         """Which file to read: the caller's choice, else the project's own name.
 
@@ -405,27 +441,27 @@ class FinanceMppSyncService:
         except MppFileError as error:
             raise FinanceMppSyncRefused(error.code, str(error)) from error
 
-        parsed = await asyncio.to_thread(self._reader.read, resolved.path)
+        # THE PARSE READS A PRIVATE COPY, NOT THE STAGED FILE.
+        #
+        # `resolve_import_file` hashes the staged file and hands back a path; opening that
+        # path again is a second read of a file the host may have moved on from. Comparing
+        # digests before and after the parse gets close, and measurably not all the way: a
+        # file changed DURING the parse and changed back before it returned satisfies both
+        # digests while the parser saw different bytes. Measured on an isolated database --
+        # the version was stored, and its sha described bytes nobody parsed.
+        #
+        # Copying first replaces that timing argument with a structural one. The copy lives
+        # under a directory only this call knows, so nothing can write it, and its digest is
+        # checked against the staged file's before the parser is allowed near it. After
+        # that, "the sha describes the bytes parsed" is true because there was only ever one
+        # set of bytes.
+        #
+        # This is not a new storage architecture: no watcher, no queue, no callback, and the
+        # copy is gone before the function returns. The size ceiling already bounds it.
+        parsed, verified_sha = await asyncio.to_thread(
+            self._parse_a_private_copy, resolved)
 
-        # The parse opened the file a SECOND time. Resolve it again and compare digests, so
-        # the sha this version is stored under is the sha of the bytes these rows came from.
-        # Without this, a file replaced between the two reads produces a version whose
-        # identity describes one schedule and whose rows describe another -- and because the
-        # sha is the idempotency key of the whole import, the next sync of the real bytes
-        # would answer "unchanged" and never correct it.
-        try:
-            again = resolve_import_file(self._import_root,
-                                        self._file_name(project_id, file_name),
-                                        self._max_size_mb)
-        except MppFileError as error:
-            raise FinanceMppSyncRefused(error.code, str(error)) from error
-        if again.sha256 != resolved.sha256:
-            raise FinanceMppSyncRefused(
-                "MPP_FILE_NOT_STABLE",
-                "the file changed between being hashed and being read, so nothing was "
-                "stored: %s" % resolved.relative_name)
-
-        rows = finance_rows(parsed, source_sha256=resolved.sha256)
+        rows = finance_rows(parsed, source_sha256=verified_sha)
         if not rows:
             raise FinanceMppSyncRefused(
                 "MPP_NO_FINANCE_ROWS",
