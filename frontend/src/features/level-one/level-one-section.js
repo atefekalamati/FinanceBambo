@@ -45,6 +45,11 @@ export function createLevelOneSection({ rollup, error = null }) {
    * a reader who is told the rollup is not ready yet still has somewhere to go.
    */
   const finish = () => {
+    // Except when the rollup was refused for lack of permission. The full page behind
+    // this link is gated on the same grant the request was just denied, so offering it
+    // sends the reader to a second refusal -- and a card that has told them it may not
+    // show them this should not then invite them to go and look.
+    if (Number(error?.status) === 403) return section;
     const link = element("a", "level-one-section__link");
     link.href = "#/level-one";
     const chevron = chevronIcon("forward");

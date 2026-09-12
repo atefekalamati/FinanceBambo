@@ -43,6 +43,7 @@ import logging
 from uuid import uuid4
 
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from app.finance.domain.mpp_source_version import active_source_version
 
@@ -82,6 +83,17 @@ _INSERT_RESOURCE = """
          dimension, source_resource_uid, created_by)
     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     ON CONFLICT DO NOTHING
+"""
+
+#: The decision itself, as an event. `before_values` states what the file said -- a WORK
+#: resource Finance refuses to type -- and `after_values` what the person chose, so the
+#: pair reads as the judgement it is rather than as a row appearing from nowhere.
+_INSERT_CLASSIFICATION_EVENT = """
+    INSERT INTO finance_audit_events
+        (id, organization_id, project_id, actor_user_id, action, entity_type, entity_id,
+         before_values, after_values, occurred_at)
+    VALUES (%s, %s, %s, %s, 'finance_resource.classified', 'finance_resources', %s,
+            %s, %s, now())
 """
 
 _INSERT_LINE = """
@@ -354,6 +366,25 @@ class FinanceMppMappingService:
                          "%s%s" % (RESOURCE_CODE_PREFIX, source_resource_uid),
                          (row["name"] or "منبع بدون نام")[:120],
                          unit.code, unit.dimension, source_resource_uid, actor_user_id))
+
+                    # A person decided something the file would not say, so the trail has
+                    # to record that a person decided it. The resource carries created_by
+                    # and created_at, which names WHO and WHEN but not WHAT WAS CHOSEN nor
+                    # what it was chosen from -- and MATERIAL and COST resources, which the
+                    # mapper types on its own, look identical in that column. Only the event
+                    # separates a judgement from an import.
+                    await cursor.execute(_INSERT_CLASSIFICATION_EVENT, (
+                        str(self._ids()), organization_id, project_id, actor_user_id,
+                        resource_id,
+                        Jsonb({"sourceResourceUid": source_resource_uid,
+                               "nativeType": "WORK",
+                               "resourceType": None,
+                               "name": row["name"]}),
+                        Jsonb({"sourceResourceUid": source_resource_uid,
+                               "resourceType": resource_type,
+                               "baseUnit": unit.code,
+                               "dimension": unit.dimension,
+                               "code": "%s%s" % (RESOURCE_CODE_PREFIX, source_resource_uid)})))
         return {"status": "classified", "resourceId": resource_id,
                 "resourceType": resource_type, "baseUnit": unit.code,
                 "sourceResourceUid": source_resource_uid}
