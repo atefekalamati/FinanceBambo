@@ -102,7 +102,7 @@ const RELATED_SUMMARY_KEYS = new Set([
 const SUMMARY_MARKS = Object.freeze({
   initialEstimateIrr: "estimateCalculator",
   actualCostIrr: "registeredCost",
-  remainingPhysicalCostIrr: "levelOne",
+  remainingPhysicalCostIrr: "remainingWork",
   actualCostPerSquareMeterIrr: "area",
 });
 
