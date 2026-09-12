@@ -189,14 +189,14 @@ test("امور مالی is closed to an account that cannot author anything", ()
 
 test("a reader reaching for an operations table is sent to the read-only one", () => {
   const reader = { permissionCodes: ["finance.view", "finance_report.view"] };
-  [["/prices", "/report-prices"], ["/financial-items", "/report-items"]].forEach(([from, to]) => {
+  [["finance/prices", "finance/report-prices"], ["finance/financial-items", "finance/report-items"]].forEach(([from, to]) => {
     const twin = readOnlyTwinOf(from);
     assert.equal(twin?.path, to, `${from} has no read-only twin`);
     assert.equal(canAccessRoute(reader, twin), true, `${to} is closed to the account the redirect is for`);
     assert.equal(surfaceOfPath(to), SURFACES.REPORT);
   });
   // Pages with nothing to read for a customer have no twin and stay closed.
-  ["/progress", "/settings", "/audit", "/invoice-files", "/ai-review", "/finance"].forEach((path) => {
+  ["finance/progress", "finance/settings", "finance/audit", "finance/invoice-files", "finance/ai-review", "finance/operations"].forEach((path) => {
     assert.equal(readOnlyTwinOf(path), null, `${path} should not have a read-only twin`);
   });
 });

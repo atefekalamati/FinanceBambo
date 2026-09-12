@@ -136,7 +136,7 @@ alembic current        # باید 0013 باشد
 - عنصر `<main id="finance-module-root">` که ماژول داخلش رندر می‌شود.
 - `body` بدون `data-finance-runtime="standalone"` — این نشانگر فقط برای پیش‌نمایش توسعه است
   و دادهٔ Mock را فعال می‌کند.
-- دو لینک در سایدبار: `#/finance` (امور مالی) و `#/finance-report` (گزارش مالی). Router
+- دو لینک در سایدبار: **`#finance/operations`** (امور مالی) و **`#finance/report`** (گزارش مالی). Router
   ماژول از `hash` استفاده می‌کند.
 - هنگام تعویض پروژه در هدر بامبو، Context کامل پروژهٔ جدید با این رویداد اعلام شود:
   `window.dispatchEvent(new CustomEvent("bambo:project-context-changed", { detail: { context } }))`

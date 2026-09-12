@@ -149,10 +149,10 @@ function renderFiles(files, { adapter, canUpload, onChanged }) {
       // the failure block and the "پردازش دوباره" button already come from that status --
       // so retry needs nothing new here.
       await onChanged();
-      if (settled === "ready") window.location.hash = "#/ai-review";
+      if (settled === "ready") window.location.hash = "#finance/ai-review";
     });
     const reviews = element("a", "button button--ghost", "مشاهده بازبینی‌ها");
-    reviews.href = "#/ai-review";
+    reviews.href = "#finance/ai-review";
     actions.append(process, reviews);
     card.append(actions);
     list.append(card);
@@ -182,7 +182,7 @@ export function createInvoiceFilesPage({ context, adapter }) {
     const header = createFinancePageHeader("بارگذاری تصویر و صدا");
     const actions = element("div", "finance-page-actions");
     const manual = element("a", "button button--ghost", "ورود دستی فاکتور");
-    manual.href = "#/invoices";
+    manual.href = "#finance/invoices";
     actions.append(manual);
 
     root.replaceChildren(header, actions, renderPageState(state, { renderContent, onRetry: load }));
