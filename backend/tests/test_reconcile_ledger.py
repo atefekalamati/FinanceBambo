@@ -75,7 +75,7 @@ class ObjectDiscoveryTests(unittest.TestCase):
         tables, _data = objects_touched(found, walk)
         self.assertEqual(
             ["estimate_line_source_completions", "finance_mpp_rows",
-             "finance_mpp_source_versions"], tables)
+             "finance_mpp_source_versions", "progress_snapshot_refs"], tables)
 
     def test_each_ddl_shape_the_revisions_use_is_recognised(self):
         """A shape the pattern misses is a table altered and never compared."""

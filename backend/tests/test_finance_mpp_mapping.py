@@ -263,6 +263,37 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(("hour", "time"), (insert[6], insert[7]), "unit and its dimension")
         self.assertEqual(156, insert[8], "stored against the source identity")
 
+    def test_the_decision_is_recorded_as_an_event_not_only_as_a_row(self):
+        """The resource says who and when. Only the event says what was chosen.
+
+        `created_by` and `created_at` are on every resource the mapper writes too, so a
+        column cannot tell a judgement apart from an import. A WORK resource is the one
+        kind Finance refuses to type on its own, and that refusal is only honest if the
+        answer a person gave is written down as an answer.
+        """
+        db = self.work_db()
+        self.classify(db, kind="equipment")
+        event = next((p for t, p in db.statements
+                      if "INSERT INTO finance_audit_events" in t
+                      and "finance_resource.classified" in t), None)
+        self.assertIsNotNone(event, "a person's classification left no audit event")
+        self.assertEqual(ORG, event[1])
+        self.assertEqual("terrace", event[2])
+        self.assertEqual(UUID(int=1), event[3], "the event names who decided")
+        before, after = event[5].obj, event[6].obj
+        self.assertEqual("WORK", before["nativeType"], "before states what the file said")
+        self.assertIsNone(before["resourceType"], "the file typed it as nothing")
+        self.assertEqual("equipment", after["resourceType"], "after states what was chosen")
+        self.assertEqual(156, after["sourceResourceUid"])
+
+    def test_an_unchanged_decision_records_no_second_event(self):
+        """Repeating the request is not a new decision, so it is not a new event."""
+        db = self.work_db()
+        db.resources[156] = UUID(int=99)          # a person classified it earlier
+        decision = self.classify(db)
+        self.assertEqual("unchanged", decision["status"])
+        self.assertFalse(any("finance_resource.classified" in t for t, _p in db.statements))
+
     def test_work_becomes_labor_when_a_person_says_so(self):
         decision = self.classify(self.work_db(), kind="labor")
         self.assertEqual("labor", decision["resourceType"])

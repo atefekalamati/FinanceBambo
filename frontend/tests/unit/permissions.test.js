@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { canAccessRoute, canAccessSurface, defaultRouteFor, hasPermission } from "../../src/core/auth/permissions.js";
-import { ROUTES, SURFACES, homeRouteFor, readOnlyTwinOf, routesForSurface, surfaceOfPath } from "../../src/core/config/routes.js";
+import { ROUTES, SURFACE_REQUIREMENTS, SURFACES, homeRouteFor, readOnlyTwinOf, routesForSurface, surfaceOfPath } from "../../src/core/config/routes.js";
 
 const context = { permissionCodes: ["finance.view"] };
 
@@ -82,7 +82,9 @@ test("no route is gated on a write permission", () => {
 const ACCOUNTS = Object.freeze({
   // Reads what the project cost, records nothing.
   reader: ["finance.view", "finance_report.view", "finance_report.export"],
-  // Authors the plan's numbers, and has no business on the customer's side.
+  // Authors the plan's numbers. Holds finance.view, so the reading surface opens for
+  // them as well -- «reading is never taken away» applies to an author too, and the
+  // routes inside still ask for their own grants.
   author: ["finance.view", "finance.edit"],
   // Records and confirms documents, and never enters the workspace. Holds no
   // reporting code at all, which is the case a single surface code would break.
@@ -94,7 +96,7 @@ const ACCOUNTS = Object.freeze({
 test("each surface opens for any one of its own codes", () => {
   const doors = {
     reader: { [SURFACES.OPERATIONS]: false, [SURFACES.REPORT]: true },
-    author: { [SURFACES.OPERATIONS]: true, [SURFACES.REPORT]: false },
+    author: { [SURFACES.OPERATIONS]: true, [SURFACES.REPORT]: true },
     recorder: { [SURFACES.OPERATIONS]: false, [SURFACES.REPORT]: true },
     everything: { [SURFACES.OPERATIONS]: true, [SURFACES.REPORT]: true },
   };
@@ -103,6 +105,29 @@ test("each surface opens for any one of its own codes", () => {
       assert.equal(canAccessSurface({ permissionCodes: ACCOUNTS[name] }, surface), open,
         `${surface} is ${open ? "closed to" : "open to"} ${name}`);
     });
+  });
+});
+
+test("an account that may only read can still open something", () => {
+  // The acceptance target, written down so it cannot be lost twice.
+  //
+  // امور مالی may close on an account that cannot edit -- that is the approved design,
+  // and the reason it is safe is that the reader lands on گزارش مالی instead. When
+  // finance.view was dropped from that door the two halves stopped adding up: an account
+  // holding finance.view alone was refused at both, could still read every figure
+  // through the API, and was offered a button to the other closed door.
+  const viewerOnly = { permissionCodes: ["finance.view"] };
+  const open = ROUTES.filter((route) => route.enabled && canAccessRoute(viewerOnly, route));
+  assert.ok(open.length > 0, "an account holding finance.view can open no page at all");
+  const landing = defaultRouteFor(viewerOnly);
+  assert.ok(landing, "an account holding finance.view is given nowhere to land");
+  assert.ok(canAccessRoute(viewerOnly, landing),
+    `the landing route ${landing.key} is itself refused to the account sent there`);
+
+  // And reading is all it opens: nothing that needs another grant comes with it.
+  open.forEach((route) => {
+    assert.equal(route.permission, "finance.view",
+      `${route.key} opened for a view-only account but asks for ${route.permission}`);
   });
 });
 
@@ -117,8 +142,11 @@ test("recording a document gates the controls, never the register", () => {
   invoicePages.forEach((route) => {
     assert.equal(route.permission, "finance.view", `${route.key} gates its door on a write grant`);
     ["reader", "author", "recorder", "everything"].forEach((name) => {
+      // Read from the module, not restated here: this assertion used to carry its own
+      // copy of the door's codes, so when finance.view was dropped from the real door
+      // the test agreed with the change instead of catching it.
       const holdsReportDoor = ACCOUNTS[name].some((code) =>
-        ["finance_report.view", "finance.manage_invoice"].includes(code));
+        SURFACE_REQUIREMENTS[SURFACES.REPORT].includes(code));
       assert.equal(canAccessRoute({ permissionCodes: ACCOUNTS[name] }, route), holdsReportDoor,
         `${route.key} answers ${name} wrongly`);
     });
