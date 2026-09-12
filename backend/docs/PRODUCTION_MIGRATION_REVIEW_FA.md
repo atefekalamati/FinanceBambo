@@ -27,18 +27,43 @@
 14. `0014_mpp_reporting_date`
 15. `0015_finance_mpp_assignment_facts`
 16. `0016_finance_mpp_estimate_basis`
-17. `0017_snapshot_status_check` (head)
+17. `0017_snapshot_status_check`
+18. `0018_snapshot_status_vocabulary` (head)
 
 ```powershell
 alembic current      # این دیتابیس کجاست
 alembic upgrade head
-alembic current      # باید 0017 باشد
+alembic current      # باید 0018 باشد
 ```
 
 
 
 
 
+
+## 0018 — واژگانی که آن ستون واقعاً نگه می‌دارد
+
+`0017` درست تشخیص داده بود که این ستون باید بسته شود، ولی قاعده را از
+`finance_mpp_source_versions.status` قرض گرفت: `ready` و `failed`. نسبت دو جدول درست بود،
+واژگانشان نه. واژگان این ستون `ready` و `superseded` است و چهار جای مستقل همین را می‌گویند —
+`schemas/progress.py` با `Literal["ready","superseded"]`، `contracts/openapi.json`،
+schema کیت (`progress-snapshot.schema.json`)، و `tests/test_core_integration.py` که صریحاً
+ادعا می‌کند وضعیت به `superseded` تبدیل می‌شود. هیچ‌کدام `failed` نمی‌گویند.
+
+**این یک نقص نظری نبود.** `coreint/progress.py` مقدار `superseded` را به‌معنای «snapshot
+بعدی به این یکی اشاره می‌کند» می‌سازد و در هدر feed می‌فرستد؛ `reference_from_header` همان را
+مستقیم در این ستون می‌نویسد. پس **هر گزارشی که روی تاریخ گذشته pin شود** snapshotی را حل
+می‌کند که بعدی‌ها جایگزینش کرده‌اند، و ذخیرهٔ ارجاعش قید را نقض می‌کرد — یعنی ۵۰۰ روی
+گزارش‌های تاریخی، از رفتار درستِ خودِ ماژول. در مقابل `failed` که 0017 اجازه‌اش می‌داد، در
+این ستون توسط هیچ‌چیز نوشته نمی‌شود.
+
+چرا نسخهٔ جدید و نه ویرایش 0017: آن migration منتشر شده و اجرا شده — کامیت خودش اثرانگشت
+شِما را از یک اجرای PG16 و یک PG18 ثبت کرده. migrationی که جایی اجرا شده تاریخ است؛ اصلاحش
+در جا یعنی آن دیتابیس‌ها قیدی داشته باشند که هیچ نسخه‌ای توصیفش نمی‌کند.
+
+هر دو جهت روی دادهٔ ناسازگار **امتناع می‌کنند** نه اینکه وسط کار روی نقض قید بشکنند. downgrade
+عمداً همان قاعدهٔ تنگ‌تر 0017 را برمی‌گرداند — downgrade وضعیت قبلی را بازمی‌گرداند، بهترش
+نمی‌کند — و اگر ردیف زنده‌ای `superseded` داشته باشد امتناع می‌کند.
 
 ## 0017 — تنها ستون وضعیتی که هیچ CHECKی نداشت
 

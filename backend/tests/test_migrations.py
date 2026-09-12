@@ -319,7 +319,8 @@ class AlembicChainTests(unittest.TestCase):
              "0014_mpp_reporting_date",
              "0015_finance_mpp_assignment_facts",
              "0016_finance_mpp_estimate_basis",
-             "0017_snapshot_status_check"],
+             "0017_snapshot_status_check",
+             "0018_snapshot_status_vocabulary"],
             sorted(path.stem for path in VERSIONS.glob("*.py")))
 
     def test_every_revision_runs_both_directions(self):
