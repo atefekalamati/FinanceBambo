@@ -11,8 +11,7 @@
  */
 
 /** The statuses that mean the work is over, whichever way it went. */
-export const SETTLED = Object.freeze(["ready", "failed"]);
-
+const SETTLED = Object.freeze(["ready", "failed"]);
 /** How long to keep asking, and how often. A local OCR run took ~35s cold, ~12s warm. */
 export const DEFAULT_INTERVAL_MS = 2000;
 export const DEFAULT_ATTEMPTS = 60;

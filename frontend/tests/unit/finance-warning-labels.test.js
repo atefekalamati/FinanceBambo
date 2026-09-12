@@ -81,7 +81,6 @@ test("no surface keeps a private copy of the wording any more", () => {
   // for the same code before this was shared.
   const surfaces = [
     "../../src/features/finance-home/finance-home-page.js",
-    "../../src/features/reports/reports-page.js",
     "../../src/features/progress/progress-page.js",
   ];
   surfaces.forEach((path) => {

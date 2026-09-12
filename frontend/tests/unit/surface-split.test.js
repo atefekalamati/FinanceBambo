@@ -83,7 +83,17 @@ test("the operations home shows no money, and the report home shows no operation
  * stays declared and the dispatch stays wired, so the pages keep their tests and
  * turning one back on is one word.
  */
-const WITHDRAWN = Object.freeze(["reports", "period-report", "work-areas"]);
+/* گزارش وضعیت مالی, گزارش دوره‌ای and بخش‌های گزارش مالی were withdrawn behind
+   `enabled: false` and then deleted: every section they drew is a report in the
+   builder's catalogue, and a page nobody can open is a page nobody maintains.
+   What survives of them is `shared/reports/period-comparison.js`, which the
+   builder's two period reports are built on.
+
+   تنظیمات نمایش is the one still in the table. Its page is the settings page
+   under another surface, so the route costs nothing to keep and bringing it back
+   is one word. */
+const WITHDRAWN = Object.freeze(["report-settings"]);
+const DELETED = Object.freeze(["reports", "period-report", "work-areas"]);
 
 test("a withdrawn page keeps its dispatch and is offered nowhere", () => {
   const bootstrap = read("../../src/app/bootstrap.js");
@@ -92,6 +102,20 @@ test("a withdrawn page keeps its dispatch and is offered nowhere", () => {
     assert.equal(route?.enabled, false, `${key} is still offered to a reader`);
     assert.match(bootstrap, new RegExp(`route\.key === "${key}"`),
       `${key} lost the dispatch that keeps the page alive behind the route`);
+  });
+});
+
+test("a deleted page leaves no route, no dispatch and no folder", () => {
+  // A route with no page behind it resolves to a blank frame, which reads as a
+  // broken module rather than a withdrawn feature. The three go together.
+  const bootstrap = read("../../src/app/bootstrap.js");
+  DELETED.forEach((key) => {
+    assert.equal(ROUTES.find((route) => route.key === key), undefined,
+      `${key} still has a route with nothing behind it`);
+    assert.doesNotMatch(bootstrap, new RegExp(`route\.key === "${key}"`),
+      `${key} is still dispatched`);
+    assert.doesNotMatch(bootstrap, new RegExp(`features/${key}/`),
+      `${key} is still imported`);
   });
 });
 

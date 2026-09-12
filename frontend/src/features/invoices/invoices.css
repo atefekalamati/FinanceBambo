@@ -266,13 +266,7 @@
   background: rgb(239 68 68 / 20%);
 }
 
-.invoice-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-lg);
-  margin-block-start: var(--space-xl);
-}
+
 
 /* --------------------------------------------------------------------------
    Invoice read-only detail

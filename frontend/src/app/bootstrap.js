@@ -31,11 +31,8 @@ import { createInvoicesPage } from "../features/invoices/invoices-page.js";
 import { createInvoiceFilesPage } from "../features/ai-review/invoice-files-page.js";
 import { createAiReviewPage } from "../features/ai-review/ai-review-page.js";
 import { createSettingsPage } from "../features/settings/settings-page.js";
-import { createReportsPage } from "../features/reports/reports-page.js";
-import { createPeriodReportPage } from "../features/period-report/period-report-page.js";
 import { createReportBuilderPage } from "../features/report-builder/report-builder-page.js";
 import { createLevelOnePage } from "../features/level-one/level-one-page.js";
-import { createWorkAreasPage } from "../features/work-areas/work-areas-page.js";
 import { createAuditPage } from "../features/audit/audit-page.js";
 import { DISPLAY_CURRENCY_CHANGED_EVENT } from "../shared/preferences/currency-preference.js";
 
@@ -146,17 +143,6 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
   if (route.key === "invoices") root.append(createInvoicesPage({ context, adapter: adapters.invoices }));
   if (route.key === "invoice-files") root.append(createInvoiceFilesPage({ context, adapter: adapters.attachments }));
   if (route.key === "ai-review") root.append(createAiReviewPage({ context, adapter: adapters.attachments }));
-  if (route.key === "reports") root.append(createReportsPage({ context, adapter: adapters.reports }));
-  if (route.key === "period-report") {
-    root.append(createPeriodReportPage({
-      context,
-      reportsAdapter: adapters.reports,
-      auditAdapter: adapters.audit,
-      invoicesAdapter: adapters.invoices,
-      progressAdapter: adapters.progress,
-    }));
-  }
-  if (route.key === "work-areas") root.append(createWorkAreasPage());
   if (route.key === "level-one") {
     root.append(createLevelOnePage({
       context,

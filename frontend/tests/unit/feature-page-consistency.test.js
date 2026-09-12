@@ -24,7 +24,7 @@ test("every feature page renders its states through the shared page-state helper
   // used to close the overview — so it has no loading, empty or error state to
   // render. Every page that does ask the service for something is still held to
   // the shared helper.
-  const STATELESS = new Set(["features/work-areas/work-areas-page.js"]);
+  const STATELESS = new Set();
   const offenders = PAGES
     .filter(([name]) => !STATELESS.has(name))
     .filter(([, source]) => !source.includes("renderPageState("))

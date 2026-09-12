@@ -23,11 +23,6 @@ function normalizeContext(raw) {
   return Object.freeze(context);
 }
 
-export function getHostContext() {
-  if (!window.__BAMBO_FINANCE_CONTEXT__) return null;
-  return normalizeContext(window.__BAMBO_FINANCE_CONTEXT__);
-}
-
 /**
  * Follow the host's project, however it says so.
  *

@@ -56,9 +56,8 @@ test("every internal finance page uses the shared header instead of a local back
   const pages = [
     "invoices/invoices", "prices/prices", "financial-items/financial-items",
     "settings/settings", "progress/progress", "audit/audit",
-    "ai-review/ai-review", "ai-review/invoice-files", "reports/reports",
-    "level-one/level-one", "period-report/period-report",
-    "report-builder/report-builder", "work-areas/work-areas",
+    "ai-review/ai-review", "ai-review/invoice-files",
+    "level-one/level-one", "report-builder/report-builder",
   ];
   for (const page of pages) {
     const source = readFileSync(new URL(`../../src/features/${page}-page.js`, import.meta.url), "utf8");

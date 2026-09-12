@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { addExactDecimal, rollupPriceVariances, rollupQuantityVariances } from "../../src/shared/variances/variance-rollup.js";
-import { buildPriceVariancePresentation, buildQuantityVariancePresentation } from "../../src/features/reports/report-analysis.js";
 
 // The shape the service actually answers with: one row per estimate line, and
 // the same item appearing on two activities.
@@ -100,17 +99,4 @@ test("the totals that travel with a folded row are the item's, not one line's", 
   assert.equal(rolled[0].initialQuantity, "150.0000");
   assert.equal(rolled[0].revisedQuantity, "165.0000");
   assert.equal(rolled[0].remainingPhysicalCostIrr, "750");
-});
-
-test("both report tables show the folded rows, and scale their bars to them", () => {
-  const priced = buildPriceVariancePresentation(PRICE_ROWS);
-  assert.deepEqual(priced.map((row) => row.resourceCode), ["MAT-REBAR", "EQ-CRANE"]);
-  // The tallest bar is the item's total, not the largest single line — otherwise
-  // the folded leader would overflow the track it is scaled against.
-  assert.equal(priced[0].magnitude, 100);
-  assert.ok(priced[1].magnitude < 100);
-  assert.equal(priced[0].direction, "increase");
-  const quantities = buildQuantityVariancePresentation(QUANTITY_ROWS);
-  assert.deepEqual(quantities.map((row) => row.resourceCode), ["MAT-REBAR", "LAB-FORM"]);
-  quantities.forEach((row) => assert.notEqual(Number(row.varianceQuantity), 0, "a zero deviation reached a table of largest deviations"));
 });

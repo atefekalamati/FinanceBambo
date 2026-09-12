@@ -40,8 +40,6 @@ const ROUTE_PERMISSIONS = Object.freeze({
   invoices: "finance.view",
   "invoice-files": "finance.view",
   "ai-review": "finance.view",
-  reports: "finance_report.view",
-  "period-report": "finance_report.view",
   audit: "finance.view",
   settings: "finance.view",
   "report-home": "finance.view",
@@ -57,7 +55,6 @@ const ROUTE_PERMISSIONS = Object.freeze({
   // The destinations page is the list of links that used to close the overview.
   // It reads nothing of its own, so it asks for the same reading permission the
   // pages it points at do.
-  "work-areas": "finance.view",
   // The reader-only settings view shows a currency choice held in this browser
   // and a read-back of the permissions the host granted. Its one request is
   // GET /settings, so it asks for reading like every other door.
@@ -214,7 +211,6 @@ test("the split moved pages between surfaces without dropping any", () => {
     "report-prices",
     "report-items",
     "report-builder",
-    "report-settings",
   ]);
   assert.deepEqual(routesForSurface(SURFACES.OPERATIONS).map((route) => route.key), [
     "finance-home",
