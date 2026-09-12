@@ -1,6 +1,11 @@
 const STATUS_PRESENTATION = Object.freeze({
   0: { title: "ارتباط با سرویس برقرار نشد", fallback: "اتصال شبکه و وضعیت سرویس مالی را بررسی و دوباره تلاش کنید.", retryable: true },
-  403: { title: "دسترسی به این عملیات وجود ندارد", fallback: "مجوز مالی یا دسترسی پروژه برای انجام این درخواست کافی نیست.", retryable: false },
+  // `override`, because every 403 this service sends carries an English developer string
+  // naming the internal code -- "permission finance_report.view is required". Preferring
+  // the server message put that on screen in Persian text, in front of a reader who
+  // cannot act on a permission code and should not be shown one. The sentence below says
+  // the same thing in the language the page is written in.
+  403: { title: "دسترسی به این عملیات وجود ندارد", fallback: "مجوز مالی یا دسترسی پروژه برای انجام این درخواست کافی نیست.", retryable: false, override: true },
   404: { title: "اطلاعات موردنظر پیدا نشد", fallback: "رکورد ممکن است حذف شده باشد یا به پروژه دیگری تعلق داشته باشد.", retryable: false },
   409: { title: "اطلاعات هم‌زمان تغییر کرده است", fallback: "اطلاعات جدید را دریافت و عملیات را دوباره بررسی کنید.", retryable: true },
   422: { title: "اطلاعات ارسالی معتبر نیست", fallback: "فیلدهای مشخص‌شده را اصلاح و دوباره تلاش کنید.", retryable: false },

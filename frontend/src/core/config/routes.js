@@ -46,10 +46,28 @@ export const SURFACE_LABELS = Object.freeze({
  * and would have made "may record an invoice" quietly depend on "may read a
  * report". Any one of a surface's codes opens it; the routes inside then answer
  * for themselves.
+ *
+ * WHY finance.view IS ON THE REPORT DOOR
+ * Because the paragraph above promises it. «Reading is never taken away; it is moved to
+ * the surface built for reading» is the whole reason امور مالی may close on an account
+ * that cannot edit -- the reader is supposed to land here instead, on the read-only
+ * twins this door was widened to carry.
+ *
+ * It was dropped by accident. The door used to be the single code `finance.view`; the
+ * commit that let an invoice recorder in replaced it with a list and wrote
+ * `finance_report.view` where `finance.view` had been. Adding the invoice code was the
+ * point and is recorded; removing the reader's was neither. Measured afterwards, an
+ * account holding finance.view alone was refused at BOTH doors: it could still read
+ * every figure through the API and could open no page at all, and each refusal offered
+ * it a button to the other closed door.
+ *
+ * The three codes answer three separate needs and none implies another. The routes
+ * inside still carry their own permission, so this opens the surface and grants nothing:
+ * گزارش مالی سطح ۱ and the report builder keep asking for finance_report.view.
  */
 export const SURFACE_REQUIREMENTS = Object.freeze({
   [SURFACES.OPERATIONS]: Object.freeze(["finance.edit"]),
-  [SURFACES.REPORT]: Object.freeze(["finance_report.view", "finance.manage_invoice"]),
+  [SURFACES.REPORT]: Object.freeze(["finance.view", "finance_report.view", "finance.manage_invoice"]),
 });
 
 export const ROUTES = Object.freeze([
