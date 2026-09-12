@@ -76,6 +76,10 @@ class FinanceSettingsRevisionResponse(ApiModel):
     revision: int
     gross_built_area: Decimal
     previous_gross_built_area: Decimal | None = None
+    # What the host calls this actor, filled at the API boundary and never stored.
+    # None when the host has no directory or does not know the id; the reader then
+    # sees the id, exactly as before. See `app.finance.domain.actors`.
+    created_by_name: str | None = None
     effective_from: date
     reason: str
     created_by: UUID

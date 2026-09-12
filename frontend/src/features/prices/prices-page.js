@@ -13,6 +13,7 @@ import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUn
 import { formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
+import { actorLabel } from "../../shared/formatters/actor.js";
 import { createPriceTrend } from "../../shared/components/price-trend.js";
 import { validatePriceVersion } from "./prices-validation.js";
 import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition, validateUnitConversion } from "./unit-conversions-validation.js";
@@ -559,7 +560,7 @@ function renderHistory(history, currentPrices, columns, visible) {
       scope: SCOPE_LABELS[price.scope] ?? "سطح نامشخص",
       unitPrice: formatTomanFromIrr(price.unitPriceIRR, { withCurrency: false }),
       effectiveFrom: formatBusinessDate(price.effectiveFrom),
-      actor: price.actorName || price.actorId,
+      actor: actorLabel(price.actorName, price.actorId),
       createdAt: formatSystemDateTime(price.createdAt),
     }),
   });
@@ -628,7 +629,7 @@ export function renderConversionHistory(history) {
       factor: formatDisplayNumber(conversion.factor),
       scope: conversion.projectId ? "اختصاصی پروژه" : "پایه سازمان",
       effectiveDate: formatBusinessDate(conversion.effectiveDate),
-      actor: conversion.createdByName || conversion.createdBy,
+      actor: actorLabel(conversion.createdByName, conversion.createdBy),
       createdAt: formatSystemDateTime(conversion.createdAt),
     }),
   });

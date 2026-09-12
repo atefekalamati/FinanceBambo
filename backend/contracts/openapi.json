@@ -344,6 +344,17 @@
             "title": "Actoruserid",
             "type": "string"
           },
+          "actorUserName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actorusername"
+          },
           "afterValues": {
             "anyOf": [
               {
@@ -577,6 +588,17 @@
             "format": "uuid",
             "title": "Createdby",
             "type": "string"
+          },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
           },
           "dimension": {
             "minLength": 1,
@@ -1324,6 +1346,17 @@
             "title": "Createdby",
             "type": "string"
           },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -1814,6 +1847,17 @@
             "format": "uuid",
             "title": "Createdby",
             "type": "string"
+          },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
           },
           "effectiveFrom": {
             "format": "date",
@@ -2764,6 +2808,17 @@
             ],
             "title": "Confirmedby"
           },
+          "confirmedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedbyname"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -2865,6 +2920,17 @@
             "format": "uuid",
             "title": "Submittedby",
             "type": "string"
+          },
+          "submittedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submittedbyname"
           },
           "taxIrr": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -3569,6 +3635,17 @@
             "title": "Createdby",
             "type": "string"
           },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
+          },
           "effectiveFrom": {
             "format": "date",
             "title": "Effectivefrom",
@@ -3968,6 +4045,17 @@
             "title": "Createdby",
             "type": "string"
           },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
+          },
           "estimateLineId": {
             "format": "uuid",
             "title": "Estimatelineid",
@@ -4123,6 +4211,17 @@
               }
             ],
             "title": "Importedby"
+          },
+          "importedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importedbyname"
           },
           "isActiveSource": {
             "default": false,

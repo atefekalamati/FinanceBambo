@@ -47,6 +47,33 @@ def supports_current_snapshot(provider: object) -> bool:
     return callable(getattr(provider, "current_snapshot", None))
 
 
+class ActorDirectory(Protocol):
+    """Names for the user ids Finance stores but does not own.
+
+    Finance records an actor as a bare UUID and keeps it that way -- the people belong to the
+    host, and a Finance-side copy of them would be a second source of truth. This port is the
+    read path that was missing: it turns the ids in a response into names at the boundary,
+    without any Finance table learning what a person is called.
+
+    `names` takes every id in one response and answers in one call, because a list of fifty
+    invoices written by three people is three names and fifty lookups would be an N+1 built
+    into the contract. Ids it cannot resolve are simply absent from the answer -- an unknown
+    user is not an error, and the caller shows the id.
+    """
+
+    async def names(self, user_ids: object) -> Mapping[str, str]: ...
+
+
+def supports_actor_names(directory: object) -> bool:
+    """Whether this host can say what its people are called.
+
+    Asked rather than assumed, exactly as `supports_current_snapshot` is: a deployment with
+    no Core directory keeps the previous behaviour -- every id renders as an id -- instead of
+    catching AttributeError somewhere and hoping that is what it meant.
+    """
+    return callable(getattr(directory, "names", None))
+
+
 class ProjectActivityProvider(Protocol):
     async def list_activities(
         self,

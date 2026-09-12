@@ -36,7 +36,7 @@ function mapRevision(value) {
     effectiveDate: value.effectiveFrom,
     reason: value.reason,
     actorId: value.createdBy,
-    actorName: null,
+    actorName: value.createdByName ?? null,
     occurredAt: value.createdAt,
   };
 }

@@ -13,6 +13,7 @@ function mapPrice(value) {
     effectiveFrom: value.effectiveFrom,
     reason: value.reason,
     actorId: value.createdBy,
+    actorName: value.createdByName ?? null,
     createdAt: value.createdAt,
   };
 }

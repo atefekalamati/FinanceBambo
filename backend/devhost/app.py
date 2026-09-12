@@ -53,6 +53,7 @@ from coreint.finance_activities import FinanceRowsActivityProvider
 from coreint.finance_mpp_mapping import FinanceMppMappingService
 from coreint.finance_mpp_sync import FinanceMppSyncService
 from coreint.finance_progress import FinanceRowsProgressProvider
+from coreint.identity import CoreActorDirectory
 from coreint.mpp_reader import MpxjMppReader
 from coreint.progress import CoreProgressSnapshotProvider
 from coreint.security import (CoreAuthContextAssembler, CoreRbacPermissionAuthorizer,
@@ -299,6 +300,12 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
                              if mpp_import_root()
                              else CoreProjectActivityProvider(
                                  core, activity_code_fields=ACTIVITY_CODE_FIELDS))
+
+    # Names for the actor ids every finance record stores. Core's `users` lives on the same
+    # database as Finance, so this reads whichever connection this host actually has -- and
+    # when that database has no `users` at all, the adapter says so once and every actor
+    # renders as the id it always did. Nothing is copied into a Finance table either way.
+    application.state.actor_directory = CoreActorDirectory(core if core is not None else connection)
 
     storage = LocalFileStorage(storage_root)
 

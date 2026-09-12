@@ -73,7 +73,7 @@ function createRevisionTable(revisions = []) {
       previousValue: revision.previousValue ? formatArea(revision.previousValue) : "ثبت اولیه",
       newValue: formatArea(revision.newValue),
       reason: revision.reason || "بدون دلیل ثبت‌شده",
-      actor: revision.actorName || revision.actorId || "نامشخص",
+      actor: actorLabel(revision.actorName, revision.actorId, "نامشخص"),
       occurredAt: revision.occurredAt ? formatSystemDateTime(revision.occurredAt) : "—",
     }),
   });

@@ -57,7 +57,7 @@ function mapLine(value, resources, activities = [], currentPrices = new Map()) {
       newValue: revision.newQuantity,
       reason: revision.reason,
       actorId: revision.createdBy,
-      actorName: null,
+      actorName: revision.createdByName ?? null,
       occurredAt: revision.createdAt,
       // No baseline, no overrun. Comparing against a null original read it as
       // zero, which made every revision on a schedule line an overrun.

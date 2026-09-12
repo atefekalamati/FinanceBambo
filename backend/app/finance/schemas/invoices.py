@@ -64,6 +64,11 @@ class InvoiceLineResponse(ApiModel):
  def number(self,v):return None if v is None else format(v,"f")
 class InvoiceResponse(ApiModel):
  id:UUID;invoice_number:str|None;invoice_date:date;vendor_name:str;description:str|None;source:str;status:str;discount_irr:Decimal;tax_irr:Decimal;shipping_irr:Decimal;other_costs_irr:Decimal;final_amount_irr:Decimal;financial_effect_sign:Literal[-1,1]=1;original_invoice_id:UUID|None=None;idempotency_key:str;version:int;submitted_by:UUID;confirmed_by:UUID|None=None;confirmed_at:datetime|None=None;created_at:datetime;lines:list[InvoiceLineResponse]
+ # What the host calls this actor, filled at the API boundary and never stored.
+ # None when the host has no directory or does not know the id; the reader then sees
+ # the id, exactly as before. See `app.finance.domain.actors`.
+ submitted_by_name:str|None=None
+ confirmed_by_name:str|None=None
  @field_serializer("discount_irr","tax_irr","shipping_irr","other_costs_irr","final_amount_irr")
  def money(self,v):return format(v,"f")
  @classmethod

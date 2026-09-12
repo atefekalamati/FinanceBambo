@@ -73,7 +73,10 @@ class PriceTrendServiceTests(unittest.IsolatedAsyncioTestCase):
         payload=trend.model_dump(by_alias=True,mode="json")
         self.assertEqual("121",payload["currentPriceIrr"]);self.assertEqual("100",payload["organizationPriceIrr"]);self.assertEqual("10.000000",payload["latestChangePercent"])
         old=PriceResponse.from_domain(version(1,"100","2026-01-01")).model_dump(by_alias=True,mode="json")
-        self.assertEqual({"scopeKind","unitPriceIrr","effectiveFrom","reason","id","resourceId","version","createdBy","createdAt"},set(old))
+        # `createdByName` is additive -- the id it accompanies is untouched, and it is None
+        # until a host directory fills it at the API boundary.
+        self.assertEqual({"scopeKind","unitPriceIrr","effectiveFrom","reason","id","resourceId","version","createdBy","createdByName","createdAt"},set(old))
+        self.assertIsNone(old["createdByName"],"no host asked, so no name is claimed")
 
     def test_repository_uses_one_dual_scoped_query_without_mutating_history(self):
         source=inspect.getsource(PsycopgFinancePriceRepository.trend_history)
