@@ -7,7 +7,8 @@
     "test": "node --test",
     "check": "node --check src/app/bootstrap.js",
     "audit:layout": "node scripts/layout-audit.mjs",
-    "audit:print": "node scripts/print-audit.mjs"
+    "audit:print": "node scripts/print-audit.mjs",
+    "package": "node scripts/build-package.mjs"
   },
   "engines": {
     "node": ">=20"

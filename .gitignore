@@ -37,3 +37,8 @@ backend/.release-validation/
 backups/
 *.dump
 backend/devhost/.release-*.backup
+
+# The deployable package, produced by `npm run package` in frontend/. It is a copy of
+# files already in this repository, derived from the module graph, so committing it would
+# be a second version of the same code that can silently fall behind the first.
+finance-package/
