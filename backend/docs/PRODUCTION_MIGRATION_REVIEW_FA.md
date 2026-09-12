@@ -26,17 +26,35 @@
 13. `0013_finance_mpp_source_identity`
 14. `0014_mpp_reporting_date`
 15. `0015_finance_mpp_assignment_facts`
-16. `0016_finance_mpp_estimate_basis` (head)
+16. `0016_finance_mpp_estimate_basis`
+17. `0017_snapshot_status_check` (head)
 
 ```powershell
 alembic current      # این دیتابیس کجاست
 alembic upgrade head
-alembic current      # باید 0016 باشد
+alembic current      # باید 0017 باشد
 ```
 
 
 
 
+
+
+## 0017 — تنها ستون وضعیتی که هیچ CHECKی نداشت
+
+`progress_snapshot_refs.snapshot_status` از 0001 به بعد `text NOT NULL` خالی بود، در حالی که
+هر ستون وضعیت دیگری در شِمای مالی واژگانش را با CHECK می‌بندد — `finance_mpp_source_versions.status`
+دقیقاً `ready` و `failed` را می‌پذیرد و ستون‌های فاکتور، پیوست، استخراج، import و اجرای قیمت هم
+همین‌طور. این یکی جا مانده بود.
+
+قاعده‌ای که گرفت همان قاعدهٔ نسخهٔ منبع است، چون ارجاع snapshot در عمل ارجاع به تغذیهٔ یک نسخهٔ
+منبع است و این دو با هم خوانده می‌شوند: `active_source_version` روی `status = 'ready'` فیلتر
+می‌کند و ارجاعی که چیز دیگری باشد ارجاعی است که گزارش نمی‌تواند از آن استفاده کند.
+
+**تأیید شده روی هر دو نسخه.** PG16 و PG18: اعمال، اجرای دوم بدون تغییر، `downgrade 0016` و
+`upgrade head` دوباره — اثرانگشت شِما در هر نسخه پیش و پس یکسان
+(PG16 `f652db5f2ec7e0a162b64582e9edafb2`، PG18 `40955a209760a7353d768dce9da2f0b7`).
+تعداد قید دقیقاً یکی بالا رفت. هیچ ردیفی بازنویسی نشد.
 
 ## 0015 — آنچه فایل دربارهٔ هر تخصیص می‌گوید
 

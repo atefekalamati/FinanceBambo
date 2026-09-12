@@ -2099,6 +2099,18 @@ a.finance-variance-card__link:hover {
   text-overflow: ellipsis;
 }
 
+/* Except on paper, where the title attribute the comment above relies on cannot be
+   hovered. A name cut at the ellipsis is then simply lost, so printing lets it wrap and
+   the row grows by a line instead. */
+@media print {
+  .prices-summary__name {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+}
+
 .prices-summary__price {
   inline-size: 32%;
   font-weight: 700;
