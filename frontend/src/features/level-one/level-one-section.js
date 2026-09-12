@@ -51,7 +51,7 @@ export function createLevelOneSection({ rollup, error = null }) {
     // show them this should not then invite them to go and look.
     if (Number(error?.status) === 403) return section;
     const link = element("a", "level-one-section__link");
-    link.href = "#/level-one";
+    link.href = "#finance/level-one";
     const chevron = chevronIcon("forward");
     chevron.setAttribute("class", "level-one-section__chevron");
     link.append(document.createTextNode("مشاهده جزئیات مراحل"), chevron);
@@ -77,7 +77,7 @@ export function createLevelOneSection({ rollup, error = null }) {
   section.append(createLevelOneChart({
     rows: view.rows.map((row) => ({
       title: row.title,
-      href: `#/level-one?wbs=${encodeURIComponent(row.wbsCode)}`,
+      href: `#finance/level-one?wbs=${encodeURIComponent(row.wbsCode)}`,
       planIrr: row.initialEstimateIrr,
       actualIrr: row.actualCostIrr,
       overBudget: row.overBudget,

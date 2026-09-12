@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { activityStructureLabel } from "../../src/features/progress/progress-page.js";
 
 /**
- * The structure line under an activity's name on #/progress.
+ * The structure line under an activity's name on #finance/progress.
  *
  * `wbsCode` and `activityCode` are two different task fields — the breakdown code and the
  * outline number — and on the current file they hold the same string. Printing both read

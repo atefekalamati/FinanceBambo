@@ -74,7 +74,7 @@ export function createReportBuilderPage({ context, adapters, selection = [], per
         : "به صفحه گزارش مالی برگردید و از گزارش‌ساز هوشمند، بخش‌های موردنیاز خود را انتخاب کنید."),
     );
     const back = element("a", "button button--primary", "بازگشت به گزارش‌ساز");
-    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "/finance-report"}`;
+    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "finance/report"}`;
     card.append(back);
     return card;
   }

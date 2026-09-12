@@ -518,7 +518,7 @@ function renderFinanceHome(
         query.set("from", period.from);
         query.set("to", period.to);
       }
-      window.location.hash = `#/report-builder?${query.toString()}`;
+      window.location.hash = `#finance/report-builder?${query.toString()}`;
     },
   });
   const rowSecond = element("div", "finance-grid finance-grid--pair");
@@ -956,7 +956,7 @@ export function createFinanceHomePage({
                 return null;
               },
             ),
-          // The same workspace #/report-prices reads, through the same adapter.
+          // The same workspace #finance/report-prices reads, through the same adapter.
           // The summary shows three of its rows; it computes nothing of its own.
           pricesAdapter.getPrices().then(
             (value) => {
@@ -969,7 +969,7 @@ export function createFinanceHomePage({
             },
           ),
           // The compact estimate table is a read-only view of the exact
-          // workspace used by #/report-items. Its failure is isolated from the
+          // workspace used by #finance/report-items. Its failure is isolated from the
           // report metrics and from the day-price summary beside it.
           financialItemsAdapter.getWorkspace().then(
             (value) => {

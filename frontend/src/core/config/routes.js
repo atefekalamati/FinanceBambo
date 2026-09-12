@@ -68,36 +68,36 @@ export const SURFACE_REQUIREMENTS = Object.freeze({
 
 export const ROUTES = Object.freeze([
   // ── امور مالی ────────────────────────────────────────────────────────────
-  { key: "finance-home", path: "/finance", label: "امور مالی", permission: "finance.view", surface: SURFACES.OPERATIONS, home: true, enabled: true },
-  { key: "financial-items", path: "/financial-items", label: "اقلام و برآورد", permission: "finance.view", surface: SURFACES.OPERATIONS, enabled: true },
-  { key: "prices", path: "/prices", label: "قیمت روز", permission: "finance.view", surface: SURFACES.OPERATIONS, enabled: true },
-  { key: "progress", path: "/progress", label: "پیشرفت مالی", permission: "finance.view", surface: SURFACES.OPERATIONS, enabled: true },
-  { key: "audit", path: "/audit", label: "تاریخچه تغییرات مالی", permission: "finance.view", surface: SURFACES.OPERATIONS, enabled: true },
-  { key: "settings", path: "/settings", label: "تنظیمات مالی", permission: "finance.view", surface: SURFACES.OPERATIONS, enabled: true },
+  { key: "finance-home", path: "finance/operations", label: "امور مالی", permission: "finance.view", surface: SURFACES.OPERATIONS, home: true, enabled: true },
+  { key: "financial-items", path: "finance/financial-items", label: "اقلام و برآورد", permission: "finance.view", surface: SURFACES.OPERATIONS, enabled: true },
+  { key: "prices", path: "finance/prices", label: "قیمت روز", permission: "finance.view", surface: SURFACES.OPERATIONS, enabled: true },
+  { key: "progress", path: "finance/progress", label: "پیشرفت مالی", permission: "finance.view", surface: SURFACES.OPERATIONS, enabled: true },
+  { key: "audit", path: "finance/audit", label: "تاریخچه تغییرات مالی", permission: "finance.view", surface: SURFACES.OPERATIONS, enabled: true },
+  { key: "settings", path: "finance/settings", label: "تنظیمات مالی", permission: "finance.view", surface: SURFACES.OPERATIONS, enabled: true },
 
   // ── گزارش مالی ───────────────────────────────────────────────────────────
-  { key: "report-home", path: "/finance-report", label: "گزارش مالی", permission: "finance.view", surface: SURFACES.REPORT, home: true, enabled: true },
+  { key: "report-home", path: "finance/report", label: "گزارش مالی", permission: "finance.view", surface: SURFACES.REPORT, home: true, enabled: true },
   // Withdrawn from view, not deleted. Everything these two drew is available
   // from the report builder, which is now the module's single way to produce a
   // report — two pages each answering part of the same question was two places
   // to look and two places to keep agreeing with each other. The routes stay
   // declared so the pages behind them keep their dispatch and their tests, and
   // so turning either back on is one word.
-  { key: "level-one", path: "/level-one", label: "گزارش مالی سطح ۱", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
+  { key: "level-one", path: "finance/level-one", label: "گزارش مالی سطح ۱", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
   // Every way a document reaches the ledger sits on one surface: typed by hand,
   // photographed, spoken, or read out of a file by the extractor. امور مالی
   // authors the baseline the project is measured against; a receipt is not one
   // of those numbers, so recording it never belonged in that workspace. Both
   // pages below are reached from the فاکتورها card on the board and from the
   // invoice list itself, so neither needs a destination card of its own.
-  { key: "invoices", path: "/invoices", label: "فاکتورها", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
-  { key: "invoice-files", path: "/invoice-files", label: "ورودی تصویر و صدا", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
-  { key: "ai-review", path: "/ai-review", label: "بررسی هوشمند فاکتور", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
+  { key: "invoices", path: "finance/invoices", label: "فاکتورها", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
+  { key: "invoice-files", path: "finance/invoice-files", label: "ورودی تصویر و صدا", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
+  { key: "ai-review", path: "finance/ai-review", label: "بررسی هوشمند فاکتور", permission: "finance.view", surface: SURFACES.REPORT, enabled: true },
   // The two tables a reader is sent to from the deviation cards. Same pages as
   // on امور مالی, opened in a mode that offers no way to change anything.
-  { key: "report-prices", path: "/report-prices", label: "جدول قیمت‌ها", permission: "finance.view", surface: SURFACES.REPORT, readOnlyTwinOf: "prices", enabled: true },
-  { key: "report-items", path: "/report-items", label: "جدول اقلام و برآورد", permission: "finance.view", surface: SURFACES.REPORT, readOnlyTwinOf: "financial-items", enabled: true },
-  { key: "report-builder", path: "/report-builder", label: "گزارش اختصاصی مالی", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
+  { key: "report-prices", path: "finance/report-prices", label: "جدول قیمت‌ها", permission: "finance.view", surface: SURFACES.REPORT, readOnlyTwinOf: "prices", enabled: true },
+  { key: "report-items", path: "finance/report-items", label: "جدول اقلام و برآورد", permission: "finance.view", surface: SURFACES.REPORT, readOnlyTwinOf: "financial-items", enabled: true },
+  { key: "report-builder", path: "finance/report-builder", label: "گزارش اختصاصی مالی", permission: "finance_report.view", surface: SURFACES.REPORT, enabled: true },
   // The destinations page listed the pages above. With them withdrawn and the
   // strip that opened it gone, it lists nothing anyone cannot already reach.
   /* Withdrawn with the bar that held its gear. The settings a reader could
@@ -106,7 +106,7 @@ export const ROUTES = Object.freeze([
      its own on the customer's surface. What changes the figures lives on امور
      مالی and always did. Declared and dispatched, offered nowhere: bringing it
      back is this one word. */
-  { key: "report-settings", path: "/report-settings", label: "تنظیمات نمایش", permission: "finance.view", surface: SURFACES.REPORT, enabled: false },
+  { key: "report-settings", path: "finance/report-settings", label: "تنظیمات نمایش", permission: "finance.view", surface: SURFACES.REPORT, enabled: false },
 ]);
 
 export function routesForSurface(surface) {
@@ -123,7 +123,7 @@ export function surfaceOfPath(path) {
 
 /**
  * The read-only route showing the same table as an operations one, if there is
- * one. Typing `#/prices` without the right to be on امور مالی is not a mistake
+ * one. Typing `#finance/prices` without the right to be on امور مالی is not a mistake
  * worth answering with a locked door when the same rows are one route away.
  */
 export function readOnlyTwinOf(path) {

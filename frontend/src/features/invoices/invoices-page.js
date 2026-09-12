@@ -776,7 +776,7 @@ export function createInvoicesPage({ context, adapter }) {
       showAccessibleDialog(dialog);
     });
     const upload = element("a", "button button--ghost", "ورود از تصویر یا صدا");
-    upload.href = "#/invoice-files";
+    upload.href = "#finance/invoice-files";
     actions.append(create, upload);
 
     const fragment = document.createDocumentFragment();
