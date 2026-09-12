@@ -425,11 +425,34 @@ function createManagerialComparisonPanel(
  */
 export function warnOnSnapshotMismatch({ selected, report }) {
   if (!selected) return null;
-  const answered = report?.progressSnapshotId ?? null;
-  if (answered && answered !== selected.progressSnapshotId) {
+  /* Compared on hostSnapshotId, not progressSnapshotId.
+
+     `progressSnapshotId` is the identifier Finance mints for a reference of its
+     own, and the service's schema says it stays null "when the Core snapshot
+     behind this calculation has never been pinned" -- reading a report does not
+     pin one, so on a project that has never issued a report it is null on every
+     read. The `answered &&` guard that used to be here was therefore never true,
+     and this check had been switched off since the day it was written with
+     nothing saying so.
+
+     `hostSnapshotId` is documented as "which Core snapshot was actually
+     calculated from, pinned or not", which is the question being asked, and it
+     is carried on both the snapshot list and the report. */
+  const answered = report?.hostSnapshotId ?? null;
+  const asked = selected.hostSnapshotId ?? null;
+  if (answered === null || asked === null) {
+    /* Not agreement -- an inability to check. Said once, so a quiet console is
+       never read as proof that the two matched. */
+    console.info(
+      "[BAMBO Finance] مبنای محاسبه قابل تطبیق نیست: شناسه نسخه هسته در پاسخ یا در فهرست نیست.",
+      { asked, answered },
+    );
+    return null;
+  }
+  if (answered !== asked) {
     console.warn(
-      "[BAMBO Finance] نسخه پاسخ سرویس با نسخه انتخاب‌شده یکسان نیست.",
-      { selected: selected.progressSnapshotId, answered },
+      "[BAMBO Finance] ارقام این گزارش از نسخه پیشرفت دیگری محاسبه شده‌اند.",
+      { asked, answered, selectedFinanceId: selected.progressSnapshotId },
     );
   }
   return null;

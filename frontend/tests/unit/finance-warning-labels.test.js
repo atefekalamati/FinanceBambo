@@ -116,7 +116,7 @@ test("nothing invents a snapshot's source from its file name", () => {
     "the page must not read a tool out of a file name");
   // And the one thing the log still says is the one thing not visible anywhere
   // else: the figures would be right numbers from the wrong version.
-  assert.match(source, /answered !== selected\.progressSnapshotId/);
+  assert.match(source, /answered !== asked/);
 });
 
 
