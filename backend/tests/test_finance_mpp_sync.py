@@ -87,6 +87,9 @@ class Cursor:
         if self._c.fail_on and self._c.fail_on in text:
             raise RuntimeError("simulated failure on: " + self._c.fail_on)
         self._c.statements.append(text)
+        # Parameters too: a statement's text says what was asked, and only the parameters
+        # say what it was asked ABOUT -- which is the whole question for a lock key.
+        self._c.parameters.append(params)
         self._rows = [dict(row, actual_row_count=self._c.actual_rows,
                            quantity_row_count=self._c.quantity_rows)
                       for row in self._c.existing] if "FROM finance_mpp_source_versions" in text else []
@@ -99,7 +102,7 @@ class Connection:
     def __init__(self, existing=(), fail_on=None, actual_rows=2, quantity_rows=0):
         self.existing, self.fail_on = list(existing), fail_on
         self.actual_rows, self.quantity_rows = actual_rows, quantity_rows
-        self.statements, self.log = [], []
+        self.statements, self.parameters, self.log = [], [], []
 
     async def __aenter__(self):
         return self
@@ -341,6 +344,59 @@ class HashedBytesAreParsedBytesTests(SyncTests):
         result = run(self.service(connection, reader).sync(ORG, "terrace"))
         self.assertEqual(hashlib.sha256(OLE2).hexdigest(), result["fileSha256"])
         self.assertEqual(2, result["rowCount"])
+
+
+class ConcurrentFirstImportTests(SyncTests):
+    """Two callers, the same never-seen content, at the same moment.
+
+    Measured on an isolated database before this was here: one call imported and the other
+    raised a raw UniqueViolation from the index on (organization, project, sha256). The
+    DATA was right -- one version, ready, with its rows -- and the answer was a 500 on a
+    request whose honest reply is "somebody else just imported these exact bytes".
+
+    A fake connection cannot race, so what this pins is the thing that removes the race:
+    the transaction takes an advisory lock on the content identity BEFORE it looks the
+    version up, so the second caller waits and then finds the first one's row. After the
+    change, the same two concurrent syncs answer `imported` and `unchanged`.
+    """
+
+    def statements_of(self, connection):
+        return [" ".join(str(s).split()) for s in connection.statements]
+
+    def test_the_content_identity_is_locked_before_it_is_looked_up(self):
+        connection = Connection()
+        run(self.service(connection, Reader(self.parsed)).sync(ORG, "terrace"))
+        statements = self.statements_of(connection)
+        locks = [index for index, text in enumerate(statements)
+                 if "pg_advisory_xact_lock" in text]
+        lookups = [index for index, text in enumerate(statements)
+                   if "FROM finance_mpp_source_versions v" in text]
+        self.assertTrue(locks, "no advisory lock was taken")
+        self.assertTrue(lookups, "the version look-up did not happen")
+        self.assertLess(locks[0], lookups[0],
+                        "locking after the look-up leaves the race exactly where it was")
+
+    def test_the_lock_is_keyed_on_the_tenant_and_the_content(self):
+        # A lock on the project alone would serialise unrelated files; one on the sha alone
+        # would serialise across tenants. The key is all three.
+        connection = Connection()
+        run(self.service(connection, Reader(self.parsed)).sync(ORG, "terrace"))
+        key = next(params for text, params in
+                   [(" ".join(str(s).split()), p) for s, p in
+                    zip(connection.statements, connection.parameters)]
+                   if "pg_advisory_xact_lock" in text)
+        self.assertIn(ORG, key[0])
+        self.assertIn("terrace", key[0])
+        self.assertIn(hashlib.sha256(OLE2).hexdigest(), key[0])
+
+    def test_the_lock_needs_no_unlocking(self):
+        # `pg_advisory_xact_lock` is released by the commit or the rollback. A session-scoped
+        # lock would need an explicit unlock on every path out, including the failing ones.
+        connection = Connection()
+        run(self.service(connection, Reader(self.parsed)).sync(ORG, "terrace"))
+        statements = self.statements_of(connection)
+        self.assertFalse([s for s in statements if "advisory_unlock" in s])
+        self.assertFalse([s for s in statements if "pg_advisory_lock(" in s])
 
 
 if __name__ == "__main__":

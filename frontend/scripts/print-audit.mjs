@@ -89,30 +89,30 @@ function countPdfPages(base64) {
 const documents = [
   {
     key: "priority-followups",
-    route: "report-builder?sections=completionBudget,areaCosts,unpricedItems,supplierDocuments,pendingDocuments,correctiveDocuments,estimateChanges",
+    route: "finance/report-builder?sections=completionBudget,areaCosts,unpricedItems,supplierDocuments,pendingDocuments,correctiveDocuments,estimateChanges",
     chapters: 7,
     maxPages: 24,
   },
-  { key: "financial-report", route: "reports", prepare: null },
+  { key: "financial-report", route: "finance/report", prepare: null },
   {
     // Everything the builder can produce, in one document. Each chosen report
     // starts its own page, so the count is the guard against a section that
     // silently grew or one that stopped rendering at all.
     key: "custom-report",
-    route: "report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines,sCurve,levelOne",
+    route: "finance/report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines,sCurve,levelOne",
     prepare: null,
     chapters: 13,
     maxPages: 32,
   },
   {
     key: "suggested-six",
-    route: "report-builder?sections=overview,breakdown,levelOne,sCurve,warnings,invoices",
+    route: "finance/report-builder?sections=overview,breakdown,levelOne,sCurve,warnings,invoices",
     chapters: 6,
     maxPages: 20,
   },
   {
     key: "s-curve",
-    route: "report-builder?sections=sCurve",
+    route: "finance/report-builder?sections=sCurve",
     chapters: 1,
     maxPages: 1,
   },
@@ -130,7 +130,7 @@ const documents = [
     // already has -- one chapter per chosen section, so two -- which also makes a section
     // that stopped rendering a failure rather than a shorter document.
     key: "period-report",
-    route: "report-builder?sections=periodMetrics,periodBreakdown"
+    route: "finance/report-builder?sections=periodMetrics,periodBreakdown"
            + "&from=2026-09-01&to=2026-10-31",
     chapters: 2,
     settle: 4200,
@@ -138,7 +138,7 @@ const documents = [
   },
   {
     key: "invoice-detail",
-    route: "invoices",
+    route: "finance/invoices",
     prepare: `(() => {
       const trigger = document.querySelector('.invoices-table .button');
       if (!trigger) return false;
@@ -159,7 +159,10 @@ if (onlyKeys.length && selected.length !== onlyKeys.length) {
   throw new Error(`BAMBO_AUDIT_ONLY names a case that does not exist: ${onlyKeys.join(",")}`);
 }
 for (const documentCase of selected) {
-    const page = await createPage(`${baseUrl}/#/${documentCase.route}`);
+    // `#finance/...`, not `#/finance/...`. The router writes the first form and matches
+    // only that; the extra slash fails every match and lands on the default route, which
+    // is how this audit spent its runs measuring the fallback page and reporting success.
+    const page = await createPage(`${baseUrl}/#${documentCase.route}`);
     const cdp = connect(page.webSocketDebuggerUrl);
     await cdp.ready;
     await cdp.send("Runtime.enable");

@@ -470,6 +470,25 @@ class FinanceMppSyncService:
         async with await self._connect() as connection:
             async with connection.transaction():
                 async with connection.cursor(row_factory=dict_row) as cursor:
+                    # SERIALISE ON THE FILE'S IDENTITY BEFORE LOOKING FOR IT.
+                    #
+                    # The look-up below and the insert further down are two statements, and
+                    # two callers reaching them at once both saw nothing and both inserted.
+                    # The unique index on (organization, project, sha256) then did its job
+                    # -- one version, ready, with its rows, which is the right DATA -- but
+                    # the loser got a raw UniqueViolation, which is a 500 on a request whose
+                    # honest answer is "somebody else just imported these exact bytes".
+                    # Measured: two concurrent first-time syncs, one imported, one crashed.
+                    #
+                    # The lock is the one `PsycopgFinanceImportRepository.commit` already
+                    # takes for the same shape of race, keyed the same way: whoever arrives
+                    # second waits, then finds the first one's row and answers `unchanged`.
+                    # It is transaction-scoped, so it is released by the commit or the
+                    # rollback and never needs unlocking by hand.
+                    await cursor.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)",
+                        ("finance_mpp_sync:%s:%s:%s"
+                         % (organization_id, project_id, resolved.sha256),))
                     await cursor.execute("""
                         SELECT v.id, v.row_count, v.source_file_name_safe,
                                v.reporting_date,
