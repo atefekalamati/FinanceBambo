@@ -79,6 +79,25 @@ const SUMMARY_ICONS = Object.freeze({
     ["circle", { cx: "47", cy: "44", r: "11" }],
     ["path", { d: "M42 44L46 48L53 40" }],
   ],
+  /* هزینه کار باقی‌مانده: the climb still to be made, the flag at the top of it,
+     and the stack of coins it will take.
+
+     Drawn for a 64 viewBox like its neighbours. The source drawing carried a
+     gradient, a glow filter and its own stroke weight; none of them came with
+     it. The mark is one of four on a row of cards and has to read as their
+     texture rather than as a picture: colour is the card's own
+     `--summary-mark`, inherited through `currentColor` on the group, and the
+     weight is the 2.8 every summary icon shares. The flag is the one filled
+     shape, and it fills with the same currentColor at a third opacity rather
+     than a literal, so it follows the theme with everything around it. */
+  remainingWork: [
+    ["path", { d: "M9 48H20C21.7 48 23 46.7 23 45V39C23 37.3 24.3 36 26 36H34C35.7 36 37 34.7 37 33V27C37 25.3 38.3 24 40 24H42" }],
+    ["path", { d: "M42 32V11" }],
+    ["path", { d: "M42 12L53 17L42 22V12Z", fill: "currentColor", "fill-opacity": "0.35" }],
+    ["ellipse", { cx: "51", cy: "35", rx: "7.5", ry: "3.2" }],
+    ["path", { d: "M43.5 35V44C43.5 45.8 46.9 47.3 51 47.3C55.1 47.3 58.5 45.8 58.5 44V35" }],
+    ["path", { d: "M43.5 39.5C43.5 41.3 46.9 42.8 51 42.8C55.1 42.8 58.5 41.3 58.5 39.5" }],
+  ],
 });
 
 function appendSummaryIcon(icon, nodes) {
