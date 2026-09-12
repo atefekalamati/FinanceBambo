@@ -82,12 +82,15 @@ test("no route is gated on a write permission", () => {
 const ACCOUNTS = Object.freeze({
   // Reads what the project cost, records nothing.
   reader: ["finance.view", "finance_report.view", "finance_report.export"],
-  // Authors the plan's numbers. Holds finance.view, so the reading surface opens for
-  // them as well -- «reading is never taken away» applies to an author too, and the
-  // routes inside still ask for their own grants.
+  // Authors the plan's numbers, and is not handed the customer's report with them.
+  // کارشناس متره و برآورد is this account, and decision pack D-1 settled that each
+  // surface carries its own permission: finance.view lets them read the figures their
+  // own work needs, and the report door asks for finance_report.view, which they do not
+  // hold.
   author: ["finance.view", "finance.edit"],
-  // Records and confirms documents, and never enters the workspace. Holds no
-  // reporting code at all, which is the case a single surface code would break.
+  // Records and confirms documents, and never enters the workspace. Holds no reporting
+  // code at all, which is the case a single surface code would break: the register is on
+  // گزارش مالی, so manage_invoice has to open that door by itself.
   recorder: ["finance.view", "finance.manage_invoice"],
   everything: ["finance.view", "finance.edit", "finance_report.view",
                "finance_report.export", "finance.manage_invoice"],
@@ -96,7 +99,7 @@ const ACCOUNTS = Object.freeze({
 test("each surface opens for any one of its own codes", () => {
   const doors = {
     reader: { [SURFACES.OPERATIONS]: false, [SURFACES.REPORT]: true },
-    author: { [SURFACES.OPERATIONS]: true, [SURFACES.REPORT]: true },
+    author: { [SURFACES.OPERATIONS]: true, [SURFACES.REPORT]: false },
     recorder: { [SURFACES.OPERATIONS]: false, [SURFACES.REPORT]: true },
     everything: { [SURFACES.OPERATIONS]: true, [SURFACES.REPORT]: true },
   };
@@ -112,11 +115,15 @@ test("an account that may only read can still open something", () => {
   // The acceptance target, written down so it cannot be lost twice.
   //
   // امور مالی may close on an account that cannot edit -- that is the approved design,
-  // and the reason it is safe is that the reader lands on گزارش مالی instead. When
-  // finance.view was dropped from that door the two halves stopped adding up: an account
-  // holding finance.view alone was refused at both, could still read every figure
-  // through the API, and was offered a button to the other closed door.
-  const viewerOnly = { permissionCodes: ["finance.view"] };
+  // and the reason it is safe is that the reader lands on گزارش مالی instead. An account
+  // refused at both doors can still read every figure through the API and is offered a
+  // button to the other closed door at each refusal, which is the failure this guards.
+  //
+  // What a reader holds is finance_report.view: decision pack D-1 settled that each
+  // surface carries its own permission, so the door to the surface built for reading is
+  // the reading-surface code, and finance.view is what shows figures once inside.
+  // finance.view alone opens nothing and is a misconfiguration, not a supported state.
+  const viewerOnly = { permissionCodes: ["finance.view", "finance_report.view"] };
   const open = ROUTES.filter((route) => route.enabled && canAccessRoute(viewerOnly, route));
   assert.ok(open.length > 0, "an account holding finance.view can open no page at all");
   const landing = defaultRouteFor(viewerOnly);
@@ -126,8 +133,8 @@ test("an account that may only read can still open something", () => {
 
   // And reading is all it opens: nothing that needs another grant comes with it.
   open.forEach((route) => {
-    assert.equal(route.permission, "finance.view",
-      `${route.key} opened for a view-only account but asks for ${route.permission}`);
+    assert.ok(["finance.view", "finance_report.view"].includes(route.permission),
+      `${route.key} opened for a read-only account but asks for ${route.permission}`);
   });
 });
 
@@ -182,14 +189,14 @@ test("امور مالی is closed to an account that cannot author anything", ()
 
 test("a reader reaching for an operations table is sent to the read-only one", () => {
   const reader = { permissionCodes: ["finance.view", "finance_report.view"] };
-  [["/prices", "/report-prices"], ["/financial-items", "/report-items"]].forEach(([from, to]) => {
+  [["finance/prices", "finance/report-prices"], ["finance/financial-items", "finance/report-items"]].forEach(([from, to]) => {
     const twin = readOnlyTwinOf(from);
     assert.equal(twin?.path, to, `${from} has no read-only twin`);
     assert.equal(canAccessRoute(reader, twin), true, `${to} is closed to the account the redirect is for`);
     assert.equal(surfaceOfPath(to), SURFACES.REPORT);
   });
   // Pages with nothing to read for a customer have no twin and stay closed.
-  ["/progress", "/settings", "/audit", "/invoice-files", "/ai-review", "/finance"].forEach((path) => {
+  ["finance/progress", "finance/settings", "finance/audit", "finance/invoice-files", "finance/ai-review", "finance/operations"].forEach((path) => {
     assert.equal(readOnlyTwinOf(path), null, `${path} should not have a read-only twin`);
   });
 });

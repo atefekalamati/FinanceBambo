@@ -769,7 +769,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
       add.type = "button";
       add.addEventListener("click", () => openEditor(workspace));
       const conversions = element("a", "button button--ghost", "مدیریت تبدیل واحد");
-      conversions.href = "#/settings";
+      conversions.href = "#finance/settings";
       toolbarActions.append(conversions, importPrices, add);
     }
     const normalizedQuery = listFilters.query.toLocaleLowerCase("fa-IR");

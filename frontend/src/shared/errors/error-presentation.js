@@ -5,6 +5,11 @@ const STATUS_PRESENTATION = Object.freeze({
   // the server message put that on screen in Persian text, in front of a reader who
   // cannot act on a permission code and should not be shown one. The sentence below says
   // the same thing in the language the page is written in.
+  // The host confirmed the session is a cookie it sets and the browser sends: there is
+  // no token here to refresh and nothing this module can do to recover one. A 401 means
+  // the session ended, so it is not offered a retry -- pressing it would fail the same
+  // way -- and bootstrap.js turns it into a page that says so.
+  401: { title: "نشست شما پایان یافته است", fallback: "برای ادامه، دوباره وارد سایت اصلی شوید.", retryable: false, override: true },
   403: { title: "دسترسی به این عملیات وجود ندارد", fallback: "مجوز مالی یا دسترسی پروژه برای انجام این درخواست کافی نیست.", retryable: false, override: true },
   404: { title: "اطلاعات موردنظر پیدا نشد", fallback: "رکورد ممکن است حذف شده باشد یا به پروژه دیگری تعلق داشته باشد.", retryable: false },
   409: { title: "اطلاعات هم‌زمان تغییر کرده است", fallback: "اطلاعات جدید را دریافت و عملیات را دوباره بررسی کنید.", retryable: true },

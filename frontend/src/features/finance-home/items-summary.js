@@ -9,7 +9,7 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 
 /**
  * A compact, read-only window into the same estimate-line workspace used by
- * #/report-items. Like the day-price summary beside it, this component selects
+ * #finance/report-items. Like the day-price summary beside it, this component selects
  * three service rows and performs no financial roll-up of its own.
  */
 const ROW_COUNT = 3;
@@ -40,7 +40,7 @@ export function createItemsSummary({ workspace = null, error = null } = {}) {
   const head = element("header", "overview-card__head");
   head.append(element("h2", "overview-card__title", "اقلام و برآورد"));
   const all = element("a", "overview-card__link", "مشاهده همه");
-  all.href = "#/report-items";
+  all.href = "#finance/report-items";
   head.append(all);
   section.append(head);
 

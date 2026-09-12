@@ -15,7 +15,7 @@ import { chevronIcon, reportIcon } from "../report-builder/report-icons.js";
  * target could no longer say which. The footer row carries both, and each
  * answers for itself.
  */
-export function createInvoicesEntry({ href = "#/invoices" } = {}) {
+export function createInvoicesEntry({ href = "#finance/invoices" } = {}) {
   const card = element("div", "overview-card invoices-entry");
 
   const head = element("header", "overview-card__head invoices-entry__head");
@@ -60,7 +60,7 @@ export function createInvoicesEntry({ href = "#/invoices" } = {}) {
     "invoice_registration",
     "ثبت با تصویر یا صدا",
   );
-  invoice_registration.href = "#/invoice-files";
+  invoice_registration.href = "#finance/invoice-files";
   action_buttons.append(invoice_registration);
 
   return card;

@@ -155,7 +155,7 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       const code = document.createElement("td");
       if (linked && row.hasChildren) {
         const link = element("a", "", row.wbsCode);
-        link.href = `#/level-one?wbs=${encodeURIComponent(row.wbsCode)}`;
+        link.href = `#finance/level-one?wbs=${encodeURIComponent(row.wbsCode)}`;
         code.append(link);
       } else {
         code.textContent = row.wbsCode;
@@ -283,7 +283,7 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
   function chartRows(view, { linked = true } = {}) {
     return view.rows.map((row) => ({
       title: row.title,
-      href: linked ? `#/level-one?wbs=${encodeURIComponent(row.wbsCode)}` : null,
+      href: linked ? `#finance/level-one?wbs=${encodeURIComponent(row.wbsCode)}` : null,
       planIrr: row.initialEstimateIrr,
       actualIrr: row.actualCostIrr,
       overBudget: row.overBudget,

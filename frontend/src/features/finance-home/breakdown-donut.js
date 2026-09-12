@@ -43,7 +43,7 @@ function sharePercent(part, whole) {
   return tenths === 0n ? String(units) : `${units}.${tenths}`;
 }
 
-export function createBreakdownDonut({ view, href = "#/report-builder" }) {
+export function createBreakdownDonut({ view, href = "#finance/report-builder" }) {
   const card = element("a", "overview-card breakdown-donut");
   card.href = href;
 
