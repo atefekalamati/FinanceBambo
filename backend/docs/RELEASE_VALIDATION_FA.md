@@ -1,5 +1,75 @@
 # شواهد اعتبارسنجی انتشار — فاز ۴-ب
 
+## ماتریس تغییر-به-شاهد و بسته‌بندی — 2026-09-12 (دور دوم)
+
+**شاخهٔ نامزد:** `feature/fixed-cost-and-partial-sums` · **Alembic head:** `0019`
+
+### الف) هر تغییر تمام‌شده، طبقه‌بندی‌شده، با شاهد مشخص
+
+از خود git و کد استخراج شد، نه از گزارش‌های پیشین.
+
+| # | تغییر | طبقه | شاهد مشخص |
+|---|---|---|---|
+| ۱ | ستون `finance_mpp_rows.source_fixed_cost_irr` + دو ایندکس یکتا | **schema** | `alembic/versions/0019_finance_mpp_fixed_cost.py`؛ اثرانگشت PG16 `f652db5f…`→`c47d42d2…`، PG18 `40955a20…`→`3cfe1d23…`، downgrade با بازگشت دقیق |
+| ۲ | خواندن هزینهٔ ثابت تسک به ریال | **code-only** | `coreint/finance_mpp_sync.py::_file_fixed_cost_rials`؛ `tests/test_finance_mpp_fields.py` |
+| ۳ | ساخت خط `general_cost` از هزینهٔ ثابت | **persisted data** | `coreint/finance_mpp_mapping.py::_map_fixed_costs`؛ ۳ خط، ۵۱٬۴۸۴٬۸۸۰٬۰۰۵ ریال؛ ۱۱ آزمون در `test_finance_mpp_mapping.py::TaskFixedCostTests` |
+| ۴ | یک منبع `general_cost` به ازای هر پروژه (`MPP-FIXEDCOST`) | **persisted data** | همان‌جا؛ ایندکس `ux_finance_resources_schedule_fixed_cost` ساختنش را idempotent می‌کند |
+| ۵ | انتشار جمع برآوردِ جزئی + `missingEstimateLineCount` | **code-only** | `app/finance/domain/reports.py`؛ `tests/test_report_null_semantics.py::EstimateBaselineTests` |
+| ۶ | `missingEstimateLineCount` روی گزارش، هر نوع منبع، و هر گره WBS | **code-only** (قرارداد API، افزودنی) | `schemas/reports.py`؛ `contracts/openapi.json` دوباره export شد |
+| ۷ | برداشتن `ge=0` از قرارداد **پاسخِ** خط برآورد | **code-only** (رفع نقص) | `schemas/resources.py`؛ `tests/test_numeric_validation.py::EstimateAmountSignTests` |
+| ۸ | رد فایلی که در حال رسیدن است | **code-only** | `coreint/mpp_files.py::stable_signature` + `MppFileNotStable`؛ ۳ آزمون در `test_mpp_files.py::FileStillArrivingTests` |
+| ۹ | اثبات اینکه بایت‌های hash‌شده همان بایت‌های parse‌شده‌اند | **code-only** | `coreint/finance_mpp_sync.py`؛ `test_finance_mpp_sync.py::HashedBytesAreParsedBytesTests` |
+| ۱۰ | مرزِ هدر هویت میزبان | **code-only** (آزمون) | `tests/test_demo_isolation.py`؛ ۴۲۵ subtest روی هر ماژول `app/` و `coreint/` |
+| ۱۱ | نمایش ناقص‌بودن روی صفحهٔ سطح ۱ | **code-only** (فرانت‌اند) | `features/level-one/*`، `shared/reports/wbs-rollup.js`؛ ۴ آزمون؛ layout audit در Chrome ۵۱/۰ |
+| ۱۲ | `verify_finance_invariants.py` | **code-only** (ابزار، فقط‌خواندنی) | ۲۱ ثابت؛ ۲۱/۲۱ روی نامزد |
+| ۱۳ | `transfer_approved_records.py` | **code-only** (ابزار، dry-run) | `APPROVED` خالی؛ مقصد غیر-loopback رد می‌شود |
+| ۱۴ | **هیچ مجوز واقعی‌ای اختصاص داده نشد** | **permissions** | هویت‌های «آزمون» فقط در `bambo_apivalidate_20260912`؛ در dump **۰** کاربر ساختگی |
+| ۱۵ | `row_count` کهنه روی دیتابیس ارائه | **host-owned** | نسخهٔ `bf456698`: اعلام ۷۸۹، واقعی ۷۸۸. بدون اثر مالی؛ تعمیر نیازمند stage دوبارهٔ فایل |
+| ۱۶ | D-1 نهایی شد؛ `finance.view` از درِ گزارش رفت | **host-owned / تصمیم محصول** | `origin/master` `f5887f6c`، نوشتهٔ مالک. این شاخه `routes.js` را دست نمی‌زند |
+
+**ledger یکسان و نبودن migration جدید دلیل بر کامل‌بودن داده نیست** — و همین دور نشانش داد:
+سطر ۱۵ روی دیتابیسی پیدا شد که ledgerش سالم بود.
+
+### ب) بسته‌بندی و انتقال کنترل‌شده
+
+| مورد | وضعیت |
+|---|---|
+| dump قالب custom از نامزدِ نام‌برده‌شده | `CANDIDATE_bambo_fixedcost_e2e_20260912T160449Z.dump` · SHA-256 `bf310071f62c35e1…a79f18` |
+| محل | `E:\bamboo\_candidate_backups\` — **بیرون از هر مخزن Git** |
+| بازیابی در دیتابیس دورریختنی | `pg_restore --exit-on-error` کد ۰ · schema ۰ اختلاف · ۲۱/۲۱ ثابت · ۱۶ گزارش منجمد بایت‌به‌بایت یکسان · smoke API ۹/۹ → ۲۰۰ |
+| `install_preflight` روی همان کپی | هر پیش‌شرط موجود؛ `msp_tasks` bigint، `REFERENCES` granted، بدون شناسهٔ تکراری |
+| بستهٔ ارتقای مبتنی بر migration | `PRODUCTION_MIGRATION_RUNBOOK_FA.md` به ۰۰۱۹ به‌روز شد؛ **dump راهِ ارتقا نیست** |
+| انتقال رکورد | `transfer_approved_records.py`، `APPROVED` خالی — هیچ رکوردی تأیید نشده |
+| خروج دادهٔ ساختگی از هر انتقال | با الگو **و** با شناسهٔ صریح؛ `invoices` و `report_snapshots` اصلاً قابل‌انتقال نیستند |
+| مقصد سایت | ⛔ **BLOCKED** — `192.168.100.200:5432` در سطح TCP در دسترس نیست؛ هیچ تلاشی برای اتصال یا درخواست رمز انجام نشد |
+
+### ج) اسنادی که به‌روز شدند (نه نسخهٔ موازی)
+
+`PRODUCTION_MIGRATION_RUNBOOK_FA.md` (از ۰۰۰۶ به ۰۰۱۹) · `PRODUCTION_READINESS_FA.md`
+(آمادگی به‌تفکیک محیط) · `CORE_HOST_WIRING_FA.md` (متغیرها و درزِ هویت) ·
+`HANDOFF_2026-09-12_RC_FA.md` (پیوست همان روز) · `.env.example` (فقط placeholder) ·
+`RELEASE_VALIDATION_FA.md` (همین بند). **تازه:** `INTEGRATION_KIT_FA.md` — فهرست بسته، که
+هیچ‌کدام از آن‌ها را کپی نمی‌کند.
+
+### د) نقصی که همین دور پیدا و اصلاح شد
+
+`GET /estimate-lines` برای هر کاربری ۵۰۰ می‌داد. `EstimateLineResponse` از
+`EstimateLineCreate` ارث می‌برد و `ge=0` را با خودش آورده بود؛ خط هزینهٔ ثابتِ منفی
+(−۲۹٬۷۲۱٬۶۰۰٬۰۰۰) کل فهرست را می‌برد. **مجموعهٔ آزمون این را پیدا نکرد — API در حال اجرا
+پیدا کرد**، چون هیچ fixture‌ای مبلغ منفی نداشت.
+
+### ه) آزمون‌ها
+
+backend **۱۲۶۷ پاس** (۲۵۲۴ subtest) · frontend **۵۰۷ پاس** · `export_openapi.py --check`
+جاری · `node --check` تمیز · layout audit در Chrome **۵۱ اجرا / ۰ شکست**.
+هیچ آزمونی skip یا حذف نشد.
+
+`frontend/scripts/print-audit.mjs` روی `period-report` می‌شکند — صفحه‌ای که `layout-audit`
+صریحاً «withdrawn» می‌نامدش. روی `origin/master` هم همین است، پس نقص پیش‌موجود فرانت‌اند
+است و در این کار دست نزده شد.
+
+---
+
 ## تثبیت نامزد یکپارچه‌سازی — 2026-09-12
 
 **worktree نامزد:** `E:\bamboo\FINANCE-integrate` · شاخهٔ `feature/fixed-cost-and-partial-sums`،

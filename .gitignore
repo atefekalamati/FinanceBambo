@@ -36,6 +36,16 @@ backend/.release-validation/
 # Local database backups and dumps (never committed)
 backups/
 *.dump
+
+# Schedule files. A schedule is a customer's plan: activity names, quantities and costs,
+# and it belongs in the configured import root rather than in version control.
+#
+# `Sources/test_progress.mpp` and `Sources/BAMBO_FINANCE_INTEGRATION_KIT_v1.1.zip` were
+# tracked before this rule and are NOT removed by it -- untracking a file the team reads
+# from is a separate decision, and that MPP is the one whose bytes several recorded
+# measurements name. The rule is here so the NEXT one does not arrive by accident.
+*.mpp
+*.mpx
 backend/devhost/.release-*.backup
 
 # The deployable package, produced by `npm run package` in frontend/. It is a copy of

@@ -26,8 +26,39 @@
 ```bash
 cd backend
 alembic heads          # باید دقیقاً یک head بدهد
-alembic history        # زنجیره 0001..0006 بدون انشعاب
+alembic history        # زنجیره 0001..0019 بدون انشعاب
 ```
+
+### زنجیره، به‌روز · ۲۰۲۶-۰۹-۱۲
+
+سر زنجیره **`0019`** است. شمارهٔ `0018` عمداً خالی است: شاخهٔ `origin/backend-finance` یک
+0018 دارد که واژگان CHECK همان 0017 را اصلاح می‌کند و هنوز merge نشده؛ برداشتن آن شماره
+یعنی دو revision با یک شناسه، که Alembic اصلاً نمی‌پذیرد. وقتی آن revision وارد شد،
+`down_revision` این یکی به `"0018"` تغییر می‌کند و دوباره آزموده می‌شود.
+
+**وضعیت فعلی دیتابیس ارائه: `0016`.** پس ارتقا `0017` و `0019` را اجرا می‌کند.
+
+```bash
+# پیش‌بررسی، پیش از هر چیز. فقط‌خواندنی.
+python -m scripts.install_preflight --dsn "<DSN>"
+
+# ثابت‌های مالی، پیش از ارتقا. خروجی را نگه دارید.
+python scripts/verify_finance_invariants.py --dsn "<DSN>"
+
+FINANCE_MIGRATION_DSN="<DSN>" alembic upgrade head
+alembic current                      # باید 0019 بدهد
+
+# ثابت‌های مالی، پس از ارتقا. دو خروجی را مقایسه کنید.
+python scripts/verify_finance_invariants.py --dsn "<DSN>"
+
+# و یک sync از نوع refresh تا ستون جدید ۰۰۱۹ پر شود. سطر نسخه دست نمی‌خورد،
+# پس هر progress_snapshot_refs و هر گزارشِ pin‌شده هنوز resolve می‌شود.
+```
+
+**یک dump راهِ ارتقا نیست.** `pg_restore` یک دیتابیس را جایگزین می‌کند — شکل درست برای
+پشتیبان و نصب تازه، و شکل غلط برای دیتابیسی که جدول‌های Core و ردیف‌های واقعی سایت را
+دارد. اگر لازم شد چند رکورد منتقل شود، `scripts/transfer_approved_records.py` را ببینید؛
+فهرست `APPROVED` آن خالی است تا کسی رکوردها را نام ببرد.
 
 ---
 
