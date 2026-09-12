@@ -107,9 +107,34 @@ class EstimateRevisionResponse(ApiModel):
 
 
 class EstimateLineResponse(EstimateLineCreate):
+    """What a line IS, which is not the same contract as what a person may create.
+
+    Inheriting the create model shares the field list and the serialisers, and that is
+    worth keeping -- but it also inherited `ge=0`, and a validation rule about what may be
+    TYPED became a rule about what may be REPORTED. The two are not the same rule, and
+    when they disagree the response cannot be produced at all: the whole list answers 500
+    because one row is outside the bound, which is the least useful way for a database to
+    tell a reader something is unusual.
+
+    A negative amount reaches here from the schedule. MS Project states a task Fixed Cost
+    of -2,972,160,000 on «نصب بتن پیش ساخته دال» against +5,290,960,000.5 on the activity
+    beside it: one correction spread across two related activities, which nets to what the
+    project actually plans. Dropping it would publish a total the file does not have, and
+    refusing to serialise it hides every other line as well.
+
+    So the bound is lifted HERE and nowhere else. `EstimateLineCreate` keeps it, so a
+    person still cannot enter a negative amount by hand; a correction someone means to
+    make goes through a corrective invoice, which is what that workflow is for.
+    """
+
     id: UUID
     activity_title: str | None = None
     wbs_code: str | None = None
+    #: No lower bound, unlike the create model above. See the class docstring: the file
+    #: states a negative fixed cost on one activity, and a report that cannot say so is
+    #: not a safer report, only an emptier one.
+    original_unit_price_irr: Decimal | None = Field(default=None, max_digits=18,
+                                                    decimal_places=0)
     #: Additive and optional. Without these a client cannot tell a line read from the
     #: current schedule from one a legacy seed wrote, and would have to infer it from
     #: `assignmentExternalId` -- free text that holds the same digits by accident.

@@ -1050,6 +1050,7 @@
       },
       "EstimateLineResponse": {
         "additionalProperties": false,
+        "description": "What a line IS, which is not the same contract as what a person may create.\n\nInheriting the create model shares the field list and the serialisers, and that is\nworth keeping -- but it also inherited `ge=0`, and a validation rule about what may be\nTYPED became a rule about what may be REPORTED. The two are not the same rule, and\nwhen they disagree the response cannot be produced at all: the whole list answers 500\nbecause one row is outside the bound, which is the least useful way for a database to\ntell a reader something is unusual.\n\nA negative amount reaches here from the schedule. MS Project states a task Fixed Cost\nof -2,972,160,000 on «نصب بتن پیش ساخته دال» against +5,290,960,000.5 on the activity\nbeside it: one correction spread across two related activities, which nets to what the\nproject actually plans. Dropping it would publish a total the file does not have, and\nrefusing to serialise it hides every other line as well.\n\nSo the bound is lifted HERE and nowhere else. `EstimateLineCreate` keeps it, so a\nperson still cannot enter a negative amount by hand; a correction someone means to\nmake goes through a corrective invoice, which is what that workflow is for.",
         "properties": {
           "activityExternalId": {
             "anyOf": [

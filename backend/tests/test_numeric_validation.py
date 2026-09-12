@@ -13,7 +13,9 @@ from app.finance.schemas.conversions import ConversionCreate
 from app.finance.schemas.invoices import InvoiceCreate, InvoiceLineCreate
 from app.finance.schemas.prices import PriceCreate
 from app.finance.schemas.progress import ProgressOverrideCreate
-from app.finance.schemas.resources import EstimateLineCreate, EstimateRevisionCreate
+from app.finance.schemas.resources import (EstimateLineCreate,
+                                           EstimateLineResponse,
+                                           EstimateRevisionCreate)
 from app.finance.schemas.settings import FinanceSettingsPatch
 
 
@@ -95,6 +97,46 @@ class NumericValidationTests(unittest.TestCase):
             InvoiceLineCreate(resourceId=str(RESOURCE_ID), quantity="12345678901234567890.1", unit="each", unitPriceIrr="1")
         self.assertEqual(Decimal("12.0001"),
             InvoiceLineCreate(resourceId=str(RESOURCE_ID), quantity="12.0001", unit="each", unitPriceIrr="1200000").quantity)
+
+
+class EstimateAmountSignTests(unittest.TestCase):
+    """A rule about what may be entered is not a rule about what may be reported.
+
+    `EstimateLineResponse` inherits `EstimateLineCreate`, which is worth keeping for the
+    shared field list -- and it inherited `ge=0` with it, so a row the schedule states
+    could not be serialised at all and `GET /estimate-lines` answered 500 for every user,
+    including the ones with nothing unusual on their screen. One row outside a bound took
+    the whole list with it.
+    """
+
+    RESPONSE = {"id": UUID("55555555-5555-4555-8555-555555555555"),
+                "resourceId": str(RESOURCE_ID), "source": "progress_feed",
+                "revisedQuantity": None,
+                "createdBy": str(RESOURCE_ID),
+                "createdAt": "2026-09-12T00:00:00+00:00",
+                "revision": 1, "revisions": []}
+
+    def test_a_negative_amount_from_the_schedule_is_reportable(self):
+        # MS Project states -2,972,160,000 toman on one activity against +5,290,960,000.5
+        # on the one beside it: a single correction across two related activities. The
+        # report has to be able to say so.
+        line = EstimateLineResponse(originalUnitPriceIrr="-29721600000", **self.RESPONSE)
+        self.assertEqual(Decimal("-29721600000"), line.original_unit_price_irr)
+        self.assertEqual("-29721600000",
+                         line.model_dump(by_alias=True)["originalUnitPriceIrr"])
+
+    def test_a_person_still_cannot_enter_a_negative_amount(self):
+        # A correction somebody means to make goes through a corrective invoice. The write
+        # contract keeps its bound, and this is what says the two did not move together.
+        with self.assertRaises(ValidationError):
+            EstimateLineCreate(resourceId=str(RESOURCE_ID), source="manual_entry",
+                               originalUnitPriceIrr="-1")
+
+    def test_the_response_still_refuses_a_fraction_of_a_rial(self):
+        # Widening the sign is not widening the precision: rials are whole here as
+        # everywhere, and `decimal_places=0` is the half of the rule that stays.
+        with self.assertRaises(ValidationError):
+            EstimateLineResponse(originalUnitPriceIrr="-29721600000.5", **self.RESPONSE)
 
 
 if __name__ == "__main__":
