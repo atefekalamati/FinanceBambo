@@ -121,6 +121,33 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
   }
 
   /**
+   * The ESTIMATE that reaches no phase, for the same reason the cost below is shown.
+   *
+   * A line reaches a phase through its activity. One naming an activity the catalogue
+   * does not know, or an activity carrying no WBS code, is in the project's estimate and
+   * in none of the rows above -- so the stages sum to less than the project and nothing
+   * said by how much. Measured on the candidate: 40.8 million toman across 75 lines,
+   * which is why the page's total card and the API's own figure disagreed.
+   *
+   * Separate from «برآورد ناقص است», which is a different absence: that one is lines
+   * inside a phase that state no baseline. A line can be in neither, either, or both.
+   */
+  function renderUnplacedEstimate(view) {
+    const amount = view.totals?.unmappedEstimateIrr;
+    const count = view.totals?.unmappedEstimateLineCount ?? 0;
+    if (!count || amount === null || amount === undefined) return null;
+    const notice = element("aside", "level-one-unattributed");
+    notice.append(
+      element("h3", "", "برآورد خارج از مراحل"),
+      element("p", "", `${formatCompactMoneyFromIrr(amount)} برآورد روی ${formatDisplayNumber(String(count))} ردیف ثبت شده که فعالیتشان به هیچ مرحله‌ای نمی‌رسد، پس در جمع مراحل بالا نیامده است. این مبلغ در «برآورد اولیه» کل پروژه هست.`),
+    );
+    const value = element("strong", "numeric", formatCompactMoneyFromIrr(amount));
+    value.title = formatTomanFromIrr(amount);
+    notice.append(value);
+    return notice;
+  }
+
+  /**
    * The cost that reaches no phase. Shown as its own line rather than folded
    * into a phase or dropped: folding it would put money where it did not go,
    * and dropping it would leave the phases summing to less than the project
@@ -229,6 +256,10 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
     const topView = buildWbsView({
       nodes: data.top.nodes,
       unattributedActualIrr: data.top.unattributedActualIrr,
+      // Only the top level carries these: a phase's children account for all of it, so
+      // claiming the project's unplaced lines again inside one phase would double-count.
+      unmappedEstimateIrr: data.top.unmappedEstimateIrr,
+      unmappedEstimateLineCount: data.top.unmappedEstimateLineCount,
     });
     if (topView.isEmpty) {
       fragment.append(renderUnavailable());
@@ -246,6 +277,8 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       fragment.append(renderTotals(topView), chartCard);
       const partial = renderPartialEstimateNotice(topView);
       if (partial) fragment.append(partial);
+      const unplaced = renderUnplacedEstimate(topView);
+      if (unplaced) fragment.append(unplaced);
       if (topView.unattributed) fragment.append(renderUnattributed(topView));
       fragment.append(renderTable(topView, { caption: "هزینه مراحل سطح ۱", linked: true }));
       return fragment;

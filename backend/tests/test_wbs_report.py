@@ -491,5 +491,49 @@ class ActivityCountTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, len(nodes["7.1"]["activityCodes"]))
 
 
+class EstimatePartitionTests(unittest.IsolatedAsyncioTestCase):
+    """The stages plus the unplaced lines must equal the project's own estimate.
+
+    The actual-cost side of this response has always partitioned exactly, and the response
+    said so in its own docstring. The estimate side did not: `unmappedEstimateLineCount`
+    said how many lines reached no stage and nothing said what they were worth, so the
+    stages added up to less than the project and the page had nothing to explain the gap
+    with.
+
+    Measured on the candidate before this existed: the overview reported
+    3,665,923,847,782 rial, the level-1 stages summed to 3,665,515,847,782, and the
+    408,000,000 between them sat in 75 lines that reached no stage. The page's total card
+    showed the smaller figure, which is how "366.55 billion toman" came to sit beside an
+    API answer of 3,658,923,847,782 in a report -- two different aggregations, and a test
+    state between them.
+    """
+
+    async def test_the_stages_plus_the_unplaced_lines_equal_the_project_estimate(self):
+        response = await build().by_wbs(SCOPE, WHEN, level=1)
+        stages = sum((Decimal(node["initial_estimate_irr"]) for node in response["items"]
+                      if node["initial_estimate_irr"] is not None), Decimal(0))
+        unplaced = Decimal(response["unmapped_estimate_irr"] or 0)
+        project = Decimal(response["totals"]["initialEstimateIrr"])
+        self.assertEqual(project, stages + unplaced,
+                         "the stages and the unplaced lines must account for the whole")
+
+    async def test_the_count_and_the_amount_agree_about_whether_anything_is_unplaced(self):
+        # A count without an amount is what the reader had before, and an amount without a
+        # count would be as bad: neither answers "how much, in how many".
+        response = await build().by_wbs(SCOPE, WHEN, level=1)
+        count = response["unmapped_estimate_line_count"]
+        amount = response["unmapped_estimate_irr"]
+        self.assertEqual(count == 0, Decimal(amount or 0) == 0,
+                         "a zero amount and a non-zero count cannot both be true here")
+
+    async def test_an_unplaced_amount_is_never_a_stand_in_zero(self):
+        # Decimal(0) means "they are worth nothing". None means "nobody could say". The
+        # field is allowed to be null for the second, and must not fake the first.
+        response = await build().by_wbs(SCOPE, WHEN, level=1)
+        amount = response["unmapped_estimate_irr"]
+        self.assertTrue(amount is None or isinstance(amount, Decimal),
+                        "the amount is a decimal or an honest null, never a string zero")
+
+
 if __name__ == "__main__":
     unittest.main()

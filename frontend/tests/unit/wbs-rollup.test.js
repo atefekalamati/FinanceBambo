@@ -98,6 +98,40 @@ test("a phase whose estimate is unknowable stays null rather than partial", () =
   assert.equal(view.totals.estimateIsPartial, false);
 });
 
+test("an estimate that reaches no phase is carried, and named", () => {
+  // The other absence. «برآورد ناقص» is lines INSIDE a phase that state no baseline; this
+  // is lines that are in no phase at all, so no amount of completeness in the rows above
+  // can contain them. Measured on the candidate: 40.8 million toman across 75 lines, which
+  // is exactly why the page's total card and the project's own estimate disagreed.
+  const view = buildWbsView({
+    nodes: [node("1.5", 1000, 400), node("1.7", 2000, 900)],
+    unmappedEstimateIrr: "408000000",
+    unmappedEstimateLineCount: 75,
+  });
+  assert.equal(view.totals.unmappedEstimateIrr, "408000000");
+  assert.equal(view.totals.unmappedEstimateLineCount, 75);
+  assert.equal(view.totals.initialEstimateIrr, "3000",
+    "the stage total stays the stages -- the unplaced amount is reported beside it");
+});
+
+test("no unplaced estimate means nothing to report, not a zero to explain", () => {
+  const view = buildWbsView({ nodes: [node("1.5", 1000, 400)] });
+  assert.equal(view.totals.unmappedEstimateIrr, null);
+  assert.equal(view.totals.unmappedEstimateLineCount, 0);
+});
+
+test("an unplaced amount nobody could work out stays null rather than becoming zero", () => {
+  // null means "nobody could say". 0 would mean "they are worth nothing", and the page
+  // would then show a confident zero for money it cannot account for.
+  const view = buildWbsView({
+    nodes: [node("1.5", 1000, 400)],
+    unmappedEstimateIrr: null,
+    unmappedEstimateLineCount: 12,
+  });
+  assert.equal(view.totals.unmappedEstimateIrr, null);
+  assert.equal(view.totals.unmappedEstimateLineCount, 12);
+});
+
 test("cost that reaches no phase is carried, not dropped", () => {
   const view = buildWbsView({
     nodes: [node("1.1", 1000, 600), node("1.2", 1000, 400)],

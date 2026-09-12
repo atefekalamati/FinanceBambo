@@ -139,6 +139,10 @@ export function createApiReportsAdapter(context, client) {
         unattributedActualIrr: payload.unattributedActualIrr == null ? null : String(payload.unattributedActualIrr),
         unmappedWbsActualIrr: payload.unmappedWbsActualIrr == null ? null : String(payload.unmappedWbsActualIrr),
         unmappedEstimateLineCount: payload.unmappedEstimateLineCount ?? null,
+        // What those lines are worth. Without it the page can say how many are missing
+        // from its total and not how much, which is the half a reader cannot act on.
+        unmappedEstimateIrr: payload.unmappedEstimateIrr == null
+          ? null : String(payload.unmappedEstimateIrr),
         totals: payload.totals ?? null,
         calculationStatus: payload.calculationStatus ?? null,
         warnings: payload.warnings ?? [],

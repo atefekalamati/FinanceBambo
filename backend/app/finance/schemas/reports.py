@@ -355,6 +355,15 @@ class WbsReportResponse(ApiModel):
     `unmappedWbsActualIrr`, equals `totals.actualCostIrr`. They are separate because they
     are fixed by different people -- one is an invoice never tied to an estimate line, the
     other an estimate line whose activity carries no stage.
+
+    THE ESTIMATE IS PARTITIONED THE SAME WAY, AND UNTIL NOW WAS NOT
+    `sum(items.initialEstimateIrr)` plus `unmappedEstimateIrr` equals
+    `totals.initialEstimateIrr`. `unmappedEstimateLineCount` said how MANY lines reached no
+    stage and nothing said what they were WORTH, so a reader adding the stages up got a
+    smaller number than the project's own and had nothing to explain the gap with.
+    Measured on the candidate: 408,000,000 rial across 75 lines, missing from the stage
+    total and disclosed nowhere -- while the same response has disclosed the actual-cost
+    equivalent all along.
     """
     reporting_date:date
     progress_snapshot_id:UUID|None=None
@@ -366,9 +375,14 @@ class WbsReportResponse(ApiModel):
     unattributed_actual_irr:Decimal=Decimal(0)
     unmapped_wbs_actual_irr:Decimal=Decimal(0)
     unmapped_estimate_line_count:int=0
+    #: What those lines are worth. Null when the estimate behind them cannot be worked out
+    #: at all -- the same null `initialEstimateIrr` uses, and never a stand-in zero, which
+    #: would read as "they are worth nothing" rather than "nobody could say".
+    unmapped_estimate_irr:Decimal|None=Decimal(0)
     totals:LiveMetrics
     calculation_status:Literal["complete","incomplete"]="complete"
     warnings:list[ReportWarning]=Field(default_factory=list)
 
-    @field_serializer("unattributed_actual_irr","unmapped_wbs_actual_irr")
+    @field_serializer("unattributed_actual_irr","unmapped_wbs_actual_irr",
+                      "unmapped_estimate_irr")
     def serialize_money(self,value):return None if value is None else format(value,"f")

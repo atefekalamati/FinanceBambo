@@ -5696,7 +5696,7 @@
       },
       "WbsReportResponse": {
         "additionalProperties": false,
-        "description": "The live report rolled up to WBS stages.\n\nThe three actual-cost figures partition the project exactly:\n`sum(items.actualCostIrr)` over the root level, plus `unattributedActualIrr`, plus\n`unmappedWbsActualIrr`, equals `totals.actualCostIrr`. They are separate because they\nare fixed by different people -- one is an invoice never tied to an estimate line, the\nother an estimate line whose activity carries no stage.",
+        "description": "The live report rolled up to WBS stages.\n\nThe three actual-cost figures partition the project exactly:\n`sum(items.actualCostIrr)` over the root level, plus `unattributedActualIrr`, plus\n`unmappedWbsActualIrr`, equals `totals.actualCostIrr`. They are separate because they\nare fixed by different people -- one is an invoice never tied to an estimate line, the\nother an estimate line whose activity carries no stage.\n\nTHE ESTIMATE IS PARTITIONED THE SAME WAY, AND UNTIL NOW WAS NOT\n`sum(items.initialEstimateIrr)` plus `unmappedEstimateIrr` equals\n`totals.initialEstimateIrr`. `unmappedEstimateLineCount` said how MANY lines reached no\nstage and nothing said what they were WORTH, so a reader adding the stages up got a\nsmaller number than the project's own and had nothing to explain the gap with.\nMeasured on the candidate: 408,000,000 rial across 75 lines, missing from the stage\ntotal and disclosed nowhere -- while the same response has disclosed the actual-cost\nequivalent all along.",
         "properties": {
           "calculationStatus": {
             "default": "complete",
@@ -5772,6 +5772,19 @@
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Unattributedactualirr",
             "type": "string"
+          },
+          "unmappedEstimateIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "0",
+            "title": "Unmappedestimateirr"
           },
           "unmappedEstimateLineCount": {
             "default": 0,

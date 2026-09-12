@@ -93,7 +93,9 @@ function percentText(part, whole) {
  * look like a tenth. The ceiling clears the actuals too, or a phase that has
  * overrun would be cut off at the end of its track and stop looking like one.
  */
-export function buildWbsView({ nodes = [], unattributedActualIrr = null } = {}) {
+export function buildWbsView({ nodes = [], unattributedActualIrr = null,
+                               unmappedEstimateIrr = null,
+                               unmappedEstimateLineCount = 0 } = {}) {
   const ordered = [...nodes].sort((left, right) => compareWbsCodes(left.wbsCode, right.wbsCode));
   if (!ordered.length) {
     return Object.freeze({
@@ -181,6 +183,13 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null } = {}) 
       // across every phase can still be missing lines inside them.
       missingEstimateLineCount: missingEstimateLines,
       estimateIsPartial: totalEstimate !== null && missingEstimateLines > 0,
+      // And a second, different absence: lines whose activity reaches no phase at all are
+      // not inside any row above, so this total cannot contain them however complete each
+      // phase is. The service reports both the count and the amount; without them the
+      // stages quietly sum to less than the project's own estimate.
+      unmappedEstimateIrr: exactInteger(unmappedEstimateIrr) === null
+        ? null : String(exactInteger(unmappedEstimateIrr)),
+      unmappedEstimateLineCount: Number(unmappedEstimateLineCount ?? 0) || 0,
     }),
     /**
      * Cost that reaches no phase at all.

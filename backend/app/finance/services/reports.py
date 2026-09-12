@@ -252,6 +252,17 @@ class FinanceLiveReportService:
         catalogue=await self._activity_catalogue(scope)
         nodes=wbs_tree.build_tree(catalogue.values())
         placed,unplaced_line_ids=wbs_tree.line_nodes(data["estimates"],catalogue)
+        # What the unplaced lines are WORTH, through the canonical engine over just those
+        # rows rather than a second copy of the formula: a general cost is its amount and
+        # everything else is quantity times price, and one of those rules changing in two
+        # places is how a total starts disagreeing with its own parts.
+        unplaced_ids=set(unplaced_line_ids)
+        unplaced_rows=[row for row in data["estimates"] if row["id"] in unplaced_ids]
+        unplaced_estimate=Decimal(0)
+        if unplaced_rows:
+            unplaced_estimate=require_estimate_coverage(
+                calculate_live_report(unplaced_rows,[],[],data["conversions"],None),
+                data.get("estimate_coverage_known",True)).metrics["initialEstimateIrr"]
         linked,unattributed,unplaced_invoices=wbs_tree.split_invoices(data["invoices"],placed)
 
         estimates_by_code={}
@@ -314,6 +325,9 @@ class FinanceLiveReportService:
             # Purchases that do have an estimate line, whose activity carries no WBS code.
             "unmapped_wbs_actual_irr":wbs_tree.actual_of(unplaced_invoices),
             "unmapped_estimate_line_count":len(unplaced_line_ids),
+            # And what they are worth, so the stages plus this equal the project's own
+            # estimate rather than silently falling short of it.
+            "unmapped_estimate_irr":unplaced_estimate,
             "totals":report.metrics,
             "calculation_status":report.calculation_status,
             "warnings":report.warnings,
