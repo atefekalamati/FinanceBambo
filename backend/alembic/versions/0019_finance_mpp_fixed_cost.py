@@ -39,17 +39,24 @@ uniqueness rule over every resource code, which is a larger claim about existing
 this change has any business making.
 
 REVISION NUMBERING
-0018 is deliberately skipped. `origin/backend-finance` carries a revision 0018 correcting
-0017's CHECK vocabulary, written before this one and not yet merged here. Taking the number
-would have made two revisions with one id, which Alembic refuses outright. When that
-revision lands, this one's `down_revision` becomes "0018" and the chain is linear again.
+This follows 0018, which is the correction of 0017's CHECK vocabulary that
+`origin/backend-finance` wrote. For a while 0018 was not in this branch at all and this
+revision hung off 0017 with the gap documented; the file has since been brought in and the
+parent corrected, so the chain is linear again.
+
+The two are independent as SCHEMA: 0018 replaces a CHECK on
+`progress_snapshot_refs.snapshot_status`, and nothing here touches that table. The order is
+therefore a bookkeeping choice rather than a requirement, and linear is what this
+repository keeps -- see `tests/test_migrations.py`, which refuses a second head and says
+why. Correcting the parent was safe because a census of every local database put the
+presentation database at 0016 and this revision in throwaway copies only.
 """
 
 from alembic import op
 from sqlalchemy.schema import DDL
 
 revision = "0019"
-down_revision = "0017"
+down_revision = "0018"
 branch_labels = None
 depends_on = None
 
