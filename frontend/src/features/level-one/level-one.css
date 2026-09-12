@@ -417,3 +417,40 @@ a.vgroup__name:focus-visible {
   font-size: var(--font-size-xs);
 }
 
+/* On paper there is no scrollbar, so a scroll container is a crop.
+
+   The 92px floor above is right for a screen: past it the viewport scrolls rather than
+   letting the columns thin to a hairline, and the reader drags to the phase they want.
+   A printed page has no drag. Measured on A4 the plot wants 1289px inside a 718px
+   column, so eight of the thirteen phases were simply absent from the paper and nothing
+   on the page said so -- the chart looked finished and was not.
+
+   Printing therefore drops the floor to what two bars and their gap actually need and
+   lets every phase onto the sheet. The labels wrap instead of truncating, because a
+   phase name cut mid-word on paper cannot be recovered by hovering it. */
+@media print {
+  .vbars__viewport {
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+
+  .vgroup {
+    flex: 1 1 0;
+    min-inline-size: 0;
+    scroll-snap-align: none;
+  }
+
+  .vgroup__bars {
+    gap: 4px;
+    padding-inline: 2px;
+  }
+
+  .vbar {
+    min-inline-size: 6px;
+  }
+
+  .vgroup__name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
