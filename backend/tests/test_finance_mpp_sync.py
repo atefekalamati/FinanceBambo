@@ -237,5 +237,53 @@ class SyncTests(unittest.TestCase):
             self.assertNotIn(forbidden, row_inserts[0])
 
 
+class HashedBytesAreParsedBytesTests(SyncTests):
+    """The sha a version is stored under must describe the rows stored beside it.
+
+    `resolve_import_file` hashes the file; the reader then opens it AGAIN. Nothing used to
+    compare the two, so a file replaced between them produced a version whose identity
+    named one schedule and whose rows came from another -- and since that sha is the
+    idempotency key of the whole import, the next sync of the real bytes would answer
+    "unchanged" and never correct it.
+
+    Inherits the suite's own fixture so the file, the connection and the reader are the
+    ones every other test here uses.
+    """
+
+    class ReplacingReader(Reader):
+        """Overwrites the staged file at the moment the parse happens.
+
+        Exactly what a host restaging a schedule looks like, at exactly the instant that
+        used to go unnoticed.
+        """
+
+        def __init__(self, parsed, path):
+            super().__init__(parsed)
+            self._path = path
+
+        def read(self, file_path):
+            self._path.write_bytes(OLE2 + b"the host replaced this while we were reading")
+            return super().read(file_path)
+
+    def test_a_file_replaced_between_the_hash_and_the_parse_stores_nothing(self):
+        connection = Connection()
+        staged = Path(self.root.name) / "terrace.mpp"
+        reader = self.ReplacingReader(self.parsed, staged)
+        with self.assertRaises(FinanceMppSyncRefused) as caught:
+            run(self.service(connection, reader).sync(ORG, "terrace"))
+        self.assertEqual("MPP_FILE_NOT_STABLE", caught.exception.code)
+        self.assertEqual(1, reader.reads, "the file was parsed once, then questioned")
+        writes = [s for s in connection.statements
+                  if s.startswith(("INSERT", "UPDATE", "DELETE"))]
+        self.assertEqual([], writes, "nothing may be written when the bytes are in doubt")
+
+    def test_a_file_that_stays_put_syncs_exactly_as_before(self):
+        # The second resolve must not make an ordinary import cost anything but a hash.
+        connection = Connection()
+        result = run(self.service(connection, Reader(self.parsed)).sync(ORG, "terrace"))
+        self.assertEqual("imported", result["status"])
+        self.assertEqual(2, result["rowCount"])
+
+
 if __name__ == "__main__":
     unittest.main()

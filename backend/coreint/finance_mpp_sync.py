@@ -406,6 +406,25 @@ class FinanceMppSyncService:
             raise FinanceMppSyncRefused(error.code, str(error)) from error
 
         parsed = await asyncio.to_thread(self._reader.read, resolved.path)
+
+        # The parse opened the file a SECOND time. Resolve it again and compare digests, so
+        # the sha this version is stored under is the sha of the bytes these rows came from.
+        # Without this, a file replaced between the two reads produces a version whose
+        # identity describes one schedule and whose rows describe another -- and because the
+        # sha is the idempotency key of the whole import, the next sync of the real bytes
+        # would answer "unchanged" and never correct it.
+        try:
+            again = resolve_import_file(self._import_root,
+                                        self._file_name(project_id, file_name),
+                                        self._max_size_mb)
+        except MppFileError as error:
+            raise FinanceMppSyncRefused(error.code, str(error)) from error
+        if again.sha256 != resolved.sha256:
+            raise FinanceMppSyncRefused(
+                "MPP_FILE_NOT_STABLE",
+                "the file changed between being hashed and being read, so nothing was "
+                "stored: %s" % resolved.relative_name)
+
         rows = finance_rows(parsed, source_sha256=resolved.sha256)
         if not rows:
             raise FinanceMppSyncRefused(

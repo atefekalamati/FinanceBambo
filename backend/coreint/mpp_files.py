@@ -9,10 +9,19 @@ of its refusals is an attack or an accident that has actually happened somewhere
   * a symlink inside the import root pointing at a file outside it;
   * an empty file produced by a copy that died, which a parser would report as "corrupt
     schedule" and a planner would read as "my file is broken";
+  * a file that is still ARRIVING -- half a copy already carries the OLE2 magic and a
+    non-zero size, so neither of the gates above notices it, and the parser's "corrupt
+    schedule" is the wrong sentence for "wait two seconds";
   * a 2 GB upload that is not a schedule at all.
 
 The rule is single and total: **a file is only readable if its fully-resolved real path is
 inside the fully-resolved import root.** Everything below is that rule plus reporting.
+
+One thing this module cannot promise on its own: that the bytes it hashed are the bytes
+somebody later parses. It hands back a path, and opening that path again is a second read
+of a file that may have moved on. `FinanceMppSyncService.sync` closes that by resolving the
+file a second time after the parse and refusing when the digest has changed -- the check
+lives there because that is where both halves are in one place.
 
 Errors carry stable ``code`` values (the contract the API and logs use). The MESSAGE never
 contains the absolute filesystem path -- callers log and return ``relative_name`` only, so
@@ -65,6 +74,17 @@ class MppFormatUnsupported(MppFileError):
     code = "MPP_FORMAT_UNSUPPORTED"
 
 
+class MppFileNotStable(MppFileError):
+    """The file changed while it was being read, so no single version of it was seen.
+
+    Distinct from `MppFormatUnsupported` on purpose. A schedule that is mid-copy is not a
+    bad file and the operator has nothing to fix -- the answer is to ask again in a
+    moment, and a caller can only know that if the refusal says so.
+    """
+
+    code = "MPP_FILE_NOT_STABLE"
+
+
 class ResolvedMppFile:
     """A file that passed every gate, with the facts the importer needs.
 
@@ -81,6 +101,20 @@ class ResolvedMppFile:
     def __repr__(self):  # keep accidental logging safe too
         return "ResolvedMppFile(%r, %d bytes, sha=%s...)" % (
             self.relative_name, self.size_bytes, self.sha256[:12])
+
+
+def stable_signature(path):
+    """What must not change while the file is being read: its length and its clock.
+
+    Both, because a write that replaces bytes without changing the length still moves the
+    mtime, and a file appended to in a single burst can land on the same mtime tick.
+
+    Its own function so the check reads as one idea in `resolve_import_file`, and so a test
+    can state "the file changed underneath us" without having to win a race against a real
+    writer on a disk of unknown speed.
+    """
+    info = path.stat()
+    return (info.st_size, info.st_mtime_ns)
 
 
 def resolve_import_file(import_root, relative_name,
@@ -135,6 +169,7 @@ def resolve_import_file(import_root, relative_name,
     # Hash and magic in one pass over the bytes. The digest is the idempotency key of the
     # whole import -- an unchanged file must never produce a second snapshot -- so it is
     # computed here, once, on the exact bytes that will be parsed.
+    before = stable_signature(candidate)
     digest = hashlib.sha256()
     first = b""
     with candidate.open("rb") as handle:
@@ -149,5 +184,18 @@ def resolve_import_file(import_root, relative_name,
         raise MppFormatUnsupported(
             "file is not an OLE2 document, so it is not a real .mpp: %s" % relative_name,
             absolute_path=candidate)
+
+    # Did the file hold still while that pass ran? A copy in progress grows underneath the
+    # reader, and the digest above would then describe no version of the file that ever
+    # existed -- half of one and half of the next. Size AND mtime, because a write that
+    # replaces bytes without changing the length still moves the mtime.
+    #
+    # This refuses rather than waits. How long an import may block is a policy belonging to
+    # whoever schedules it, not to the door it comes through; the code says which refusal
+    # this is so a caller can decide to ask again.
+    if stable_signature(candidate) != before:
+        raise MppFileNotStable(
+            "the file changed while it was being read, so it is still arriving: %s"
+            % relative_name, absolute_path=candidate)
 
     return ResolvedMppFile(candidate, str(relative_name), size, digest.hexdigest())

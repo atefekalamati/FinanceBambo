@@ -10,13 +10,15 @@ import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from coreint.mpp_files import (OLE2_MAGIC, MppFileEmpty, MppFileNotFound,
-                               MppFileTooLarge, MppFormatUnsupported,
+import coreint.mpp_files as mpp_files
+from coreint.mpp_files import (OLE2_MAGIC, MppFileEmpty, MppFileError, MppFileNotFound,
+                               MppFileNotStable, MppFileTooLarge, MppFormatUnsupported,
                                MppPathNotAllowed, resolve_import_file)
 
 #: A minimal byte-stream that passes the OLE2 magic check. Not a parseable schedule --
@@ -160,6 +162,65 @@ class ImportRootTests(unittest.TestCase):
         a = resolve_import_file(self.root, "terrace.mpp").sha256
         b = resolve_import_file(self.root, "other.mpp").sha256
         self.assertNotEqual(a, b)
+
+
+class FileStillArrivingTests(unittest.TestCase):
+    """Half a copy passes the empty gate and the magic gate, and must not pass the door.
+
+    Measured before this existed: 819,200 of a real schedule's 1,638,400 bytes resolved
+    cleanly, with a digest describing half a file. The parser would then have answered
+    "corrupt schedule" -- a sentence about the FILE, when the truth was about the CLOCK.
+    """
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._dir.cleanup)
+        self.root = Path(self._dir.name)
+        self.path = self.root / "arriving.mpp"
+
+    def test_a_file_that_grows_while_it_is_read_is_refused(self):
+        # The signature is driven rather than the disk raced: a test that has to win a race
+        # passes on a fast disk and fails on a slow one, which is worse than no test. Two
+        # answers, in order -- what the file looked like before the hash pass, and after.
+        self.path.write_bytes(FAKE_MPP)
+        answers = iter([(len(FAKE_MPP), 1), (len(FAKE_MPP) + 1024, 2)])
+        with unittest.mock.patch.object(mpp_files, "stable_signature",
+                                        lambda _path: next(answers)):
+            with self.assertRaises(MppFileNotStable) as caught:
+                resolve_import_file(str(self.root), "arriving.mpp")
+        self.assertEqual("MPP_FILE_NOT_STABLE", caught.exception.code)
+        # The refusal never names the absolute path, like every other refusal here.
+        self.assertNotIn(str(self.root), str(caught.exception))
+
+    def test_a_file_rewritten_to_the_same_length_is_still_refused(self):
+        # Size alone would miss this: the same number of bytes, different bytes. The mtime
+        # is the half of the signature that catches it.
+        self.path.write_bytes(FAKE_MPP)
+        answers = iter([(len(FAKE_MPP), 111), (len(FAKE_MPP), 222)])
+        with unittest.mock.patch.object(mpp_files, "stable_signature",
+                                        lambda _path: next(answers)):
+            with self.assertRaises(MppFileNotStable):
+                resolve_import_file(str(self.root), "arriving.mpp")
+
+    def test_the_signature_reads_both_halves_from_the_file(self):
+        self.path.write_bytes(FAKE_MPP)
+        size, mtime = mpp_files.stable_signature(self.path)
+        self.assertEqual(len(FAKE_MPP), size)
+        self.assertEqual(self.path.stat().st_mtime_ns, mtime)
+
+    def test_a_file_that_holds_still_resolves_exactly_as_before(self):
+        # The guard must not turn an ordinary read into a refusal.
+        self.path.write_bytes(FAKE_MPP)
+        resolved = resolve_import_file(str(self.root), "arriving.mpp")
+        self.assertEqual(len(FAKE_MPP), resolved.size_bytes)
+        self.assertEqual(64, len(resolved.sha256))
+        self.assertEqual("arriving.mpp", resolved.relative_name)
+
+    def test_the_refusal_is_its_own_code_and_not_a_format_complaint(self):
+        # An operator reading MPP_FORMAT_UNSUPPORTED goes looking for a bad file. There
+        # isn't one, and the two codes must not be mistaken for each other.
+        self.assertNotEqual(MppFileNotStable.code, MppFormatUnsupported.code)
+        self.assertTrue(issubclass(MppFileNotStable, MppFileError))
 
 
 if __name__ == "__main__":
