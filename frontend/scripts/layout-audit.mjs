@@ -13,7 +13,10 @@ const routes = [
   "finance/report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines",
   // The two that read the project at two dates. They only draw when a range is
   // chosen, so the range is part of the address the audit measures.
-  "finance/report-builder?sections=periodMetrics,periodBreakdown&from=2026-01-01&to=2026-06-31",
+  // June has thirty days. The 31st was in this list and the page passed it straight
+  // through to /overview, which answered 422 -- and the rejection was never handled,
+  // so the run recorded an uncaught promise on whichever page came next.
+  "finance/report-builder?sections=periodMetrics,periodBreakdown&from=2026-01-01&to=2026-06-30",
   "finance/report-settings",
   "finance/financial-items",
   "finance/prices",
@@ -88,6 +91,33 @@ ${chromeStderr.trim()}`);
 flags: ${extraFlags.join(" ") || "(none)"}
 ${chromeStderr.trim()}`,
   );
+}
+
+/**
+ * Refuse to measure a page the router did not open.
+ *
+ * A route it does not recognise, or one this account may not reach, lands on the default
+ * route -- and a fallback page has no overflow and throws no exceptions, so it passes
+ * every check here while proving nothing about the page named. The router rewrites
+ * `location.hash` to what it actually opened, so asking for that is enough and needs no
+ * per-page selector.
+ */
+async function assertPageIdentity(cdp, route) {
+  const wanted = route.split("?")[0].replace(/^#?\/?/, "");
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const result = await cdp.send("Runtime.evaluate", {
+      expression: "location.hash.replace(/^#\\/?/, '').split('?')[0]",
+      returnByValue: true,
+    });
+    const opened = result.result.value ?? "";
+    if (opened === wanted) return opened;
+    if (opened && opened !== wanted && attempt > 8) {
+      throw new Error(
+        `asked for ${wanted} and the router opened ${opened} -- a fallback, not the page`);
+    }
+    await delay(150);
+  }
+  throw new Error(`${wanted}: the router never settled on a route`);
 }
 
 async function createPage(url) {
@@ -270,6 +300,8 @@ try {
       const cdp = connect(page.webSocketDebuggerUrl);
       await cdp.ready;
       await cdp.send("Runtime.enable");
+      // Before anything is measured: is this the page that was asked for?
+      await assertPageIdentity(cdp, route);
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width,
         height: 900,

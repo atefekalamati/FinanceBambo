@@ -37,6 +37,33 @@ async function waitForDebugger() {
   throw new Error("Chrome DevTools endpoint did not become ready.");
 }
 
+/**
+ * Refuse to measure a page the router did not open.
+ *
+ * A route it does not recognise, or one this account may not reach, lands on the default
+ * route -- and a fallback page has no overflow and throws no exceptions, so it passes
+ * every check here while proving nothing about the page named. The router rewrites
+ * `location.hash` to what it actually opened, so asking for that is enough and needs no
+ * per-page selector.
+ */
+async function assertPageIdentity(cdp, route) {
+  const wanted = route.split("?")[0].replace(/^#?\/?/, "");
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const result = await cdp.send("Runtime.evaluate", {
+      expression: "location.hash.replace(/^#\\/?/, '').split('?')[0]",
+      returnByValue: true,
+    });
+    const opened = result.result.value ?? "";
+    if (opened === wanted) return opened;
+    if (opened && opened !== wanted && attempt > 8) {
+      throw new Error(
+        `asked for ${wanted} and the router opened ${opened} -- a fallback, not the page`);
+    }
+    await delay(150);
+  }
+  throw new Error(`${wanted}: the router never settled on a route`);
+}
+
 async function createPage(url) {
   const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, { method: "PUT" });
   if (!response.ok) throw new Error(`Could not create print audit page: ${response.status}`);
@@ -167,6 +194,8 @@ for (const documentCase of selected) {
     await cdp.ready;
     await cdp.send("Runtime.enable");
     await cdp.send("Page.enable");
+    // Before anything is measured: is this the page that was asked for?
+    await assertPageIdentity(cdp, documentCase.route);
     await delay(1100);
 
     if (documentCase.chapters) {
