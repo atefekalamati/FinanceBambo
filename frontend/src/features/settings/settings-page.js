@@ -1,4 +1,5 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
+import { actorLabel } from "../../shared/formatters/actor.js";
 import { capabilitiesFor, describeAccess } from "../../core/auth/capabilities.js";
 import { SURFACES } from "../../core/config/routes.js";
 import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";

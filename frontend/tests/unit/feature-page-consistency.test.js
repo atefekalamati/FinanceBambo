@@ -36,6 +36,63 @@ test("every feature page renders its states through the shared page-state helper
   );
 });
 
+/**
+ * WHY THIS EXISTS
+ * `settings-page.js` called `actorLabel(...)` and never imported it. The page threw
+ * `ReferenceError: actorLabel is not defined` inside the render of the revision-history
+ * table -- which runs inside an async load, so it surfaced as an unhandled promise
+ * rejection and the page simply stopped drawing. It survived because the code path needs a
+ * project that HAS settings revisions, and the seeded demo project has none.
+ *
+ * Nothing in the suite asks whether a module imports what it calls, so nothing could have
+ * caught it. This asks, for every shared and core helper, in every module.
+ */
+const SHARED_EXPORTS = SOURCES
+  .filter(([name]) => name.startsWith("shared/") || name.startsWith("core/"))
+  .flatMap(([name, source]) => [
+    ...source.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g),
+    ...source.matchAll(/export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\(|async|function)/g),
+  ].map((match) => [match[1], name]));
+
+const EXPORTED_BY = new Map(SHARED_EXPORTS);
+
+function importedNames(source) {
+  const names = new Set();
+  for (const match of source.matchAll(/import\s*\{([^}]*)\}\s*from/g)) {
+    for (const part of match[1].split(",")) {
+      const name = part.trim().split(/\s+as\s+/).pop().trim();
+      if (name) names.add(name);
+    }
+  }
+  // A namespace or default import brings the name in too.
+  for (const match of source.matchAll(/import\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,|from)/g)) {
+    names.add(match[1]);
+  }
+  return names;
+}
+
+function definedLocally(source, name) {
+  return new RegExp(`(?:function|const|let|class)\\s+${name}\\b`).test(source);
+}
+
+test("every module imports the shared helper it calls", () => {
+  assert.ok(EXPORTED_BY.size > 20, "no shared helpers were discovered; the scan is broken");
+  const offenders = [];
+  for (const [name, source] of SOURCES) {
+    if (name.startsWith("shared/") || name.startsWith("core/")) continue;
+    const imported = importedNames(source);
+    for (const [helper, home] of EXPORTED_BY) {
+      if (imported.has(helper) || definedLocally(source, helper)) continue;
+      // Called as a bare function, not as a property of something else and not as part
+      // of a longer identifier: `x.element(` and `myElement(` are not calls to `element`.
+      if (!new RegExp(`(?<![.\\w$])${helper}\\s*\\(`).test(source)) continue;
+      offenders.push(`${name} calls ${helper}() from ${home} without importing it`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    "a module that calls an unimported helper throws ReferenceError the moment that branch renders");
+});
+
 test("no module builds markup through innerHTML", () => {
   const offenders = SOURCES.filter(([name, source]) => name !== "shared/dom/elements.js" && source.includes(".innerHTML")).map(([name]) => name);
   assert.deepEqual(offenders, [], "build nodes with element()/tableHead() so Backend values can never be parsed as markup");

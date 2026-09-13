@@ -162,3 +162,99 @@ test("a period with no closing report refuses rather than inventing one", () => 
     assert.match(text(render({})), /گزارشی در دسترس نیست/);
   });
 }));
+
+/**
+ * The warnings chapter printed 1,828 rows to say 161 things.
+ *
+ * Every one of those warnings is a distinct record -- a distinct estimate line -- so there
+ * was nothing duplicated to remove. What was wrong was the printed row: it showed the
+ * message and the resource, which collide, and never showed the line, which does not. The
+ * document repeated itself AND left out the field that told the records apart.
+ *
+ * These hold the grouping to the two things that make it safe: it is keyed on the record's
+ * own fields and never on the sentence, and it loses nothing -- the count is printed and
+ * every affected record is still named.
+ */
+
+const aWarning = (over = {}) => ({
+  code: "CURRENT_PRICE_MISSING",
+  severity: "warning",
+  message: "Current price is missing.",
+  progressStatus: null,
+  excludedFromCalculation: true,
+  affectedMetricKeys: ["currentExecutedValueIrr"],
+  resourceCode: "MPP-R160",
+  resourceId: "r-160",
+  estimateLineId: "line-1",
+  activityExternalId: "1.5.2",
+  ...over,
+});
+
+/** The rows of the warnings table: the last table the quality section renders. */
+function warningRows(warnings) {
+  const nodes = REPORT_SECTIONS.warnings({ overview: { warnings } });
+  const tables = flatten(nodes).filter((node) => node.tag === "table");
+  const body = flatten([tables.at(-1)]).find((node) => node.tag === "tbody");
+  return flatten([body]).filter((node) => node.tag === "tr")
+    .map((row) => row.children.map((cell) => cell.textContent.trim()));
+}
+
+test("records agreeing on code, cause, severity and scope become one row with a count", () => withDocument(() => {
+  const rows = warningRows([
+    aWarning({ estimateLineId: "line-1", activityExternalId: "1.5.2" }),
+    aWarning({ estimateLineId: "line-2", activityExternalId: "1.5.3" }),
+    aWarning({ estimateLineId: "line-3", activityExternalId: "1.5.4" }),
+  ]);
+  assert.equal(rows.length, 1, "three records about one resource are one finding");
+  assert.match(rows[0][2], /۳/, "the number of affected lines must be printed");
+}));
+
+test("every affected record is still named, so grouping loses nothing", () => withDocument(() => {
+  const rows = warningRows([
+    aWarning({ estimateLineId: "line-1", activityExternalId: "1.5.2" }),
+    aWarning({ estimateLineId: "line-2", activityExternalId: "1.5.3" }),
+  ]);
+  assert.match(rows[0][3], /1\.5\.2/);
+  assert.match(rows[0][3], /1\.5\.3/);
+}));
+
+test("a record with no activity id is counted and declared, never quietly dropped", () => withDocument(() => {
+  const rows = warningRows([
+    aWarning({ estimateLineId: "line-1", activityExternalId: "1.5.2" }),
+    aWarning({ estimateLineId: "line-2", activityExternalId: null }),
+  ]);
+  assert.match(rows[0][2], /۲/, "both records are counted");
+  assert.match(rows[0][3], /بدون شناسه فعالیت/, "the unnamed one is declared");
+}));
+
+test("a different cause is a different finding, even with the same sentence", () => withDocument(() => {
+  const rows = warningRows([
+    aWarning({ progressStatus: null, estimateLineId: "line-1" }),
+    aWarning({ progressStatus: "unmapped_assignment", estimateLineId: "line-2" }),
+  ]);
+  assert.equal(rows.length, 2);
+}));
+
+test("a different severity, scope or excluded flag is a different finding", () => withDocument(() => {
+  for (const difference of [{ severity: "error" }, { resourceCode: "MPP-R999" },
+                            { excludedFromCalculation: false },
+                            { affectedMetricKeys: ["forecastFinalCostIrr"] }]) {
+    const rows = warningRows([aWarning({ estimateLineId: "a" }),
+                              aWarning({ estimateLineId: "b", ...difference })]);
+    assert.equal(rows.length, 2, `${JSON.stringify(difference)} was merged away`);
+  }
+}));
+
+test("one warning is still one row, and no warnings is still the empty message", () => withDocument(() => {
+  assert.equal(warningRows([aWarning()]).length, 1);
+  const empty = warningRows([]);
+  assert.equal(empty.length, 1);
+  assert.match(empty[0][0], /هشداری اعلام نکرده/);
+}));
+
+test("the grouped total is announced, so the reader knows what was folded", () => withDocument(() => {
+  const nodes = REPORT_SECTIONS.warnings({ overview: { warnings: [
+    aWarning({ estimateLineId: "line-1" }), aWarning({ estimateLineId: "line-2" })] } });
+  assert.match(text(nodes), /۲ هشدار از سرویس دریافت شد/);
+  assert.match(text(nodes), /هیچ هشداری حذف نشده است/);
+}));

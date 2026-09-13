@@ -123,7 +123,12 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null,
     const missingEstimateLines = Number(node.missingEstimateLineCount ?? 0) || 0;
     const revised = node.revisedEstimateIrr == null ? estimate : amount(node.revisedEstimateIrr);
     const actual = amount(node.actualCostIrr);
-    const forecast = amount(node.forecastFinalIrr);
+    // Stated separately for the same reason the estimate is: the service answers null
+    // wherever it could not finish the calculation, and a forecast of "nothing" is a
+    // different claim from "not worked out". Twelve of the thirteen phases on the
+    // candidate arrive null, and all twelve used to print as ۰.
+    const statedForecast = exactInteger(node.forecastFinalIrr);
+    const forecast = statedForecast ?? 0n;
     const hasEstimate = statedEstimate !== null && estimate > 0n;
     const deviation = hasEstimate ? actual - estimate : null;
     return {
@@ -135,13 +140,18 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null,
       hasChildren: (node.childCount ?? 0) > 0,
       missingEstimateLineCount: missingEstimateLines,
       estimateIsPartial: statedEstimate !== null && missingEstimateLines > 0,
+      // Zero lines is not a costing of zero. A phase with no estimate lines has nothing to
+      // sum, so its blank says "not costed" where another phase's blank says "not worked
+      // out" -- and the reader has to be able to tell those apart.
+      estimateLineCount: Number(node.estimateLineCount ?? 0) || 0,
+      hasEstimateBasis: (Number(node.estimateLineCount ?? 0) || 0) > 0,
       initialEstimateIrr: statedEstimate === null ? null : String(estimate),
       revisedEstimateIrr: statedEstimate === null && node.revisedEstimateIrr == null
         ? null : String(revised),
       actualCostIrr: String(actual),
       remainingPhysicalCostIrr: node.remainingPhysicalCostIrr ?? null,
       moneyRequiredIrr: node.moneyRequiredIrr ?? null,
-      forecastFinalIrr: String(forecast),
+      forecastFinalIrr: statedForecast === null ? null : String(forecast),
       breakdown: normalizeBreakdown(node.breakdown),
       hasEstimate,
       // Only meaningful against an estimate; a phase with none reports null
@@ -152,7 +162,7 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null,
       started: actual > 0n,
       estimateMagnitude: statedEstimate === null ? null : magnitude(estimate, ceiling),
       actualMagnitude: magnitude(actual, ceiling),
-      forecastMagnitude: magnitude(forecast, ceiling),
+      forecastMagnitude: statedForecast === null ? null : magnitude(forecast, ceiling),
     };
   });
 
@@ -176,13 +186,19 @@ export function buildWbsView({ nodes = [], unattributedActualIrr = null,
     totals: Object.freeze({
       initialEstimateIrr: totalEstimate === null ? null : String(totalEstimate),
       actualCostIrr: String(totalActual),
-      forecastFinalIrr: String(sum("forecastFinalIrr")),
+      // A total over phases whose forecast is unknown would be a subtotal under the name
+      // of a total, which is the same mistake the estimate total above refuses.
+      forecastFinalIrr: rows.every((row) => row.forecastFinalIrr !== null)
+        ? String(sum("forecastFinalIrr")) : null,
       consumedPercent: totalEstimate === null ? null : percentText(totalActual, totalEstimate),
       activityCount: rows.reduce((result, row) => result + (row.activityCount ?? 0), 0),
       // The project-wide version of the same qualification. A total that adds up
       // across every phase can still be missing lines inside them.
       missingEstimateLineCount: missingEstimateLines,
       estimateIsPartial: totalEstimate !== null && missingEstimateLines > 0,
+      // How many phases have no estimate basis at all. Separate from the count of lines
+      // missing a baseline: those are lines inside a phase that does have some.
+      stagesWithoutEstimateBasis: rows.filter((row) => !row.hasEstimateBasis).length,
       // And a second, different absence: lines whose activity reaches no phase at all are
       // not inside any row above, so this total cannot contain them however complete each
       // phase is. The service reports both the count and the amount; without them the

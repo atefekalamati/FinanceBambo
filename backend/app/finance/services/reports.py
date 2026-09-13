@@ -12,7 +12,7 @@ from ..domain import wbs as wbs_tree
 from ..domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT,monthly_report
 from ..domain.persian_calendar import persian_month_window
 from ..domain.reports import calculate_live_report
-from ..domain.report_coverage import require_estimate_coverage
+from ..domain.report_coverage import report_of_an_empty_basis, require_estimate_coverage
 from ..domain.progress import (finance_version_id,
     apply_progress_overrides,reference_from_header,
  snapshot_assignments,snapshot_metadata)
@@ -283,6 +283,10 @@ class FinanceLiveReportService:
             node_report=calculate_live_report(rows,invoices,assignments,data["conversions"],
                                               data["gross_area"])
             node_report=require_estimate_coverage(node_report,data.get("estimate_coverage_known",True))
+            # A stage with no estimate lines has no estimate, which is not the same as an
+            # estimate of zero. Applied after the coverage rule so a node that is already
+            # unknown for the historical reason stays unknown for it.
+            node_report=report_of_an_empty_basis(node_report,len(rows))
             metrics=node_report.metrics
             # Still null when a type's revised estimate is genuinely unknowable -- a past
             # reporting date whose estimate coverage cannot be proven nulls every type, and

@@ -4,7 +4,7 @@ import { createRequestState, REQUEST_STATUS } from "../../core/state/request-sta
 import { defaultSnapshot } from "../../shared/progress/project-snapshot.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatCompactMoneyFromIrr, formatTomanFromIrr } from "../../shared/formatters/money.js";
-import { formatDisplayNumber } from "../../shared/formatters/display.js";
+import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { buildWbsView } from "../../shared/reports/wbs-rollup.js";
 import { createLevelOneChart } from "./level-one-chart.js";
@@ -63,7 +63,27 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
 
   function renderHeader(data) {
     const parent = data ? data.top.nodes.find((node) => node.wbsCode === wbsCode) : null;
-    return createFinancePageHeader(wbsCode ? (parent?.title ?? `مرحله ${wbsCode}`) : "هزینه مراحل پروژه");
+    return createFinancePageHeader(
+      wbsCode ? (parent?.title ?? `مرحله ${wbsCode}`) : "هزینه مراحل پروژه");
+  }
+
+  /**
+   * Which day these figures are for, and from which schedule.
+   *
+   * Every amount on this page is bound by the reporting date: at the snapshot's own date
+   * the estimates are all unknown, and at a later one they are stated -- same page, same
+   * project, same source version, two different readings. A page that does not name its
+   * date produces numbers that cannot be compared with anything.
+   *
+   * It sits with the figures rather than in the header, which by contract carries a
+   * heading and a back link and nothing else.
+   */
+  function renderProvenance(data) {
+    const snapshot = data?.snapshot;
+    if (!snapshot?.reportingDate) return null;
+    return element("p", "level-one-provenance",
+      `تاریخ گزارش: ${formatBusinessDate(snapshot.reportingDate)}`
+      + (snapshot.sourceFileNameSafe ? ` · برنامه زمانی: ${snapshot.sourceFileNameSafe}` : ""));
   }
 
   function renderUnavailable() {
@@ -91,6 +111,32 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
     notice.append(
       element("h3", "", "برآورد ناقص است"),
       element("p", "", `${count} ردیف برآوردی مبلغ اولیه‌ای ثبت نکرده‌اند و در ارقام «برآورد اولیه» این صفحه نیامده‌اند. آنچه می‌بینید جمع ردیف‌هایی است که برآورد دارند، نه کل برآورد پروژه.`),
+    );
+    return notice;
+  }
+
+  /**
+   * Phases nobody has costed at all.
+   *
+   * Their estimate cell is blank, and a blank cell is read as "nothing here" unless
+   * something says otherwise. The service reports zero estimate lines for them, which is
+   * the evidence: there is nothing to sum, so there is no figure -- as opposed to a figure
+   * that came out at zero, which would print as zero and mean something quite different.
+   */
+  function renderUnknownEstimateNotice(view) {
+    const without = (view.rows ?? []).filter((row) => !row.hasEstimateBasis);
+    if (!without.length) return null;
+    const notice = element("aside", "level-one-partial");
+    notice.append(
+      element("h3", "", "برآورد این مراحل نامعلوم است، نه صفر"),
+      // "As of this report's date" is not a hedge: an estimate line recorded after the
+      // reporting date is not part of that date's picture, so a stage can have no lines on
+      // one day and many on another. Saying it without the date would describe the project
+      // when it only describes the day.
+      element("p", "", `تا تاریخ این گزارش، ${formatDisplayNumber(String(without.length))} مرحله `
+        + `هیچ ردیف برآوردی ندارند، پس مبلغی برای جمع‌زدن وجود ندارد و خانه برآوردشان خالی است: `
+        + `${without.map((row) => row.wbsCode).join("، ")}. `
+        + `این با مرحله‌ای که برآوردش محاسبه و صفر شده فرق دارد؛ آن یکی صفر نشان داده می‌شود.`),
     );
     return notice;
   }
@@ -248,6 +294,8 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
 
   function renderContent(data) {
     const fragment = document.createDocumentFragment();
+    const provenance = renderProvenance(data);
+    if (provenance) fragment.append(provenance);
     if (data.top.available === false) {
       fragment.append(renderUnavailable());
       return fragment;
@@ -277,6 +325,8 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       fragment.append(renderTotals(topView), chartCard);
       const partial = renderPartialEstimateNotice(topView);
       if (partial) fragment.append(partial);
+      const unknown = renderUnknownEstimateNotice(topView);
+      if (unknown) fragment.append(unknown);
       const unplaced = renderUnplacedEstimate(topView);
       if (unplaced) fragment.append(unplaced);
       if (topView.unattributed) fragment.append(renderUnattributed(topView));
@@ -293,6 +343,8 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
     fragment.append(renderTotals(parentView));
     const parentPartial = renderPartialEstimateNotice(parentView);
     if (parentPartial) fragment.append(parentPartial);
+    const parentUnknown = renderUnknownEstimateNotice(parentView);
+    if (parentUnknown) fragment.append(parentUnknown);
 
     const childView = buildWbsView({ nodes: data.children?.nodes ?? [] });
     const childCard = element("section", "level-one-card");

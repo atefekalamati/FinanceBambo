@@ -17,6 +17,11 @@ const routes = [
   // through to /overview, which answered 422 -- and the rejection was never handled,
   // so the run recorded an uncaught promise on whichever page came next.
   "finance/report-builder?sections=periodMetrics,periodBreakdown&from=2026-01-01&to=2026-06-30",
+  // A range the calendar does not contain. June has thirty days, so this must draw the
+  // refusal -- named end, usable correction path -- and must not send a request or draw a
+  // report for some other range. The page used to substitute the year-to-date preset and
+  // print a finished document for it.
+  "finance/report-builder?sections=periodMetrics,periodBreakdown&from=2026-01-01&to=2026-06-31",
   "finance/report-settings",
   "finance/financial-items",
   "finance/prices",
