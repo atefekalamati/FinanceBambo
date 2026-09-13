@@ -2,14 +2,15 @@ import { normalizeDecimalInput, validatePositiveDecimal } from "../../shared/val
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 
 export function validateInvoiceHeader(values) {
+  // No invoiceNumber. The project allocates it when the invoice is written, so
+  // there is nothing here to require, normalise or reject -- and carrying it in
+  // `values` would put it back in the payload the API refuses.
   const normalized = {
-    invoiceNumber: String(values.invoiceNumber ?? "").trim(),
     invoiceDate: String(values.invoiceDate ?? ""),
     vendorName: String(values.vendorName ?? "").trim(),
     description: String(values.description ?? "").trim(),
   };
   const errors = {};
-  if (!normalized.invoiceNumber) errors.invoiceNumber = "شماره فاکتور الزامی است.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized.invoiceDate)) errors.invoiceDate = "تاریخ فاکتور را انتخاب کنید.";
   if (normalized.vendorName.length < 2) errors.vendorName = "نام فروشنده یا ارائه‌دهنده الزامی است.";
   return { valid: Object.keys(errors).length === 0, errors, values: normalized };

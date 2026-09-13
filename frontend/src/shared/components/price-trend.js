@@ -10,12 +10,23 @@ import { formatDisplayNumber } from "../formatters/display.js";
  * function with two callers now, so whatever the table draws, the overview
  * draws.
  *
- * `history` is only the fallback: when the service answers with trendPoints
- * they are used, and the argument is never read.
+ * `history` is only the fallback, for a service that answers without
+ * trendPoints. It is optional and read lazily, and both of those matter: the
+ * prices page no longer fetches the history when it opens -- the list is
+ * append-only and only grows, and this is the one thing that ever wanted it --
+ * so it arrives as null until a reader asks to see it. This said as much
+ * already while computing the fallback on every call regardless, which turned
+ * that null into a TypeError and took the whole page down.
  */
+function fallbackPoints(item, history) {
+  return (history ?? [])
+    .filter((price) => price.resourceId === item.resource.resourceId)
+    .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom) || left.sequence - right.sequence)
+    .map((price) => ({ effectiveFrom: price.effectiveFrom, unitPriceIrr: price.unitPriceIRR }));
+}
+
 export function createPriceTrend(item, history) {
-  const fallbackVersions = history.filter((price) => price.resourceId === item.resource.resourceId).sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom) || left.sequence - right.sequence);
-  const versions = (item.trend?.trendPoints ?? fallbackVersions.map((price) => ({ effectiveFrom: price.effectiveFrom, unitPriceIrr: price.unitPriceIRR })))
+  const versions = (item.trend?.trendPoints ?? fallbackPoints(item, history))
     .filter((price) => /^\d+$/.test(String(price?.unitPriceIrr ?? "")))
     .slice(-6);
   const container = element("div", "price-trend");

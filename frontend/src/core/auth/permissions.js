@@ -39,5 +39,5 @@ export function defaultRouteFor(context) {
   const home = [SURFACES.OPERATIONS, SURFACES.REPORT]
     .map((surface) => homeRouteFor(surface))
     .find((route) => route && canAccessRoute(context, route));
-  return home?.path ?? ROUTES.find((route) => route.enabled)?.path ?? "/finance";
+  return home?.path ?? ROUTES.find((route) => route.enabled)?.path ?? "finance/operations";
 }

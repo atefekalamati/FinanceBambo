@@ -11,7 +11,7 @@ import { FOLLOWUP_SECTIONS } from "./report-followups.js";
 // The period arithmetic is the page's, not the builder's: which measures may be
 // subtracted, and what a missing end means, are answered in one place and read
 // from here so the two can never drift into two different periods.
-import { buildBreakdownComparison, buildPeriodComparison } from "../period-report/period-report.js";
+import { buildBreakdownComparison, buildPeriodComparison } from "../../shared/reports/period-comparison.js";
 
 /**
  * One renderer per catalogue entry. Each is handed the datasets its entry asked

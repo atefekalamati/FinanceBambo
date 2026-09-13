@@ -8,7 +8,7 @@ import { createMockPricesAdapter } from "../adapters/mock/prices-adapter.js";
 import { createMockProgressAdapter } from "../adapters/mock/progress-adapter.js";
 import { createMockInvoicesAdapter } from "../adapters/mock/invoices-adapter.js";
 import { createMockAttachmentsAdapter } from "../adapters/mock/attachments-adapter.js";
-import { createApiClient } from "../core/api/api-client.js";
+import { SESSION_ENDED_EVENT, createApiClient } from "../core/api/api-client.js";
 import { createApiSettingsAdapter } from "../adapters/api/settings-api-adapter.js";
 import { createApiFinancialItemsAdapter } from "../adapters/api/financial-items-api-adapter.js";
 import { createApiPricesAdapter } from "../adapters/api/prices-api-adapter.js";
@@ -31,16 +31,12 @@ import { createInvoicesPage } from "../features/invoices/invoices-page.js";
 import { createInvoiceFilesPage } from "../features/ai-review/invoice-files-page.js";
 import { createAiReviewPage } from "../features/ai-review/ai-review-page.js";
 import { createSettingsPage } from "../features/settings/settings-page.js";
-import { createReportsPage } from "../features/reports/reports-page.js";
-import { createPeriodReportPage } from "../features/period-report/period-report-page.js";
 import { createReportBuilderPage } from "../features/report-builder/report-builder-page.js";
 import { createLevelOnePage } from "../features/level-one/level-one-page.js";
-import { createWorkAreasPage } from "../features/work-areas/work-areas-page.js";
 import { createAuditPage } from "../features/audit/audit-page.js";
 import { DISPLAY_CURRENCY_CHANGED_EVENT } from "../shared/preferences/currency-preference.js";
 
 const root = document.querySelector("#finance-module-root");
-const liveRegion = document.querySelector("#finance-live-region");
 
 function createHostAdapters(context) {
   const client = createApiClient();
@@ -86,6 +82,38 @@ async function resolveContext() {
   });
   document.body.dataset.financeRuntime = runtime;
   return context;
+}
+
+/**
+ * The session ended, said once and in place of everything else.
+ *
+ * The host sets a cookie and the browser sends it; this module holds no token
+ * and can refresh nothing, so a 401 is not a page that failed to load but an
+ * account that is no longer signed in. Leaving it to the pages would show a
+ * retry button behind every failed request, and pressing it would fail the same
+ * way -- the reader would learn the module is broken rather than that they need
+ * to sign in.
+ *
+ * The button reloads rather than navigating to a login address. This module is
+ * served by the host, so a fresh load goes through whatever the host does for an
+ * unauthenticated visitor -- which is the host's decision to make and not one to
+ * guess at with a URL written here. Reloading rather than redirecting on its own
+ * also leaves an open dialog closed by the reader, not by us.
+ */
+function renderSessionEnded() {
+  const section = document.createElement("section");
+  section.className = "state-card state-card--danger";
+  const heading = document.createElement("h1");
+  heading.textContent = "نشست شما پایان یافته است";
+  const message = document.createElement("p");
+  message.textContent = "برای ادامه، دوباره وارد سایت اصلی بامبو شوید. اطلاعات مالی تغییری نکرده است.";
+  const again = document.createElement("button");
+  again.type = "button";
+  again.className = "button button--primary";
+  again.textContent = "ورود دوباره";
+  again.addEventListener("click", () => window.location.reload());
+  section.append(heading, message, again);
+  return section;
 }
 
 function renderDenied(context = null) {
@@ -147,17 +175,6 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
   if (route.key === "invoices") root.append(createInvoicesPage({ context, adapter: adapters.invoices }));
   if (route.key === "invoice-files") root.append(createInvoiceFilesPage({ context, adapter: adapters.attachments }));
   if (route.key === "ai-review") root.append(createAiReviewPage({ context, adapter: adapters.attachments }));
-  if (route.key === "reports") root.append(createReportsPage({ context, adapter: adapters.reports }));
-  if (route.key === "period-report") {
-    root.append(createPeriodReportPage({
-      context,
-      reportsAdapter: adapters.reports,
-      auditAdapter: adapters.audit,
-      invoicesAdapter: adapters.invoices,
-      progressAdapter: adapters.progress,
-    }));
-  }
-  if (route.key === "work-areas") root.append(createWorkAreasPage());
   if (route.key === "level-one") {
     root.append(createLevelOnePage({
       context,
@@ -186,7 +203,13 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
       surface: route.surface,
     }));
   }
-  liveRegion.textContent = `صفحه ${route.label} نمایش داده شد.`;
+  /* Moving focus is what tells a screen reader the page changed. There was a
+     live region above this line saying so in words as well; it asked the host
+     for a second element beside the mount, and a missing one -- an empty,
+     invisible div nobody would notice -- took the whole module down with a
+     TypeError on the first render. The mount carries tabindex="-1" and every
+     page opens with its own heading, so the announcement survives the element
+     that used to carry it. */
   root.focus();
 }
 
@@ -230,11 +253,20 @@ try {
   let activeRouteQuery = new URLSearchParams();
   // Where an account lands with no route of its own depends on which home it
   // may open: a customer must not be dropped at the door of امور مالی.
-  createHashRouter({ routes: ROUTES, defaultPath: defaultRouteFor(context), onNavigate: (route, routeQuery) => {
+  const router = createHashRouter({ routes: ROUTES, defaultPath: defaultRouteFor(context), onNavigate: (route, routeQuery) => {
     activeRoute = route;
     activeRouteQuery = routeQuery;
     renderRoute(route, context, adapters, routeQuery);
-  } }).start();
+  } });
+  router.start();
+  /* Once, and over everything. Whatever was on screen was calculated for an
+     account that is no longer signed in, and leaving it there invites the reader
+     to act on it. */
+  window.addEventListener(SESSION_ENDED_EVENT, () => {
+    router.stop();
+    root.replaceChildren(renderSessionEnded());
+    root.focus();
+  }, { once: true });
   window.addEventListener(DISPLAY_CURRENCY_CHANGED_EVENT, () => {
     if (activeRoute) renderRoute(activeRoute, context, adapters, activeRouteQuery);
   });
@@ -243,9 +275,13 @@ try {
       context = nextContext;
       adapters = createHostAdapters(context);
       if (activeRoute) renderRoute(activeRoute, context, adapters, activeRouteQuery);
-      liveRegion.textContent = `اطلاعات مالی پروژه ${context.projectName || context.projectId} بارگذاری شد.`;
     }, (error) => {
-      liveRegion.textContent = `تغییر پروژه انجام نشد: ${error.message}`;
+      // The re-render above is what a successful switch shows; a failed one
+      // changes nothing on screen, so it would leave no trace at all. This is
+      // not a message for the reader -- the page they are looking at is still
+      // the project they were looking at -- but a switch that failed silently
+      // is the kind nobody reports.
+      console.warn("[BAMBO Finance] تغییر پروژه انجام نشد.", error);
     }, { rediscover: () => discoverHostContext() });
   }
 } catch (error) {

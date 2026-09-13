@@ -38,9 +38,12 @@ test("the operations home shows no money, and the report home shows no operation
   assert.doesNotMatch(operations, /summary-card|managerial-combo-chart|bullet-chart/, "the operations home must not draw the figures");
   assert.match(operations, /work-area-card/);
   // Neither home offers the other surface's destinations.
-  const linked = (source) => [...source.matchAll(/href: "#\/([a-z-]+)"/g)].map((match) => match[1]);
-  const operationsPaths = routesForSurface(SURFACES.OPERATIONS).map((route) => route.path.slice(1));
-  const reportPaths = routesForSurface(SURFACES.REPORT).map((route) => route.path.slice(1));
+  const linked = (source) => [...source.matchAll(/href: "#finance\/([a-z-]+)"/g)].map((match) => match[1]);
+  /* Paths carry the `finance/` prefix the host asked for -- see routes.js -- and the
+     hrefs above are matched without it, so both sides are compared on the page name. */
+  const named = (route) => route.path.replace(/^finance\//, "");
+  const operationsPaths = routesForSurface(SURFACES.OPERATIONS).map(named);
+  const reportPaths = routesForSurface(SURFACES.REPORT).map(named);
   linked(operations).forEach((path) => assert.ok(operationsPaths.includes(path), `امور مالی links to ${path}, which is not its own`));
   // The same rule in the other direction, and stated over the whole surface
   // rather than over one spelling of an href: امور مالی named the report home
@@ -70,10 +73,10 @@ test("the operations home shows no money, and the report home shows no operation
     "ai-review",
   ]);
   const offered = (surface, home) => routesForSurface(surface)
-    .map((route) => route.path.slice(1))
+    .map(named)
     .filter((path) => path !== home && !FROM_FURNITURE.has(path));
-  assert.deepEqual(linked(operations).sort(), offered(SURFACES.OPERATIONS, homeRouteFor(SURFACES.OPERATIONS).path.slice(1)).sort());
-  assert.deepEqual(linked(report).sort(), offered(SURFACES.REPORT, homeRouteFor(SURFACES.REPORT).path.slice(1)).sort());
+  assert.deepEqual(linked(operations).sort(), offered(SURFACES.OPERATIONS, named(homeRouteFor(SURFACES.OPERATIONS))).sort());
+  assert.deepEqual(linked(report).sort(), offered(SURFACES.REPORT, named(homeRouteFor(SURFACES.REPORT))).sort());
 });
 
 /**
@@ -83,7 +86,17 @@ test("the operations home shows no money, and the report home shows no operation
  * stays declared and the dispatch stays wired, so the pages keep their tests and
  * turning one back on is one word.
  */
-const WITHDRAWN = Object.freeze(["reports", "period-report", "work-areas"]);
+/* گزارش وضعیت مالی, گزارش دوره‌ای and بخش‌های گزارش مالی were withdrawn behind
+   `enabled: false` and then deleted: every section they drew is a report in the
+   builder's catalogue, and a page nobody can open is a page nobody maintains.
+   What survives of them is `shared/reports/period-comparison.js`, which the
+   builder's two period reports are built on.
+
+   تنظیمات نمایش is the one still in the table. Its page is the settings page
+   under another surface, so the route costs nothing to keep and bringing it back
+   is one word. */
+const WITHDRAWN = Object.freeze(["report-settings"]);
+const DELETED = Object.freeze(["reports", "period-report", "work-areas"]);
 
 test("a withdrawn page keeps its dispatch and is offered nowhere", () => {
   const bootstrap = read("../../src/app/bootstrap.js");
@@ -92,6 +105,20 @@ test("a withdrawn page keeps its dispatch and is offered nowhere", () => {
     assert.equal(route?.enabled, false, `${key} is still offered to a reader`);
     assert.match(bootstrap, new RegExp(`route\.key === "${key}"`),
       `${key} lost the dispatch that keeps the page alive behind the route`);
+  });
+});
+
+test("a deleted page leaves no route, no dispatch and no folder", () => {
+  // A route with no page behind it resolves to a blank frame, which reads as a
+  // broken module rather than a withdrawn feature. The three go together.
+  const bootstrap = read("../../src/app/bootstrap.js");
+  DELETED.forEach((key) => {
+    assert.equal(ROUTES.find((route) => route.key === key), undefined,
+      `${key} still has a route with nothing behind it`);
+    assert.doesNotMatch(bootstrap, new RegExp(`route\.key === "${key}"`),
+      `${key} is still dispatched`);
+    assert.doesNotMatch(bootstrap, new RegExp(`features/${key}/`),
+      `${key} is still imported`);
   });
 });
 
@@ -122,7 +149,7 @@ test("امور مالی offers no way to record a document", () => {
   // A receipt is not one of the numbers this workspace authors. Invoices are
   // recorded, reviewed and confirmed on گزارش مالی, by every route they take —
   // typed, photographed or spoken — so the workspace names none of them.
-  const INVOICE_ROUTES = ["/invoices", "/invoice-files", "/ai-review"];
+  const INVOICE_ROUTES = ["finance/invoices", "finance/invoice-files", "finance/ai-review"];
   INVOICE_ROUTES.forEach((path) => {
     const route = ROUTES.find((candidate) => candidate.path === path);
     assert.equal(route?.surface, SURFACES.REPORT, `${path} is not on گزارش مالی`);
@@ -136,9 +163,9 @@ test("امور مالی offers no way to record a document", () => {
 
 test("the overview keeps a way to everything it is the only entry to", () => {
   const overviewEntries = [
-    ["level-one", read("../../src/features/level-one/level-one-section.js"), /href = "#\/level-one"/],
-    ["invoices", read("../../src/features/finance-home/invoices-entry.js"), /href = "#\/invoices"/],
-    ["report-prices", read("../../src/features/finance-home/prices-summary.js"), /all\.href = "#\/report-prices"/],
+    ["level-one", read("../../src/features/level-one/level-one-section.js"), /href = "#finance\/level-one"/],
+    ["invoices", read("../../src/features/finance-home/invoices-entry.js"), /href = "#finance\/invoices"/],
+    ["report-prices", read("../../src/features/finance-home/prices-summary.js"), /all\.href = "#finance\/report-prices"/],
   ];
   overviewEntries.forEach(([key, source, pattern]) => {
     assert.match(source, pattern, `${key} has no entry point on the report overview`);
@@ -210,8 +237,8 @@ test("the read-only mode follows the route, not the account", () => {
     const source = read(path);
     assert.match(source, /const readOnly = surface === SURFACES\.REPORT;/, `${path} does not read its surface`);
     assert.match(source, /const canEdit = !readOnly && capabilitiesFor\(context\)\.writeFinance;/, `${path} lets the permission alone decide`);
-    // All internal pages now return to the report dashboard. Editing remains
-    // gated by the route and capability, independently of this navigation.
+    // Both twins use the shared header; the surface passed to the page decides
+    // whether its back link returns to operations or to the report dashboard.
     assert.match(source, /createFinancePageHeader\(/, `${path} bypasses the shared report navigation`);
   });
   const bootstrap = read("../../src/app/bootstrap.js");

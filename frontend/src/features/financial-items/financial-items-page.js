@@ -11,6 +11,7 @@ import { formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../.
 import { actorLabel } from "../../shared/formatters/actor.js";
 import { displayCurrencyNote, formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
+import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { compareDecimalStrings } from "../../shared/validation/decimal-validation.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { getResourceTypeLabel, RESOURCE_TYPES } from "./financial-items-model.js";
@@ -18,7 +19,7 @@ import { validateActivity, validateEstimateLine, validateEstimateRevision, valid
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
 import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
-import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTableWithControl, createPagedDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 import { ABSENT, activityBlockStarts, activityLabel, assignmentCostOf, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
@@ -660,11 +661,15 @@ const RESOURCE_COLUMNS = Object.freeze([
 ]);
 const visibleResourceColumns = defaultVisibleColumns(RESOURCE_COLUMNS);
 
-function renderResourceTable(resources, withheld = null) {
+function renderResourceTable(resources, withheld = null, paging) {
   const fragment = document.createDocumentFragment();
   if (withheld) fragment.append(element("p", "table-note", withheld));
   fragment.append(createDataTableWithControl({
     name: "resources",
+    page: paging.page,
+    pageSize: paging.pageSize,
+    onChange: paging.onChange,
+    paginationLabel: "صفحه‌بندی اقلام مالی",
     className: "items-table",
     caption: "فهرست اقلام مالی",
     scrollLabel: "جدول اقلام مالی پروژه",
@@ -705,7 +710,7 @@ function estimateLineColumns() {
   ];
 }
 
-function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible }) {
+function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible, paging }) {
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
   const fragment = document.createDocumentFragment();
   if (withheld) fragment.append(element("p", "table-note", withheld));
@@ -715,7 +720,12 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
   // the reader can switch to rials and this follows.
   fragment.append(element("p", "table-note", displayCurrencyNote()));
 
-  fragment.append(createDataTable({
+  fragment.append(createPagedDataTable({
+    name: "estimate-lines",
+    page: paging.page,
+    pageSize: paging.pageSize,
+    onChange: paging.onChange,
+    paginationLabel: "صفحه‌بندی ریز برآورد",
     className: "estimate-lines-table",
     caption: "ریز برآورد پروژه",
     scrollLabel: "جدول ریز برآورد پروژه",
@@ -802,6 +812,11 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
 export function createFinancialItemsPage({ context, adapter, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
   const root = element("div", "financial-items-page");
   const readOnly = surface === SURFACES.REPORT;
+  /* One page number per table. Held here rather than inside the component
+     because `paint()` rebuilds the whole tree: a component that remembered its
+     own page would lose it on every repaint. */
+  let resourcePaging = { page: 1, pageSize: getRowsPerPage("resources") };
+  let linePaging = { page: 1, pageSize: getRowsPerPage("estimate-lines") };
   const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
   // Lives with the page: paint() rebuilds the tree, so a choice held inside a
@@ -822,7 +837,7 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
   }
 
   function renderHeader() {
-    return createFinancePageHeader(readOnly ? "جدول اقلام و برآورد" : "اقلام و برآورد");
+    return createFinancePageHeader(readOnly ? "جدول اقلام و برآورد" : "اقلام و برآورد", "feature-header", surface);
   }
 
   function renderEmpty() {
@@ -924,7 +939,10 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
     resourceHead.append(element("div", "", ""), resourceMeta);
     resourceHead.firstElementChild.append(element("h2", "", "فهرست اقلام پروژه"), element("p", "", "فهرست چهار نوع قلم هزینه و واحد پایه هر قلم"));
     const resourcesContent = element("div", "resources-disclosure__content");
-    resourcesContent.append(renderResourceTable(workspace.resources, resourcesWithheld), stats);
+    resourcesContent.append(renderResourceTable(workspace.resources, resourcesWithheld, {
+      ...resourcePaging,
+      onChange: (next) => { resourcePaging = next; paint(); },
+    }), stats);
     resourcesSection.append(resourceHead, resourcesContent);
 
     const linesSection = element("section", "items-section");
@@ -939,6 +957,7 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
     linesHead.append(element("div", "", ""), linesMeta);
     linesHead.firstElementChild.append(element("h2", "", "ریز برآورد پروژه"), element("p", "", "هر ردیف، مقدار برآوردشده یک قلم هزینه را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا برآورد، اصلاحات و پیشرفت هر فعالیت مستقل و قابل پیگیری بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت روز و فاکتورهای تأییدشده محاسبه می‌شوند."));
     linesSection.append(linesHead, renderEstimateLineTable(workspace.estimateLines, workspace.resources, {
+      paging: { ...linePaging, onChange: (next) => { linePaging = next; paint(); } },
       canEdit,
       withheld: linesWithheld,
       focusResourceId,

@@ -60,7 +60,10 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
     if (!target) throw new ApiError({ status: 422, code: "INVOICE_TARGET_INVALID", message: "اتصال داده استخراج‌شده به قلم مالی معتبر نیست." });
     if (target.targetType !== "general_cost") throw new ApiError({ status: 422, code: "EXTRACTION_QUANTIFIED_LINE_DATA_MISSING", message: "برای ثبت روی قلم مقداری، مقدار، واحد و قیمت واحد باید توسط قرارداد استخراج تأمین شود؛ از ورود دستی فاکتور استفاده کنید." });
     const invoice = {
-      invoiceNumber: payload.invoice.invoiceNumber || null,
+      // No invoiceNumber. The extractor still reads the one printed on the supplier's
+      // document and the review card still shows it, but it is their number, not this
+      // project's: the project's is allocated by the service when the invoice is
+      // written. `ReviewedInvoiceCreate` forbids unknown fields, so sending it is a 422.
       invoiceDate: payload.invoice.invoiceDate,
       vendorName: payload.invoice.vendorName,
       description: null,

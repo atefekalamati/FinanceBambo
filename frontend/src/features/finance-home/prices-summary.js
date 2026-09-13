@@ -6,7 +6,7 @@ import { createPriceTrend } from "../../shared/components/price-trend.js";
 /**
  * قیمت‌های روز — three rows of the price table, on the overview.
  *
- * It reads the same workspace `#/report-prices` reads, through the same adapter,
+ * It reads the same workspace `#finance/report-prices` reads, through the same adapter,
  * and shows the first three items that actually carry a day price. Nothing here
  * computes: the amount is the one the service already answered with, and the
  * trend direction is the one it already decided.
@@ -24,7 +24,7 @@ export function createPricesSummary({ workspace = null, error = null } = {}) {
   const head = element("header", "overview-card__head");
   head.append(element("h2", "overview-card__title", "قیمت‌های روز"));
   const all = element("a", "overview-card__link", "مشاهده همه");
-  all.href = "#/report-prices";
+  all.href = "#finance/report-prices";
   head.append(all);
   section.append(head);
 
@@ -34,7 +34,7 @@ export function createPricesSummary({ workspace = null, error = null } = {}) {
   }
 
   // `currentPrices` is what the workspace calls its rows — the same array the
-  // full table on #/report-prices renders.
+  // full table on #finance/report-prices renders.
   const rows = (workspace?.currentPrices ?? [])
     .filter((item) => item?.currentPrice?.unitPriceIRR)
     .slice(0, ROW_COUNT);

@@ -12,8 +12,7 @@ import {
   summarizeEvents,
   totalInvoicedIrr,
   validatePeriod,
-} from "../../src/features/period-report/period-report.js";
-import { buildPeriodReportCsv, periodReportFileName } from "../../src/features/period-report/period-report-csv.js";
+} from "../../src/shared/reports/period-comparison.js";
 
 const opening = {
   initialEstimateIrr: "18650000000",
@@ -158,34 +157,4 @@ test("a voiding document subtracts from the period's money instead of being igno
     { finalAmountIRR: null, financialEffectSign: 1 },
   ]);
   assert.equal(total, "600000", "the same sign rule the Backend applies to actual cost");
-});
-
-test("the CSV carries exact IRR, not the compacted figures on screen", () => {
-  const csv = buildPeriodReportCsv({
-    project: { name: "برج نمونه", code: "PRJ-1" },
-    period: { from: "2026-08-01", to: "2026-08-31", opening: "2026-07-31" },
-    generatedAt: "2026-08-22T09:00:00Z",
-    metrics: buildPeriodComparison({ opening, closing }),
-    breakdown: [],
-    events: [{ action: "invoice.confirmed", count: 2 }],
-    invoices: [],
-  });
-  assert.ok(csv.startsWith("﻿"), "Excel needs the byte order mark to read UTF-8");
-  assert.ok(csv.includes("4240000000"), "the exact integer, not «۴٫۲۴ میلیارد»");
-  assert.ok(csv.includes("\r\n"), "CRLF, the line ending the format specifies");
-  assert.ok(csv.includes("2026-07-31"), "the opening date is stated so the reader can reproduce the figures");
-});
-
-test("a field containing a comma or a quote cannot break the CSV apart", () => {
-  const csv = buildPeriodReportCsv({
-    project: { name: 'شرکت "الف", شعبه دو', code: "PRJ-1" },
-    period: { from: "2026-08-01", to: "2026-08-31", opening: "2026-07-31" },
-    generatedAt: "2026-08-22T09:00:00Z",
-  });
-  assert.ok(csv.includes('"شرکت ""الف"", شعبه دو"'), "quotes are doubled and the field is wrapped");
-});
-
-test("the export file name says which project and which period it holds", () => {
-  const name = periodReportFileName({ project: { code: "PRJ-1" }, period: { from: "2026-08-01", to: "2026-08-31" } });
-  assert.equal(name, "finance-period-report-PRJ-1-2026-08-01_2026-08-31.csv");
 });

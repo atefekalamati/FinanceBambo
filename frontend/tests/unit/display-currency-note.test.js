@@ -6,7 +6,7 @@ import { CURRENCY_LABELS } from "../../src/shared/constants/currency.js";
 /**
  * A column of bare numbers has to say somewhere which currency it is in.
  *
- * `#/financial-items` formats «هزینه MSP فعالیت», «قیمت اولیه» and «قیمت روز» with
+ * `#finance/financial-items` formats «هزینه MSP فعالیت», «قیمت اولیه» and «قیمت روز» with
  * `withCurrency: false`, which keeps the column readable and leaves the reader unable to
  * tell ۱۲٬۵۶۵٬۱۱۵٬۳۹۱ rials from ۱۲٬۵۶۵٬۱۱۵٬۳۹۱ tomans — a factor of ten.
  *

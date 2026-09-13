@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 /**
  * Two clicks, answered out of order.
  *
- * #/progress loads a version's feed by awaiting the adapter and then writing the answer
+ * #finance/progress loads a version's feed by awaiting the adapter and then writing the answer
  * into `feedState`. Nothing said the answer still belonged to the version on screen: a
  * reader who clicks version A and then version B can be shown A's 727 rows under B's
  * heading, with B's card reading «در حال نمایش». Both halves are real data and the

@@ -152,7 +152,7 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
   if (draft.reviewStatus !== "awaitingReview") {
     if (draft.linkedInvoiceId) {
       const invoiceLink = element("a", "button button--ghost", "مشاهده فاکتورهای ثبت‌شده");
-      invoiceLink.href = "#/invoices";
+      invoiceLink.href = "#finance/invoices";
       card.append(invoiceLink);
     }
     return card;
@@ -227,9 +227,9 @@ export function createAiReviewPage({ context, adapter }) {
     const header = createFinancePageHeader("بررسی هوشمند فاکتور");
     const actions = element("div", "finance-page-actions");
     const files = element("a", "button button--ghost", "بازگشت به فایل‌ها");
-    files.href = "#/invoice-files";
+    files.href = "#finance/invoice-files";
     const manual = element("a", "button button--ghost", "ورود دستی فاکتور");
-    manual.href = "#/invoices";
+    manual.href = "#finance/invoices";
     actions.append(files, manual);
 
     root.replaceChildren(header, actions, renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
@@ -250,7 +250,7 @@ export function createAiReviewPage({ context, adapter }) {
     const card = element("section", "state-card ai-review-empty");
     card.append(element("h2", "", "پیش‌نویسی برای بررسی وجود ندارد"), element("p", "", "ابتدا یک تصویر یا فایل صوتی بارگذاری و پردازش را شروع کنید."));
     const upload = element("a", "button button--primary", "رفتن به بارگذاری تصویر و صدا");
-    upload.href = "#/invoice-files";
+    upload.href = "#finance/invoice-files";
     card.append(upload);
     return card;
   }

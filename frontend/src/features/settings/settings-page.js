@@ -1,6 +1,7 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { capabilitiesFor, describeAccess } from "../../core/auth/capabilities.js";
 import { SURFACES } from "../../core/config/routes.js";
+import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -58,8 +59,12 @@ const REVISION_COLUMNS = Object.freeze([
 ]);
 const visibleRevisionColumns = defaultVisibleColumns(REVISION_COLUMNS);
 
-function createRevisionTable(revisions = []) {
+function createRevisionTable(revisions = [], paging) {
   return createDataTableWithControl({
+    page: paging.page,
+    pageSize: paging.pageSize,
+    onChange: paging.onChange,
+    paginationLabel: "صفحه‌بندی تاریخچه تنظیمات",
     name: "settings-revisions",
     className: "settings-history",
     caption: "تاریخچه بازنگری زیربنای کل پروژه",
@@ -79,14 +84,14 @@ function createRevisionTable(revisions = []) {
   });
 }
 
-function createRevisionHistory(data) {
+function createRevisionHistory(data, paging) {
   const wrapper = element("div", "settings-revision-current");
   const revisions = data.revisions ?? [];
   if (!revisions.length) {
     wrapper.append(element("p", "inline-notice", "هنوز بازنگری‌ای برای زیربنای کل ثبت نشده است."));
     return wrapper;
   }
-  wrapper.append(createRevisionTable(revisions));
+  wrapper.append(createRevisionTable(revisions, paging));
   return wrapper;
 }
 
@@ -107,6 +112,8 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
   const root = element("div", `settings-page${readerOnly ? " settings-page--reader" : ""}`);
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let settings = null;
+  /* Held by the page, not the component: paint() rebuilds the tree. */
+  let revisionPaging = { page: 1, pageSize: getRowsPerPage("settings-revisions") };
   let conversionWorkspace = null;
   let conversionError = null;
   let conversionEditorOpen = false;
@@ -149,7 +156,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
   }
 
   function renderHeader() {
-    return createFinancePageHeader(readerOnly ? "تنظیمات نمایش" : "تنظیمات مالی پروژه");
+    return createFinancePageHeader(readerOnly ? "تنظیمات نمایش" : "تنظیمات مالی پروژه", "feature-header", surface);
   }
 
   function renderEmpty() {
@@ -430,7 +437,10 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
     const historyHead = element("div", "settings-card__head");
     historyHead.append(element("div", "settings-card__icon", "↺"), element("div", "", ""));
     historyHead.lastElementChild.append(element("h2", "", "تاریخچه تغییر زیربنا"), element("p", "", "مقدار اولیه و همه اصلاحات ثبت‌شده به‌صورت تغییرناپذیر نمایش داده می‌شوند."));
-    history.append(historyHead, createRevisionHistory(data));
+    history.append(historyHead, createRevisionHistory(data, {
+      ...revisionPaging,
+      onChange: (next) => { revisionPaging = next; paint(); },
+    }));
     const primaryGrid = element("div", "settings-primary-grid");
     primaryGrid.append(renderCurrencyPolicy(), renderAccessSummary());
     const editor = mayReviseArea(data) ? renderEditor(data) : renderRevisionDenied(data);

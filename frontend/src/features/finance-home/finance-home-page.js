@@ -100,9 +100,9 @@ const RELATED_SUMMARY_KEYS = new Set([
 /* Keyed on the metric rather than on the card's position, so reordering the
    four figures cannot put the wrong mark on a number. */
 const SUMMARY_MARKS = Object.freeze({
-  initialEstimateIrr: "estimateLines",
-  actualCostIrr: "invoices",
-  remainingPhysicalCostIrr: "levelOne",
+  initialEstimateIrr: "estimateCalculator",
+  actualCostIrr: "registeredCost",
+  remainingPhysicalCostIrr: "remainingWork",
   actualCostPerSquareMeterIrr: "area",
 });
 
@@ -341,7 +341,7 @@ function createManagerialComparisonPanel(
   value.textContent =
     deviation === null || deviation === 0n
       ? label
-      : `${formatCompactMoneyFromIrr((deviation < 0n ? -deviation : deviation).toString())} ${label}`;
+      : `${label} ${formatCompactMoneyFromIrr((deviation < 0n ? -deviation : deviation).toString())}`;
   if (deviation !== null && deviation !== 0n)
     value.title = formatTomanFromIrr(
       (deviation < 0n ? -deviation : deviation).toString(),
@@ -408,50 +408,51 @@ function createManagerialComparisonPanel(
   return section;
 }
 
-const SNAPSHOT_STATUS_LABELS = Object.freeze({
-  ready: "آماده",
-  superseded: "جایگزین‌شده",
-});
 
 /**
- * Where the snapshot came from. The Backend records this rather than letting a
- * filename extension stand in for it, and answers null for rows imported before
- * it started recording — so a missing source is shown as unrecorded, never
- * guessed from the `.mpp` on the end of a name.
+ * Say so when the service answered from a different snapshot than the one the
+ * reader picked.
+ *
+ * This used to log the whole basis of the calculation -- version, reporting
+ * date, source tool, file name, import time -- after that strip came off the
+ * board and the facts had nowhere to go. They were dropped: a console line
+ * nobody reads is not documentation, and every one of those facts is on the
+ * progress page, in the interface, where a reader can act on it.
+ *
+ * The mismatch stayed, because it is the one thing that is not visible anywhere
+ * else: the figures on screen would be the right numbers from the wrong
+ * version, and nothing about them would look wrong.
  */
-const SNAPSHOT_SOURCE_LABELS = Object.freeze({
-  microsoft_project: "Microsoft Project",
-  primavera: "Primavera",
-  manual: "ثبت دستی",
-  other: "منبع دیگر",
-});
-
-/**
- * Keep the calculation provenance available to developers while the temporary
- * top strip carries navigation only. This is diagnostic output, not a second
- * source of truth and not data rendered for the customer.
- */
-export function logSnapshotProvenance({ selected, report }) {
+export function warnOnSnapshotMismatch({ selected, report }) {
   if (!selected) return null;
-  const answered = report?.progressSnapshotId ?? null;
-  console.info("[BAMBO Finance] مبنای محاسبه گزارش مالی", {
-    "مبنای محاسبه": "نسخه پیشرفت پروژه",
-    "نسخه": selected.version == null
-      ? null
-      : `${formatDisplayNumber(String(selected.version))}${selected.isLatest ? " (آخرین)" : ""}`,
-    "تاریخ گزارش نسخه": formatBusinessDate(selected.reportingDate),
-    "منبع": SNAPSHOT_SOURCE_LABELS[selected.sourceType] ??
-      (selected.sourceType == null ? null : "منبع ثبت‌نشده"),
-    "وضعیت": SNAPSHOT_STATUS_LABELS[selected.status] ?? "نامشخص",
-    "فایل مبدأ": selected.sourceFileNameSafe ?? null,
-    "ورود به سیستم": formatSystemDateTime(selected.importedAt),
-    "شناسه نسخه انتخاب‌شده": selected.progressSnapshotId,
-    "شناسه نسخه استفاده‌شده در گزارش": answered,
-  });
-  if (answered && answered !== selected.progressSnapshotId) {
+  /* Compared on hostSnapshotId, not progressSnapshotId.
+
+     `progressSnapshotId` is the identifier Finance mints for a reference of its
+     own, and the service's schema says it stays null "when the Core snapshot
+     behind this calculation has never been pinned" -- reading a report does not
+     pin one, so on a project that has never issued a report it is null on every
+     read. The `answered &&` guard that used to be here was therefore never true,
+     and this check had been switched off since the day it was written with
+     nothing saying so.
+
+     `hostSnapshotId` is documented as "which Core snapshot was actually
+     calculated from, pinned or not", which is the question being asked, and it
+     is carried on both the snapshot list and the report. */
+  const answered = report?.hostSnapshotId ?? null;
+  const asked = selected.hostSnapshotId ?? null;
+  if (answered === null || asked === null) {
+    /* Not agreement -- an inability to check. Said once, so a quiet console is
+       never read as proof that the two matched. */
+    console.info(
+      "[BAMBO Finance] مبنای محاسبه قابل تطبیق نیست: شناسه نسخه هسته در پاسخ یا در فهرست نیست.",
+      { asked, answered },
+    );
+    return null;
+  }
+  if (answered !== asked) {
     console.warn(
-      "[BAMBO Finance] نسخه پاسخ سرویس با نسخه انتخاب‌شده یکسان نیست.",
-      { selected: selected.progressSnapshotId, answered },
+      "[BAMBO Finance] ارقام این گزارش از نسخه پیشرفت دیگری محاسبه شده‌اند.",
+      { asked, answered, selectedFinanceId: selected.progressSnapshotId },
     );
   }
   return null;
@@ -517,7 +518,7 @@ function renderFinanceHome(
         query.set("from", period.from);
         query.set("to", period.to);
       }
-      window.location.hash = `#/report-builder?${query.toString()}`;
+      window.location.hash = `#finance/report-builder?${query.toString()}`;
     },
   });
   const rowSecond = element("div", "finance-grid finance-grid--pair");
@@ -955,7 +956,7 @@ export function createFinanceHomePage({
                 return null;
               },
             ),
-          // The same workspace #/report-prices reads, through the same adapter.
+          // The same workspace #finance/report-prices reads, through the same adapter.
           // The summary shows three of its rows; it computes nothing of its own.
           pricesAdapter.getPrices().then(
             (value) => {
@@ -968,7 +969,7 @@ export function createFinanceHomePage({
             },
           ),
           // The compact estimate table is a read-only view of the exact
-          // workspace used by #/report-items. Its failure is isolated from the
+          // workspace used by #finance/report-items. Its failure is isolated from the
           // report metrics and from the day-price summary beside it.
           financialItemsAdapter.getWorkspace().then(
             (value) => {
@@ -1024,7 +1025,7 @@ export function createFinanceHomePage({
       const prices = { workspace: priceWorkspace, error: priceError };
       const items = { workspace: itemsWorkspace, error: itemsError };
       chart = built.chart;
-      const provenance = logSnapshotProvenance({
+      const provenance = warnOnSnapshotMismatch({
         selected:
           snapshots.find(
             (snapshot) => snapshot.progressSnapshotId === selectedSnapshotId,

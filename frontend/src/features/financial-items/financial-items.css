@@ -246,6 +246,13 @@
   inline-size: 11%;
 }
 
+/* Column labels repeated on an open activity row and the values beneath them
+   share one centre line. The identity column keeps its intentional nesting. */
+.estimate-lines-table :is(th, td):not([data-col="identity"]) {
+  text-align: center;
+  vertical-align: middle;
+}
+
 .line-actions .table-action + .table-action {
   margin-inline-start: .35rem;
 }
@@ -318,13 +325,16 @@
 
 /* A member stays visually tied to its open activity without changing the
    table geometry or making the whole row louder than its parent. */
-.estimate-lines-table .data-table__child > [data-col="identity"] {
-  border-inline-start: .18rem solid rgb(0 172 88 / 30%);
+.estimate-lines-table .data-table__child > :is(th, td) {
+  background: var(--color-border);
 }
 
-.activity-cell--continued {
-  padding-block: .2rem;
+.estimate-lines-table .data-table__child > [data-col="identity"] {
+  border-inline-start: .22rem solid var(--brand-green);
+  background: color-mix(in srgb, var(--brand-teal) 9%, var(--color-surface-canvas));
 }
+
+
 
 /* Says which rows the table is not showing. Quiet, and above the table it
    qualifies, because a reader who misses it reads a partial table as a whole one. */

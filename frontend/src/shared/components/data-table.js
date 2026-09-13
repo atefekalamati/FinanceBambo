@@ -17,6 +17,15 @@
  * shifting, and it is why the two can only be hidden together.
  */
 import { element, tableCaption, tableHead } from "../dom/elements.js";
+import { formatDisplayNumber } from "../formatters/display.js";
+import {
+  ROW_COUNT_OPTIONS,
+  clampPage,
+  getRowsPerPage,
+  pageCount,
+  resolveSize,
+  setRowsPerPage,
+} from "../preferences/rows-per-page.js";
 import { showAccessibleDialog } from "./accessible-dialog.js";
 
 /** A column the reader may not put away: it is how a row is identified at all. */
@@ -34,12 +43,77 @@ export const SECONDARY = "secondary";
  * The two widths are the module's own: 36rem is where its pages go to one
  * column, 64rem where the board does. A tier decides nothing above that.
  */
+/** The widths a tier decides anything at. The live watcher below listens to these. */
+const PHONE_QUERY = "(max-width: 36rem)";
+const TABLET_QUERY = "(max-width: 64rem)";
+
 export function defaultVisibleColumns(columns, matchMedia = globalThis.matchMedia) {
   const matches = (query) => typeof matchMedia === "function" && matchMedia(query).matches;
   const keys = (keep) => new Set(columns.filter(keep).map((column) => column.key));
-  if (matches("(max-width: 36rem)")) return keys((column) => column.tier !== SECONDARY);
-  if (matches("(max-width: 64rem)")) return keys((column) => column.tier !== SECONDARY || column.keepOnTablet);
+  if (matches(PHONE_QUERY)) return keys((column) => column.tier !== SECONDARY);
+  if (matches(TABLET_QUERY)) return keys((column) => column.tier !== SECONDARY || column.keepOnTablet);
   return keys(() => true);
+}
+
+/**
+ * Sets of visible columns a reader has chosen for themselves.
+ *
+ * `defaultVisibleColumns` answers for a width, and it used to be asked once --
+ * so a table opened on a desktop and then turned to a phone kept all nine
+ * columns, 1584px of them inside a 335px screen, with the tier system that
+ * exists to prevent exactly that having already run and finished.
+ *
+ * It is asked again now, on every render and on every crossing of a tier. But
+ * only for a table nobody has touched: a reader who put a column away meant it,
+ * and having a rotation undo that would be worse than the scroll.
+ *
+ * Weak, so a Set belonging to a page that has gone away is not held by this.
+ */
+const CHOSEN_BY_READER = new WeakSet();
+
+/** The columns to draw: the reader's choice if they made one, else the width's. */
+function effectiveColumns(columns, visible) {
+  return CHOSEN_BY_READER.has(visible) ? visible : defaultVisibleColumns(columns);
+}
+
+/**
+ * Re-apply the width's answer to every table that has not been chosen for.
+ *
+ * WHY THIS READS THE DOM AND HOLDS NOTHING
+ * A `matchMedia` listener lives as long as the page does, and there is no unmount
+ * hook here to remove one -- `paint()` replaces the tree and tells nobody. Two
+ * earlier attempts registered a listener per table and per visible-Set, and both
+ * leaked: measured with forced collection, 23 listeners and 634 nodes became 540
+ * and 8644 over three navigation cycles, because the callback held the columns
+ * and the columns held the detached tree.
+ *
+ * So this one is registered once, for the life of the module, and closes over
+ * nothing. Everything it needs is on the elements: each header cell carries its
+ * tier, and a table the reader has touched carries `data-columns-chosen`. It
+ * finds the tables in the document when it runs, and forgets them again.
+ */
+let watchingTiers = false;
+
+function reapplyTierDefaults() {
+  const phone = globalThis.matchMedia(PHONE_QUERY).matches;
+  const tablet = globalThis.matchMedia(TABLET_QUERY).matches;
+  document.querySelectorAll("table[data-tiered]").forEach((table) => {
+    if (table.dataset.columnsChosen === "true") return;
+    table.querySelectorAll("thead th[data-col]").forEach((cell) => {
+      const secondary = cell.dataset.tier === SECONDARY;
+      const keep = cell.dataset.keepTablet === "true";
+      const on = !secondary || (tablet && !phone ? keep : !tablet);
+      applyColumnVisibility(table, cell.dataset.col, on);
+    });
+  });
+}
+
+function watchTierDefaults() {
+  if (watchingTiers || typeof globalThis.matchMedia !== "function") return;
+  watchingTiers = true;
+  [PHONE_QUERY, TABLET_QUERY].forEach((query) => {
+    globalThis.matchMedia(query).addEventListener("change", reapplyTierDefaults);
+  });
 }
 
 /** Show or hide one column. Header and body move together, or they stop agreeing. */
@@ -176,7 +250,15 @@ export function createColumnControl({
   const applyColumn = (key, on) => {
     if (on) visible.add(key);
     else visible.delete(key);
-    if (table) applyColumnVisibility(resolveTable(table), key, on);
+    /* From here the width stops deciding for this table. Recorded twice on
+       purpose: in the Set for the next render, and on the element for the tier
+       watcher, which reads the document and cannot see a Set. */
+    CHOSEN_BY_READER.add(visible);
+    const node = resolveTable(table);
+    if (node) {
+      node.dataset.columnsChosen = "true";
+      applyColumnVisibility(node, key, on);
+    }
     if (onToggle) onToggle(key, on);
   };
 
@@ -185,12 +267,16 @@ export function createColumnControl({
   const list = element("div", "data-table-columns__list");
   const boxes = new Map();
 
+  /* The ticks say what the table is doing, which is the width's answer until the
+     reader gives one of their own. Reading `visible` directly would show a phone
+     reader eight ticks over a three-column table. */
+  const shownNow = effectiveColumns(columns, visible);
   columns.forEach((column) => {
     const option = element("label", "data-table-columns__option");
     const box = document.createElement("input");
     box.type = "checkbox";
     box.value = column.key;
-    box.checked = visible.has(column.key);
+    box.checked = shownNow.has(column.key);
     if (isMandatory(column)) {
       box.checked = true;
       box.disabled = true;
@@ -334,7 +420,23 @@ export function createColumnControl({
     }
   }
 
+  /* Read back from the table rather than from anything remembered.
+     The tier watcher changes a table on a rotation and holds no reference to
+     these inputs -- that is what keeps it from leaking -- so a chooser opened
+     after one would otherwise show eight ticks over a three-column table. The
+     element it is about is the one place both agree. */
+  function syncBoxes() {
+    const node = resolveTable(table);
+    if (!node) return;
+    boxes.forEach((box, key) => {
+      if (box.disabled) return;
+      const cell = node.querySelector(`thead th[data-col="${key}"]`);
+      if (cell) box.checked = !cell.hidden;
+    });
+  }
+
   function open() {
+    syncBoxes();
     if (sheetWanted()) openSheet();
     else openPopover();
     toggle.setAttribute("aria-expanded", "true");
@@ -635,18 +737,147 @@ export function createTableToolbar({ chips, search, name, columns, visible, tabl
 }
 
 /**
+ * The strip under a table: which page of it is shown, and how much of it fits
+ * on a page.
+ *
+ * ONE FOOTER, TWO KINDS OF TABLE
+ * Most tables here arrive whole -- the server answers `GET /price-history` with
+ * every version and the browser holds all of them -- so turning a page is
+ * slicing an array it already has. فاکتورها is the exception and always was:
+ * invoices have no ceiling, one row per purchase for the life of a project, so
+ * that endpoint pages server-side and the browser never holds more than the
+ * page it asked for.
+ *
+ * The difference is real and cannot be hidden from the caller, but it can be
+ * hidden from the reader, and this is where. A caller that pages server-side
+ * passes `onPageChange` and gets a footer that calls it; one that slices its own
+ * array passes the same callback and slices instead. Both draw the same controls
+ * in the same place, so two kinds of table are not two kinds of page to learn.
+ *
+ * WHY THE SIZE CONTROL IS HERE AND NOT IN THE TOOLBAR ABOVE
+ * It answers a question about the bottom of the table -- "how far do I scroll
+ * before this ends" -- and it is asked on arriving there. The toolbar carries
+ * what narrows the rows; this carries what portions them.
+ */
+export function createTablePagination({
+  name,
+  page = 1,
+  total = 0,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  label = "صفحه‌بندی جدول",
+} = {}) {
+  const chosen = pageSize ?? getRowsPerPage(name);
+  const size = resolveSize(chosen, total);
+  const pages = pageCount(total, size);
+  const current = clampPage(page, total, size);
+
+  const nav = element("nav", "table-pagination");
+  nav.setAttribute("aria-label", label);
+
+  const steps = element("div", "table-pagination__steps");
+  const previous = element("button", "button button--ghost", "صفحه قبل");
+  previous.type = "button";
+  previous.disabled = current <= 1;
+  previous.addEventListener("click", () => onPageChange?.(current - 1));
+  const position = element("span", "table-pagination__position numeric",
+    `صفحه ${formatDisplayNumber(String(current))} از ${formatDisplayNumber(String(pages))}`);
+  const next = element("button", "button button--ghost", "صفحه بعد");
+  next.type = "button";
+  next.disabled = current >= pages;
+  next.addEventListener("click", () => onPageChange?.(current + 1));
+  steps.append(previous, position, next);
+
+  const sizing = element("div", "table-pagination__sizing");
+  const selectId = `rows-per-page-${name}`;
+  const caption = element("label", "table-pagination__label", "سطر در هر صفحه");
+  caption.htmlFor = selectId;
+  const select = element("select", "app-input table-pagination__select");
+  select.id = selectId;
+  ROW_COUNT_OPTIONS.forEach((option) => {
+    const item = element("option", "", option === "all" ? "همه" : formatDisplayNumber(String(option)));
+    item.value = String(option);
+    item.selected = String(option) === String(chosen);
+    select.append(item);
+  });
+  select.addEventListener("change", () => {
+    const stored = setRowsPerPage(name, select.value);
+    // Back to the first page, not the same number on a different scale: page 7
+    // of 9 at ten rows and page 7 of 1 at a hundred are not the same place, and
+    // the reader chose a size, not a destination.
+    onPageSizeChange?.(stored);
+  });
+  sizing.append(caption, select);
+
+  // How many of how many, so a capped "all" says so rather than looking like the
+  // whole list.
+  const shown = Math.min(size, Math.max(total - (current - 1) * size, 0));
+  const counted = element("span", "table-pagination__count numeric",
+    `${formatDisplayNumber(String(shown))} از ${formatDisplayNumber(String(total))} سطر`);
+
+  nav.append(steps, counted, sizing);
+  return nav;
+}
+
+/**
+ * A table that arrived whole, drawn one page at a time.
+ *
+ * The page holds the number; this holds everything that follows from it. Given
+ * every row and which page is wanted, it slices, builds the table from the same
+ * factory every other table uses, and puts the footer under it. The caller's
+ * `onChange` is handed the page to move to, and re-renders however it already
+ * re-renders -- this owns no state, because a component that remembered which
+ * page it was on would disagree with the page that also remembered.
+ *
+ * `rows` is whatever the caller has already filtered. Paging is the last thing
+ * that happens to a list, never the first: slicing before filtering would search
+ * one page and report the rest as absent.
+ */
+export function createPagedDataTable({ name, rows, page = 1, pageSize, onChange, paginationLabel, ...config }) {
+  const chosen = pageSize ?? getRowsPerPage(name);
+  const size = resolveSize(chosen, rows.length);
+  const current = clampPage(page, rows.length, size);
+  const start = (current - 1) * size;
+
+  const fragment = document.createDocumentFragment();
+  fragment.append(createDataTable({ ...config, rows: rows.slice(start, start + size) }));
+  // A list that fits on one page has nothing to turn, but it still has a size to
+  // choose -- that is how a reader gets back from ten rows to a hundred.
+  fragment.append(createTablePagination({
+    name,
+    page: current,
+    total: rows.length,
+    pageSize: chosen,
+    label: paginationLabel,
+    onPageChange: (next) => onChange?.({ page: next, pageSize: chosen }),
+    onPageSizeChange: (next) => onChange?.({ page: 1, pageSize: next }),
+  }));
+  return fragment;
+}
+
+/**
  * A table with its own toolbar above it.
  *
  * For a table whose caller has nowhere obvious to put the controls -- no
  * heading row of its own to hang them from. The toolbar is the table's, so the
  * page that renders it needs to know nothing about columns.
  */
-export function createDataTableWithControl({ name, columns, visible, controlLabel, chips, search, ...config }) {
+export function createDataTableWithControl({ name, columns, visible, controlLabel, chips, search, onChange, page, pageSize, paginationLabel, ...config }) {
   const fragment = document.createDocumentFragment();
-  const table = createDataTable({ ...config, columns, visible });
+  // Paging is opt-in by passing a handler, so a table that has never needed it
+  // is unchanged -- no footer, no slice, the rows it was given.
+  const body = onChange
+    ? createPagedDataTable({ ...config, name, columns, visible, page, pageSize, onChange, paginationLabel })
+    : createDataTable({ ...config, columns, visible });
+  // The toolbar's column control acts on a <table> it resolves late, and a
+  // fragment cannot be queried for one -- so it is given the element itself
+  // when there is one, and the document otherwise, which is what the paged
+  // branch leaves behind once its fragment is appended.
+  const table = body instanceof DocumentFragment ? body.querySelector("table") : body;
   fragment.append(
     createTableToolbar({ chips, search, name, columns, visible, table, controlLabel }),
-    table,
+    body,
   );
   return fragment;
 }
@@ -660,20 +891,32 @@ export function createDataTable({ caption, scrollLabel, className = "", columns,
   scroll.tabIndex = 0;
 
   const table = element("table", `data-table data-table--pinned ${className}`.trim());
-  table.dataset.columns = String(visible.size);
+  /* The width's answer, recomputed now rather than trusted from whenever the
+     page last asked -- unless the reader has chosen, in which case theirs is the
+     answer. See `effectiveColumns`. */
+  const shown = effectiveColumns(columns, visible);
+  table.dataset.columns = String(shown.size);
+  if (CHOSEN_BY_READER.has(visible)) table.dataset.columnsChosen = "true";
+  /* Marked so the tier watcher can find it, with each column's tier written on
+     its own header cell: that is what lets one listener serve every table in the
+     document without holding a reference to any of them. */
+  table.dataset.tiered = "true";
   if (caption) table.append(tableCaption(caption));
+  watchTierDefaults();
 
   const head = tableHead(columns.map((column) => column.label));
   [...head.querySelectorAll("th")].forEach((cell, index) => {
     cell.dataset.col = columns[index].key;
-    cell.hidden = !visible.has(columns[index].key);
+    if (columns[index].tier) cell.dataset.tier = columns[index].tier;
+    if (columns[index].keepOnTablet) cell.dataset.keepTablet = "true";
+    cell.hidden = !shown.has(columns[index].key);
   });
 
   const body = document.createElement("tbody");
   if (!rows.length && emptyMessage) {
     const tr = document.createElement("tr");
     const cell = element("td", "data-table__empty", emptyMessage);
-    cell.colSpan = visible.size;
+    cell.colSpan = shown.size;
     cell.dataset.empty = "true";
     tr.append(cell);
     body.append(tr);
@@ -689,7 +932,7 @@ export function createDataTable({ caption, scrollLabel, className = "", columns,
       const cell = element("td", column.cellClass ?? "", typeof value === "string" ? value : "");
       cell.dataset.col = column.key;
       if (value != null && typeof value !== "string") cell.append(value);
-      cell.hidden = !visible.has(column.key);
+      cell.hidden = !shown.has(column.key);
       tr.append(cell);
     });
     body.append(tr);

@@ -615,3 +615,87 @@
     font-size: .58rem;
   }
 }
+
+/* --------------------------------------------------------------------------
+   The strip under a table
+   --------------------------------------------------------------------------
+   Three groups on one line: the steps, what is being shown, and how much fits.
+   The steps sit in the middle because that is where فاکتورها had them and where
+   a reader who scrolled to the end of a table looks first; the size control
+   goes to the inline end, away from the button a hurried hand is aiming at.
+
+   It wraps to two lines rather than scrolling: this is the furniture at the
+   bottom of a table, and a reader who has to scroll sideways to change how much
+   they see has been given the problem the control exists to solve.
+   ------------------------------------------------------------------------ */
+
+.table-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm) var(--space-lg);
+  margin-block-start: var(--space-md);
+}
+
+.table-pagination__steps {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  order: 2;
+}
+
+.table-pagination__count {
+  order: 1;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.table-pagination__sizing {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-sm);
+  order: 3;
+}
+
+.table-pagination__label {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+/* Sized to its longest option rather than stretching: it holds «همه» and three
+   digits, and a select that grows to a column's width reads as a filter. */
+.table-pagination__select {
+  inline-size: auto;
+  min-inline-size: 5.5rem;
+  padding-block: var(--space-xs);
+}
+
+.table-pagination__position {
+  white-space: nowrap;
+}
+
+/* Below the tablet break the three groups stack in reading order: what is shown,
+   how much of it, then the way to the next page -- the last being the one a
+   thumb reaches for, so it sits nearest the bottom. */
+@media (max-width: 48rem) {
+  .table-pagination {
+    justify-content: center;
+    gap: var(--space-sm);
+  }
+
+  .table-pagination__count,
+  .table-pagination__sizing,
+  .table-pagination__steps {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .table-pagination__count { order: 1; }
+  .table-pagination__sizing { order: 2; }
+  .table-pagination__steps { order: 3; }
+}

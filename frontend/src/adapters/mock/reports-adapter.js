@@ -57,6 +57,13 @@ function scaleBreakdown(rows, share) {
   }));
 }
 
+/** The Core identifier behind each mock snapshot, matching the progress fixture. */
+const HOST_SNAPSHOT_IDS = Object.freeze({
+  "33333333-3333-4333-8333-333333333331": 901,
+  "33333333-3333-4333-8333-333333333332": 902,
+  "33333333-3333-4333-8333-333333333333": 903,
+});
+
 export function createMockReportsAdapter(context, { initialState = "success" } = {}) {
   const snapshots = new Map();
 
@@ -65,9 +72,17 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     if (initialState === "error") throw new ApiError({ status: 503, code: "LIVE_REPORT_UNAVAILABLE", message: "دریافت خلاصه مالی زنده انجام نشد.", requestId: "mock-live-report-001" });
     if (initialState === "empty") return null;
     const share = elapsedShare(reportingDate);
+    /* The real service answers with the Core snapshot it calculated from, and
+       the interface compares that against the one the reader picked -- see
+       warnOnSnapshotMismatch. A fixture without it leaves that check reporting
+       "cannot reconcile" forever, which is honest but never exercises the path
+       that matters. Derived from the Finance id so the two always agree here:
+       a mismatch is a service fault, not something to stage by default. */
+    const hostSnapshotId = HOST_SNAPSHOT_IDS[progressSnapshotId] ?? null;
     const report = {
       reportingDate,
       progressSnapshotId,
+      hostSnapshotId,
       metrics: {
         initialEstimateIrr: "18650000000",
         actualCostIrr: "6240000000",
@@ -223,5 +238,11 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     };
   }
 
+  /* `getSnapshot` is exported although no page calls it yet: it is the read half
+   of an issued report. The write half exists -- `issueSnapshot` freezes one --
+   and the Backend lists and serves them, but no screen was ever built to open
+   one back, so a report could be frozen for ever and never found again. The
+   method stays because it is the piece that half is missing, not a leftover of
+   something removed. See the report-snapshot item in the open list. */
   return Object.freeze({ getOverview, getLiveReport, getVariances, issueSnapshot, getSnapshot, downloadSnapshotCsv, getMonthlyTrend, getWbsRollup });
 }

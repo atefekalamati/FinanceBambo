@@ -53,11 +53,78 @@ const PATHS = Object.freeze({
 
 const FALLBACK = PATHS.overview;
 
+/* The overview's large watermarks have their own 64px drawings. They stay out
+   of PATHS so replacing a summary-card icon cannot also replace the smaller
+   report-builder or navigation version of the same concept. */
+const SUMMARY_ICONS = Object.freeze({
+  estimateCalculator: [
+    ["path", { d: "M12 7H35L44 16V35" }],
+    ["path", { d: "M35 7V16H44" }],
+    ["path", { d: "M12 7V51H30" }],
+    ["path", { d: "M19 23H35" }],
+    ["path", { d: "M19 30H32" }],
+    ["path", { d: "M19 37H27" }],
+    ["rect", { x: "31", y: "32", width: "22", height: "25", rx: "4" }],
+    ["rect", { x: "36", y: "37", width: "12", height: "5", rx: "1" }],
+    ["path", { d: "M37 47H39" }],
+    ["path", { d: "M45 47H47" }],
+    ["path", { d: "M37 52H39" }],
+    ["path", { d: "M45 52H47" }],
+  ],
+  registeredCost: [
+    ["rect", { x: "7", y: "14", width: "42", height: "29", rx: "5" }],
+    ["path", { d: "M7 23H49" }],
+    ["path", { d: "M14 34H24" }],
+    ["circle", { cx: "47", cy: "44", r: "11", fill: "#12611d81", stroke: "none" }],
+    ["circle", { cx: "47", cy: "44", r: "11" }],
+    ["path", { d: "M42 44L46 48L53 40" }],
+  ],
+  /* هزینه کار باقی‌مانده: the climb still to be made, the flag at the top of it,
+     and the stack of coins it will take.
+
+     Drawn for a 64 viewBox like its neighbours. The source drawing carried a
+     gradient, a glow filter and its own stroke weight; none of them came with
+     it. The mark is one of four on a row of cards and has to read as their
+     texture rather than as a picture: colour is the card's own
+     `--summary-mark`, inherited through `currentColor` on the group, and the
+     weight is the 2.8 every summary icon shares. The flag is the one filled
+     shape, and it fills with the same currentColor at a third opacity rather
+     than a literal, so it follows the theme with everything around it. */
+  remainingWork: [
+    ["path", { d: "M9 48H20C21.7 48 23 46.7 23 45V39C23 37.3 24.3 36 26 36H34C35.7 36 37 34.7 37 33V27C37 25.3 38.3 24 40 24H42" }],
+    ["path", { d: "M42 32V11" }],
+    ["path", { d: "M42 12L53 17L42 22V12Z", fill: "currentColor", "fill-opacity": "0.35" }],
+    ["ellipse", { cx: "51", cy: "35", rx: "7.5", ry: "3.2" }],
+    ["path", { d: "M43.5 35V44C43.5 45.8 46.9 47.3 51 47.3C55.1 47.3 58.5 45.8 58.5 44V35" }],
+    ["path", { d: "M43.5 39.5C43.5 41.3 46.9 42.8 51 42.8C55.1 42.8 58.5 41.3 58.5 39.5" }],
+  ],
+});
+
+function appendSummaryIcon(icon, nodes) {
+  const group = document.createElementNS(SVG_NS, "g");
+  group.setAttribute("stroke", "currentColor");
+  group.setAttribute("stroke-width", "2.8");
+  group.setAttribute("stroke-linecap", "round");
+  group.setAttribute("stroke-linejoin", "round");
+  nodes.forEach(([tag, attributes]) => {
+    const node = document.createElementNS(SVG_NS, tag);
+    Object.entries(attributes).forEach(([name, value]) => node.setAttribute(name, value));
+    group.append(node);
+  });
+  icon.append(group);
+}
+
 export function reportIcon(key) {
   const icon = document.createElementNS(SVG_NS, "svg");
-  icon.setAttribute("viewBox", "0 0 24 24");
+  const summaryIcon = SUMMARY_ICONS[key];
+  icon.setAttribute("viewBox", summaryIcon ? "0 0 64 64" : "0 0 24 24");
+  icon.setAttribute("fill", "none");
   icon.setAttribute("aria-hidden", "true");
   icon.setAttribute("focusable", "false");
+  if (summaryIcon) {
+    appendSummaryIcon(icon, summaryIcon);
+    return icon;
+  }
   (PATHS[key] ?? FALLBACK).forEach((d) => {
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", d);

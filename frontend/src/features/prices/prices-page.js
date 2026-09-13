@@ -12,6 +12,7 @@ import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
+import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { actorLabel } from "../../shared/formatters/actor.js";
 import { createPriceTrend } from "../../shared/components/price-trend.js";
@@ -20,7 +21,7 @@ import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
 import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
-import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTable, createDataTableWithControl, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTableWithControl, createPagedDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 
 const SCOPE_LABELS = Object.freeze({ organization: "پایه سازمان", project: "اختصاصی پروژه" });
@@ -476,8 +477,16 @@ function currentPriceColumns() {
   ];
 }
 
-function renderCurrentPrices(items, history, focusResourceId = "", columns, visible) {
-  return createDataTable({
+function renderCurrentPrices(items, history, focusResourceId = "", columns, visible, paging) {
+  /* Paged after filtering, never before: the filter above searches every item
+     the project has, and slicing first would have searched one page and called
+     the rest absent. */
+  return createPagedDataTable({
+    name: "current-prices",
+    page: paging.page,
+    pageSize: paging.pageSize,
+    onChange: paging.onChange,
+    paginationLabel: "صفحه‌بندی قیمت روز اقلام",
     className: "current-prices-table",
     caption: "فهرست قیمت روز اقلام پروژه",
     scrollLabel: "جدول قیمت روز اقلام",
@@ -546,9 +555,14 @@ function priceHistoryColumns() {
   ];
 }
 
-function renderHistory(history, currentPrices, columns, visible) {
+function renderHistory(history, currentPrices, columns, visible, paging) {
   const resourceMap = new Map(currentPrices.map((item) => [item.resource.resourceId, item.resource]));
-  return createDataTable({
+  return createPagedDataTable({
+    name: "price-history",
+    page: paging.page,
+    pageSize: paging.pageSize,
+    onChange: paging.onChange,
+    paginationLabel: "صفحه‌بندی تاریخچه قیمت‌ها",
     className: "price-history-table",
     caption: "تاریخچه تغییرناپذیر قیمت‌ها",
     scrollLabel: "جدول تاریخچه قیمت‌ها",
@@ -651,6 +665,32 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
   const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let listFilters = { query: "", scope: "all" };
+  /* One page number per table on this page. Held here rather than inside the
+     component because `paint()` rebuilds the whole tree: a component that
+     remembered its own page would lose it on every repaint, and one that both
+     remembered would disagree. */
+  /* Held beside the workspace rather than inside it: the workspace is replaced
+     whole on every reload, and a history the reader asked to see should survive
+     one -- adding a price version should not close the section again. */
+  let priceHistory = null;
+  let historyLoading = false;
+  let historyError = null;
+
+  async function loadHistory() {
+    historyLoading = true;
+    historyError = null;
+    paint();
+    try {
+      priceHistory = await adapter.getPriceHistory();
+    } catch (error) {
+      historyError = error;
+    }
+    historyLoading = false;
+    paint();
+  }
+
+  let pricePaging = { page: 1, pageSize: getRowsPerPage("current-prices") };
+  let historyPaging = { page: 1, pageSize: getRowsPerPage("price-history") };
   // Lives with the page: paint() rebuilds the tree, so a choice held inside a
   // render would last only until the next filter.
   const priceColumns = currentPriceColumns();
@@ -663,7 +703,12 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
     paint();
     try {
       const workspace = await adapter.getPrices();
-      state = createRequestState(workspace.history.length || workspace.conversionHistory.length ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, workspace);
+      /* The history no longer arrives with the page, so it cannot decide whether
+         the page has anything on it. What it has is items and their prices. */
+      const hasSomething = workspace.currentPrices.length
+        || workspace.currentConversions.length
+        || workspace.conversionHistory.length;
+      state = createRequestState(hasSomething ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, workspace);
     } catch (error) {
       state = createRequestState(REQUEST_STATUS.ERROR, null, error);
     }
@@ -671,7 +716,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
   }
 
   function renderHeader() {
-    return createFinancePageHeader(readOnly ? "جدول قیمت‌ها" : "قیمت روز");
+    return createFinancePageHeader(readOnly ? "جدول قیمت‌ها" : "قیمت روز", "feature-header", surface);
   }
 
   function openEditor(workspace) {
@@ -725,7 +770,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
       add.type = "button";
       add.addEventListener("click", () => openEditor(workspace));
       const conversions = element("a", "button button--ghost", "مدیریت تبدیل واحد");
-      conversions.href = "#/settings";
+      conversions.href = "#finance/settings";
       toolbarActions.append(conversions, importPrices, add);
     }
     const normalizedQuery = listFilters.query.toLocaleLowerCase("fa-IR");
@@ -750,10 +795,42 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
     currentHeading.append(element("div", "", ""), currentMeta);
     currentHeading.firstElementChild.append(element("h2", "", "قیمت روز اقلام"), element("p", "prices-section__hint", `قیمت‌ها به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند و نمودار کوچک، روند تغییرات هر قلم را نشان می‌دهد.`));
     current.append(currentHeading, filters);
-    if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history, focusResourceId, priceColumns, visiblePriceColumns));
+    if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history, focusResourceId, priceColumns, visiblePriceColumns, {
+      ...pricePaging,
+      onChange: (next) => { pricePaging = next; paint(); },
+    }));
     else current.append(element("div", "state-card price-filter-empty", "قلمی مطابق فیلترهای انتخاب‌شده پیدا نشد."));
+    /* Asked for, not assumed. The history is append-only and only grows, and
+       nothing on this page reads it -- the current price and its sparkline both
+       come from `/prices/current`. A reader who opened this page to check one
+       item's price today should not wait for every price it ever had. */
     const history = element("section", "prices-section");
-    history.append(element("h2", "", "تاریخچه قیمت‌ها"), element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."), renderHistory(workspace.history, workspace.currentPrices, historyColumns, visibleHistoryColumns));
+    history.append(
+      element("h2", "", "تاریخچه قیمت‌ها"),
+      element("p", "prices-section__hint", "تمام نسخه‌ها فقط‌خواندنی هستند و ثبت جدید، رکورد قبلی را تغییر نمی‌دهد."),
+    );
+    if (historyError) {
+      const failed = element("div", "state-card state-card--danger", formatApiErrorMessage(historyError, "دریافت تاریخچه قیمت‌ها انجام نشد."));
+      const again = element("button", "button button--ghost", "تلاش دوباره");
+      again.type = "button";
+      again.addEventListener("click", loadHistory);
+      failed.append(again);
+      history.append(failed);
+    } else if (historyLoading) {
+      history.append(element("div", "inline-notice", "در حال دریافت تاریخچه قیمت‌ها…"));
+    } else if (priceHistory === null) {
+      const ask = element("div", "prices-history-ask");
+      const show = element("button", "button button--primary", "نمایش تاریخچه قیمت‌ها");
+      show.type = "button";
+      show.addEventListener("click", loadHistory);
+      ask.append(show);
+      history.append(ask);
+    } else {
+      history.append(renderHistory(priceHistory, workspace.currentPrices, historyColumns, visibleHistoryColumns, {
+        ...historyPaging,
+        onChange: (next) => { historyPaging = next; paint(); },
+      }));
+    }
     fragment.append(toolbar, current, history);
     return fragment;
   }

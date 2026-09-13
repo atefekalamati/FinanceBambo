@@ -35,11 +35,15 @@ test("returns none when the resolved price scope has no previous version", async
 test("appends a price version without rewriting history", async () => {
   const adapter = createMockPricesAdapter(context);
   const before = await adapter.getPrices();
+  // Asked for separately now: opening the page no longer fetches every price a
+  // project has ever had. The append-only rule is what this is about either way.
+  const beforeHistory = await adapter.getPriceHistory();
   const labor = before.currentPrices.find((item) => item.resource.code === "LAB-FORM");
   const existing = labor.organizationPrice;
   const after = await adapter.createPriceVersion({ resourceId: labor.resource.resourceId, scope: "project", unitPriceIRR: "1950000", effectiveFrom: "2026-08-08" });
-  assert.equal(after.history.length, before.history.length + 1);
-  assert.ok(after.history.some((price) => price.priceId === existing.priceId && price.unitPriceIRR === existing.unitPriceIRR));
+  const afterHistory = await adapter.getPriceHistory();
+  assert.equal(afterHistory.length, beforeHistory.length + 1);
+  assert.ok(afterHistory.some((price) => price.priceId === existing.priceId && price.unitPriceIRR === existing.unitPriceIRR));
   assert.equal(after.currentPrices.find((item) => item.resource.code === "LAB-FORM").currentPrice.unitPriceIRR, "1950000");
 });
 
@@ -52,12 +56,12 @@ test("allows same-date price corrections and deterministically selects the newes
   const current = after.currentPrices.find((item) => item.resource.code === "MAT-REBAR");
   assert.equal(current.projectPrice.unitPriceIRR, "310000");
   assert.notEqual(current.projectPrice.priceId, previousId);
-  assert.ok(after.history.some((price) => price.priceId === previousId && price.unitPriceIRR === "302000"));
+  assert.ok((await adapter.getPriceHistory()).some((price) => price.priceId === previousId && price.unitPriceIRR === "302000"));
 });
 
 test("previews and commits valid price rows as append-only versions", async () => {
   const adapter = createMockPricesAdapter(context);
-  const before = await adapter.getPrices();
+  const beforeHistory = await adapter.getPriceHistory();
   const preview = await adapter.previewPriceImport({ name: "prices.xlsx" });
   assert.equal(preview.canCommit, true);
   assert.equal(preview.validRows, 2);
@@ -65,8 +69,9 @@ test("previews and commits valid price rows as append-only versions", async () =
 
   const result = await adapter.commitPriceImport({ previewId: preview.previewId });
   assert.equal(result.importedCount, 2);
-  assert.equal(result.workspace.history.length, before.history.length + 2);
-  assert.equal(result.workspace.history.filter((price) => price.source === "excel_import").length, 2);
+  const imported = await adapter.getPriceHistory();
+  assert.equal(imported.length, beforeHistory.length + 2);
+  assert.equal(imported.filter((price) => price.source === "excel_import").length, 2);
 });
 
 test("blocks price import commit when preview contains row errors", async () => {

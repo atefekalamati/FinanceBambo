@@ -1,4 +1,5 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
+import { SURFACES } from "../../core/config/routes.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -242,7 +243,7 @@ export function createAuditPage({ adapter }) {
   }
 
   function paint() {
-    root.replaceChildren(createFinancePageHeader("تاریخچه تغییرات مالی"), renderPageState(state, { renderContent, onRetry: load }));
+    root.replaceChildren(createFinancePageHeader("تاریخچه تغییرات مالی", "feature-header", SURFACES.OPERATIONS), renderPageState(state, { renderContent, onRetry: load }));
   }
 
   load();

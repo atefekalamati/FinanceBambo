@@ -60,7 +60,7 @@ function mapCurrentTrend(value) {
   };
 }
 
-function buildWorkspace(context, resources, prices, conversions, currentTrends) {
+function buildWorkspace(context, resources, conversions, currentTrends) {
   const asOfDate = getTehranTodayIso();
   const currentPrices = resources.map((resource) => {
     const trend = currentTrends.find((item) => item.resourceId === resource.resourceId) ?? { resourceId: resource.resourceId, currentPriceIrr: null, previousPriceIrr: null, latestChangePercent: null, trendDirection: "none", scopeKind: null, trendPoints: [] };
@@ -80,15 +80,39 @@ function buildWorkspace(context, resources, prices, conversions, currentTrends) 
     const organizationConversion = sorted.find((item) => item.scope === "organization") ?? null;
     return { sourceUnit: sorted[0].sourceUnit, targetUnit: sorted[0].targetUnit, dimension: sorted[0].dimension ?? getUnitDefinition(sorted[0].sourceUnit)?.dimension ?? null, currentConversion: projectConversion ?? organizationConversion, projectConversion, organizationConversion };
   });
-  return { currentPrices, history: [...prices].sort(compareVersion), currentConversions, conversionHistory: [...conversions].sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate) || right.version - left.version), asOfDate, scope: { organizationId: context.organizationId, projectId: context.projectId } };
+  return { currentPrices, history: null, currentConversions, conversionHistory: [...conversions].sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate) || right.version - left.version), asOfDate, scope: { organizationId: context.organizationId, projectId: context.projectId } };
 }
 
 export function createApiPricesAdapter(context, client) {
   const base = financeBase(context);
+  /* Opening this page no longer asks for the price history.
+     It is append-only by contract -- a new price never rewrites an old row -- so
+     it only grows: 835 items changing price once a week is 43,000 rows in the
+     first year and never fewer. Every reader who opened the page to see today's
+     price for one item was waiting for all of them.
+
+     Nothing on the page needs it. The current price of every item comes from
+     `/prices/current`, and the sparkline beside each one is drawn from that
+     endpoint's own `trendPoints`. Filtering the full history was only ever the
+     fallback for a server that did not send those, and it draws six points
+     either way.
+
+     So it is fetched when a reader asks to see it, by `getPriceHistory` below.
+     `history: null` is what "not asked for yet" looks like -- distinct from an
+     empty array, which means a project with no price changes at all. */
   async function getPrices() {
     const asOfDate = getTehranTodayIso();
-    const [resourcePayload, pricePayload, conversionPayload, currentPayload] = await Promise.all([client.request(`${base}/resources`), client.request(`${base}/price-history`), client.request(`${base}/unit-conversions`), client.request(`${base}/prices/current?asOf=${encodeURIComponent(asOfDate)}`)]);
-    return buildWorkspace(context, resourcePayload.map(mapResource), pricePayload.map(mapPrice), conversionPayload.map((item) => mapConversion(item, context)), currentPayload.map(mapCurrentTrend));
+    const [resourcePayload, conversionPayload, currentPayload] = await Promise.all([client.request(`${base}/resources`), client.request(`${base}/unit-conversions`), client.request(`${base}/prices/current?asOf=${encodeURIComponent(asOfDate)}`)]);
+    return buildWorkspace(context, resourcePayload.map(mapResource), conversionPayload.map((item) => mapConversion(item, context)), currentPayload.map(mapCurrentTrend));
+  }
+
+  /* The whole history, because the endpoint takes no arguments: no page, no
+     range, no resource. Deferring it means a reader who never opens the section
+     never pays for it, which is the win available today -- but the request it
+     finally sends is still the whole table, so this stays a stopgap until
+     `/price-history` accepts a range and a page. */
+  async function getPriceHistory() {
+    return (await client.request(`${base}/price-history`)).map(mapPrice).sort(compareVersion);
   }
   async function createPriceVersion(values) {
     await client.request(`${base}/resources/${encodeURIComponent(values.resourceId)}/prices`, jsonOptions("POST", { scopeKind: values.scope, unitPriceIrr: values.unitPriceIRR, effectiveFrom: values.effectiveFrom, reason: values.reason || "ثبت نسخه قیمت از رابط مالی" }));
@@ -110,5 +134,5 @@ export function createApiPricesAdapter(context, client) {
     await client.request(`${base}/unit-conversions`, jsonOptions("POST", { scopeKind: values.scope, sourceUnit: values.sourceUnit, targetUnit: values.targetUnit, dimension: getConversionDimension(values.sourceUnit, values.targetUnit) ?? "unknown", factor: values.factor, effectiveFrom: values.effectiveDate, reason: values.reason || "ثبت تبدیل واحد از رابط مالی" }));
     return getPrices();
   }
-  return Object.freeze({ getPrices, createPriceVersion, previewPriceImport, previewPriceImportFromLink, commitPriceImport, createUnitConversion });
+  return Object.freeze({ getPrices, getPriceHistory, createPriceVersion, previewPriceImport, previewPriceImportFromLink, commitPriceImport, createUnitConversion });
 }
