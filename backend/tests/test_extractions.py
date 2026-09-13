@@ -83,7 +83,9 @@ class FakeInvoices:
     async def get(self,_scope,invoice_id):return self.by_id[invoice_id]
     async def get_by_idempotency(self,_scope,key):return self.by_key.get(key)
     async def prepare_extracted(self,scope,command,source,key,at):
-        return Invoice(INVOICE_ID,scope.organization_id,scope.project_id,command.invoice_number,command.invoice_date,
+        # Unnumbered here, exactly as the real service leaves it: `confirm_with_invoice`
+        # allocates the number in the transaction that writes the row.
+        return Invoice(INVOICE_ID,scope.organization_id,scope.project_id,None,command.invoice_date,
             command.vendor_name,command.description,source,"confirmed",command.discount_irr,command.tax_irr,
             command.shipping_irr,command.other_costs_irr,Decimal(100),key,1,scope.actor_user_id,
             scope.actor_user_id,at,at,[])

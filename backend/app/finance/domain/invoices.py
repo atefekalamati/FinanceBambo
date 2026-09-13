@@ -29,6 +29,20 @@ def calculate_invoice(items,discount=Decimal(0),tax=Decimal(0),shipping=Decimal(
 class DuplicateInvoiceError(FinanceDomainError):status=409;code="DUPLICATE_INVOICE"
 @dataclass(frozen=True)
 class Invoice:
- id:UUID;organization_id:UUID;project_id:str;invoice_number:str|None;invoice_date:date;vendor_name:str;description:str|None;source:str;status:str;discount_irr:Decimal;tax_irr:Decimal;shipping_irr:Decimal;other_costs_irr:Decimal;final_amount_irr:Decimal;idempotency_key:str;version:int;submitted_by:UUID;confirmed_by:UUID|None;confirmed_at:datetime|None;created_at:datetime;lines:list;financial_effect_sign:int=1;original_invoice_id:UUID|None=None
+ #: `invoice_seq` is the invoice's number within its project: 1 for the first, and one
+ #: more for each after it. It is None only between constructing an invoice and writing
+ #: it, because the number is allocated by the database inside the writing transaction --
+ #: an invoice that exists always has one. The zero-padded form readers see is built at
+ #: the API boundary by `format_invoice_number`; the padding is presentation and is not
+ #: stored, which is why a project's four-hundredth invoice needs no migration.
+ id:UUID;organization_id:UUID;project_id:str;invoice_seq:int|None;invoice_date:date;vendor_name:str;description:str|None;source:str;status:str;discount_irr:Decimal;tax_irr:Decimal;shipping_irr:Decimal;other_costs_irr:Decimal;final_amount_irr:Decimal;idempotency_key:str;version:int;submitted_by:UUID;confirmed_by:UUID|None;confirmed_at:datetime|None;created_at:datetime;lines:list;financial_effect_sign:int=1;original_invoice_id:UUID|None=None
+
+#: Three digits is what a reader of this system expects to see, and it is the shortest
+#: width that makes a list of numbers line up. It is a floor, not a ceiling: the
+#: thousandth invoice prints as 2000 rather than being refused or truncated.
+INVOICE_NUMBER_WIDTH=3
+def format_invoice_number(invoice_seq):
+ """The number as a reader sees it: 1 -> "001", 42 -> "042", 2000 -> "2000"."""
+ return None if invoice_seq is None else format(int(invoice_seq),"0%dd"%INVOICE_NUMBER_WIDTH)
 def actual_cost(invoices):
  return sum((x.final_amount_irr*x.financial_effect_sign for x in invoices if x.status in {"confirmed","voided","corrected"}),Decimal(0))

@@ -8,7 +8,7 @@ BACKEND_ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(BACKEND_R
 from app.finance.domain.invoices import Invoice,actual_cost,calculate_invoice
 from app.finance.schemas.invoices import CorrectiveInvoiceCreate,InvoiceConfirm,InvoiceCreate,InvoicePatch,InvoiceVoid
 from app.finance.security.guards import FinanceScope
-from app.finance.services.invoices import FinanceInvoiceService,InvoiceAlreadyConfirmed,StaleInvoice,invoice_code
+from app.finance.services.invoices import FinanceInvoiceService,InvoiceAlreadyConfirmed,StaleInvoice
 class InvoiceTests(unittest.TestCase):
  def test_round_half_up_and_proportional_adjustments_last_line_remainder(self):
   result=calculate_invoice([("2.5","101"),("1","100")],discount=Decimal("10"),tax=Decimal("7"),shipping=Decimal("3"),other=Decimal("0"))
@@ -37,7 +37,7 @@ ORG=UUID("11111111-1111-4111-8111-111111111111")
 INVOICE_ID=UUID("22222222-2222-4222-8222-222222222222")
 NOW=datetime(2026,8,8,tzinfo=timezone.utc)
 def invoice(status="draft",version=1,submitted_by=ACTOR):
- return Invoice(INVOICE_ID,ORG,"p1","N-1",date(2026,8,8),"Vendor",None,"manual",status,Decimal(0),Decimal(0),Decimal(0),Decimal(0),Decimal(100),"create-key",version,submitted_by,ACTOR if status=="confirmed" else None,NOW if status=="confirmed" else None,NOW,[])
+ return Invoice(INVOICE_ID,ORG,"p1",7,date(2026,8,8),"Vendor",None,"manual",status,Decimal(0),Decimal(0),Decimal(0),Decimal(0),Decimal(100),"create-key",version,submitted_by,ACTOR if status=="confirmed" else None,NOW if status=="confirmed" else None,NOW,[])
 class FakeInvoiceRepo:
  def __init__(self,value):self.value=value;self.confirm_key=None;self.confirm_calls=0;self.by_key={};self.reversed=False
  async def get(self,_scope,_id):return self.value
@@ -46,7 +46,7 @@ class FakeInvoiceRepo:
  async def confirmation_matches(self,_scope,_id,key):return self.confirm_key==key
  async def confirm(self,scope,value,key,_audit,at):
   self.confirm_calls+=1;self.confirm_key=key
-  self.value=Invoice(value.id,value.organization_id,value.project_id,value.invoice_number,value.invoice_date,value.vendor_name,value.description,value.source,"confirmed",value.discount_irr,value.tax_irr,value.shipping_irr,value.other_costs_irr,value.final_amount_irr,value.idempotency_key,value.version+1,value.submitted_by,scope.actor_user_id,at,value.created_at,value.lines)
+  self.value=Invoice(value.id,value.organization_id,value.project_id,value.invoice_seq,value.invoice_date,value.vendor_name,value.description,value.source,"confirmed",value.discount_irr,value.tax_irr,value.shipping_irr,value.other_costs_irr,value.final_amount_irr,value.idempotency_key,value.version+1,value.submitted_by,scope.actor_user_id,at,value.created_at,value.lines)
   return self.value
  async def get_by_idempotency(self,_scope,key):return self.by_key.get(key)
  async def duplicate(self,*_args):return None
@@ -71,16 +71,20 @@ class InvoiceLifecycleTests(unittest.IsolatedAsyncioTestCase):
   command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="new-key",duplicateReason="reviewed duplicate",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"100"}])
   await service.create(FinanceScope(ORG,"p1",ACTOR),command)
   self.assertEqual("invoice.duplicate_warning_overridden",repo.action)
- async def test_missing_invoice_number_gets_stable_f_code_from_invoice_id(self):
+ async def test_the_service_hands_the_writer_an_invoice_with_no_number_yet(self):
+  """These two tests used to assert an invented "F-" code and a client-supplied number.
+
+  Both behaviours are gone. The number is allocated by the database inside the transaction
+  that writes the invoice, so what the service produces is deliberately unnumbered -- and
+  a change that reintroduced a number decided up here would fail this.
+  """
   repo=FakeInvoiceRepo(invoice());service=FinanceInvoiceService(repo,id_factory=lambda:INVOICE_ID,clock=lambda:NOW)
   command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="auto-code",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"100"}])
   created=await service.create(FinanceScope(ORG,"p1",ACTOR),command)
-  self.assertEqual(invoice_code(INVOICE_ID),created.invoice_number)
- async def test_explicit_invoice_number_is_preserved(self):
-  repo=FakeInvoiceRepo(invoice());service=FinanceInvoiceService(repo,id_factory=lambda:INVOICE_ID,clock=lambda:NOW)
-  command=InvoiceCreate(invoiceNumber="F-MANUAL-1",invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="manual-code",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"100"}])
-  created=await service.create(FinanceScope(ORG,"p1",ACTOR),command)
-  self.assertEqual("F-MANUAL-1",created.invoice_number)
+  self.assertIsNone(created.invoice_seq)
+ def test_a_client_supplied_number_is_refused_rather_than_ignored(self):
+  with self.assertRaises(ValueError):
+   InvoiceCreate(invoiceNumber="F-MANUAL-1",invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="manual-code",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","unitPriceIrr":"100"}])
  async def test_direct_general_cost_amount_is_not_zeroed(self):
   repo=SimilarInvoiceRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW)
   command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="gc-direct",duplicateReason="reviewed",lines=[{"resourceId":"33333333-3333-4333-8333-333333333333","lineAmountIrr":"8750001"}])

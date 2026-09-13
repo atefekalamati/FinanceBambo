@@ -29,13 +29,23 @@
 16. `0016_finance_mpp_estimate_basis`
 17. `0017_snapshot_status_check`
 18. `0018_snapshot_status_vocabulary`
-19. `0019_finance_mpp_fixed_cost` (head)
+19. `0019_finance_mpp_fixed_cost`
+20. `0020_invoice_sequence_per_project` (head)
 
 ### گراف نهایی · ۲۰۲۶-۰۹-۱۲
 
 ```
-0016 → 0017 → 0018 → 0019 (head)
+0016 → 0017 → 0018 → 0019 → 0020 (head)
 ```
+
+**۰۰۲۰ تنها مهاجرتِ این زنجیره است که داده جابه‌جا می‌کند** — به هر فاکتور موجود شماره‌ای
+در پروژهٔ خودش می‌دهد. به همین دلیل `scripts/reconcile_ledger.py` هر بازه‌ای را که شامل
+۰۰۲۰ باشد **رد می‌کند** (`refused-data-migration`): مقایسهٔ اثرانگشت schema دربارهٔ یک
+backfill چیزی ثابت نمی‌کند. برای این یکی، اجرای خود مهاجرت تنها راه درست است.
+
+**تریگر `confirmed_invoice_immutable` در طول همین یک تراکنش غیرفعال و دوباره فعال می‌شود**،
+چون backfill یک UPDATE است و آن تریگر هر UPDATE روی فاکتور confirmed/voided/corrected را رد
+می‌کند. اگر هر چیزی در میانه شکست بخورد، rollback تریگر را هم برمی‌گرداند.
 
 **خطی، با یک head.** پیش‌تر ۰۰۱۸ در این شاخه نبود و ۰۰۱۹ از ۰۰۱۷ آویزان بود با شکافِ
 مستندشده. فایل ۰۰۱۸ از `origin/backend-finance` آورده شد — **فقط همان یک فایل، بدون هیچ

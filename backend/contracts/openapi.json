@@ -541,6 +541,44 @@
         "title": "ConversionCreate",
         "type": "object"
       },
+      "ConversionListResponse": {
+        "additionalProperties": false,
+        "description": "Paged envelope, matching the invoice listing field for field.\n\nConversions are appended and never deleted, so this listing grows for the life of a\nproject and a client needs to be told how much of it it is holding.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "totalItems": {
+            "title": "Totalitems",
+            "type": "integer"
+          },
+          "totalPages": {
+            "title": "Totalpages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "title": "ConversionListResponse",
+        "type": "object"
+      },
       "ConversionPatch": {
         "additionalProperties": false,
         "properties": {
@@ -727,17 +765,6 @@
             "format": "date",
             "title": "Invoicedate",
             "type": "string"
-          },
-          "invoiceNumber": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoicenumber"
           },
           "lines": {
             "items": {
@@ -2389,17 +2416,6 @@
             "title": "Invoicedate",
             "type": "string"
           },
-          "invoiceNumber": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoicenumber"
-          },
           "lines": {
             "items": {
               "$ref": "#/components/schemas/InvoiceLineCreate"
@@ -2870,15 +2886,12 @@
             "type": "string"
           },
           "invoiceNumber": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoicenumber"
+            "title": "Invoicenumber",
+            "type": "string"
+          },
+          "invoiceSeq": {
+            "title": "Invoiceseq",
+            "type": "integer"
           },
           "lines": {
             "items": {
@@ -2949,6 +2962,7 @@
         },
         "required": [
           "id",
+          "invoiceSeq",
           "invoiceNumber",
           "invoiceDate",
           "vendorName",
@@ -3631,6 +3645,44 @@
           "reason"
         ],
         "title": "PriceCreate",
+        "type": "object"
+      },
+      "PriceHistoryListResponse": {
+        "additionalProperties": false,
+        "description": "Paged envelope, so a reader cannot mistake an unfetched page for the end of the history.\n\n`totalItems` is what the filter matched, not what this page holds -- the difference is\nthe whole reason the envelope exists on an append-only table.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PriceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "totalItems": {
+            "title": "Totalitems",
+            "type": "integer"
+          },
+          "totalPages": {
+            "title": "Totalpages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "title": "PriceHistoryListResponse",
         "type": "object"
       },
       "PriceResponse": {
@@ -5282,17 +5334,6 @@
             "format": "date",
             "title": "Invoicedate",
             "type": "string"
-          },
-          "invoiceNumber": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoicenumber"
           },
           "lines": {
             "items": {
@@ -9868,6 +9909,7 @@
     },
     "/api/projects/{projectId}/finance/price-history": {
       "get": {
+        "description": "A page of the price history, newest effective date first.\n\nEvery parameter is optional and the defaults are the same fifty `/invoices` uses, so a\nclient that sends none still gets a valid answer -- but it gets a page, and `totalItems`\nis how it learns there is more. `from` and `to` bound the effective date inclusively.",
         "operationId": "price_history_api_projects__projectId__finance_price_history_get",
         "parameters": [
           {
@@ -9878,6 +9920,80 @@
               "title": "Projectid",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "resourceId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resourceid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
           }
         ],
         "responses": {
@@ -9885,11 +10001,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/PriceResponse"
-                  },
-                  "title": "Response Price History Api Projects  Projectid  Finance Price History Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/PriceHistoryListResponse"
                 }
               }
             },
@@ -11514,6 +11626,7 @@
     },
     "/api/projects/{projectId}/finance/unit-conversions": {
       "get": {
+        "description": "A page of the unit conversions, oldest first.\n\nSame envelope and same defaults as the price history above; the ordering differs\nbecause a conversion list is read forwards and a price history backwards.",
         "operationId": "unit_conversions_api_projects__projectId__finance_unit_conversions_get",
         "parameters": [
           {
@@ -11524,6 +11637,29 @@
               "title": "Projectid",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -11531,11 +11667,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ConversionResponse"
-                  },
-                  "title": "Response Unit Conversions Api Projects  Projectid  Finance Unit Conversions Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/ConversionListResponse"
                 }
               }
             },

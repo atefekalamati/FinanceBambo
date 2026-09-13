@@ -29,22 +29,43 @@ class DataMigrationTests(unittest.TestCase):
     """A revision that moves rows cannot be vouched for by comparing schemas."""
 
     def test_the_range_this_procedure_was_written_for_is_pure_ddl(self):
-        """0014 to 0016 add columns, an index and a table, and touch no row.
+        """0014 to 0019 add columns, indexes and a table, and touch no row.
 
         That is the whole justification for reconciling this particular ledger: there is no
-        backfill that could have been skipped. If a later revision changes that, the tool
-        must refuse rather than inherit today's answer.
+        backfill that could have been skipped. The range is named explicitly rather than
+        running to head, because head has since moved past it -- see the test below.
         """
         found = revisions()
-        heads = head(found)
-        self.assertEqual(1, len(heads), "a branched chain has no single intended revision")
-        walk = chain(found, "0013", heads[0])
-        _tables, data = objects_touched(found, walk)
-        self.assertEqual([], data, "a revision in 0013..head moves data: %s" % data)
+        self.assertEqual(1, len(head(found)), "a branched chain has no single intended revision")
+        _tables, data = objects_touched(found, chain(found, "0013", "0019"))
+        self.assertEqual([], data, "a revision in 0013..0019 moves data: %s" % data)
+
+    def test_the_invoice_numbering_revision_is_seen_as_the_data_migration_it_is(self):
+        """0020 backfills every invoice with a number, and the tool must say so.
+
+        This is the case the test above was written to anticipate: "if a later revision
+        changes that, the tool must refuse rather than inherit today's answer." It has, and
+        it does -- a range containing 0020 is reported as a data migration, and
+        `reconcile_ledger` answers `refused-data-migration` rather than vouching for a
+        backfill it never looked at.
+        """
+        found = revisions()
+        _tables, data = objects_touched(found, chain(found, "0013", head(found)[0]))
+        self.assertEqual(["0020"], [revision for revision, _name, _moved in data])
+        _revision, _name, moved = data[0]
+        self.assertEqual(["INSERT INTO", "UPDATE INVOICES AS TARGET SET"], moved)
+        self.assertIn("refused-data-migration", SOURCE)
 
     def test_a_revision_that_writes_rows_is_reported_as_a_data_migration(self):
+        # The aliased forms are the ones 0020 exposed: a backfill that joins to a subquery
+        # names the target with an alias, and the pattern used to require SET immediately
+        # after the table -- so the statement that does the most work was the one missed.
         for statement in ("INSERT INTO finance_resources (id) SELECT id FROM msp_tasks;",
                           "UPDATE estimate_lines SET original_quantity = 0;",
+                          "UPDATE invoices AS target SET invoice_seq = n.row_number"
+                          " FROM (SELECT 1 AS row_number) n;",
+                          "UPDATE invoices target SET invoice_seq = 1;",
+                          "UPDATE ONLY invoices SET invoice_seq = 1;",
                           "DELETE FROM price_versions WHERE version = 1;",
                           "COPY estimate_lines FROM STDIN;"):
             with self.subTest(statement=statement[:40]):
@@ -52,10 +73,18 @@ class DataMigrationTests(unittest.TestCase):
                                 "a data migration would have been read as pure DDL")
 
     def test_ordinary_ddl_is_not_mistaken_for_a_data_migration(self):
-        """A false positive here refuses a reconciliation that was safe, every time."""
+        """A false positive here refuses a reconciliation that was safe, every time.
+
+        Only executable DDL is claimed. The detector reads the revision as text, so a
+        sentence inside a comment or a string literal that happens to read like a
+        statement will match -- and that is the direction to be wrong in: a false positive
+        refuses a reconciliation somebody then does by hand, while a false negative vouches
+        for a backfill nobody looked at.
+        """
         for statement in ("ALTER TABLE finance_mpp_rows ADD COLUMN source_rate_basis text;",
                           "CREATE INDEX IF NOT EXISTS ix_rows ON finance_mpp_rows (id);",
                           "CREATE TABLE estimate_line_source_completions (id uuid);",
+                          "ALTER TABLE invoices DISABLE TRIGGER confirmed_invoice_immutable;",
                           "ALTER TABLE finance_mpp_source_versions ADD COLUMN reporting_date date;"):
             with self.subTest(statement=statement[:40]):
                 self.assertIsNone(DATA_VERBS.search(statement))
@@ -76,9 +105,11 @@ class ObjectDiscoveryTests(unittest.TestCase):
         # `estimate_lines` and `finance_resources` are here because 0019 adds an index to
         # each: a revision that only indexes still changes the object the reconciler must
         # compare, and an index is exactly the kind of difference an environment drifts on.
+        # `invoices` and `finance_invoice_counters` arrive with 0020.
         self.assertEqual(
-            ["estimate_line_source_completions", "estimate_lines", "finance_mpp_rows",
-             "finance_mpp_source_versions", "finance_resources",
+            ["estimate_line_source_completions", "estimate_lines",
+             "finance_invoice_counters", "finance_mpp_rows",
+             "finance_mpp_source_versions", "finance_resources", "invoices",
              "progress_snapshot_refs"], tables)
 
     def test_each_ddl_shape_the_revisions_use_is_recognised(self):

@@ -15,6 +15,9 @@ class FinancePriceService:
   value=PriceVersion(self.ids(),scope.organization_id,scope.project_id,resource_id,command.scope_kind,version,command.unit_price_irr,command.effective_from,command.reason,scope.actor_user_id,self.clock())
   return await self.repo.append(scope,value,self.ids())
  async def history(self,scope,resource_id=None): return await self.repo.history(scope,resource_id)
+ async def history_page(self,scope,page,page_size,resource_id=None,date_from=None,date_to=None):
+  """One page of the history and the total the filter matched, as `(rows, total)`."""
+  return await self.repo.history_page(scope,page,page_size,resource_id,date_from,date_to)
  async def current(self,scope,resource_id,as_of:date): return await self.repo.current(scope,resource_id,as_of)
  async def trends(self,scope,as_of:date):
   histories=await self.repo.trend_history(scope,as_of);result=[]

@@ -182,4 +182,72 @@ class ReportingPermissionApiTests(unittest.TestCase):
         self.assertEqual("2026-08-09",issued.json()["reportingDate"])
 
 
+class InvoicePermissionIsEnforcedInTheBackendTests(unittest.TestCase):
+    """The host was explicit: hiding the button is not the control.
+
+    "Only make sure this permission is checked in the backend too, and do not rely on
+    hiding or showing the button in the frontend." So the check is asserted against the
+    ROUTER SOURCE rather than against a test double -- a double can be wired to agree with
+    whatever the code does, and the question here is what the code says.
+
+    Decision pack D-2, settled: the submitter-only rule stays removed. Anyone holding
+    `finance.manage_invoice` may confirm any invoice in the project, their own or another
+    person's. That is a rule about WHO may act, and it does not weaken WHAT is required --
+    which is exactly what these three routes state.
+    """
+
+    ROUTER = (Path(__file__).resolve().parents[1]
+              / "app" / "finance" / "router.py").read_text(encoding="utf-8")
+
+    #: The three the host named. Each must demand the invoice permission and nothing less.
+    GUARDED = ("/invoices/{invoiceId}/confirm",
+               "/invoices/{invoiceId}/void",
+               "/invoices/{invoiceId}/corrective")
+
+    def handler_of(self, route):
+        """The source of the handler registered for one route path."""
+        marker = '@router.post("%s"' % route
+        self.assertIn(marker, self.ROUTER, "no POST is registered for %s" % route)
+        start = self.ROUTER.index(marker)
+        following = self.ROUTER.find("@router.", start + 1)
+        return self.ROUTER[start:following if following != -1 else len(self.ROUTER)]
+
+    def test_each_of_the_three_demands_finance_manage_invoice(self):
+        for route in self.GUARDED:
+            with self.subTest(route=route):
+                body = self.handler_of(route)
+                self.assertIn('"finance.manage_invoice"', body)
+
+    def test_none_of_the_three_accepts_finance_edit_instead(self):
+        # The failure this guards is a caller who may author baselines quietly gaining the
+        # ability to confirm money out of the door.
+        for route in self.GUARDED:
+            with self.subTest(route=route):
+                self.assertNotIn('"finance.edit"', self.handler_of(route))
+
+    def test_no_route_anywhere_accepts_either_of_the_two(self):
+        """A temporary bridge -- "manage_invoice OR edit" -- would defeat the whole point.
+
+        None exists today. If one is ever added it must be a named constant with its own
+        test and a recorded removal date, and this assertion is what forces that
+        conversation instead of letting the pair appear inline.
+        """
+        for line in self.ROUTER.splitlines():
+            if "finance.manage_invoice" in line and "finance.edit" in line:
+                self.fail("a route names both permissions on one line: %s" % line.strip())
+
+    def test_the_ai_path_still_belongs_to_whoever_uploaded_the_file(self):
+        """FR-063 is untouched by D-2: confirming an EXTRACTION is the uploader's alone.
+
+        Different question from confirming an invoice. The extraction is a draft of what a
+        photograph said, and only the person who supplied the photograph can say whether it
+        was read correctly.
+        """
+        extractions = (Path(__file__).resolve().parents[1]
+                       / "app" / "finance" / "services" / "extractions.py"
+                       ).read_text(encoding="utf-8")
+        self.assertIn("only the uploader can confirm this extraction", extractions)
+        self.assertIn("ExtractionForbidden", extractions)
+
+
 if __name__=="__main__":unittest.main()

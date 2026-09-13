@@ -100,19 +100,46 @@ export function createApiPricesAdapter(context, client) {
      So it is fetched when a reader asks to see it, by `getPriceHistory` below.
      `history: null` is what "not asked for yet" looks like -- distinct from an
      empty array, which means a project with no price changes at all. */
+  /* The two append-only listings answer a paged envelope now -- `{items, totalItems, ...}`,
+     the same one `/invoices` has always answered -- with a ceiling of two hundred rows a
+     page. This page slices its own tables, so what it needs is still the whole list; the
+     difference is that the adapter now asks for it in bounded pieces instead of asking a
+     growing table to arrive in one response.
+
+     An array is still accepted, unchanged: a host serving the older body is answered by
+     the first branch and never pages. */
+  const PAGE_SIZE = 200;
+
+  async function everyPageOf(path) {
+    const first = await client.request(`${path}?page=1&pageSize=${PAGE_SIZE}`);
+    if (Array.isArray(first)) return first;
+    const items = [...first.items];
+    const total = Number(first.totalItems ?? items.length);
+    /* Bounded by the page count the server reported, not by `items.length < total`: rows
+       appended while the pages are being walked would otherwise keep this loop going. */
+    const pages = Number(first.totalPages ?? 1);
+    for (let page = 2; page <= pages; page += 1) {
+      const next = await client.request(`${path}?page=${page}&pageSize=${PAGE_SIZE}`);
+      const rows = Array.isArray(next) ? next : next.items;
+      if (!rows.length) break;
+      items.push(...rows);
+    }
+    return items;
+  }
+
   async function getPrices() {
     const asOfDate = getTehranTodayIso();
-    const [resourcePayload, conversionPayload, currentPayload] = await Promise.all([client.request(`${base}/resources`), client.request(`${base}/unit-conversions`), client.request(`${base}/prices/current?asOf=${encodeURIComponent(asOfDate)}`)]);
+    const [resourcePayload, conversionPayload, currentPayload] = await Promise.all([client.request(`${base}/resources`), everyPageOf(`${base}/unit-conversions`), client.request(`${base}/prices/current?asOf=${encodeURIComponent(asOfDate)}`)]);
     return buildWorkspace(context, resourcePayload.map(mapResource), conversionPayload.map((item) => mapConversion(item, context)), currentPayload.map(mapCurrentTrend));
   }
 
-  /* The whole history, because the endpoint takes no arguments: no page, no
-     range, no resource. Deferring it means a reader who never opens the section
-     never pays for it, which is the win available today -- but the request it
-     finally sends is still the whole table, so this stays a stopgap until
-     `/price-history` accepts a range and a page. */
+  /* Deferring this means a reader who never opens the section never pays for it.
+     `/price-history` now takes a page, a range and a resource, so the request is bounded;
+     the section still shows the whole history and pages it in the browser, which is why
+     every page is walked here rather than the paging being handed to the table. Narrowing
+     by range or by resource is the next step and belongs to the section, not the adapter. */
   async function getPriceHistory() {
-    return (await client.request(`${base}/price-history`)).map(mapPrice).sort(compareVersion);
+    return (await everyPageOf(`${base}/price-history`)).map(mapPrice).sort(compareVersion);
   }
   async function createPriceVersion(values) {
     await client.request(`${base}/resources/${encodeURIComponent(values.resourceId)}/prices`, jsonOptions("POST", { scopeKind: values.scope, unitPriceIrr: values.unitPriceIRR, effectiveFrom: values.effectiveFrom, reason: values.reason || "ثبت نسخه قیمت از رابط مالی" }));

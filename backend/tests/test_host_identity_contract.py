@@ -30,6 +30,9 @@ from uuid import UUID, uuid4
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from fastapi import HTTPException
+
+from app.finance.security.guards import authorize_finance_request
 from coreint.security import (CoreAuthContextAssembler, CoreRbacPermissionAuthorizer,
                               CoreScopeAuthorizer)
 
@@ -313,6 +316,131 @@ class AuthorizationChainTests(unittest.IsolatedAsyncioTestCase):
         core.granted = set()                       # revoked after the context was built
         with self.assertRaises(Exception):
             await CoreRbacPermissionAuthorizer(core).require(context, "finance.view")
+
+
+class SessionEndedIsNotPermissionDeniedTests(unittest.IsolatedAsyncioTestCase):
+    """401 and 403 are different answers, and the frontend now acts on the difference.
+
+    The host team settled it: "if the session has expired or is not valid, the API must
+    return 401, not 302." The frontend reads a 401 as "your session ended" and replaces the
+    whole page with a sign-in prompt. So a 403 arriving as a 401 would throw a colleague
+    who merely lacks a permission out to the login screen, and a 401 arriving as a 403
+    would show "no access" to somebody who is simply logged out.
+
+    WHAT THIS MODULE OWES, AND WHAT IT DOES NOT
+    It does not authenticate. `AuthContextProvider.current` is the host's one function, and
+    what it raises when there is no session is the host's decision. What this module owes is
+    to carry that answer out unchanged -- never to catch it, never to turn it into a
+    permission refusal, and never to answer a redirect of its own.
+    """
+
+    def gates(self, auth):
+        """The four gates with a given auth provider; the rest allow everything."""
+
+        class AllowScope:
+            async def require_organization(self, *_a, **_k):
+                return None
+
+            async def require_project(self, *_a, **_k):
+                return None
+
+        class AllowPermission:
+            async def require(self, *_a, **_k):
+                return None
+
+        return auth, AllowScope(), AllowPermission()
+
+    async def test_no_session_reaches_the_caller_as_401_and_is_not_caught(self):
+        class NoSession:
+            async def current(self, _request):
+                raise HTTPException(401, "session has expired")
+
+        auth, scope, permission = self.gates(NoSession())
+        with self.assertRaises(HTTPException) as refused:
+            await authorize_finance_request(object(), PROJECT, "finance.view",
+                                            auth, scope, permission)
+        self.assertEqual(401, refused.exception.status_code)
+
+    async def test_a_valid_session_without_the_permission_is_403(self):
+        class Session:
+            async def current(self, _request):
+                return SimpleNamespace(
+                    organization_id=ORG, project_id=PROJECT, user_id=USER,
+                    locale="fa", organization_role="member",
+                    permission_codes=("finance.view",))
+
+        class RefuseOnPermission:
+            async def require(self, _context, code):
+                raise HTTPException(403, "permission %s is required" % code)
+
+        class AllowScope:
+            async def require_organization(self, *_a, **_k):
+                return None
+
+            async def require_project(self, *_a, **_k):
+                return None
+
+        with self.assertRaises(HTTPException) as refused:
+            await authorize_finance_request(object(), PROJECT, "finance.manage_invoice",
+                                            Session(), AllowScope(), RefuseOnPermission())
+        self.assertEqual(403, refused.exception.status_code)
+        self.assertIn("finance.manage_invoice", str(refused.exception.detail))
+
+    async def test_the_authentication_gate_runs_before_the_permission_gate(self):
+        """A logged-out caller must not be told which permission they lack.
+
+        Order is the whole guarantee: asking the permission first would answer 403 to
+        somebody with no session at all, and the frontend would show "no access" instead
+        of a sign-in prompt.
+        """
+        asked = []
+
+        class NoSession:
+            async def current(self, _request):
+                asked.append("auth")
+                raise HTTPException(401, "session has expired")
+
+        class RecordingPermission:
+            async def require(self, *_a, **_k):
+                asked.append("permission")
+
+        class AllowScope:
+            async def require_organization(self, *_a, **_k):
+                return None
+
+            async def require_project(self, *_a, **_k):
+                return None
+
+        with self.assertRaises(HTTPException):
+            await authorize_finance_request(object(), PROJECT, "finance.view",
+                                            NoSession(), AllowScope(), RecordingPermission())
+        self.assertEqual(["auth"], asked, "nothing may be asked after authentication fails")
+
+    def test_the_module_never_answers_a_redirect(self):
+        """302 is the answer the host team ruled out, and nothing here may produce one."""
+        import re
+        redirect = re.compile(r"RedirectResponse|status_code\s*=\s*30[0-9]|HTTPException\(\s*30[0-9]")
+        for root in ("app", "coreint"):
+            for path in (BACKEND_ROOT / root).rglob("*.py"):
+                if "__pycache__" in path.parts:
+                    continue
+                with self.subTest(path=str(path.relative_to(BACKEND_ROOT))):
+                    self.assertIsNone(redirect.search(path.read_text(encoding="utf-8")))
+
+    def test_the_session_is_the_hosts_cookie_and_this_module_reads_no_header(self):
+        """Cookie-based, with no Authorization header and no CSRF token -- both confirmed
+        by the host. The guarantee is the same one `test_demo_isolation` holds: `app/` and
+        `coreint/` read no request header at all, so neither can be expected by accident.
+        """
+        for root in ("app", "coreint"):
+            for path in (BACKEND_ROOT / root).rglob("*.py"):
+                if "__pycache__" in path.parts:
+                    continue
+                text = path.read_text(encoding="utf-8")
+                with self.subTest(path=str(path.relative_to(BACKEND_ROOT))):
+                    self.assertNotIn("request.headers", text)
+                    self.assertNotIn("Authorization", text)
+                    self.assertNotIn("X-CSRF", text)
 
 
 if __name__ == "__main__":

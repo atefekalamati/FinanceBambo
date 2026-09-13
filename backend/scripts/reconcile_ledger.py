@@ -76,9 +76,14 @@ LEDGER = "finance_alembic_version"
 #: word character and a non-word one and the table name continues past it. A detector that
 #: misses an UPDATE is the one bug this tool cannot afford, so each verb now carries the
 #: shape of the statement it belongs to and stops before the identifier.
+#: The UPDATE arm also allows an alias between the table and SET. `UPDATE invoices AS
+#: target SET ...` is how a backfill that joins to a subquery is written, which is how
+#: nearly every backfill is written, and without the optional group it did not match at
+#: all -- a revision whose only data statement took that shape read as pure DDL. The
+#: negative lookahead keeps SET itself from being taken for the alias.
 DATA_VERBS = re.compile(
     r"\bINSERT\s+INTO\b"
-    r"|\bUPDATE\s+[a-z_][\w.\"]*\s+SET\b"
+    r"|\bUPDATE\s+(?:ONLY\s+)?[a-z_][\w.\"]*(?:\s+(?:AS\s+)?(?!SET\b)[a-z_]\w*)?\s+SET\b"
     r"|\bDELETE\s+FROM\b"
     r"|\bCOPY\s+[a-z_][\w.\"]*\s+FROM\b", re.I)
 

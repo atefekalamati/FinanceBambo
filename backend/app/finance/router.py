@@ -21,8 +21,8 @@ from .schemas.resources import (EstimateLineCreate, EstimateLineResponse,
 from .schemas.activities import ActivityCreate, ActivityListResponse, ActivityResponse
 from .schemas.unit_registry import UnitDefinitionResponse, UnitRegistryResponse
 from .domain.unit_registry import UNIT_REGISTRY
-from .schemas.prices import CurrentPriceTrendResponse,PriceCreate, PriceResponse
-from .schemas.conversions import ConversionCreate,ConversionPatch,ConversionResponse
+from .schemas.prices import CurrentPriceTrendResponse,PriceCreate, PriceHistoryListResponse, PriceResponse
+from .schemas.conversions import ConversionCreate,ConversionListResponse,ConversionPatch,ConversionResponse
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
 from .schemas.imports import ImportCommit,ImportCommitResponse,ImportFromLink,ImportPreviewResponse
 from .services.google_sheet import fetch_sheet_as_xlsx
@@ -253,20 +253,36 @@ async def create_price(projectId:str,resourceId:UUID,payload:PriceCreate,request
     scope=await _resource_scope(projectId,request,"finance.edit")
     return await _named(request, PriceResponse.from_domain(await request.app.state.finance_price_service.create(scope,resourceId,payload)))
 
-@router.get("/price-history", response_model=list[PriceResponse])
-async def price_history(projectId:str,request:Request):
+@router.get("/price-history", response_model=PriceHistoryListResponse)
+async def price_history(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),
+    resourceId:UUID|None=Query(None),dateFrom:date|None=Query(None,alias="from"),dateTo:date|None=Query(None,alias="to")):
+    """A page of the price history, newest effective date first.
+
+    Every parameter is optional and the defaults are the same fifty `/invoices` uses, so a
+    client that sends none still gets a valid answer -- but it gets a page, and `totalItems`
+    is how it learns there is more. `from` and `to` bound the effective date inclusively.
+    """
     scope=await _resource_scope(projectId,request,"finance.view")
-    return await _named(request, [PriceResponse.from_domain(x) for x in await request.app.state.finance_price_service.history(scope)])
+    items,total=await request.app.state.finance_price_service.history_page(scope,page,pageSize,resourceId,dateFrom,dateTo)
+    return await _named(request, PriceHistoryListResponse(items=[PriceResponse.from_domain(x) for x in items],
+        page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize))
 
 @router.get("/prices/current",response_model=list[CurrentPriceTrendResponse])
 async def current_price_trends(projectId:str,asOf:date,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
     return await request.app.state.finance_price_service.trends(scope,asOf)
 
-@router.get("/unit-conversions",response_model=list[ConversionResponse])
-async def unit_conversions(projectId:str,request:Request):
+@router.get("/unit-conversions",response_model=ConversionListResponse)
+async def unit_conversions(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200)):
+    """A page of the unit conversions, oldest first.
+
+    Same envelope and same defaults as the price history above; the ordering differs
+    because a conversion list is read forwards and a price history backwards.
+    """
     scope=await _resource_scope(projectId,request,"finance.view")
-    return await _named(request, [ConversionResponse.from_domain(x) for x in await request.app.state.unit_conversion_service.list(scope)])
+    items,total=await request.app.state.unit_conversion_service.page(scope,page,pageSize)
+    return await _named(request, ConversionListResponse(items=[ConversionResponse.from_domain(x) for x in items],
+        page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize))
 
 @router.post("/unit-conversions",response_model=ConversionResponse,status_code=201)
 async def create_unit_conversion(projectId:str,payload:ConversionCreate,request:Request):

@@ -35,3 +35,16 @@ class ConversionResponse(ConversionCreate):
  def decimal_string(self,v):return format(v,"f")
  @classmethod
  def from_domain(cls,v):return cls(**{k:x for k,x in v.__dict__.items() if k in cls.model_fields})
+
+
+class ConversionListResponse(ApiModel):
+ """Paged envelope, matching the invoice listing field for field.
+
+ Conversions are appended and never deleted, so this listing grows for the life of a
+ project and a client needs to be told how much of it it is holding.
+ """
+ items:list[ConversionResponse]
+ page:int
+ page_size:int
+ total_items:int
+ total_pages:int
