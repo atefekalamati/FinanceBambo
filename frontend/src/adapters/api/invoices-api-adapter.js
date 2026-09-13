@@ -10,6 +10,12 @@ import { financeBase, jsonOptions, mapResource } from "./api-utils.js";
 function mapInvoice(value, targets = []) {
   return {
     invoiceId: value.id,
+    // Two forms of one number, both from the service. `invoiceSeq` is the integer
+    // the counter allocated -- what to sort and compare on -- and `invoiceNumber`
+    // is that number written for a reader, zero-padded to three. Deriving one from
+    // the other here would be a second opinion about a fact the service already
+    // settled.
+    invoiceSeq: value.invoiceSeq ?? null,
     invoiceNumber: value.invoiceNumber,
     invoiceDate: value.invoiceDate,
     vendorName: value.vendorName,
@@ -107,7 +113,7 @@ export function createApiInvoicesAdapter(context, client) {
     });
   }
   async function createDraft({ header, lines, adjustments, duplicateOverrideReason, idempotencyKey }) {
-    const payload = { invoiceNumber: header.invoiceNumber || null, invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "manual", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: duplicateOverrideReason || null, directAdjustmentAllocations: [], lines: await linePayload(lines) };
+    const payload = { invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "manual", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: duplicateOverrideReason || null, directAdjustmentAllocations: [], lines: await linePayload(lines) };
     return mapInvoice(await client.request(`${base}/invoices`, jsonOptions("POST", payload)), targetCache);
   }
   async function submitDraft({ invoiceId, expectedVersion }) {
@@ -120,7 +126,7 @@ export function createApiInvoicesAdapter(context, client) {
     return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}/void`, jsonOptions("POST", { expectedVersion, idempotencyKey, reason })), targetCache);
   }
   async function createCorrective({ originalInvoiceId, header, lines, adjustments, financialEffectSign, reason, idempotencyKey }) {
-    const payload = { invoiceNumber: header.invoiceNumber || null, invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "corrective", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: null, directAdjustmentAllocations: [], lines: await linePayload(lines), financialEffectSign, reason };
+    const payload = { invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "corrective", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: null, directAdjustmentAllocations: [], lines: await linePayload(lines), financialEffectSign, reason };
     return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(originalInvoiceId)}/corrective`, jsonOptions("POST", payload)), targetCache);
   }
   return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective });

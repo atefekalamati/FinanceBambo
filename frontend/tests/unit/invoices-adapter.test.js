@@ -133,11 +133,22 @@ test("confirms only an awaiting current version and replays the same confirmatio
   await assert.rejects(adapter.confirmInvoice({ invoiceId: awaiting.invoiceId, expectedVersion: 2, idempotencyKey: "confirm-other" }), (error) => error.code === "INVOICE_ALREADY_CONFIRMED");
 });
 
-test("rejects confirmation by a user other than the invoice submitter", async () => {
+test("confirms an invoice filed by somebody else, and records who confirmed it", async () => {
+  // The preview used to refuse this, matching a service rule that no longer
+  // exists: confirming is settled by holding the grant, and requiring the
+  // submitter made raising and approving the same person -- the opposite of what
+  // the queue is for. A preview that refuses what the API accepts would have the
+  // reviewer's own case, approving what somebody else sent up, fail only here.
   const authContext = { ...context, permissionCodes: ["finance.edit"] };
   const adapter = createMockInvoicesAdapter(authContext);
+  const filedBy = (await adapter.getInvoice("invoice-demo-002")).submittedBy;
   authContext.userId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2";
-  await assert.rejects(adapter.confirmInvoice({ invoiceId: "invoice-demo-002", expectedVersion: 2, idempotencyKey: "wrong-submitter" }), (error) => error.code === "INVOICE_CONFIRMATION_FORBIDDEN");
+  assert.notEqual(filedBy, authContext.userId, "the reviewer has to be a different person for this to test anything");
+
+  const confirmed = await adapter.confirmInvoice({ invoiceId: "invoice-demo-002", expectedVersion: 2, idempotencyKey: "reviewer-confirm" });
+  assert.equal(confirmed.invoiceStatus, "confirmed");
+  assert.equal(confirmed.submittedBy, filedBy, "confirming rewrote who filed the invoice");
+  assert.equal(confirmed.confirmedBy, authContext.userId, "the confirming actor was not recorded");
 });
 
 test("creates one idempotent linked negative reversal without mutating the original", async () => {
