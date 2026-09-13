@@ -10,7 +10,10 @@ import { financeBase, jsonOptions, mapResource } from "./api-utils.js";
 function mapInvoice(value, targets = []) {
   return {
     invoiceId: value.id,
+    // Both forms the service sends: the padded string a reader sees, and the integer it is
+    // built from, which is what a client sorts or compares on.
     invoiceNumber: value.invoiceNumber,
+    invoiceSeq: value.invoiceSeq ?? null,
     invoiceDate: value.invoiceDate,
     vendorName: value.vendorName,
     description: value.description,
@@ -107,7 +110,9 @@ export function createApiInvoicesAdapter(context, client) {
     });
   }
   async function createDraft({ header, lines, adjustments, duplicateOverrideReason, idempotencyKey }) {
-    const payload = { invoiceNumber: header.invoiceNumber || null, invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "manual", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: duplicateOverrideReason || null, directAdjustmentAllocations: [], lines: await linePayload(lines) };
+    // No invoiceNumber: the endpoint refuses the field (422, "Extra inputs are not
+    // permitted") because the number is the project's to allocate, not the client's.
+    const payload = { invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "manual", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: duplicateOverrideReason || null, directAdjustmentAllocations: [], lines: await linePayload(lines) };
     return mapInvoice(await client.request(`${base}/invoices`, jsonOptions("POST", payload)), targetCache);
   }
   async function submitDraft({ invoiceId, expectedVersion }) {
@@ -120,7 +125,9 @@ export function createApiInvoicesAdapter(context, client) {
     return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(invoiceId)}/void`, jsonOptions("POST", { expectedVersion, idempotencyKey, reason })), targetCache);
   }
   async function createCorrective({ originalInvoiceId, header, lines, adjustments, financialEffectSign, reason, idempotencyKey }) {
-    const payload = { invoiceNumber: header.invoiceNumber || null, invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "corrective", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: null, directAdjustmentAllocations: [], lines: await linePayload(lines), financialEffectSign, reason };
+    // Same as the create above: a corrective document is its own invoice and takes the
+    // project's next number.
+    const payload = { invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "corrective", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: null, directAdjustmentAllocations: [], lines: await linePayload(lines), financialEffectSign, reason };
     return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(originalInvoiceId)}/corrective`, jsonOptions("POST", payload)), targetCache);
   }
   return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective });

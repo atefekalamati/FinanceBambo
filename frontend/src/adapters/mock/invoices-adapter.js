@@ -157,10 +157,28 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     return { lines: preparedLines, rawLinesTotalIRR, finalAmountIRR, ...adjustments };
   }
 
+  /**
+   * The project's next invoice number, the way the service allocates it: count up from 1,
+   * one sequence per project, and pad to three digits for display only. The demo data is
+   * numbered "ف-N", which is the older scheme and is left alone -- what matters is that a
+   * number created HERE looks like one the service would create.
+   */
+  function nextInvoiceSeq() {
+    const used = invoices.map((invoice) => Number(invoice.invoiceSeq) || 0);
+    return Math.max(0, ...used) + 1;
+  }
+
+  function paddedInvoiceNumber(sequence) {
+    return String(sequence).padStart(3, "0");
+  }
+
   function findSimilarInvoices(header, finalAmountIRR) {
     const vendor = String(header.vendorName).trim().toLocaleLowerCase("fa-IR");
+    // Vendor, date and amount. The number is deliberately not part of this: every invoice
+    // now has a different one, so including it would make the check match nothing -- which
+    // is the quietest way for a duplicate warning to stop working. The service's own
+    // predicate dropped it for the same reason.
     return invoices.filter((invoice) => invoice.vendorName.trim().toLocaleLowerCase("fa-IR") === vendor
-      && invoice.invoiceNumber === header.invoiceNumber
       && invoice.invoiceDate === header.invoiceDate
       && invoice.finalAmountIRR === finalAmountIRR);
   }
@@ -184,14 +202,18 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
       if (repeated.fingerprint !== fingerprint) throw new ApiError({ status: 409, code: "IDEMPOTENCY_CONFLICT", message: "این شناسه درخواست قبلاً با اطلاعات متفاوت استفاده شده است.", requestId: "mock-invoice-idempotency-409" });
       return clone(repeated.invoice);
     }
-    if (!header?.invoiceNumber || !header.invoiceDate || !header.vendorName || !Array.isArray(lines) || !lines.length) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "اطلاعات فاکتور کامل نیست." });
+    if (!header?.invoiceDate || !header.vendorName || !Array.isArray(lines) || !lines.length) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "اطلاعات فاکتور کامل نیست." });
+    // A client that still sends a number is told, exactly as the service tells it -- the
+    // demo surface must not accept what the real one refuses.
+    if (header.invoiceNumber != null) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "شماره فاکتور را سرویس تعیین می‌کند و نباید ارسال شود." });
     const preview = buildPreview(lines, adjustments);
     if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ نهایی فاکتور نمی‌تواند منفی باشد." });
     const duplicateMatches = findSimilarInvoices(header, preview.finalAmountIRR);
     const auditedReason = String(duplicateOverrideReason).trim();
     if (duplicateMatches.length && auditedReason.length < 3) throw new ApiError({ status: 422, code: "INVOICE_DUPLICATE_REASON_REQUIRED", message: "برای ادامه ثبت فاکتور مشابه، دلیل ممیزی الزامی است.", details: duplicateMatches.map((invoice) => ({ invoiceId: invoice.invoiceId })) });
     const preparedLines = preview.lines.map((line, index) => ({ ...line, invoiceLineId: `draft-line-${Date.now()}-${index + 1}` }));
-    const invoice = { invoiceId: `invoice-draft-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, source: "manual", invoiceStatus: "draft", version: 1, idempotencyKey: requestKey, duplicateWarning: duplicateMatches.length > 0, duplicateOverrideReason: duplicateMatches.length ? auditedReason : null, duplicateOfInvoiceIds: duplicateMatches.map((item) => item.invoiceId), rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, createdAt: new Date().toISOString(), confirmedBy: null, confirmedAt: null, relatedInvoiceId: null, lines: preparedLines };
+    const allocated = nextInvoiceSeq();
+    const invoice = { invoiceId: `invoice-draft-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, invoiceSeq: allocated, invoiceNumber: paddedInvoiceNumber(allocated), source: "manual", invoiceStatus: "draft", version: 1, idempotencyKey: requestKey, duplicateWarning: duplicateMatches.length > 0, duplicateOverrideReason: duplicateMatches.length ? auditedReason : null, duplicateOfInvoiceIds: duplicateMatches.map((item) => item.invoiceId), rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, createdAt: new Date().toISOString(), confirmedBy: null, confirmedAt: null, relatedInvoiceId: null, lines: preparedLines };
     invoices.unshift(invoice);
     createRequests.set(requestKey, { fingerprint, invoice: clone(invoice) });
     return clone(invoice);

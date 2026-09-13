@@ -36,13 +36,27 @@ class Invoice:
  #: the API boundary by `format_invoice_number`; the padding is presentation and is not
  #: stored, which is why a project's four-hundredth invoice needs no migration.
  id:UUID;organization_id:UUID;project_id:str;invoice_seq:int|None;invoice_date:date;vendor_name:str;description:str|None;source:str;status:str;discount_irr:Decimal;tax_irr:Decimal;shipping_irr:Decimal;other_costs_irr:Decimal;final_amount_irr:Decimal;idempotency_key:str;version:int;submitted_by:UUID;confirmed_by:UUID|None;confirmed_at:datetime|None;created_at:datetime;lines:list;financial_effect_sign:int=1;original_invoice_id:UUID|None=None
+ #: The number this invoice was ISSUED with, for the documents that predate per-project
+ #: numbering. Read from the old `invoice_number` column and never written: the create path
+ #: leaves that column empty, so only historical rows carry one. It exists so an issued
+ #: document keeps being called what it was called -- see `format_invoice_number` below.
+ legacy_invoice_number:str|None=None
 
 #: Three digits is what a reader of this system expects to see, and it is the shortest
 #: width that makes a list of numbers line up. It is a floor, not a ceiling: the
 #: thousandth invoice prints as 2000 rather than being refused or truncated.
 INVOICE_NUMBER_WIDTH=3
-def format_invoice_number(invoice_seq):
- """The number as a reader sees it: 1 -> "001", 42 -> "042", 2000 -> "2000"."""
+def format_invoice_number(invoice_seq,legacy=None):
+ """The number as a reader sees it.
+
+ A document that was issued with a number keeps it, exactly as it was written: that string
+ is on paper, in somebody's email and against a payment, and changing what the screen calls
+ it would break every one of those references at once.
+
+ Everything created since per-project numbering arrived has no such string, and is called
+ by its sequence padded to three digits: 1 -> "001", 42 -> "042", 2000 -> "2000".
+ """
+ if isinstance(legacy,str) and legacy.strip():return legacy.strip()
  return None if invoice_seq is None else format(int(invoice_seq),"0%dd"%INVOICE_NUMBER_WIDTH)
 def actual_cost(invoices):
  return sum((x.final_amount_irr*x.financial_effect_sign for x in invoices if x.status in {"confirmed","voided","corrected"}),Decimal(0))

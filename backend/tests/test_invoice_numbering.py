@@ -560,6 +560,51 @@ class TheNumberIsNotTheClientsToChooseTests(unittest.TestCase):
         self.assertEqual(42, payload["invoiceSeq"])
         self.assertEqual("042", payload["invoiceNumber"])
 
+    def test_a_document_issued_with_a_number_keeps_being_called_that(self):
+        """0020 gives every existing invoice a sequence. It must not rename them.
+
+        Fifty-three invoices on the upgrade fixture carry a number somebody gave them, and
+        fifty-one of those are already confirmed, voided or corrected. Building the label
+        from the new sequence renamed all of them -- silently, and everywhere at once:
+        paper, email, payment reference and screen stop agreeing and nothing says when.
+
+        The stored string wins whenever there is one.  is unaffected and is in
+        the response either way, so a client can still sort and address by the sequence.
+        """
+        from app.finance.schemas.invoices import InvoiceResponse
+        issued = Invoice(uuid4(), ORG, SEEDED_PROJECT, 7, date(2026, 5, 1), "vendor",
+                         None, "manual", "confirmed", Decimal(0), Decimal(0), Decimal(0),
+                         Decimal(0), Decimal(1000), "k", 1, ACTOR, ACTOR,
+                         datetime(2026, 5, 1, tzinfo=timezone.utc),
+                         datetime(2026, 5, 1, tzinfo=timezone.utc), [], 1, None, "ف-001")
+        payload = InvoiceResponse.from_domain(issued).model_dump(by_alias=True)
+        self.assertEqual("ف-001", payload["invoiceNumber"], "an issued number was rewritten")
+        self.assertEqual(7, payload["invoiceSeq"], "the sequence is still reported")
+
+    def test_an_invoice_created_since_the_change_is_called_by_its_sequence(self):
+        from app.finance.schemas.invoices import InvoiceResponse
+        fresh = Invoice(uuid4(), ORG, SEEDED_PROJECT, 7, date(2026, 5, 1), "vendor", None,
+                        "manual", "draft", Decimal(0), Decimal(0), Decimal(0), Decimal(0),
+                        Decimal(1000), "k", 1, ACTOR, None, None,
+                        datetime(2026, 5, 1, tzinfo=timezone.utc), [])
+        payload = InvoiceResponse.from_domain(fresh).model_dump(by_alias=True)
+        self.assertEqual("007", payload["invoiceNumber"])
+        self.assertEqual(7, payload["invoiceSeq"])
+
+    def test_a_blank_stored_number_is_not_a_number(self):
+        # An empty string is what a column gets when somebody saved the form without
+        # typing anything. It is not a name; falling back to the sequence is.
+        self.assertEqual("007", format_invoice_number(7, "   "))
+        self.assertEqual("007", format_invoice_number(7, None))
+        self.assertEqual("ف-۹", format_invoice_number(7, "ف-۹"))
+
+    def test_the_search_looks_for_both_numbers(self):
+        import inspect
+        source = inspect.getsource(PsycopgInvoiceRepository.list)
+        self.assertIn("CAST(invoice_seq AS text) ILIKE %s", source)
+        self.assertIn("COALESCE(invoice_number,'') ILIKE %s", source,
+                      "a reader holding a paper invoice searches for what is printed on it")
+
     def test_the_padding_is_a_floor_and_never_a_ceiling(self):
         self.assertEqual(["001", "042", "999", "2000"],
                          [format_invoice_number(n) for n in (1, 42, 999, 2000)])

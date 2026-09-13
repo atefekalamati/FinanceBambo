@@ -168,10 +168,20 @@ CHECKS = (
         """,
     ),
     (
+        # The vocabulary is read from the database's own CHECK rather than retyped here.
+        # Retyped, it was wrong in three ways at once -- no `awaitingConfirmation`, `void`
+        # for `voided`, `corrective` for `corrected` -- and it passed for as long as no
+        # invoice had ever been voided or corrected on the database it was asked about.
+        # `chr(39)` is a single quote, so the state is matched as it appears in the
+        # constraint text without a second layer of quoting to get wrong.
         "every invoice is in a state the workflow defines",
         """
         SELECT id, status FROM invoices
-         WHERE status NOT IN ('draft', 'confirmed', 'void', 'corrective')
+         WHERE status IS NULL
+            OR position(chr(39) || status || chr(39) IN
+                        (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+                          WHERE conrelid = 'invoices'::regclass
+                            AND conname = 'invoices_status_check')) = 0
         """,
     ),
     (

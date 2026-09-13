@@ -167,8 +167,8 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
 
   function renderHeaderStep() {
     const form = element("div", "invoice-wizard-grid");
-    const number = inputField("شماره فاکتور", "invoiceNumber");
-    number.input.value = headerData?.invoiceNumber ?? (isCorrective ? `${originalInvoice.invoiceNumber}-اصلاح` : "");
+    // No number field. It is allocated by the service when the invoice is written, so
+    // there is nothing here for a person to decide and nothing to send.
     const vendor = inputField("فروشنده یا ارائه‌دهنده", "vendorName");
     vendor.input.value = headerData?.vendorName ?? (isCorrective ? originalInvoice.vendorName : "");
     const date = createPersianDatePicker({ id: "invoiceDate", label: "تاریخ فاکتور", value: headerData?.invoiceDate ?? getTehranTodayIso() });
@@ -179,9 +179,9 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     textarea.maxLength = 500;
     textarea.value = headerData?.description ?? "";
     description.append(textarea);
-    form.append(number.field, vendor.field, date.field, description);
+    form.append(vendor.field, date.field, description);
     form.append(actions({ nextLabel: "ادامه به خطوط", onNext: () => {
-      const validation = validateInvoiceHeader({ invoiceNumber: number.input.value, invoiceDate: date.getValue(), vendorName: vendor.input.value, description: textarea.value });
+      const validation = validateInvoiceHeader({ invoiceDate: date.getValue(), vendorName: vendor.input.value, description: textarea.value });
       if (!validation.valid) { showMessage(Object.values(validation.errors).join(" "), true); return; }
       headerData = validation.values;
       currentStep = 2;
@@ -254,7 +254,10 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
   function renderPreviewStep() {
     const section = element("div", "invoice-preview");
     const summary = element("dl", "invoice-detail-grid");
-    [["شماره", headerData.invoiceNumber], ["تاریخ", formatBusinessDate(headerData.invoiceDate)], ["فروشنده", headerData.vendorName], ["منبع", "ورود دستی"]].forEach(([label, value]) => { const item = element("div", "invoice-detail-grid__item"); item.append(element("dt", "", label), element("dd", "", value)); summary.append(item); });
+    // The number is not in this summary because it does not exist yet: it is assigned when
+    // the draft is written, and it is shown from that moment on -- in the list, the detail
+    // panel and every dialog below.
+    [["شماره", "پس از ثبت پیش‌نویس تعیین می‌شود"], ["تاریخ", formatBusinessDate(headerData.invoiceDate)], ["فروشنده", headerData.vendorName], ["منبع", "ورود دستی"]].forEach(([label, value]) => { const item = element("div", "invoice-detail-grid__item"); item.append(element("dt", "", label), element("dd", "", value)); summary.append(item); });
     const lineList = element("div", "invoice-draft-lines");
     preview.lines.forEach((line, index) => { const card = element("article", "invoice-draft-line"); card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", formatTomanFromIrr(line.lineAmountIRR))); lineList.append(card); });
     const totals = element("dl", "invoice-totals");

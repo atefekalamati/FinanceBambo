@@ -1,15 +1,18 @@
 import { normalizeDecimalInput, validatePositiveDecimal } from "../../shared/validation/decimal-validation.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 
+/**
+ * The header a person fills in. No invoice number: the service allocates it per project
+ * when the invoice is written, and a number typed here would be discarded by the Backend
+ * -- which refuses the field outright rather than accepting and ignoring it.
+ */
 export function validateInvoiceHeader(values) {
   const normalized = {
-    invoiceNumber: String(values.invoiceNumber ?? "").trim(),
     invoiceDate: String(values.invoiceDate ?? ""),
     vendorName: String(values.vendorName ?? "").trim(),
     description: String(values.description ?? "").trim(),
   };
   const errors = {};
-  if (!normalized.invoiceNumber) errors.invoiceNumber = "شماره فاکتور الزامی است.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized.invoiceDate)) errors.invoiceDate = "تاریخ فاکتور را انتخاب کنید.";
   if (normalized.vendorName.length < 2) errors.vendorName = "نام فروشنده یا ارائه‌دهنده الزامی است.";
   return { valid: Object.keys(errors).length === 0, errors, values: normalized };

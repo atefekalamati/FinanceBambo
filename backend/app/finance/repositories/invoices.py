@@ -38,7 +38,9 @@ class PsycopgInvoiceRepository:
    # The number is an integer now, so it is cast rather than matched as text. Searching
    # "12" finds invoice 12 and also 120; that is what a substring search on a number
    # means, and it is what the vendor and description columns beside it already do.
-   clauses.append("(CAST(invoice_seq AS text) ILIKE %s OR vendor_name ILIKE %s OR COALESCE(description,'') ILIKE %s)");term=f"%{query}%";args.extend([term,term,term])
+   # Both numbers: the sequence every invoice has, and the string the historical ones were
+   # issued with. A reader holding a paper invoice searches for what is printed on it.
+   clauses.append("(CAST(invoice_seq AS text) ILIKE %s OR COALESCE(invoice_number,'') ILIKE %s OR vendor_name ILIKE %s OR COALESCE(description,'') ILIKE %s)");term=f"%{query}%";args.extend([term,term,term,term])
   if status:clauses.append("status=%s");args.append(status)
   if source:clauses.append("source=%s");args.append(source)
   # invoice_date is a date, not a timestamptz, so both ends compare directly and both
@@ -69,7 +71,7 @@ class PsycopgInvoiceRepository:
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT estimate_line_id,resource_id,quantity,unit,unit_price_snapshot_irr unit_price_irr,CASE WHEN quantity IS NULL AND unit IS NULL AND unit_price_snapshot_irr IS NULL THEN raw_amount_irr ELSE NULL END line_amount_irr,raw_amount_irr,allocated_discount_irr,allocated_tax_irr,allocated_shipping_irr,allocated_other_costs_irr,final_line_amount_irr,description FROM invoice_lines WHERE organization_id=%s AND project_id=%s AND invoice_id=%s ORDER BY created_at,id",(s.organization_id,s.project_id,r["id"]));lines=await c.fetchall()
   return self._invoice(r,lines)
  @staticmethod
- def _invoice(r,lines):return Invoice(r["id"],r["organization_id"],r["project_id"],r["invoice_seq"],r["invoice_date"],r["vendor_name"],r["description"],r["source"],r["status"],r["discount_irr"],r["tax_irr"],r["shipping_irr"],r["other_costs_irr"],r["final_amount_irr"],r["idempotency_key"],r["version"],r["submitted_by"],r["confirmed_by"],r["confirmed_at"],r["created_at"],lines,r["financial_effect_sign"],r["original_invoice_id"])
+ def _invoice(r,lines):return Invoice(r["id"],r["organization_id"],r["project_id"],r["invoice_seq"],r["invoice_date"],r["vendor_name"],r["description"],r["source"],r["status"],r["discount_irr"],r["tax_irr"],r["shipping_irr"],r["other_costs_irr"],r["final_amount_irr"],r["idempotency_key"],r["version"],r["submitted_by"],r["confirmed_by"],r["confirmed_at"],r["created_at"],lines,r["financial_effect_sign"],r["original_invoice_id"],r.get("invoice_number"))
  async def create(self,s,v,audit_id,duplicate_reason,action="invoice.created"):
   """Write one invoice, its lines and its audit event, and give it its number.
 
@@ -101,7 +103,7 @@ class PsycopgInvoiceRepository:
     await c.execute("UPDATE invoices SET description=%s,status=%s,version=version+1,updated_at=%s WHERE organization_id=%s AND project_id=%s AND id=%s AND status='draft' AND version=%s",(description,next_status,at,s.organization_id,s.project_id,v.id,v.version))
     if c.rowcount!=1:raise ValueError("stale invoice version")
     await c.execute("INSERT INTO finance_audit_events(id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,before_values,after_values,occurred_at) VALUES(%s,%s,%s,%s,'invoice.updated','invoices',%s,%s,%s,%s)",(audit_id,s.organization_id,s.project_id,s.actor_user_id,v.id,Jsonb({"description":v.description,"status":v.status,"version":v.version}),Jsonb({"description":description,"status":next_status,"version":v.version+1}),at))
-  return Invoice(v.id,v.organization_id,v.project_id,v.invoice_seq,v.invoice_date,v.vendor_name,description,v.source,next_status,v.discount_irr,v.tax_irr,v.shipping_irr,v.other_costs_irr,v.final_amount_irr,v.idempotency_key,v.version+1,v.submitted_by,v.confirmed_by,v.confirmed_at,v.created_at,v.lines)
+  return replace(v,description=description,status=next_status,version=v.version+1)
  async def confirmation_matches(self,s,invoice_id,key):
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT confirmation_idempotency_key FROM invoices WHERE organization_id=%s AND project_id=%s AND id=%s AND status='confirmed'",(s.organization_id,s.project_id,invoice_id));row=await c.fetchone()
   return row is not None and row["confirmation_idempotency_key"]==key
@@ -126,4 +128,4 @@ class PsycopgInvoiceRepository:
      if not repeated:await c.execute("INSERT INTO finance_audit_events(id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,before_values,after_values,occurred_at) VALUES(%s,%s,%s,%s,'invoice.confirmed','invoices',%s,%s,%s,%s)",(audit_id,s.organization_id,s.project_id,s.actor_user_id,v.id,Jsonb({"status":"awaitingConfirmation","version":v.version}),Jsonb({"status":"confirmed","version":v.version+1,"finalAmountIrr":str(v.final_amount_irr)}),at))
   except errors.UniqueViolation as error:raise ValueError("confirmation idempotency key conflict") from error
   if repeated:return await self.get(s,v.id)
-  return Invoice(v.id,v.organization_id,v.project_id,v.invoice_seq,v.invoice_date,v.vendor_name,v.description,v.source,"confirmed",v.discount_irr,v.tax_irr,v.shipping_irr,v.other_costs_irr,v.final_amount_irr,v.idempotency_key,v.version+1,v.submitted_by,s.actor_user_id,at,v.created_at,v.lines)
+  return replace(v,status="confirmed",version=v.version+1,confirmed_by=s.actor_user_id,confirmed_at=at)
