@@ -5,6 +5,8 @@ import { createApiInvoicesAdapter } from "../../src/adapters/api/invoices-api-ad
 import { createApiAttachmentsAdapter } from "../../src/adapters/api/attachments-api-adapter.js";
 import { createMockInvoicesAdapter } from "../../src/adapters/mock/invoices-adapter.js";
 import { validateInvoiceHeader } from "../../src/features/invoices/invoices-validation.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * The number belongs to the project, and the service allocates it inside the
@@ -117,4 +119,23 @@ test("the number is written for a reader, and padding is a floor rather than a c
   const first = await adapter.createDraft({ header, lines: lines(targets[0].targetId), adjustments, duplicateOverrideReason: null, idempotencyKey: "pad-1" });
   assert.equal(first.invoiceSeq, 1);
   assert.equal(first.invoiceNumber, "001", "a project's first invoice is 001");
+});
+
+/** Source with comments stripped: this is about what renders, not what is explained. */
+const wizardCode = readFileSync(fileURLToPath(new URL("../../src/features/invoices/invoices-page.js", import.meta.url)), "utf8")
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/^\s*\/\/.*$/gm, "");
+
+test("the form does not ask for a number, and does not stand a box in for one", () => {
+  // `createInvoiceWizard` is internal, and exporting it to reach from here would
+  // widen the module for a test. The rule is about what the wizard builds, so it
+  // is asserted on what the wizard says.
+  assert.doesNotMatch(wizardCode, /inputField\("شماره فاکتور"/,
+    "the wizard builds an invoice-number field again");
+  assert.doesNotMatch(wizardCode, /پس از ثبت، خودکار/,
+    "a placeholder is standing in for the number in a form or a preview");
+  // The confirm dialog is a different thing: by then the invoice exists and the
+  // number is a fact about it, so that one keeps its label.
+  assert.match(wizardCode, /\["شماره فاکتور", invoice\.invoiceNumber\]/,
+    "the confirmation stopped naming the number of the invoice being confirmed");
 });

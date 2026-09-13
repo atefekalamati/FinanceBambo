@@ -196,18 +196,10 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
 
   function renderHeaderStep() {
     const form = element("div", "invoice-wizard-grid");
-    // The number is the project's to allocate, not this form's to collect. It is
-    // shown because a reader looks for it, and it is not an input because there is
-    // nothing here to decide: the service hands out the next one for this project
-    // inside the transaction that writes the invoice, so no number exists until
-    // the draft is saved. A field that accepted one would be collecting a value
-    // the API now refuses.
-    const number = inputField("شماره فاکتور", "invoiceNumber");
-    number.input.value = "پس از ثبت، خودکار";
-    number.input.readOnly = true;
-    number.input.tabIndex = -1;
-    number.input.setAttribute("aria-readonly", "true");
-    number.input.classList.add("invoice-number-allocated");
+    // No number field. The project allocates it when the invoice is written, so
+    // there is nothing to collect and nothing yet to show: a box reading "assigned
+    // later" is a row of the form spent saying that this form has no say. The
+    // number appears where it is useful -- in the register, on the saved invoice.
     const vendor = inputField("فروشنده یا ارائه‌دهنده", "vendorName");
     vendor.input.value = headerData?.vendorName ?? (isCorrective ? originalInvoice.vendorName : "");
     const date = createPersianDatePicker({ id: "invoiceDate", label: "تاریخ فاکتور", value: headerData?.invoiceDate ?? getTehranTodayIso() });
@@ -218,7 +210,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     textarea.maxLength = 500;
     textarea.value = headerData?.description ?? "";
     description.append(textarea);
-    form.append(number.field, vendor.field, date.field, description);
+    form.append(vendor.field, date.field, description);
     form.append(actions({ nextLabel: "ادامه به خطوط", onNext: () => {
       const validation = validateInvoiceHeader({ invoiceDate: date.getValue(), vendorName: vendor.input.value, description: textarea.value });
       if (!validation.valid) { showMessage(Object.values(validation.errors).join(" "), true); return; }
@@ -293,7 +285,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
   function renderPreviewStep() {
     const section = element("div", "invoice-preview");
     const summary = element("dl", "invoice-detail-grid");
-    [["شماره", "پس از ثبت، خودکار"], ["تاریخ", formatBusinessDate(headerData.invoiceDate)], ["فروشنده", headerData.vendorName], ["منبع", "ورود دستی"]].forEach(([label, value]) => { const item = element("div", "invoice-detail-grid__item"); item.append(element("dt", "", label), element("dd", "", value)); summary.append(item); });
+    [["تاریخ", formatBusinessDate(headerData.invoiceDate)], ["فروشنده", headerData.vendorName], ["منبع", "ورود دستی"]].forEach(([label, value]) => { const item = element("div", "invoice-detail-grid__item"); item.append(element("dt", "", label), element("dd", "", value)); summary.append(item); });
     const lineList = element("div", "invoice-draft-lines");
     preview.lines.forEach((line, index) => { const card = element("article", "invoice-draft-line"); card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", formatTomanFromIrr(line.lineAmountIRR))); lineList.append(card); });
     const totals = element("dl", "invoice-totals");

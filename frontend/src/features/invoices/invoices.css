@@ -792,21 +792,3 @@
     font-size: 7pt;
   }
 }
-
-/* --- the allocated invoice number ----------------------------------------
-   Shown, not collected. It reads as a value the form is reporting rather than
-   one it is waiting for, which is why it loses the input's border and takes the
-   muted colour every other read-back on this page uses. `.app-input` is defined
-   in the prices sheet, so this names both classes to outweigh it rather than
-   reaching into another feature's rule. */
-.invoice-wizard .app-input.invoice-number-allocated {
-  border-color: transparent;
-  background: var(--color-btn-action);
-  color: var(--color-text-muted);
-  cursor: default;
-}
-
-.invoice-wizard .app-input.invoice-number-allocated:focus {
-  border-color: transparent;
-  outline: none;
-}
