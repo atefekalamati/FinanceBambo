@@ -53,7 +53,7 @@ const INVOICE_VIEWS = Object.freeze([
  * worth the trip through جزئیات, where what they will do is written out.
  */
 const NEXT_STEP = Object.freeze({
-  draft: Object.freeze({ label: "تأیید", act: "submit", name: (number) => `ارسال فاکتور ${number} برای تأیید` }),
+  draft: Object.freeze({ label: "تایید اولیه", act: "submit", name: (number) => `ارسال فاکتور ${number} برای تأیید` }),
   awaitingConfirmation: Object.freeze({ label: "ثبت نهایی", act: "confirm", name: (number) => `ثبت نهایی فاکتور ${number}` }),
 });
 
@@ -906,7 +906,7 @@ export function createInvoicesPage({ context, adapter }) {
     const section = element("section", "invoices-section");
     const heading = element("div", "invoice-list-heading");
     const title = element("div", "");
-    title.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
+    title.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `پس از ایجاد و بازبینی فاکتور ، تایید و سپس ثبت نهایی را بزنید`));
     heading.append(title);
     // The toolbar is built once and moved, never rebuilt: a repaint that
     // replaced it would take the search box out from under whoever is typing
