@@ -68,8 +68,8 @@ const INVOICE = Object.freeze({
   rawLinesTotalIRR: "0", discountIRR: "0", taxIRR: "0", shippingIRR: "0",
   otherCostsIRR: "0", finalAmountIRR: "1000",
 });
-const options = (canEdit, currentUserId = "u-1") => ({
-  canEdit, currentUserId, project: { name: "پ", code: "c" },
+const options = (canEdit) => ({
+  canEdit, project: { name: "پ", code: "c" },
   onSubmit() {}, onConfirm() {}, onVoid() {}, onCorrective() {},
 });
 
@@ -94,21 +94,46 @@ test("every decision an invoice is waiting on is shown, whoever is reading", () 
   }
 }));
 
-test("the two reasons a confirm button is off are told apart", () => withDocument(() => {
+/**
+ * Decided by the product owner on 2026-09-12, after the service had already
+ * decided it: who may confirm is «مدیریت فاکتورها» and nothing else.
+ *
+ * The page used to require that the confirmer be the submitter. It was the last
+ * place that rule survived -- the service dropped it from its guard and from the
+ * confirming UPDATE's WHERE clause -- so the button was refusing a request the
+ * API would have accepted. It also inverted what the queue is for: raising and
+ * approving are meant to be two people, and this made them one. The case it
+ * broke is the ordinary one -- a رییس سازمان approving what a کارشناس sent up.
+ */
+test("confirming is a permission, not a question of who filed the invoice", () => withDocument(() => {
   const status = "awaitingConfirmation";
-  // A rule about this invoice: the label carries it, and it is not a permission
-  // problem, so no notice appears.
-  const notSubmitter = renderDetail({ ...INVOICE, invoiceStatus: status }, options(true, "someone-else"));
-  assert.match(text(notSubmitter), /فقط ثبت‌کننده مجاز است/);
-  assert.doesNotMatch(text(notSubmitter), /نیازمند مجوز/);
-  assert.ok(buttons(notSubmitter).every((button) => button.disabled));
+  const submitted = { ...INVOICE, invoiceStatus: status, submittedBy: "u-1" };
 
-  // A fact about this account: the label stays the plain one, because naming
-  // the submitter rule here would send the reader after the wrong fix.
-  const noGrant = renderDetail({ ...INVOICE, invoiceStatus: status }, options(false, "someone-else"));
+  // Someone else's invoice, and the grant is held: the button works.
+  const reviewer = renderDetail(submitted, options(true));
+  assert.match(text(reviewer), /تأیید نهایی فاکتور/);
+  assert.doesNotMatch(text(reviewer), /فقط ثبت‌کننده مجاز است/,
+    "the submitter rule came back");
+  assert.ok(buttons(reviewer).every((button) => !button.disabled),
+    "an account holding the grant was refused an invoice it did not file");
+
+  // Without the grant it is off, and the notice says which grant -- the one
+  // refusal that is about this account rather than about this invoice.
+  const noGrant = renderDetail(submitted, options(false));
   assert.match(text(noGrant), /تأیید نهایی فاکتور/);
-  assert.doesNotMatch(text(noGrant), /فقط ثبت‌کننده مجاز است/);
+  assert.ok(buttons(noGrant).every((button) => button.disabled));
   assert.match(text(noGrant), /نیازمند مجوز «مدیریت فاکتورها» است/);
+}));
+
+test("the page reads nothing about who is signed in", () => withDocument(() => {
+  // The identity of the reader decided the confirm button until this change, and
+  // the option carrying it is gone. A render that still depended on it would now
+  // be comparing against undefined and silently disabling the button for
+  // everyone, so this asserts the dependency is actually gone rather than
+  // defaulted: no reader identity is passed here at all.
+  const node = renderDetail({ ...INVOICE, invoiceStatus: "awaitingConfirmation", submittedBy: "u-9" },
+    options(true));
+  assert.ok(buttons(node).every((button) => !button.disabled));
 }));
 
 
