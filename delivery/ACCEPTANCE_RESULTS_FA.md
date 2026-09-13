@@ -1,6 +1,6 @@
 # نتایج پذیرش — اندازه‌گیری‌شده، نه ادعاشده
 
-**کد:** commit `a1cb4918` · شاخهٔ `feature/fixed-cost-and-partial-sums`
+**کد:** commit `{{COMMIT}}` · شاخهٔ `feature/fixed-cost-and-partial-sums`
 **محیط:** کپی ایزوله روی ۱۲۷٫۰٫۰٫۱ · PostgreSQL ۱۶٫۱۵ · دیتابیس `bambo_candidate_release`
 **تاریخ:** ۱۴۰۵/۰۶/۲۲ (2026-09-13)
 

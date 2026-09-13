@@ -1,6 +1,6 @@
 # بستهٔ یکپارچه‌سازی — فهرست و قرارداد
 
-**کد مرجع:** commit `a1cb4918` · شاخهٔ `feature/fixed-cost-and-partial-sums`
+**کد مرجع:** commit `{{COMMIT}}` · شاخهٔ `feature/fixed-cost-and-partial-sums`
 
 ---
 
@@ -20,7 +20,7 @@
 | `lockfiles/requirements.txt` | وابستگی‌های backend |
 | `lockfiles/requirements-test.txt` | وابستگی‌های آزمون backend |
 | `lockfiles/package.json` · `lockfiles/package-lock.json` | وابستگی‌های frontend |
-| `source/bambo-finance-a1cb4918.tar.gz` | **آرشیو تمیز کد** در همان commit |
+| `source/bambo-finance-{{COMMIT}}.tar.gz` | **آرشیو تمیز کد** در همان commit |
 | `CHECKSUMS.sha256` | اثرانگشت SHA-256 هر فایل این بسته |
 
 **در این بسته نیست، عمداً:** هیچ رمز یا کلید، هیچ cache، هیچ پیکربندی محلی، هیچ دیتابیس
@@ -31,13 +31,13 @@
 
 ```bash
 git clone <مخزن> && cd <مخزن>
-git checkout a1cb4918          # همین commit، نه نوک شاخه
+git checkout {{COMMIT}}          # همین commit، نه نوک شاخه
 ```
 
-اگر دسترسی به مخزن ندارید، `source/bambo-finance-a1cb4918.tar.gz` همان محتوا را دارد:
+اگر دسترسی به مخزن ندارید، `source/bambo-finance-{{COMMIT}}.tar.gz` همان محتوا را دارد:
 
 ```bash
-tar -xzf source/bambo-finance-a1cb4918.tar.gz
+tar -xzf source/bambo-finance-{{COMMIT}}.tar.gz
 ```
 
 آرشیو از خود commit ساخته شده (`git archive`)، پس محتوایش دقیقاً همان چیزی است که آزمون‌ها
