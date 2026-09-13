@@ -268,6 +268,9 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     real Core tables instead of fixtures. The eleven finance services below are unchanged
     either way -- which is the point of the port boundary, and worth seeing in one function.
     """
+    # Explicitly development-only. Production composition never enables this flag and must
+    # provide a durable `finance_background_executor` before the async route returns 202.
+    application.state.allow_ephemeral_finance_tasks = True
     if core is None:
         auth = StaticAuthContextProvider(seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.ACTOR_ID)
         application.state.auth_context_provider = auth

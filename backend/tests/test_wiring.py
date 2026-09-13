@@ -12,6 +12,7 @@ from app.finance.adapters.ports import FileStorage
 from app.finance.repositories.ports import FinanceRepository
 from app.finance.schemas.base import ApiModel
 from app.finance.security.context import AuthContext
+from app.version import VERSION
 
 
 class ExampleDto(ApiModel):
@@ -133,6 +134,14 @@ class WiringTests(unittest.TestCase):
 
     def test_openapi_matches_runtime_pagination_filters_and_new_dto_fields(self):
         spec=create_app().openapi();paths=spec["paths"];schemas=spec["components"]["schemas"]
+        self.assertEqual(VERSION, spec["info"]["version"])
+        self.assertIn("opaque session", spec["info"]["description"])
+        attachment_content = paths["/api/projects/{projectId}/finance/files/{fileId}/content"]["get"]["responses"]["200"]["content"]
+        self.assertIn("image/png", attachment_content)
+        csv_content = paths["/api/projects/{projectId}/finance/report-snapshots/{reportId}/csv"]["get"]["responses"]["200"]["content"]
+        xlsx_content = paths["/api/projects/{projectId}/finance/report-snapshots/{reportId}/xlsx"]["get"]["responses"]["200"]["content"]
+        self.assertEqual({"text/csv"}, set(csv_content))
+        self.assertEqual({"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}, set(xlsx_content))
         file_params={item["name"]:item["schema"] for item in paths["/api/projects/{projectId}/finance/files"]["get"]["parameters"]}
         extraction_params={item["name"]:item["schema"] for item in paths["/api/projects/{projectId}/finance/extractions"]["get"]["parameters"]}
         invoice_params={item["name"]:item["schema"] for item in paths["/api/projects/{projectId}/finance/invoices"]["get"]["parameters"]}

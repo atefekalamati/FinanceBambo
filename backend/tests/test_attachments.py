@@ -12,7 +12,8 @@ from app.finance.domain.attachments import require_file_transition
 from app.finance.schemas.attachments import AttachmentResponse
 from app.finance.security.guards import FinanceScope
 from app.finance.services.attachments import (
-    AttachmentTooLarge, DuplicateAttachment, FinanceAttachmentService,
+    AttachmentStorageUnavailable, AttachmentTooLarge, DuplicateAttachment,
+    FinanceAttachmentService,
     UnsupportedAttachment, safe_filename, validate_file,
 )
 from app.finance.repositories.attachments import PsycopgAttachmentRepository
@@ -36,6 +37,18 @@ class FakeStorage:
     async def put(self, metadata, content):
         self.puts.append((metadata, content)); return f"private/{metadata.stored_name}"
     async def get(self, _organization_id, _project_id, _file_id): return PNG
+
+
+class FailingStorage(FakeStorage):
+    def __init__(self, *, get_error=False):
+        super().__init__(); self.get_error = get_error
+
+    async def put(self, metadata, content):
+        raise OSError("private storage path")
+
+    async def get(self, *_args):
+        if self.get_error == "missing": raise FileNotFoundError("private path")
+        raise OSError("private storage path")
 
 
 class FakeAttachmentRepo:
@@ -105,6 +118,30 @@ class AttachmentServiceTests(unittest.IsolatedAsyncioTestCase):
         await service.upload(scope, "invoice_image", "bill.png", "image/png", PNG)
         with self.assertRaises(DuplicateAttachment): await service.upload(scope, "invoice_image", "copy.png", "image/png", PNG)
         self.assertEqual(1, len(storage.puts))
+
+    async def test_storage_write_failure_is_503_and_creates_no_metadata(self):
+        repo = FakeAttachmentRepo()
+        service = FinanceAttachmentService(repo, FailingStorage(), id_factory=lambda: FILE_ID,
+                                           clock=lambda: NOW)
+        with self.assertRaises(AttachmentStorageUnavailable) as caught:
+            await service.upload(FinanceScope(ORG,"p1",ACTOR),"invoice_image",
+                                 "bill.png","image/png",PNG)
+        self.assertEqual(503, caught.exception.status)
+        self.assertIsNone(repo.value)
+        self.assertNotIn("private", str(caught.exception))
+
+    async def test_storage_read_failure_is_bounded_and_missing_content_is_not_500(self):
+        scope = FinanceScope(ORG,"p1",ACTOR)
+        repo = FakeAttachmentRepo()
+        writer = FinanceAttachmentService(repo, FakeStorage(), id_factory=lambda: FILE_ID,
+                                          clock=lambda: NOW)
+        await writer.upload(scope,"invoice_image","bill.png","image/png",PNG)
+        with self.assertRaises(AttachmentStorageUnavailable):
+            await FinanceAttachmentService(repo, FailingStorage()).content(scope,FILE_ID)
+        with self.assertRaises(Exception) as missing:
+            await FinanceAttachmentService(
+                repo, FailingStorage(get_error="missing")).content(scope,FILE_ID)
+        self.assertEqual(404, missing.exception.status)
 
     async def test_cross_scope_file_is_hidden_and_authorized_metadata_access_is_audited(self):
         repo, storage = FakeAttachmentRepo(), FakeStorage(); service = FinanceAttachmentService(repo, storage, id_factory=lambda: FILE_ID, clock=lambda: NOW)

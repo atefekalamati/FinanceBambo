@@ -51,6 +51,9 @@ router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
 
 _ERROR_EXAMPLE={"error":{"code":"VALIDATION_ERROR","message":"Request validation failed.","requestId":"req-example","details":[]}}
 FINANCE_ERROR_RESPONSES={status:{"description":description,"content":{"application/json":{"example":_ERROR_EXAMPLE}}} for status,description in ((403,"Forbidden"),(404,"Scoped record not found"),(409,"Conflict or stale version"),(413,"File too large"),(415,"Unsupported media type"),(422,"Validation error"),(503,"Provider or storage unavailable"))}
+ATTACHMENT_CONTENT_RESPONSES={**FINANCE_ERROR_RESPONSES,200:{"description":"Immutable attachment bytes","content":{media:{"schema":{"type":"string","format":"binary"}} for media in ("image/png","image/jpeg","image/webp","audio/mpeg","audio/mp4","audio/wav","audio/ogg")}}}
+CSV_DOWNLOAD_RESPONSES={200:{"description":"UTF-8 CSV with BOM","content":{"text/csv":{"schema":{"type":"string","format":"binary"}}}},**FINANCE_ERROR_RESPONSES}
+XLSX_DOWNLOAD_RESPONSES={200:{"description":"Excel workbook","content":{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":{"schema":{"type":"string","format":"binary"}}}},**FINANCE_ERROR_RESPONSES}
 
 
 def _host_ports(request: Request):
@@ -421,7 +424,7 @@ async def get_finance_file(projectId:str,fileId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
     return AttachmentResponse.from_domain(await request.app.state.finance_attachment_service.get(scope,fileId))
 
-@router.get("/files/{fileId}/content",responses=FINANCE_ERROR_RESPONSES)
+@router.get("/files/{fileId}/content",response_class=Response,responses=ATTACHMENT_CONTENT_RESPONSES)
 async def get_finance_file_content(projectId:str,fileId:UUID,request:Request):
     """The uploaded invoice image or recording itself, for invoice managers only.
 
@@ -455,8 +458,17 @@ async def start_extraction_async(projectId:str,fileId:UUID,payload:ExtractionSta
     returned here moves uploaded -> processing -> ready | failed on its own.
     """
     scope=await _resource_scope(projectId,request,"finance.manage_invoice")
+    executor=getattr(request.app.state,"finance_background_executor",None)
+    if executor is not None:
+        enqueue=executor.submit
+    elif getattr(request.app.state,"allow_ephemeral_finance_tasks",False):
+        # Development only. A production host must provide a durable executor; accepting
+        # work into a web-worker callback would lose it on restart after returning 202.
+        enqueue=lambda run:background.add_task(run)
+    else:
+        raise HTTPException(503,"durable extraction execution is not configured")
     attachment,existing=await request.app.state.finance_extraction_service.schedule(
-        scope,fileId,lambda run:background.add_task(run),payload.hints)
+        scope,fileId,enqueue,payload.hints)
     return {"fileId":str(fileId),"processingStatus":attachment.processing_status,
             "extractionId":None if existing is None else str(existing.id),
             "alreadyExtracted":existing is not None}
@@ -543,13 +555,13 @@ async def report_snapshot(projectId:str,reportId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance_report.view")
     return await request.app.state.finance_live_report_service.get_snapshot(scope,reportId)
 
-@router.get("/report-snapshots/{reportId}/csv")
+@router.get("/report-snapshots/{reportId}/csv",response_class=Response,responses=CSV_DOWNLOAD_RESPONSES)
 async def report_snapshot_csv(projectId:str,reportId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance_report.export")
     content=await request.app.state.finance_live_report_service.export(scope,reportId,"csv")
     return Response(content,media_type="text/csv; charset=utf-8",headers={"Content-Disposition":f'attachment; filename="finance-report-{reportId}.csv"'})
 
-@router.get("/report-snapshots/{reportId}/xlsx")
+@router.get("/report-snapshots/{reportId}/xlsx",response_class=Response,responses=XLSX_DOWNLOAD_RESPONSES)
 async def report_snapshot_xlsx(projectId:str,reportId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance_report.export")
     content=await request.app.state.finance_live_report_service.export(scope,reportId,"xlsx")
