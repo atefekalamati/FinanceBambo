@@ -89,11 +89,11 @@ test("overview and WBS share the snapshot the screen showed, and failed requests
       getWbsRollup: async (query) => { calls.push(query); return { available: false }; },
     },
   };
-  const data = await loadReportData({ selection: ["overview", "levelOne"], adapters });
+  const data = await loadReportData({ selection: ["overview", "levelOne"], adapters, today: "2026-09-08" });
   assert.equal(data.snapshot.progressSnapshotId, "new");
   assert.deepEqual(calls, [
-    { reportingDate: "2026-09-01", progressSnapshotId: "new" },
-    { reportingDate: "2026-09-01", progressSnapshotId: "new", level: 1 },
+    { reportingDate: "2026-09-08", progressSnapshotId: "new" },
+    { reportingDate: "2026-09-08", progressSnapshotId: "new", level: 1 },
   ]);
   adapters.progress.getSnapshots = async () => [];
   assert.equal(await loadReportData({ selection: ["levelOne"], adapters }), null);
@@ -110,9 +110,9 @@ test("overview and WBS share the snapshot the screen showed, and failed requests
     { status: "ready", reportingDate: "2026-10-22", progressSnapshotId: "unrelated" },
     { status: "ready", reportingDate: "2025-10-02", progressSnapshotId: "ours", isActiveSource: true },
   ];
-  const owned = await loadReportData({ selection: ["overview"], adapters });
+  const owned = await loadReportData({ selection: ["overview"], adapters, today: "2026-09-08" });
   assert.equal(owned.snapshot.progressSnapshotId, "ours");
-  assert.deepEqual(calls, [{ reportingDate: "2025-10-02", progressSnapshotId: "ours" }]);
+  assert.deepEqual(calls, [{ reportingDate: "2026-09-08", progressSnapshotId: "ours" }]);
 });
 
 test("WBS adapter preserves all quality and allocation details including null money", async () => {

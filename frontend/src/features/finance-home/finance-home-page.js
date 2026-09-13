@@ -4,6 +4,7 @@ import {
 } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { defaultSnapshot, reportableSnapshots } from "../../shared/progress/project-snapshot.js";
+import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import {
   formatBusinessDate,
   formatDisplayNumber,
@@ -917,16 +918,20 @@ export function createFinanceHomePage({
       } else {
         const latest = chosen;
         selectedSnapshotId = latest.progressSnapshotId;
+        // The snapshot says which progress facts to use; it is not the financial cutoff.
+        // A live board includes estimates and confirmed documents effective by today while
+        // keeping progress pinned to the selected (possibly older) source snapshot.
+        const reportingDate = getTehranTodayIso();
         // The trend is independent of the overview: a failure there must not
         // take the eight headline metrics down with it.
         const [report, monthly, rollup, priceData, itemData] = await Promise.all([
           reportsAdapter.getOverview({
-            reportingDate: latest.reportingDate,
+            reportingDate,
             progressSnapshotId: latest.progressSnapshotId,
           }),
           reportsAdapter
             .getMonthlyTrend({
-              reportingDate: latest.reportingDate,
+              reportingDate,
               progressSnapshotId: latest.progressSnapshotId,
             })
             .then(
@@ -943,7 +948,7 @@ export function createFinanceHomePage({
           // and its absence must not take the headline metrics down with it.
           reportsAdapter
             .getWbsRollup({
-              reportingDate: latest.reportingDate,
+              reportingDate,
               progressSnapshotId: latest.progressSnapshotId,
             })
             .then(

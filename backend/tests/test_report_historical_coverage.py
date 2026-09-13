@@ -4,7 +4,9 @@ from decimal import Decimal
 
 from app.finance.domain.report_coverage import require_estimate_coverage
 from app.finance.domain.reports import calculate_live_report
-from app.finance.domain.estimate_basis import effective_original_price, effective_original_quantity
+from app.finance.domain.estimate_basis import (effective_original_price,
+                                               effective_original_quantity,
+                                               estimate_line_effective_on_or_before)
 from app.finance.schemas.reports import TypeBreakdown
 
 
@@ -26,13 +28,24 @@ class HistoricalCoverageTests(unittest.TestCase):
         self.assertIs(require_estimate_coverage(report, True), report)
         self.assertEqual(report.metrics["initialEstimateIrr"], Decimal(0))
 
-    def test_historical_completions_are_cut_off_without_changing_current_read(self):
+    def test_historical_completions_use_the_sources_effective_date(self):
         for expression in (effective_original_price, effective_original_quantity):
-            self.assertNotIn("completed_at", expression())
+            self.assertNotIn("finance_mpp_source_versions", expression())
             sql = expression("l", "(SELECT as_of FROM report_cutoff)")
-            self.assertIn("c.completed_at AT TIME ZONE 'Asia/Tehran'", sql)
-            self.assertIn("::date <= (SELECT as_of FROM report_cutoff)", sql)
+            self.assertIn("finance_mpp_source_versions", sql)
+            self.assertIn("sv.reporting_date <= (SELECT as_of FROM report_cutoff)", sql)
+            self.assertNotIn("completed_at", sql)
             self.assertEqual(sql.count("("), sql.count(")"))
+
+    def test_late_recorded_line_is_eligible_only_with_dated_source_evidence(self):
+        sql = estimate_line_effective_on_or_before("l", "%s")
+        self.assertIn("l.created_at", sql)
+        self.assertIn("estimate_line_source_completions", sql)
+        self.assertIn("finance_mpp_source_versions", sql)
+        self.assertIn("sv.reporting_date IS NOT NULL", sql)
+        self.assertIn("sv.reporting_date <= %s", sql)
+        self.assertIn("sv.organization_id=c.organization_id", sql)
+        self.assertEqual(sql.count("("), sql.count(")"))
 
 
 class CoverageReachesTheResponseTests(unittest.TestCase):
