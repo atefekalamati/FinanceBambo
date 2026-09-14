@@ -3730,6 +3730,28 @@
             ],
             "title": "Financeresourceid"
           },
+          "financeResourceTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financeresourcetitle"
+          },
+          "financeResourceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financeresourceunit"
+          },
           "inactiveReason": {
             "anyOf": [
               {
@@ -3972,6 +3994,11 @@
               }
             ],
             "title": "Targetunit"
+          },
+          "unitAlignment": {
+            "default": "not_mapped",
+            "title": "Unitalignment",
+            "type": "string"
           },
           "validationReasons": {
             "items": {

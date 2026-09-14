@@ -26,6 +26,7 @@ from app.main import create_app
 ORG = UUID("11111111-1111-4111-8111-111111111111")
 ACTOR = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1")
 ITEM = UUID("22222222-2222-4222-8222-222222222222")
+RESOURCE = UUID("33333333-3333-4333-8333-333333333333")
 PROJECT = "sample_site_01"
 BASE = "/projects/%s/finance" % PROJECT
 
@@ -66,10 +67,20 @@ def observation(**changes):
 class FakeRepository:
     """Rows this test wrote, so the assertions are about the service and not a database."""
 
-    def __init__(self, rows=(), settings=(), factors=()):
+    def __init__(self, rows=(), settings=(), factors=(), labels=(), finance_units=None):
         self.rows = list(rows)
         self.settings = list(settings)
         self.factors = list(factors)
+        self._labels = list(labels)
+        self._finance_units = dict(finance_units or {})
+
+    async def labels(self, _scope, provider_item_id=None, active_only=True):
+        if provider_item_id is None:
+            return self._labels
+        return [row for row in self._labels if row["provider_item_id"] == provider_item_id]
+
+    async def mapped_resource_units(self, _scope):
+        return self._finance_units
 
     async def latest_observations(self, _scope, *, category=None, only_active=True):
         rows = self.rows
@@ -234,3 +245,150 @@ class ContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def label(**changes):
+    """A label exactly as `labels()` returns one."""
+    row = {
+        "provider_item_id": ITEM,
+        "version": 1,
+        "label": "میلگرد",
+        "display_name": None,
+        "category": "rebar",
+        "product_type": None,
+        "source_unit": None,
+        "source_basis": None,
+        "target_unit": None,
+        "finance_resource_id": None,
+        "mapping_approved": False,
+        "active": True,
+        "created_by": ACTOR,
+        "created_at": datetime(2026, 9, 14, tzinfo=timezone.utc),
+    }
+    row.update(changes)
+    return row
+
+
+class LabelAffectsResolutionTests(unittest.IsolatedAsyncioTestCase):
+    """A label is configuration, and configuration is what makes a price usable."""
+
+    class Scope:
+        organization_id = ORG
+        project_id = PROJECT
+        actor_user_id = ACTOR
+
+    async def current(self, **kwargs):
+        return await service(**kwargs).current(self.Scope())
+
+    async def test_a_label_supplies_the_unit_the_sheet_never_stated(self):
+        """The pipe case: a price, no basis, and a person who says it is per metre."""
+        items, _ = await self.current(
+            rows=[observation(source_unit=None, category="pipe")],
+            labels=[label(source_unit="m", target_unit="m", category="pipe")])
+        row = items[0]
+        self.assertEqual("resolved", row["resolution_status"],
+                         "without the label this row has no basis at all")
+        self.assertEqual(Decimal("955000"), row["current_price_irr"])
+        self.assertEqual("m", row["target_unit"])
+        self.assertEqual("میلگرد", row["label"])
+
+    async def test_a_label_never_rewrites_what_the_sheet_said(self):
+        items, _ = await self.current(
+            rows=[observation()],
+            labels=[label(source_unit="m", target_unit="m")])
+        row = items[0]
+        self.assertEqual("کیلو", row["source_unit"],
+                         "the sheet's own spelling still travels to the reader")
+
+    async def test_an_unapproved_mapping_withholds_the_price(self):
+        items, _ = await self.current(
+            rows=[observation()],
+            labels=[label(finance_resource_id=RESOURCE, mapping_approved=False)])
+        row = items[0]
+        self.assertEqual("unresolved_mapping", row["resolution_status"])
+        self.assertIsNone(row["current_price_irr"])
+        self.assertFalse(row["mapping_approved"])
+
+    async def test_an_approved_mapping_lets_it_through(self):
+        items, _ = await self.current(
+            rows=[observation()],
+            labels=[label(finance_resource_id=RESOURCE, mapping_approved=True)])
+        self.assertEqual("resolved", items[0]["resolution_status"])
+        self.assertTrue(items[0]["mapping_approved"])
+
+    async def test_an_inactive_label_takes_the_listing_out_of_resolution(self):
+        items, _ = await self.current(rows=[observation()], labels=[label(active=False)])
+        self.assertEqual("inactive", items[0]["resolution_status"])
+        self.assertIsNone(items[0]["current_price_irr"])
+
+
+class MspAlignmentTests(unittest.IsolatedAsyncioTestCase):
+    """Whether the price is in the unit the schedule measures the resource in."""
+
+    class Scope:
+        organization_id = ORG
+        project_id = PROJECT
+        actor_user_id = ACTOR
+
+    async def current(self, **kwargs):
+        return await service(**kwargs).current(self.Scope())
+
+    def finance_unit(self, base_unit):
+        return {ITEM: {"provider_item_id": ITEM, "finance_resource_id": RESOURCE,
+                       "base_unit": base_unit, "dimension": "mass",
+                       "title": "میلگرد آجدار"}}
+
+    async def test_without_a_mapping_there_is_nothing_to_align_with(self):
+        items, _ = await self.current(rows=[observation()])
+        self.assertEqual("not_mapped", items[0]["unit_alignment"])
+        self.assertIsNone(items[0]["finance_resource_unit"])
+
+    async def test_the_same_unit_on_both_sides_is_aligned(self):
+        items, _ = await self.current(
+            rows=[observation()],
+            labels=[label(finance_resource_id=RESOURCE, mapping_approved=True)],
+            finance_units=self.finance_unit("kg"))
+        row = items[0]
+        self.assertEqual("aligned", row["unit_alignment"])
+        self.assertEqual("kg", row["finance_resource_unit"])
+        self.assertEqual("میلگرد آجدار", row["finance_resource_title"])
+
+    async def test_a_bridgeable_difference_is_convertible_and_both_units_are_reported(self):
+        items, _ = await self.current(
+            rows=[observation()],
+            labels=[label(finance_resource_id=RESOURCE, mapping_approved=True)],
+            finance_units=self.finance_unit("ton"))
+        row = items[0]
+        self.assertEqual("convertible", row["unit_alignment"])
+        self.assertEqual("ton", row["finance_resource_unit"],
+                         "the reader sees both units, not a verdict with the evidence hidden")
+
+    async def test_a_difference_only_a_measurement_bridges_says_so(self):
+        items, _ = await self.current(
+            rows=[observation()],
+            labels=[label(finance_resource_id=RESOURCE, mapping_approved=True)],
+            finance_units=self.finance_unit("each"))
+        self.assertEqual("needs_factor", items[0]["unit_alignment"])
+
+    async def test_a_finance_resource_with_no_unit_of_its_own_says_that(self):
+        items, _ = await self.current(
+            rows=[observation()],
+            labels=[label(finance_resource_id=RESOURCE, mapping_approved=True)],
+            finance_units=self.finance_unit(None))
+        self.assertEqual("missing_finance_unit", items[0]["unit_alignment"])
+
+    async def test_an_unusable_price_has_nothing_to_align(self):
+        items, _ = await self.current(
+            rows=[observation(normalized_price_irr=None)],
+            labels=[label(finance_resource_id=RESOURCE, mapping_approved=True)],
+            finance_units=self.finance_unit("kg"))
+        self.assertEqual("unresolved", items[0]["unit_alignment"])
+
+    async def test_alignment_never_converts_or_edits_the_msp_unit(self):
+        """A verdict, not a correction: the reported price is untouched by alignment."""
+        items, _ = await self.current(
+            rows=[observation()],
+            labels=[label(finance_resource_id=RESOURCE, mapping_approved=True)],
+            finance_units=self.finance_unit("ton"))
+        self.assertEqual(Decimal("955000"), items[0]["current_price_irr"],
+                         "the price is still per kilogram; alignment only reports")

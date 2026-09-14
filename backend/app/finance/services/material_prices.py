@@ -14,6 +14,7 @@ not be told that everything in it is stale.
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from ..domain.unit_conversion import can_convert
 from .material_price_resolution import Resolution, canonical_unit, resolve
 
 #: How old the newest workflow date may be before a price is labelled stale. Seven days is
@@ -120,6 +121,11 @@ class MaterialPriceService:
         labels = {}
         if hasattr(self.repository, "labels"):
             labels = {row["provider_item_id"]: row for row in await self.repository.labels(scope)}
+        # The Finance unit of every approved-mapped resource, so a row can say whether the
+        # unit it is priced in is the unit the schedule measures it in.
+        finance_units = {}
+        if hasattr(self.repository, "mapped_resource_units"):
+            finance_units = await self.repository.mapped_resource_units(scope)
 
         resolved = []
         for row in observations:
@@ -147,7 +153,8 @@ class MaterialPriceService:
                 mapping_required=mapping_required,
                 mapping_approved=bool((label or {}).get("mapping_approved")),
                 active=row.get("active", True) and (label or {}).get("active", True))
-            resolved.append(self._shape(row, outcome, display_unit, label))
+            resolved.append(self._shape(row, outcome, display_unit, label,
+                                        finance_units.get(row["provider_item_id"])))
 
         total = len(resolved)
         start = (page - 1) * page_size
@@ -172,7 +179,7 @@ class MaterialPriceService:
 
 
     @staticmethod
-    def _shape(row, outcome, display_unit, label=None):
+    def _shape(row, outcome, display_unit, label=None, finance_resource=None):
         """One row of the API's answer. Every provenance field travels with the price."""
         return {
             "provider_item_id": row["provider_item_id"],
@@ -218,6 +225,12 @@ class MaterialPriceService:
             "labelled_by": (label or {}).get("created_by"),
             "labelled_at": (label or {}).get("created_at"),
             "label_version": (label or {}).get("version"),
+            # The MSP/Finance side of the comparison. Reported whether or not it agrees,
+            # because a reader deciding whether to trust a price needs to see both units,
+            # not a verdict with the evidence hidden.
+            "finance_resource_title": (finance_resource or {}).get("title"),
+            "finance_resource_unit": (finance_resource or {}).get("base_unit"),
+            "unit_alignment": _alignment(outcome, finance_resource),
         }
 
 
@@ -227,3 +240,32 @@ def _clean(value):
         return None
     text = str(value).strip()
     return text or None
+
+
+def _alignment(outcome, finance_resource):
+    """Whether the price is in the unit the Finance resource is measured in.
+
+        not_mapped         no approved mapping, so there is nothing to align with
+        missing_finance_unit   the resource itself states no unit
+        aligned            the price is already in the resource's unit
+        convertible        a different unit, but one the registry can bridge
+        needs_factor       a different unit that only a measurement of this product bridges
+        unresolved         the price never resolved, so there is nothing to align
+
+    A verdict, never a correction. Nothing here converts anything or edits an MSP unit: the
+    imported quantity and its unit are what the schedule said, and this only reports whether
+    the market price can be expressed the same way.
+    """
+    if finance_resource is None:
+        return "not_mapped"
+    finance_unit = canonical_unit(finance_resource.get("base_unit"))
+    if finance_unit is None:
+        return "missing_finance_unit"
+    if not outcome.usable:
+        return "unresolved"
+    priced_in = outcome.target_unit or outcome.source_unit
+    if priced_in is None:
+        return "unresolved"
+    if priced_in == finance_unit:
+        return "aligned"
+    return "convertible" if can_convert(priced_in, finance_unit) else "needs_factor"

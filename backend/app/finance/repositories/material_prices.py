@@ -365,6 +365,35 @@ class PsycopgMaterialPriceRepository:
                 (s.organization_id, s.project_id, provider_item_id))
             return await c.fetchall()
 
+
+    async def mapped_resource_units(self, s):
+        """`{provider_item_id: (resource_id, base_unit, dimension, title)}` for approved maps.
+
+        The Finance resource's unit is read from `finance_resources.base_unit`, which is
+        where an MSP/MPP import puts it and which `services/resources.py` already validates
+        against the same registry. So comparing it with a chosen material unit is comparing
+        two values from one vocabulary -- which is the whole reason the vocabulary had to be
+        one.
+
+        Only APPROVED mappings are joined. An unapproved one is somebody's suggestion, and a
+        suggestion must not decide which unit a price is measured in.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """SELECT DISTINCT ON (l.provider_item_id)
+                          l.provider_item_id, l.finance_resource_id,
+                          r.base_unit, r.dimension, r.title
+                     FROM provider_item_labels l
+                     JOIN finance_resources r
+                       ON r.organization_id = l.organization_id AND r.project_id = l.project_id
+                      AND r.id = l.finance_resource_id
+                    WHERE l.organization_id=%s AND l.project_id=%s
+                      AND l.superseded_at IS NULL AND l.mapping_approved
+                      AND r.deleted_at IS NULL
+                    ORDER BY l.provider_item_id, l.version DESC""",
+                (s.organization_id, s.project_id))
+            return {row["provider_item_id"]: row for row in await c.fetchall()}
+
     # ------------------------------------------------------- labels a person wrote
 
     async def labels(self, s, *, provider_item_id=None, active_only=True):

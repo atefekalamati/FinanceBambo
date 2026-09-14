@@ -116,6 +116,14 @@ class MaterialPriceResponse(ApiModel):
     labelled_at: datetime | None = None
     label_version: int | None = None
 
+    #: The Finance/MSP side. Null until an approved mapping exists, and reported even when
+    #: the two units disagree: a reader judging a price needs both units, not a verdict with
+    #: the evidence hidden.
+    finance_resource_title: str | None = None
+    finance_resource_unit: str | None = None
+    #: not_mapped | missing_finance_unit | aligned | convertible | needs_factor | unresolved
+    unit_alignment: str = "not_mapped"
+
 
 class MaterialPriceListResponse(ApiModel):
     items: list[MaterialPriceResponse]
