@@ -19,3 +19,21 @@ httpx==0.28.1
 # without this every test that imports a repository fails to collect with
 # "no pq wrapper available" -- which is what a fresh virtual environment does today.
 psycopg[binary]==3.3.4
+
+# The MPXJ reader test parses the checked-in reference schedule on a real JVM, and that
+# file says in as many words that a machine without mpxj FAILS rather than skips: a suite
+# that quietly stops parsing real .mpp files has lost the coverage it exists for. So the
+# parser belongs here, where CI installs it, and not only in a developer's private
+# virtual environment -- without it those eleven tests ERROR and the backend job is red,
+# which is what it had been on every run.
+#
+# jpype1 is pinned separately because mpxj imports it without declaring it as a
+# dependency: installing mpxj alone gets as far as the first parse and then raises
+# ModuleNotFoundError.
+#
+# A full JRE is the other half of this and comes from the environment, read as
+# MPP_JAVA_HOME or JAVA_HOME; the workflow installs Temurin 17. A jlink'd minimal runtime
+# is not enough -- MPXJ fails inside its charset initialiser. Verified together:
+# mpxj 16.7.0, jpype1 1.7.1, Temurin 17.0.20.1+1, CPython 3.12.
+mpxj==16.7.0
+jpype1==1.7.1
