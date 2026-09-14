@@ -508,6 +508,35 @@ class ProgressSnapshotApiTests(unittest.TestCase):
         self.assertIsNone(ProgressSnapshotResponse.model_fields["version"].default)
         self.assertFalse(ProgressSnapshotResponse.model_fields["version"].is_required())
 
+    def test_an_uncomputed_active_source_flag_says_nothing_rather_than_no(self):
+        """The three ranking fields must be unknown together, or they contradict.
+
+        `version` and `is_latest` were already None by default because the feed's header
+        comes from the provider and cannot know them. `is_active_source` defaulted to
+        False, so one snapshot came back active from the listing and NOT active from its
+        own feed -- seen for real on `test_progress.mpp`, which IS this project's active
+        schedule. False is a claim, and an endpoint that did not compute the answer must
+        not make it.
+        """
+        for name in ("version", "is_latest", "is_active_source"):
+            with self.subTest(field=name):
+                self.assertIsNone(ProgressSnapshotResponse.model_fields[name].default)
+
+    def test_the_listing_still_states_the_flag_outright(self):
+        # None is only for "nobody computed this". Where the question IS answered both
+        # answers stay explicit -- a project with no active version says False, not null,
+        # because "no schedule is active" is a fact and not an absence of one.
+        # Two snapshots from two DIFFERENT files: `ref` gives every row the same file
+        # version, and marking that one would make both true -- correctly, but it would
+        # not show the flag discriminating.
+        rows = [dict(ref(SNAP_1, 1, 1), source_file_version_id=UUID(int=1)),
+                dict(ref(SNAP_2, 2, 2), source_file_version_id=UUID(int=2))]
+        self.assertEqual([False, False],
+                         [row["is_active_source"] for row in mark_active_source(rows, None)])
+        self.assertEqual([False, True],
+                         [row["is_active_source"]
+                          for row in mark_active_source(rows, UUID(int=2))])
+
 
 if __name__ == "__main__":
     unittest.main()

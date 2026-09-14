@@ -97,6 +97,11 @@ class Cursor:
     async def fetchone(self):
         return self._rows[0] if self._rows else None
 
+    async def fetchall(self):
+        # The periodic tick's project lookup uses this. An empty list is the honest answer
+        # for a file whose stem names no project, which is exactly the case under test.
+        return list(self._rows)
+
 
 class Connection:
     def __init__(self, existing=(), fail_on=None, actual_rows=2, quantity_rows=0):
@@ -397,6 +402,101 @@ class ConcurrentFirstImportTests(SyncTests):
         statements = self.statements_of(connection)
         self.assertFalse([s for s in statements if "advisory_unlock" in s])
         self.assertFalse([s for s in statements if "pg_advisory_lock(" in s])
+
+
+class WhichFileBelongsToWhichProjectTests(unittest.TestCase):
+    """The periodic tick's selection rule, stated so it cannot quietly become a guess.
+
+    THE RULE: a staged file belongs to a project when its stem IS the project id, and that
+    project exists in `finance_project_settings`. Nothing else. No sorting, no newest-wins,
+    no prefix or fuzzy match, and no "there is only one file, so it must be the one".
+
+    That matters most when an operator stages a SECOND file. `terrace-v2.mpp`,
+    `terrace (1).mpp` and `terrace_final.mpp` all look like they belong to `terrace` to a
+    human, and to none of them does this rule apply -- so the version already imported stays
+    active and no ambiguity is ever settled by picking. What changed is that such a file is
+    now REPORTED as naming no project instead of vanishing, because an operator who staged a
+    file and saw nothing happen could not tell that from an importer that was not running.
+
+    Changing which file a project reads is therefore an explicit act: the `fileName` body
+    parameter on `POST /finance/mpp-sync`, which goes through the same path gate. The next
+    step for a host that needs that standing rather than per-request is a project-level
+    active-file setting -- one row naming one file -- which this rule leaves room for and
+    which no filename convention can substitute for.
+    """
+
+    def setUp(self):
+        self.root = tempfile.TemporaryDirectory()
+        self.parsed = ParsedFile([task(1)], [{"uid": 94, "name": "آرماتور"}],
+                                 [assignment(10, 1)])
+
+    def tearDown(self):
+        self.root.cleanup()
+
+    def stage(self, *names):
+        for name in names:
+            (Path(self.root.name) / name).write_bytes(OLE2)
+
+    def tick(self, connection=None):
+        connection = connection or Connection()
+
+        async def factory():
+            return connection
+        service = FinanceMppSyncService(factory, Reader(self.parsed),
+                                        import_root=self.root.name,
+                                        id_factory=lambda: VERSION)
+        return run(service.periodic_tick()), connection
+
+    def asked_for(self, connection):
+        """Every project id the tick actually looked up."""
+        return [p[0] for text, p in
+                zip([" ".join(str(s).split()) for s in connection.statements],
+                    connection.parameters)
+                if "FROM finance_project_settings" in text]
+
+    def test_each_file_is_looked_up_as_itself_and_never_as_another_project(self):
+        """Every stem is asked about under its OWN name.
+
+        `terrace-v2.mpp` does cause a lookup -- for a project literally called
+        `terrace-v2`, which does not exist, so the file is ignored. That is the rule
+        working. What must never happen is the stem being mapped onto a DIFFERENT project
+        id: `terrace-v2` resolving to `terrace` is how a stale or foreign schedule would
+        overwrite a live one, and no amount of it looking obvious to a human makes it a
+        fact the file states.
+        """
+        self.stage("terrace.mpp", "terrace-v2.mpp", "terrace (1).mpp")
+        _outcomes, connection = self.tick()
+        self.assertEqual({"terrace", "terrace-v2", "terrace (1)"},
+                         set(self.asked_for(connection)),
+                         "each stem is asked about as itself, and nothing else is invented")
+
+    def test_a_versioned_sibling_is_reported_rather_than_silently_skipped(self):
+        self.stage("terrace-v2.mpp")
+        outcomes, _ = self.tick()
+        ignored = [o for o in outcomes if o["status"] == "ignored"]
+        self.assertEqual(["terrace-v2.mpp"], [o["fileName"] for o in ignored])
+        self.assertEqual("FINANCE_MPP_FILE_NAMES_NO_PROJECT", ignored[0]["code"])
+        self.assertIsNone(ignored[0]["projectId"],
+                          "naming a project for it would be the guess this rule prevents")
+
+    def test_nothing_is_written_for_a_file_that_names_no_project(self):
+        self.stage("terrace-v2.mpp", "test_progress.mpp")
+        outcomes, connection = self.tick()
+        self.assertEqual([], [o for o in outcomes if o["status"] != "ignored"])
+        statements = [" ".join(str(s).split()) for s in connection.statements]
+        self.assertFalse([s for s in statements if s.startswith("INSERT INTO")],
+                         "a file naming no project must not write anything")
+
+    def test_the_staged_test_file_is_never_picked_up_by_the_tick(self):
+        # `test_progress.mpp` is imported by naming it explicitly and never by being
+        # present -- which is what keeps it from becoming a permanent special case.
+        self.stage("test_progress.mpp")
+        outcomes, _ = self.tick()
+        self.assertEqual(["ignored"], [o["status"] for o in outcomes])
+
+    def test_an_empty_root_reports_nothing_at_all(self):
+        outcomes, _ = self.tick()
+        self.assertEqual([], outcomes)
 
 
 if __name__ == "__main__":

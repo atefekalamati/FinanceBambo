@@ -5252,9 +5252,15 @@
             "title": "Importedbyname"
           },
           "isActiveSource": {
-            "default": false,
-            "title": "Isactivesource",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isactivesource"
           },
           "isLatest": {
             "anyOf": [
