@@ -567,3 +567,103 @@ html[data-theme="light"] .price-form select {
     break-inside: avoid;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   قیمت روز بازار — the material sheet's observations
+   ═══════════════════════════════════════════════════════════════════════════
+
+   A visually separate block from «قیمت روز اقلام» above it, and separate on
+   purpose: those are Finance prices somebody decided, these are what a supplier
+   was quoting on a day. Sharing a look would invite sharing a meaning.
+
+   The status badge is the load-bearing part. A price this module cannot use is
+   shown as an em dash and a sentence, never as a zero, so the badge has to read
+   clearly at every width rather than being decoration. */
+
+.material-prices__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-block: var(--space-md);
+}
+
+.app-chip {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-panel);
+  color: var(--color-text-secondary);
+  padding-block: 0.25rem;
+  padding-inline: var(--space-md);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.app-chip:hover {
+  border-color: var(--color-accent);
+}
+
+.app-chip--active {
+  background: var(--color-nav-active-bg);
+  color: var(--color-nav-active-fg);
+  border-color: var(--color-accent);
+}
+
+.material-prices__table .material-price__name {
+  /* The longest column by far: product names run to forty characters and wrapping
+     them is better than a table that scrolls for one cell. */
+  max-inline-size: 22rem;
+  white-space: normal;
+}
+
+.material-price__badge {
+  display: inline-block;
+  border-radius: var(--radius-sm);
+  padding-block: 0.125rem;
+  padding-inline: var(--space-sm);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.material-price__status--ok {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-text-primary);
+}
+
+.material-price__status--stale {
+  /* Stale is a warning, not an error: the price is still shown and still usable,
+     and the colour must not say otherwise. */
+  background: color-mix(in srgb, var(--color-btn-action) 16%, transparent);
+  color: var(--color-text-primary);
+}
+
+.material-price__status--missing {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  color: var(--color-text-primary);
+}
+
+/* 64rem, the repository's laptop step. 60rem was a number I chose rather than one
+   this module uses, and the responsive guard caught it -- five breakpoints for the
+   whole product is what stops a page behaving differently from its neighbour. */
+@media (max-width: 64rem) {
+  .material-prices__table .material-price__name {
+    max-inline-size: 12rem;
+  }
+
+  .material-price__badge {
+    /* At this width the sentence is the only thing that explains a missing price,
+       so it wraps rather than being clipped. */
+    white-space: normal;
+  }
+}
+
+@media print {
+  .material-prices__filters {
+    display: none;
+  }
+
+  .material-price__badge {
+    background: none;
+    border: 1px solid var(--color-border);
+  }
+}
