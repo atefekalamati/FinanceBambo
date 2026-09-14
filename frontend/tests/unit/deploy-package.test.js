@@ -36,10 +36,10 @@ test("a package short of a file is not written at all", () => {
   assert.match(script, /process\.exit\(1\)/);
 });
 
-test("both mount pages ship, and only one of them is for the host", () => {
-  // index.html carries data-finance-runtime="standalone", which is the one way
-  // demo data can appear on the real site. host.html is what the host copies.
-  assert.match(script, /const HTML = \["host\.html", "index\.html"\]/);
+test("the host gets the page it mounts, and not the one that enables demo data", () => {
+  // index.html carries data-finance-runtime="standalone", which is the one way demo data
+  // can appear at all. It is a development preview and no longer ships by default.
+  assert.match(script, /WITH_PREVIEW \? \["host\.html", "index\.html"\] : \["host\.html"\]/);
   const bodyTag = (html) => html.match(/<body[^>]*>/)[0];
   assert.match(bodyTag(read("../../index.html")), /data-finance-runtime="standalone"/);
   // The tag, not the file: host.html explains the absence in a comment, and a
@@ -48,13 +48,18 @@ test("both mount pages ship, and only one of them is for the host", () => {
     "host.html must not carry the marker that switches on demo data");
 });
 
-test("the mock adapters ship, because the imports that reach them are static", () => {
-  // Removing the folder does not trim the package, it stops the module loading:
-  // a 404 on a static import is a white page with nothing in the console. The
-  // script says so where someone would go to delete them.
+test("the demo adapters are not in the package the host is served", () => {
+  // They used to be, and the note in the packager said so: 117 KB the host never executed,
+  // kept because a static import cannot be dropped without breaking the module. The
+  // imports are dynamic now, reached only inside the standalone branch, so the folder is
+  // outside the static graph the host build walks -- and the note says that instead.
   const bootstrap = read("../../src/app/bootstrap.js");
   const staticMockImports = (bootstrap.match(/^import .*adapters\/mock/gm) ?? []).length;
-  assert.ok(staticMockImports > 0, "the mock imports became dynamic; the package note is now wrong");
-  assert.match(script, /WHAT IS DELIBERATELY LEFT IN/);
-  assert.match(script, /src\/adapters\/mock/);
+  assert.equal(staticMockImports, 0,
+    "a static import puts the demo adapters back in the host's bundle");
+  assert.ok((bootstrap.match(/import\(\s*"\.\.\/adapters\/mock/g) ?? []).length >= 8,
+    "the preview still needs its adapters, reached dynamically");
+  assert.match(script, /WHAT IS NO LONGER IN IT/);
+  assert.doesNotMatch(script, /WHAT IS DELIBERATELY LEFT IN/,
+    "the note must describe what the packager does now");
 });
