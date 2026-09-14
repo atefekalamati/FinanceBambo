@@ -349,5 +349,72 @@ class MirrorClaimsTests(unittest.TestCase):
                 self.assertIn(role_code, known, "a demo person holds an undefined role")
 
 
+class RuntimeImportIsolationTests(unittest.TestCase):
+    """The runtime package cannot reach a demo, seed or fixture data provider.
+
+    `app/` is what a host mounts. `devhost/` and `scripts/` are not: between them they hold
+    every fixture writer in this repository -- `devhost.seed`, `devhost.synthetic_progress`,
+    `scripts.demo`, `scripts.test_only.seed_terrace_finance`. The rule is that the first
+    cannot reach the second, and it holds today by nothing stronger than nobody having
+    written the import. That is what this states.
+
+    Asked twice, because the two answers fail differently. The static read catches an import
+    that exists but is never executed -- the kind a packager still follows. The subprocess
+    catches one reached at call time, through `importlib` or inside a function, which no
+    amount of reading the import lines would find.
+    """
+
+    #: Not "modules whose names look like fixtures": modules that write fixture rows. A test
+    #: that matched on the word would pass by renaming the file.
+    FIXTURE_PACKAGES = ("devhost", "scripts")
+
+    @staticmethod
+    def _import_roots(path):
+        roots = set()
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                roots.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                roots.add(node.module.split(".")[0])
+        return roots
+
+    def test_no_module_under_app_imports_a_fixture_package(self):
+        runtime = sorted((BACKEND_ROOT / "app").rglob("*.py"))
+        self.assertGreater(len(runtime), 40, "the runtime package was not found to read")
+        for path in runtime:
+            with self.subTest(module=str(path.relative_to(BACKEND_ROOT))):
+                reached = self._import_roots(path) & set(self.FIXTURE_PACKAGES)
+                self.assertEqual(set(), reached,
+                    "%s imports %s; the runtime must not be able to reach a fixture writer"
+                    % (path.relative_to(BACKEND_ROOT), ", ".join(sorted(reached))))
+
+    def test_building_the_real_application_loads_no_fixture_package(self):
+        """The dynamic half: importing and building the app must not pull one in.
+
+        A subprocess, because this suite imports `devhost` in other files, so asking
+        `sys.modules` in-process would answer about the test run rather than about the app.
+        """
+        import subprocess
+        # chr(10), not an escape: this text is source code for another interpreter, and a
+        # literal backslash-n in it is a syntax error rather than a new line.
+        program = chr(10).join((
+            "import sys; sys.path.insert(0, %r)" % str(BACKEND_ROOT),
+            "from app.main import create_app",
+            "create_app()",
+            "bad = sorted(m for m in sys.modules if m.split('.')[0] in %r)"
+            % (self.FIXTURE_PACKAGES,),
+            "print('LOADED:' + ','.join(bad))",
+        ))
+        finished = subprocess.run([sys.executable, "-c", program], capture_output=True,
+                                  text=True, cwd=str(BACKEND_ROOT))
+        self.assertEqual(0, finished.returncode,
+                         "building the application failed:" + chr(10) + finished.stderr)
+        line = [x for x in finished.stdout.splitlines() if x.startswith("LOADED:")]
+        self.assertTrue(line, "the probe printed nothing: " + finished.stdout)
+        self.assertEqual("LOADED:", line[-1],
+                         "creating the real application loaded a fixture package: " + line[-1])
+
+
 if __name__ == "__main__":
     unittest.main()

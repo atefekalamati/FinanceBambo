@@ -149,8 +149,21 @@ class SeedGuardTests(unittest.TestCase):
 
     def setUp(self):
         self.original = dict(os.environ)
+        # Seeding now also depends on WHICH database it would be written to, so the two
+        # settings that name one are cleared here. Without this the class would pass or
+        # fail according to what the developer happened to have exported, and the answer
+        # would be right for the wrong reason on the machine where it mattered most.
+        for name in ("FINANCE_MIGRATION_DSN", "FINANCE_DEV_DSN"):
+            os.environ.pop(name, None)
+        # Same reason, for the file half of `setting()`: a real .env at the repo root
+        # supplies those DSNs too. Tests that want a file assign ENV_FILE themselves.
+        import devhost.environment as env
+        self.env_file = env.ENV_FILE
+        env.ENV_FILE = Path("does-not-exist.env")
 
     def tearDown(self):
+        import devhost.environment as env
+        env.ENV_FILE = self.env_file
         os.environ.clear()
         os.environ.update(self.original)
 
@@ -241,6 +254,97 @@ class SeedGuardTests(unittest.TestCase):
         finally:
             env.ENV_FILE = original
             configured.unlink(missing_ok=True)
+
+    def test_a_protected_database_refuses_even_in_a_seedable_environment(self):
+        """The hole this closes, and why it was not theoretical.
+
+        `check_runtime_dsn` REQUIRES a DSN on the central server to name
+        `bambo_canonical_local`. So a host configured correctly against the central server
+        is pointing at the protected database BY THE RULES, and seeding was two environment
+        variables away from `database.reset()` -- a DELETE across sixteen Finance tables
+        with `session_replication_role = replica`, i.e. with the immutability triggers off.
+
+        Both doors are checked, because they are different doors: the migration DSN is what
+        the seed is loaded through, the runtime DSN is what synthetic progress is written
+        through.
+        """
+        from devhost.environment import SEED_PROTECTED_DATABASES, seeding_allowed
+        self.assertIn("bambo_canonical_local", SEED_PROTECTED_DATABASES)
+        os.environ["APP_ENV"] = "development"
+        os.environ["FINANCE_ALLOW_SEED"] = "true"
+        for setting_name in ("FINANCE_MIGRATION_DSN", "FINANCE_DEV_DSN"):
+            for database in sorted(SEED_PROTECTED_DATABASES):
+                for dsn in ("postgresql://postgres@192.168.100.200:5432/%s" % database,
+                            "host=127.0.0.1 port=5432 dbname=%s user=postgres" % database):
+                    with self.subTest(setting=setting_name, database=database, dsn=dsn):
+                        os.environ.pop("FINANCE_MIGRATION_DSN", None)
+                        os.environ.pop("FINANCE_DEV_DSN", None)
+                        os.environ[setting_name] = dsn
+                        self.assertFalse(
+                            seeding_allowed(),
+                            "%s naming %r must refuse fixture rows however the environment "
+                            "is configured, and in either DSN spelling" % (setting_name, database))
+
+    def test_a_harmless_local_database_is_still_seedable(self):
+        """The guard must not be a blanket no, or it would be turned off rather than obeyed.
+
+        Stated as its own test so a change that makes `seeding_allowed()` always false --
+        which would pass every refusal test above -- fails here.
+        """
+        from devhost.environment import seeding_allowed
+        os.environ["APP_ENV"] = "development"
+        os.environ["FINANCE_ALLOW_SEED"] = "true"
+        os.environ["FINANCE_MIGRATION_DSN"] = (
+            "postgresql://postgres@127.0.0.1:5432/bambo_finance_local")
+        self.assertTrue(seeding_allowed(),
+                        "a disposable local database is what the development seed is for")
+
+    def test_an_unreadable_dsn_does_not_quietly_become_permission(self):
+        """A DSN whose database cannot be read is not evidence of anything.
+
+        It is passed over rather than guessed at -- the same choice `check_runtime_dsn`
+        makes, for the same reason -- so what has to stop it is the environment half of the
+        gate. This test exists so that choice is deliberate and visible rather than an
+        accident of `dsn_target` returning None.
+        """
+        from devhost.environment import seeding_allowed
+        os.environ["FINANCE_MIGRATION_DSN"] = "this is not a dsn"
+        os.environ["FINANCE_ALLOW_SEED"] = "true"
+        os.environ.pop("APP_ENV", None)
+        self.assertFalse(seeding_allowed(), "no default may authorize fixture insertion")
+        os.environ["APP_ENV"] = "production"
+        self.assertFalse(seeding_allowed(), "production is never seedable")
+
+    def test_the_refusal_says_which_condition_refused(self):
+        """`seed DISABLED (APP_ENV=development)` named the condition that had PASSED.
+
+        Whoever read that line went and changed the setting that was already right. The
+        message now names the one that refused.
+        """
+        from devhost.environment import seed_refusal
+        os.environ["APP_ENV"] = "development"
+        os.environ["FINANCE_ALLOW_SEED"] = "true"
+        os.environ["FINANCE_MIGRATION_DSN"] = (
+            "postgresql://postgres@192.168.100.200:5432/bambo_canonical_local")
+        message = seed_refusal()
+        self.assertIn("FINANCE_MIGRATION_DSN", message)
+        self.assertIn("bambo_canonical_local", message)
+        os.environ.pop("FINANCE_MIGRATION_DSN", None)
+        os.environ["APP_ENV"] = "production"
+        self.assertIn("production", seed_refusal())
+        os.environ.pop("APP_ENV", None)
+        self.assertIn("APP_ENV", seed_refusal())
+
+    def test_the_host_names_the_database_before_it_writes_to_it(self):
+        """A static read of the startup path: the log says where, not just that."""
+        startup = Path(__file__).resolve().parents[1].joinpath("devhost", "app.py").read_text(
+            encoding="utf-8")
+        self.assertIn("seed_refusal()", startup,
+                      "the refusal must name its condition")
+        self.assertIn("development seed ENABLED", startup,
+                      "seeding must announce itself, not only its absence")
+        self.assertIn("dsn_target(admin_dsn)", startup,
+                      "the announcement must name the database it is about to write into")
 
     def temporary_env(self):
         import tempfile

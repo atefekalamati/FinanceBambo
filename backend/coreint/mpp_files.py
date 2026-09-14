@@ -30,7 +30,7 @@ exception object for local debugging and stays out of ``str()``.
 """
 
 import hashlib
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 #: The only extension the importer accepts. MPXJ can read more formats, but this pipeline
 #: is specified for MPP; widening it is a decision, not a default.
@@ -131,10 +131,18 @@ def resolve_import_file(import_root, relative_name,
     # An anchored name is refused even when it would land INSIDE the root: accepting it
     # confirms the server's directory layout to whoever guessed it, and the string then
     # persists as `relative_name` into rows, responses and logs that must never carry
-    # absolute paths. `drive or root` also catches Windows drive-relative ("C:x") and
-    # rooted ("\\x") forms that is_absolute() alone misses.
-    supplied = Path(str(relative_name))
-    if supplied.drive or supplied.root:
+    # absolute paths.
+    #
+    # BOTH flavours are asked rather than `Path`, and that is the point: `Path` is
+    # whichever one the SERVER runs on, while the name arrives from a caller who may be
+    # on the other. On Linux `PosixPath("C:x")` has neither drive nor root, so the
+    # Windows drive-relative and rooted forms this refusal was written for went through
+    # untouched and became a `relative_name` carried into rows and logs -- the exact
+    # string it exists to keep out. `PureWindowsPath` reads "/x" as rooted too, so
+    # asking both refuses a name anchored under either system, on whichever is serving.
+    supplied = str(relative_name)
+    if any(flavour(supplied).drive or flavour(supplied).root
+           for flavour in (PurePosixPath, PureWindowsPath)):
         raise MppPathNotAllowed("an absolute path is not a relative file name")
     root = Path(import_root)
     if not root.is_dir():

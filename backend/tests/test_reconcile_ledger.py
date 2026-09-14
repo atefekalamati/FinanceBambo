@@ -105,12 +105,16 @@ class ObjectDiscoveryTests(unittest.TestCase):
         # `estimate_lines` and `finance_resources` are here because 0019 adds an index to
         # each: a revision that only indexes still changes the object the reconciler must
         # compare, and an index is exactly the kind of difference an environment drifts on.
-        # `invoices` and `finance_invoice_counters` arrive with 0020.
+        # `invoices` and `finance_invoice_counters` arrive with 0020. The six price names
+        # arrive with 0021: four tables it alters and two it creates. That the discovery
+        # found them without being told is the property this test is really about.
         self.assertEqual(
             ["estimate_line_source_completions", "estimate_lines",
              "finance_invoice_counters", "finance_mpp_rows",
              "finance_mpp_source_versions", "finance_resources", "invoices",
-             "progress_snapshot_refs"], tables)
+             "material_unit_settings", "price_collection_runs", "price_observations",
+             "price_providers", "progress_snapshot_refs", "provider_item_unit_factors",
+             "provider_items"], tables)
 
     def test_each_ddl_shape_the_revisions_use_is_recognised(self):
         """A shape the pattern misses is a table altered and never compared."""

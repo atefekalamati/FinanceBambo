@@ -99,6 +99,16 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/report-snapshots/{reportId}/csv", "get"),
                 ("/api/projects/{projectId}/finance/report-snapshots/{reportId}/xlsx", "get"),
                 ("/api/projects/{projectId}/finance/audit-events", "get"),
+                # Material prices, stage twenty-one. Read-only against the database;
+                # the one write is a person choosing the unit a category is shown in.
+                # No endpoint here reaches Google Sheets -- the import is a job.
+                ("/api/projects/{projectId}/finance/material-prices/categories", "get"),
+                ("/api/projects/{projectId}/finance/material-prices/current", "get"),
+                ("/api/projects/{projectId}/finance/material-prices/runs", "get"),
+                ("/api/projects/{projectId}/finance/material-prices/invalid-rows", "get"),
+                ("/api/projects/{projectId}/finance/material-prices/unit-settings", "get"),
+                ("/api/projects/{projectId}/finance/material-prices/unit-settings", "post"),
+                ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/history", "get"),
             },
             business_operations,
         )

@@ -5,6 +5,7 @@ import { SESSION_ENDED_EVENT, createApiClient } from "../core/api/api-client.js"
 import { createApiSettingsAdapter } from "../adapters/api/settings-api-adapter.js";
 import { createApiFinancialItemsAdapter } from "../adapters/api/financial-items-api-adapter.js";
 import { createApiPricesAdapter } from "../adapters/api/prices-api-adapter.js";
+import { createMaterialPricesApiAdapter } from "../adapters/api/material-prices-api-adapter.js";
 import { createApiProgressAdapter } from "../adapters/api/progress-api-adapter.js";
 import { createApiInvoicesAdapter } from "../adapters/api/invoices-api-adapter.js";
 import { createApiAttachmentsAdapter } from "../adapters/api/attachments-api-adapter.js";
@@ -74,6 +75,12 @@ function createHostAdapters(context) {
     settings: createApiSettingsAdapter(context, client),
     financialItems: createApiFinancialItemsAdapter(context, client),
     prices: createApiPricesAdapter(context, client),
+    /* The material sheet's observations, read from the Finance API like everything
+       else here. Separate from `prices` because they are a different kind of thing:
+       `prices` holds what somebody decided this project pays, this holds what a
+       supplier was quoting. One adapter for both would be the first step towards
+       one meaning for both. */
+    materialPrices: createMaterialPricesApiAdapter(context, { client }),
     progress: createApiProgressAdapter(context, client),
     invoices,
     attachments: createApiAttachmentsAdapter(context, client, invoices),

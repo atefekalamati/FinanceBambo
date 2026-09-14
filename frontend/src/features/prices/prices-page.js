@@ -3,6 +3,7 @@ import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { SURFACES } from "../../core/config/routes.js";
 import { downloadCsvFile } from "../../shared/exports/csv.js";
 import { buildPricesCsv, pricesFileName } from "./prices-csv.js";
+import { renderMaterialPrices } from "./material-prices-section.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -831,8 +832,86 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
         onChange: (next) => { historyPaging = next; paint(); },
       }));
     }
-    fragment.append(toolbar, current, history);
+    /* The material sheet's observations, below the Finance prices and never mixed into
+       them. Asked for rather than assumed, exactly as the history above is: a project with
+       no import configured has nothing to show here, and fetching hundreds of rows for a
+       reader who came to check one Finance price would be rude.
+
+       `adapter.materialPrices` is absent when the host has not wired it -- an older host,
+       or the standalone preview -- and then the section says so. It is never replaced with
+       sample rows. */
+    const market = element("section", "prices-section");
+    const marketTitle = element("h2", "", "قیمت روز بازار (برگه مصالح)");
+    if (!adapter.materialPrices) {
+      market.append(marketTitle,
+        element("p", "inline-notice", "این بخش در این نسخه از میزبان در دسترس نیست."));
+      fragment.append(toolbar, current, history, market);
+      return fragment;
+    }
+    if (marketError) {
+      const failed = element("div", "state-card state-card--danger",
+        formatApiErrorMessage(marketError, "دریافت قیمت روز بازار انجام نشد."));
+      const again = element("button", "button button--ghost", "تلاش دوباره");
+      again.type = "button";
+      again.addEventListener("click", loadMarketPrices);
+      market.append(marketTitle, failed, again);
+    } else if (marketLoading) {
+      market.append(marketTitle,
+        element("div", "inline-notice", "در حال دریافت قیمت روز بازار…"));
+    } else if (marketPrices === null) {
+      market.append(marketTitle, element("p", "prices-section__hint",
+        "قیمت‌های وارد‌شده از برگه مصالح، جدا از قیمت رسمی مالی پروژه."));
+      const ask = element("div", "prices-history-ask");
+      const show = element("button", "button button--primary", "نمایش قیمت روز بازار");
+      show.type = "button";
+      show.addEventListener("click", loadMarketPrices);
+      ask.append(show);
+      market.append(ask);
+    } else {
+      fragment.append(toolbar, current, history, renderMaterialPrices(marketPrices.items, {
+        categories: marketCategories,
+        selectedCategory: marketCategory,
+        onSelectCategory: (value) => { marketCategory = value; loadMarketPrices(); },
+      }));
+      return fragment;
+    }
+    fragment.append(toolbar, current, history, market);
     return fragment;
+  }
+
+  /* Held here for the same reason the paging numbers are: `paint()` rebuilds the whole
+     tree, so anything a component remembered would be lost on every repaint. */
+  let marketPrices = null;
+  let marketCategories = [];
+  let marketCategory = null;
+  let marketLoading = false;
+  let marketError = null;
+
+  async function loadMarketPrices() {
+    if (!adapter.materialPrices) return;
+    marketLoading = true;
+    marketError = null;
+    paint();
+    try {
+      /* `asOf` is today in Tehran, and that is what turns freshness on: without it the
+         backend labels nothing stale, because a request that does not say which day it
+         means cannot say a price is old. */
+      const [page, categories] = await Promise.all([
+        adapter.materialPrices.listCurrentPrices({
+          category: marketCategory, asOf: getTehranTodayIso(), pageSize: 200,
+        }),
+        adapter.materialPrices.listCategories(),
+      ]);
+      marketPrices = page;
+      marketCategories = categories;
+    } catch (error) {
+      marketError = error;
+      /* The rows already on screen are kept. A failed refresh must not empty a table that
+         was showing real prices a moment ago. */
+    } finally {
+      marketLoading = false;
+      paint();
+    }
   }
 
   function paint() {

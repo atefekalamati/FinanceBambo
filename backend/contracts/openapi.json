@@ -2339,6 +2339,147 @@
         "title": "ImportPreviewRow",
         "type": "object"
       },
+      "ImportRunListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRunResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "totalItems": {
+            "title": "Totalitems",
+            "type": "integer"
+          },
+          "totalPages": {
+            "title": "Totalpages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "title": "ImportRunListResponse",
+        "type": "object"
+      },
+      "ImportRunResponse": {
+        "additionalProperties": false,
+        "description": "One import, and what it did. A failed run keeps its reason.",
+        "properties": {
+          "errorMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errormessage"
+          },
+          "failedItems": {
+            "title": "Faileditems",
+            "type": "integer"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "publishedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publishedat"
+          },
+          "rejectedItems": {
+            "title": "Rejecteditems",
+            "type": "integer"
+          },
+          "sourceDocumentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcedocumentid"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "title": "Startedat",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "succeeded",
+              "partially_succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "successfulItems": {
+            "title": "Successfulitems",
+            "type": "integer"
+          },
+          "totalItems": {
+            "title": "Totalitems",
+            "type": "integer"
+          },
+          "worksheetReport": {
+            "additionalProperties": true,
+            "title": "Worksheetreport",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "startedAt",
+          "totalItems",
+          "successfulItems",
+          "failedItems",
+          "rejectedItems"
+        ],
+        "title": "ImportRunResponse",
+        "type": "object"
+      },
       "InvoiceConfirm": {
         "additionalProperties": false,
         "properties": {
@@ -3239,6 +3380,663 @@
           "warnings"
         ],
         "title": "LiveReportResponse",
+        "type": "object"
+      },
+      "MaterialCategoryListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialCategoryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MaterialCategoryListResponse",
+        "type": "object"
+      },
+      "MaterialCategoryResponse": {
+        "additionalProperties": false,
+        "description": "One material category, counted from the database rather than from a constant.",
+        "properties": {
+          "activeCount": {
+            "title": "Activecount",
+            "type": "integer"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "inactiveCount": {
+            "title": "Inactivecount",
+            "type": "integer"
+          },
+          "itemCount": {
+            "title": "Itemcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category",
+          "itemCount",
+          "activeCount",
+          "inactiveCount"
+        ],
+        "title": "MaterialCategoryResponse",
+        "type": "object"
+      },
+      "MaterialPriceHistoryListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialPriceHistoryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "totalItems": {
+            "title": "Totalitems",
+            "type": "integer"
+          },
+          "totalPages": {
+            "title": "Totalpages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "title": "MaterialPriceHistoryListResponse",
+        "type": "object"
+      },
+      "MaterialPriceHistoryResponse": {
+        "additionalProperties": false,
+        "description": "One observation in a listing's history. Append-only; nothing here is ever rewritten.",
+        "properties": {
+          "fetchedAt": {
+            "format": "date-time",
+            "title": "Fetchedat",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "normalizedPriceIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalizedpriceirr"
+          },
+          "observedAt": {
+            "format": "date-time",
+            "title": "Observedat",
+            "type": "string"
+          },
+          "observedAtSource": {
+            "title": "Observedatsource",
+            "type": "string"
+          },
+          "rawPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rawprice"
+          },
+          "sourceCurrency": {
+            "enum": [
+              "IRR",
+              "TOMAN"
+            ],
+            "title": "Sourcecurrency",
+            "type": "string"
+          },
+          "sourceRowNumber": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcerownumber"
+          },
+          "sourceWorksheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceworksheet"
+          },
+          "validationReasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Validationreasons",
+            "type": "array"
+          },
+          "validationStatus": {
+            "title": "Validationstatus",
+            "type": "string"
+          },
+          "workflowDateGregorian": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowdategregorian"
+          },
+          "workflowDateJalali": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowdatejalali"
+          },
+          "workflowDateRaw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowdateraw"
+          }
+        },
+        "required": [
+          "id",
+          "sourceCurrency",
+          "observedAt",
+          "observedAtSource",
+          "fetchedAt",
+          "validationStatus"
+        ],
+        "title": "MaterialPriceHistoryResponse",
+        "type": "object"
+      },
+      "MaterialPriceListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialPriceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "totalItems": {
+            "title": "Totalitems",
+            "type": "integer"
+          },
+          "totalPages": {
+            "title": "Totalpages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "title": "MaterialPriceListResponse",
+        "type": "object"
+      },
+      "MaterialPriceResponse": {
+        "additionalProperties": false,
+        "description": "The newest observation for one provider listing, with everything needed to judge it.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "conversionFactor": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversionfactor"
+          },
+          "conversionNote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversionnote"
+          },
+          "currentPriceIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentpriceirr"
+          },
+          "displayUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayunit"
+          },
+          "externalId": {
+            "title": "Externalid",
+            "type": "string"
+          },
+          "externalName": {
+            "title": "Externalname",
+            "type": "string"
+          },
+          "fetchedAt": {
+            "format": "date-time",
+            "title": "Fetchedat",
+            "type": "string"
+          },
+          "inactiveReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inactivereason"
+          },
+          "observedAt": {
+            "format": "date-time",
+            "title": "Observedat",
+            "type": "string"
+          },
+          "observedAtSource": {
+            "enum": [
+              "provider",
+              "workflow_date",
+              "fetch_time",
+              "unknown"
+            ],
+            "title": "Observedatsource",
+            "type": "string"
+          },
+          "providerItemId": {
+            "format": "uuid",
+            "title": "Provideritemid",
+            "type": "string"
+          },
+          "providerName": {
+            "title": "Providername",
+            "type": "string"
+          },
+          "rawPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rawprice"
+          },
+          "resolutionReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolutionreason"
+          },
+          "resolutionStatus": {
+            "title": "Resolutionstatus",
+            "type": "string"
+          },
+          "secondaryPriceBasis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondarypricebasis"
+          },
+          "secondaryPriceIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondarypriceirr"
+          },
+          "sourceCurrency": {
+            "default": "TOMAN",
+            "enum": [
+              "IRR",
+              "TOMAN"
+            ],
+            "title": "Sourcecurrency",
+            "type": "string"
+          },
+          "sourceRowNumber": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcerownumber"
+          },
+          "sourceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceunit"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceurl"
+          },
+          "validationReasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Validationreasons",
+            "type": "array"
+          },
+          "validationStatus": {
+            "enum": [
+              "pending",
+              "valid",
+              "needs_review",
+              "rejected"
+            ],
+            "title": "Validationstatus",
+            "type": "string"
+          },
+          "workflowDateGregorian": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowdategregorian"
+          },
+          "workflowDateJalali": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowdatejalali"
+          },
+          "workflowDateRaw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowdateraw"
+          },
+          "worksheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worksheet"
+          }
+        },
+        "required": [
+          "providerItemId",
+          "externalId",
+          "externalName",
+          "category",
+          "providerName",
+          "active",
+          "observedAtSource",
+          "observedAt",
+          "fetchedAt",
+          "validationStatus",
+          "resolutionStatus"
+        ],
+        "title": "MaterialPriceResponse",
+        "type": "object"
+      },
+      "MaterialUnitSettingCreate": {
+        "additionalProperties": false,
+        "description": "A person choosing the unit a category is displayed in.\n\n`reason` is required and must not be blank, exactly as it is for a price version or a\nunit conversion: a decision with no recorded reason is one nobody can review later.",
+        "properties": {
+          "category": {
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "displayUnit": {
+            "minLength": 1,
+            "title": "Displayunit",
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourceid"
+          }
+        },
+        "required": [
+          "category",
+          "displayUnit",
+          "reason"
+        ],
+        "title": "MaterialUnitSettingCreate",
+        "type": "object"
+      },
+      "MaterialUnitSettingListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialUnitSettingResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MaterialUnitSettingListResponse",
+        "type": "object"
+      },
+      "MaterialUnitSettingResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "format": "uuid",
+            "title": "Createdby",
+            "type": "string"
+          },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
+          },
+          "displayUnit": {
+            "title": "Displayunit",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourceid"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "version",
+          "displayUnit",
+          "reason",
+          "createdBy",
+          "createdAt"
+        ],
+        "title": "MaterialUnitSettingResponse",
         "type": "object"
       },
       "MonthlyBreakdown": {
@@ -9833,6 +10631,480 @@
           }
         },
         "summary": "Void Invoice",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/categories": {
+      "get": {
+        "description": "Every category present, counted from the database. No category is assumed to exist.",
+        "operationId": "material_categories_api_projects__projectId__finance_material_prices_categories_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialCategoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Categories",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/current": {
+      "get": {
+        "description": "The newest price per listing, each with the status that says how to read it.\n\n`asOf` turns freshness on: without it nothing is called stale, because a page that does\nnot say which day it means cannot say whether a price is old.",
+        "operationId": "material_prices_current_api_projects__projectId__finance_material_prices_current_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asOf",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asof"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeInactive",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Includeinactive",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialPriceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Prices Current",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/invalid-rows": {
+      "get": {
+        "description": "Rows that were stored and could not be believed. Findable, not hidden.",
+        "operationId": "material_price_invalid_rows_api_projects__projectId__finance_material_prices_invalid_rows_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialPriceHistoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Price Invalid Rows",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/runs": {
+      "get": {
+        "description": "What each import did, including the ones that failed and why.",
+        "operationId": "material_price_runs_api_projects__projectId__finance_material_prices_runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Price Runs",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/unit-settings": {
+      "get": {
+        "description": "The unit each category is displayed in, as most recently decided.",
+        "operationId": "material_unit_settings_api_projects__projectId__finance_material_prices_unit_settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialUnitSettingListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Unit Settings",
+        "tags": [
+          "finance"
+        ]
+      },
+      "post": {
+        "description": "Choose the unit a category is displayed in. `finance.edit`, appended, with a reason.\n\nThe sheet's own unit never becomes this by itself: it is recorded as what the sheet\nsaid and this is what a person decided, and they are different fields for that reason.",
+        "operationId": "set_material_unit_api_projects__projectId__finance_material_prices_unit_settings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialUnitSettingCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialUnitSettingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Material Unit",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/{providerItemId}/history": {
+      "get": {
+        "description": "Every observation for one listing, newest first. Append-only; nothing is rewritten.",
+        "operationId": "material_price_history_api_projects__projectId__finance_material_prices__providerItemId__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerItemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provideritemid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialPriceHistoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Price History",
         "tags": [
           "finance"
         ]

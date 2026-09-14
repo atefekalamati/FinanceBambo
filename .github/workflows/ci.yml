@@ -1,12 +1,17 @@
 # What has to be true before anything reaches master.
 #
 # Both suites already existed and neither was run by anything but a person
-# remembering to. That is what this fixes: 311 frontend tests, 672 backend tests
-# and a 171-run layout audit, on every push and every pull request.
+# remembering to. That is what this fixes: 559 frontend tests, 1342 backend tests
+# and a layout audit, on every push and every pull request.
 #
-# The backend suite needs no database — the five tests that do skip themselves —
-# so this runs the whole thing without a service container. If that changes, add
-# postgres here rather than letting those tests quietly stay skipped.
+# The backend suite needs no database — the nineteen tests that do skip themselves,
+# each naming the script that would create one — so this runs the whole thing without
+# a service container. If that changes, add postgres here rather than letting those
+# tests quietly stay skipped.
+#
+# It does need a JVM. Eleven tests parse the checked-in reference schedule through
+# MPXJ and are written to fail rather than skip without it, so the java step below is
+# not optional: removing it puts the backend job back to red.
 
 name: CI
 
@@ -72,6 +77,19 @@ jobs:
           CHROME_FLAGS: --no-sandbox --disable-dev-shm-usage
         run: npm run audit:layout
 
+      # What the host's page actually asks the server for, as opposed to what its
+      # imports say. Three static guards already assert that demo data cannot reach the
+      # host build; this one opens the page in the browser already running here and
+      # counts the requests. It fails if host.html fetches even one file from
+      # src/adapters/mock -- and equally if index.html fetches none, because two zeroes
+      # mean the probe stopped working rather than the module getting safer.
+      - name: Runtime data audit
+        working-directory: frontend
+        env:
+          CHROME_PATH: google-chrome
+          CHROME_FLAGS: --no-sandbox --disable-dev-shm-usage
+        run: npm run audit:runtime
+
   backend:
     name: Backend — pytest
     runs-on: ubuntu-latest
@@ -81,6 +99,17 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+      # tests/test_mpp_reader_real_file.py boots a real JVM and parses
+      # Sources/test_progress.mpp -- 328 tasks, 81 resources, 727 assignments, pinned.
+      # It fails rather than skips when there is nothing to parse with, on purpose: a
+      # suite that silently stops reading real .mpp files has lost what that file exists
+      # for. Temurin 17 matches what production reports (mpxj-16.x/jvm-17), and a full
+      # JRE is required -- MPXJ fails inside its charset initialiser on a jlink'd one.
+      # This sets JAVA_HOME, which is where the reader looks.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - name: Install
         run: |
           python -m pip install --upgrade pip
