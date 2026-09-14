@@ -1,4 +1,5 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
+import { createPriceMappingPanel, statusChip } from "./price-mapping-panel.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { SURFACES } from "../../core/config/routes.js";
 import { downloadCsvFile } from "../../shared/exports/csv.js";
@@ -710,7 +711,38 @@ function estimateLineColumns() {
   ];
 }
 
-function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible, paging }) {
+/* What «قیمت روز» shows once an item is linked to a market listing.
+ *
+ * Three things in one cell, because the column count is what makes this table navigable
+ * and none of the three is worth a column of its own: the daily price converted into the
+ * official unit, what that makes THIS line cost per day, and -- when it cannot be
+ * computed -- which answer is missing.
+ *
+ * An unresolved row shows the reason and NO number. That is the whole point: «نیازمند
+ * ضریب تبدیل» and «۰» look nothing alike to a reader, and only one of them is true. */
+function dailyPriceCell(line, priced, isGeneralCost) {
+  const fallback = formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false });
+  if (!priced || isGeneralCost) return fallback;
+  if (priced.status !== "ready") {
+    const cell = document.createDocumentFragment();
+    cell.append(statusChip(priced.status, priced.statusLabel));
+    /* The line's own Finance price still shows when it has one: the daily-price link is
+       unresolved, which says nothing about the price somebody entered by hand. */
+    if (line.currentUnitPriceIRR !== null && line.currentUnitPriceIRR !== undefined) {
+      cell.append(element("span", "cell-secondary", fallback));
+    }
+    return cell;
+  }
+  const cell = document.createDocumentFragment();
+  cell.append(element("span", "", formatTomanFromIrr(priced.convertedDailyUnitPriceIRR, { withCurrency: false })));
+  if (priced.dailyItemCostIRR !== null) {
+    cell.append(element("span", "cell-secondary",
+      `هزینه روز این قلم: ${formatTomanFromIrr(priced.dailyItemCostIRR, { withCurrency: false })}`));
+  }
+  return cell;
+}
+
+function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible, paging, priceStatuses = new Map(), onMapPrice = null }) {
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
   const fragment = document.createDocumentFragment();
   if (withheld) fragment.append(element("p", "table-note", withheld));
@@ -784,15 +816,35 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
         actions.append(revise);
       }
 
+      /* The daily-price link. Four of the ten columns gain content from it and none is
+         added: the official calculation unit goes in «واحد», the converted daily price
+         and this line's daily cost in «قیمت روز», the chosen listing in «منبع», and the
+         action here. The table's shape is what people navigate by. */
+      const priced = priceStatuses.get(line.lineId) ?? null;
+      if (onMapPrice && !isGeneralCost) {
+        const label = priced?.providerItemId ? "ویرایش اتصال قیمت" : "اتصال قیمت روز";
+        const map = element("button", "table-action table-action--map-price", label);
+        map.type = "button";
+        map.dataset.action = "map-price";
+        map.addEventListener("click", () => onMapPrice(line, resource));
+        actions.append(map);
+      }
+
       return {
         identity,
-        unit: isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit),
+        /* The OFFICIAL calculation unit once one is chosen: it is what the price was
+           converted into and what the quantity is read in, so it outranks the resource's
+           own base unit here. Without a mapping the column is exactly what it was. */
+        unit: isGeneralCost ? getDisplayCurrencyLabel()
+          : formatUnitLabel(priced?.selectedUnit ?? resource?.baseUnit),
         originalQuantity: isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original),
         revisedQuantity: revisedCell,
         scheduleCost: formatTomanFromIrr(assignmentCostOf(line), { withCurrency: false }),
         originalPrice: formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false }),
-        currentPrice: formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false }),
-        source: sourceLabel(line),
+        currentPrice: dailyPriceCell(line, priced, isGeneralCost),
+        source: priced?.productName
+          ? `${priced.providerName ?? "—"} · ${priced.productName}`
+          : sourceLabel(line),
         actions,
       };
     },
@@ -809,9 +861,15 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
  * administrator reading the report gets the read-only table too. One mode per
  * route is a thing you can reason about; one mode per account is not.
  */
-export function createFinancialItemsPage({ context, adapter, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
+export function createFinancialItemsPage({ context, adapter, priceMappingAdapter = null, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
   const root = element("div", "financial-items-page");
   const readOnly = surface === SURFACES.REPORT;
+  /* Which market listing prices each line, and what that makes it cost today.
+     Kept beside the workspace rather than inside it: the estimate is one module's data
+     and the daily price is another's, and a page that merged them would have to reload
+     both to refresh either. Empty until it arrives, and a row with no entry simply shows
+     what it showed before -- the table must render before this call returns. */
+  let priceStatuses = new Map();
   /* One page number per table. Held here rather than inside the component
      because `paint()` rebuilds the whole tree: a component that remembered its
      own page would lose it on every repaint. */
@@ -834,6 +892,23 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
       state = createRequestState(REQUEST_STATUS.ERROR, null, error);
     }
     paint();
+    loadPriceStatuses();
+  }
+
+  /* Fetched AFTER the table is on screen, and never awaited by `load`.
+     The estimate is the page; the daily-price link is an annotation on it. If this call
+     is slow or fails, the estimate still renders exactly as it did before the feature
+     existed -- a failure here must not be able to empty the table. */
+  async function loadPriceStatuses() {
+    if (!priceMappingAdapter) return;
+    try {
+      const rows = await priceMappingAdapter.statuses();
+      priceStatuses = new Map(rows.map((row) => [row.estimateLineId, row]));
+      paint();
+    } catch (error) {
+      /* Left as it was. The row then shows its own price and no mapping status, which is
+         the truthful state: we do not know, rather than nothing is mapped. */
+    }
   }
 
   function renderHeader() {
@@ -977,6 +1052,16 @@ export function createFinancialItemsPage({ context, adapter, surface = SURFACES.
         root.append(dialog);
         showAccessibleDialog(dialog);
       },
+      priceStatuses,
+      onMapPrice: priceMappingAdapter ? (line, resource) => {
+        const panel = createPriceMappingPanel({
+          line, resource, adapter: priceMappingAdapter, canEdit,
+          onSaved: () => { panel.remove(); loadPriceStatuses(); },
+          onClose: () => panel.remove(),
+        });
+        root.append(panel);
+        showAccessibleDialog(panel);
+      } : null,
     }));
 
     fragment.append(linesSection, resourcesSection);

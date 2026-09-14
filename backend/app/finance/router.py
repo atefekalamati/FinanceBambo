@@ -40,6 +40,11 @@ from .schemas.material_prices import (ImportRunListResponse,ImportRunResponse,
     ProviderItemFactorCreate,ProviderItemFactorListResponse,ProviderItemFactorResponse,
     ProviderItemLabelCreate,ProviderItemLabelListResponse,ProviderItemLabelResponse,
     UnresolvedItemListResponse,UnresolvedItemResponse)
+from .schemas.item_price_mappings import (CandidateListResponse,CandidateProductResponse,
+    ConvertedPricePreviewResponse,ItemPriceMappingCreate,ItemPriceMappingResponse,
+    ItemPriceStatusListResponse,ItemPriceStatusResponse,MappingFiltersResponse)
+from .domain.material_categories import category_label,spec_columns,specs_of
+from .services.material_price_resolution import canonical_unit
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -660,6 +665,15 @@ def _declared(model, row):
     """
     return model(**{name: row[name] for name in model.model_fields if name in row})
 
+def _money_text(value):
+    """A Decimal amount as a string, or None.
+
+    Money leaves this API as text so it never passes through a float on the way out. None
+    stays None: a listing with no readable price has no price, and `"0"` would say the
+    material is free.
+    """
+    return None if value is None else str(value)
+
 def _registry_unit(value, field):
     """A unit code the Finance registry knows, or a 422 naming the field.
 
@@ -749,3 +763,113 @@ async def material_unresolved_items(projectId:str,request:Request,
     items,total=await request.app.state.material_price_service.unresolved(scope,page,pageSize)
     return UnresolvedItemListResponse(items=[_declared(UnresolvedItemResponse, x) for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
+
+# ---------------------------------------------------------------- item -> daily price
+#
+# The bridge between the two modules. MSP/MPP says an activity consumes a material and how
+# much; the daily-price sheet says what a named product costs today. Nothing here matches
+# the two by name, by resemblance, or by price -- a mapping exists because a person made
+# one, and until then the item reports «محصول قیمت روز انتخاب نشده» rather than a number.
+
+@router.get("/item-price-mappings/status",response_model=ItemPriceStatusListResponse)
+async def item_price_status(projectId:str,request:Request):
+    """Every estimate line's pricing state, for the financial-items table.
+
+    One call for the whole table. A line nobody has mapped is PRESENT here with
+    `needs_product` -- leaving it out would be indistinguishable from a line the caller
+    forgot to ask about, and the table needs to show what is waiting.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    answers=await request.app.state.item_price_mapping_service.table_status(scope)
+    return ItemPriceStatusListResponse(
+        items=[_declared(ItemPriceStatusResponse, row) for row in answers.values()])
+
+@router.get("/item-price-mappings/candidates",response_model=CandidateListResponse)
+async def item_price_candidates(projectId:str,request:Request,
+    category:str|None=Query(None,max_length=64),
+    query:str|None=Query(None,min_length=1,max_length=120),
+    providerId:UUID|None=Query(None),
+    productType:str|None=Query(None,max_length=120),
+    page:int=Query(1,ge=1),pageSize:int=Query(25,ge=1,le=100)):
+    """Listings a person can choose from, with each category's own spec columns.
+
+    Ordered by category and name, never by price: offering the cheapest first is a policy,
+    and a policy nobody configured must not arrive disguised as an ordering.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    rows,total=await request.app.state.item_price_mapping_service.candidates(
+        scope,category=category,query=query,provider_id=providerId,
+        product_type=productType,page=page,page_size=pageSize)
+    items=[]
+    for row in rows:
+        body=dict(row)
+        body["provider_item_id"]=str(row["provider_item_id"])
+        body["provider_id"]=str(row["provider_id"]) if row.get("provider_id") else None
+        body["current_price_irr"]=_money_text(row.get("normalized_price_irr"))
+        body["raw_price"]=_money_text(row.get("raw_price"))
+        body["source_unit_code"]=canonical_unit(row.get("normalized_unit") or row.get("source_unit"))
+        body["category_label"]=category_label(row.get("category"))
+        body["specs"]=specs_of(row.get("category"),row.get("metadata"))
+        body["spec_columns"]=spec_columns(row.get("category"))
+        body["worksheet"]=row.get("source_worksheet")
+        items.append(_declared(CandidateProductResponse, body))
+    return CandidateListResponse(items=items,page=page,page_size=pageSize,total_items=total)
+
+@router.get("/item-price-mappings/filters",response_model=MappingFiltersResponse)
+async def item_price_filters(projectId:str,request:Request,
+    category:str|None=Query(None,max_length=64)):
+    """What the modal may filter by. Read from the data, never a hard-coded list."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    filters=await request.app.state.item_price_mapping_service.filters(scope,category=category)
+    categories=await request.app.state.material_price_service.categories(scope)
+    return MappingFiltersResponse(
+        providers=[{"id":str(p["id"]),"name":p["name"]} for p in filters["providers"]],
+        product_types=filters["productTypes"],
+        categories=[{"category":c["category"],"label":category_label(c["category"]),
+                     "itemCount":c["item_count"]} for c in categories],
+        units=[{"code":code,"label":unit.label_fa,"dimension":unit.dimension,
+                "dimensionLabel":unit.dimension_label_fa}
+               for code,unit in UNIT_REGISTRY.items() if unit.active])
+
+@router.get("/estimate-lines/{lineId}/price-mapping",response_model=ItemPriceMappingResponse|None)
+async def read_item_price_mapping(projectId:str,lineId:UUID,request:Request):
+    """The live mapping for one line, or null when nobody has made one."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    row=await request.app.state.item_price_mapping_service.mapping_for_line(scope,lineId)
+    if row is None:return None
+    return await _named(request, _declared(ItemPriceMappingResponse, row))
+
+@router.get("/estimate-lines/{lineId}/price-mapping/history",response_model=list[ItemPriceMappingResponse])
+async def item_price_mapping_history(projectId:str,lineId:UUID,request:Request):
+    """Every version. What a report issued last month was priced against is in here."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    rows=await request.app.state.item_price_mapping_service.history_for_line(scope,lineId)
+    return await _named(request, [_declared(ItemPriceMappingResponse, r) for r in rows])
+
+@router.get("/estimate-lines/{lineId}/price-preview",response_model=ConvertedPricePreviewResponse)
+async def item_price_preview(projectId:str,lineId:UUID,request:Request,
+    providerItemId:UUID=Query(...),selectedUnit:str=Query(...,min_length=1,max_length=32)):
+    """What this listing would cost in this unit, before anything is saved.
+
+    So «ضریب تبدیل لازم است» is something a person sees while choosing, rather than
+    discovers after committing.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    body=await request.app.state.item_price_mapping_service.preview(
+        scope,provider_item_id=providerItemId,selected_unit=selectedUnit,
+        estimate_line_id=lineId)
+    return _declared(ConvertedPricePreviewResponse, body)
+
+@router.post("/estimate-lines/{lineId}/price-mapping",response_model=ItemPriceMappingResponse,
+             status_code=201,responses=FINANCE_ERROR_RESPONSES)
+async def save_item_price_mapping(projectId:str,lineId:UUID,payload:ItemPriceMappingCreate,
+                                  request:Request):
+    """Record which listing prices this line, and in which official unit.
+
+    Appended, never edited: the previous version is superseded and stays readable, because
+    a report issued against it has to keep meaning what it meant.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    row=await request.app.state.item_price_mapping_service.save_mapping(
+        scope,estimate_line_id=lineId,payload=payload,actor_id=scope.actor_user_id)
+    return await _named(request, _declared(ItemPriceMappingResponse, row))

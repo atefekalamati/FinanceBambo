@@ -29,6 +29,7 @@ from app.finance.repositories.attachments import PsycopgAttachmentRepository
 from app.finance.repositories.audit import PsycopgFinanceAuditRepository
 from app.finance.repositories.conversions import PsycopgUnitConversionRepository
 from app.finance.repositories.material_prices import PsycopgMaterialPriceRepository
+from app.finance.repositories.item_price_mappings import PsycopgItemPriceMappingRepository
 from app.finance.repositories.extractions import PsycopgExtractionRepository
 from app.finance.repositories.imports import PsycopgFinanceImportRepository
 from app.finance.repositories.invoices import PsycopgInvoiceRepository
@@ -41,6 +42,7 @@ from app.finance.services.attachments import FinanceAttachmentService
 from app.finance.services.audit import FinanceAuditService
 from app.finance.services.conversions import UnitConversionService
 from app.finance.services.material_prices import MaterialPriceService
+from app.finance.services.item_price_mappings import ItemPriceMappingService
 from app.finance.services.extractions import FinanceExtractionService
 from app.finance.services.imports import FinanceImportService
 from app.finance.services.invoices import FinanceInvoiceService
@@ -328,6 +330,11 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     application.state.material_price_service = MaterialPriceService(
         PsycopgMaterialPriceRepository(connection),
         conversion_repository=PsycopgUnitConversionRepository(connection))
+    # The bridge between the two modules: which market listing prices which schedule item.
+    # It reads both sides and writes only its own table -- nothing here can change a
+    # material price or a schedule row.
+    application.state.item_price_mapping_service = ItemPriceMappingService(
+        PsycopgItemPriceMappingRepository(connection))
     application.state.progress_service = ProgressService(
         PsycopgProgressRepository(connection), progress_provider)
     application.state.finance_import_service = FinanceImportService(

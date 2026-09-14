@@ -37,6 +37,22 @@ class FakeClassList {
     names.forEach((name) => next.add(name));
     this.node.className = [...next].join(" ");
   }
+
+  remove(...names) {
+    const next = new Set(this.tokens);
+    names.forEach((name) => next.delete(name));
+    this.node.className = [...next].join(" ");
+  }
+
+  /* The two-argument form, which is the one feature code uses to mark exactly one node
+     of a list as chosen: `toggle(name, node === chosen)`. The one-argument form flips,
+     like the real API. */
+  toggle(name, force) {
+    const on = force === undefined ? !this.contains(name) : Boolean(force);
+    if (on) this.add(name);
+    else this.remove(name);
+    return on;
+  }
 }
 
 class FakeNode {
@@ -49,6 +65,19 @@ class FakeNode {
     this.listeners = new Map();
     this._text = "";
     this.classList = new FakeClassList(this);
+    /* A plain object, which is all `element.dataset.foo = "x"` needs. Not mirrored into
+       `attributes`: nothing here queries `[data-*]`, and a half-working mirror would be a
+       worse lie than an honest gap. Added because feature code genuinely uses it -- a
+       panel stamps the row id it belongs to -- and without it the module threw before
+       rendering anything. */
+    this.dataset = {};
+    /* A real `<input>`, `<select>` or `<textarea>` always has a string value, empty
+       before anybody types. Without this, `field.value.trim()` -- which is how every form
+       in this codebase reads a field -- threw on undefined, and the module swallowed it
+       into the feedback line, so the page rendered "Cannot read properties of undefined"
+       where a product list should have been. */
+    this.value = "";
+    this.disabled = false;
   }
 
   set textContent(value) {
@@ -73,6 +102,22 @@ class FakeNode {
   appendChild(node) {
     this.append(node);
     return node;
+  }
+
+  /* How a feature module re-renders a region: drop what is there and put the new nodes
+     in. Common enough in this codebase that a stub without it cannot render most
+     sections at all -- `element.replaceChildren()` with no arguments is also the
+     idiomatic "empty this", so the no-argument case has to work too. */
+  replaceChildren(...nodes) {
+    this.children.forEach((child) => { child.parentNode = null; });
+    this.children = [];
+    this.append(...nodes);
+  }
+
+  remove() {
+    if (!this.parentNode) return;
+    this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+    this.parentNode = null;
   }
 
   setAttribute(name, value) {
