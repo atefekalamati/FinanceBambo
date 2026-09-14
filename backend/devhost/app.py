@@ -28,6 +28,7 @@ from app.main import create_app
 from app.finance.repositories.attachments import PsycopgAttachmentRepository
 from app.finance.repositories.audit import PsycopgFinanceAuditRepository
 from app.finance.repositories.conversions import PsycopgUnitConversionRepository
+from app.finance.repositories.material_prices import PsycopgMaterialPriceRepository
 from app.finance.repositories.extractions import PsycopgExtractionRepository
 from app.finance.repositories.imports import PsycopgFinanceImportRepository
 from app.finance.repositories.invoices import PsycopgInvoiceRepository
@@ -39,6 +40,7 @@ from app.finance.repositories.settings import PsycopgFinanceSettingsRepository
 from app.finance.services.attachments import FinanceAttachmentService
 from app.finance.services.audit import FinanceAuditService
 from app.finance.services.conversions import UnitConversionService
+from app.finance.services.material_prices import MaterialPriceService
 from app.finance.services.extractions import FinanceExtractionService
 from app.finance.services.imports import FinanceImportService
 from app.finance.services.invoices import FinanceInvoiceService
@@ -319,6 +321,13 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
         PsycopgFinancePriceRepository(connection))
     application.state.unit_conversion_service = UnitConversionService(
         PsycopgUnitConversionRepository(connection))
+    # Material prices read from the database only. The import that fills those tables
+    # is a server-side job; no request path here reaches Google Sheets, and the unit
+    # conversion repository is handed over so one conversion boundary answers both
+    # the existing unit registry and a converted material price.
+    application.state.material_price_service = MaterialPriceService(
+        PsycopgMaterialPriceRepository(connection),
+        conversion_repository=PsycopgUnitConversionRepository(connection))
     application.state.progress_service = ProgressService(
         PsycopgProgressRepository(connection), progress_provider)
     application.state.finance_import_service = FinanceImportService(

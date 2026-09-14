@@ -479,6 +479,20 @@ def seed_refusal() -> str:
     return "seeding is allowed"
 
 
+#: The Google Sheet material prices are imported from. Absent by default, and that default
+#: means no import runs -- the same shape `mpp_import_root` uses, and for the same reason:
+#: reading somebody's spreadsheet is not something a process should start doing because a
+#: variable was forgotten. The link is configuration, never a request parameter: a caller
+#: who could name the sheet could point this host at any sheet at all.
+MATERIAL_PRICE_SHEET_SETTING = "FINANCE_MATERIAL_PRICE_SHEET_URL"
+
+
+def material_price_sheet_url() -> str | None:
+    """The configured sheet link, or None. None means the import is off."""
+    value = (setting(MATERIAL_PRICE_SHEET_SETTING, "") or "").strip()
+    return value or None
+
+
 def redacted(dsn: str) -> str:
     """A form safe to print: the password is replaced, never echoed."""
     if "://" not in dsn or "@" not in dsn:

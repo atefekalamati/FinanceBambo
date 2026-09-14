@@ -32,6 +32,10 @@ from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,Extra
 from .domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT
 from .schemas.reports import LiveReportResponse,MonthlyReportResponse,OperationalOverviewResponse,ReportSnapshotCreate,ReportSnapshotListResponse,ReportSnapshotReference,ReportVarianceListResponse,WbsReportResponse
 from .schemas.audit import AuditEventListResponse,AuditEventResponse
+from .schemas.material_prices import (ImportRunListResponse,ImportRunResponse,
+    MaterialCategoryListResponse,MaterialCategoryResponse,MaterialPriceHistoryListResponse,
+    MaterialPriceHistoryResponse,MaterialPriceListResponse,MaterialPriceResponse,
+    MaterialUnitSettingCreate,MaterialUnitSettingListResponse,MaterialUnitSettingResponse)
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -548,3 +552,85 @@ async def audit_events(projectId:str,request:Request,page:int=Query(1,ge=1),page
     occurredFrom:date|None=None,occurredTo:date|None=None,query:str|None=Query(None,min_length=1,max_length=200)):
     scope=await _resource_scope(projectId,request,"finance.view")
     return await _named(request, await request.app.state.finance_audit_service.list(scope,page,pageSize,action,entityType,occurredFrom,occurredTo,query))
+
+# ------------------------------------------------------------------- material prices
+#
+# Read-only against the database, every one of them. The UI never reaches Google Sheets:
+# an import is a server-side job, and a page that fetched a spreadsheet per row would be
+# both slow and a way for a third party to decide what a Finance page shows.
+#
+# `finance.view` to read, `finance.edit` to decide a unit or to start an import -- the same
+# two permissions the rest of this router uses, so nothing new has to be granted anywhere.
+
+@router.get("/material-prices/categories",response_model=MaterialCategoryListResponse)
+async def material_categories(projectId:str,request:Request):
+    """Every category present, counted from the database. No category is assumed to exist."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items=await request.app.state.material_price_service.categories(scope)
+    return MaterialCategoryListResponse(items=[MaterialCategoryResponse(**dict(x)) for x in items])
+
+@router.get("/material-prices/current",response_model=MaterialPriceListResponse)
+async def material_prices_current(projectId:str,request:Request,
+    category:str|None=Query(None,min_length=1,max_length=60),
+    asOf:date|None=None,includeInactive:bool=False,
+    page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200)):
+    """The newest price per listing, each with the status that says how to read it.
+
+    `asOf` turns freshness on: without it nothing is called stale, because a page that does
+    not say which day it means cannot say whether a price is old.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items,total=await request.app.state.material_price_service.current(
+        scope,category=category,as_of=asOf,page=page,page_size=pageSize,
+        only_active=not includeInactive)
+    return MaterialPriceListResponse(items=[MaterialPriceResponse(**x) for x in items],
+        page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
+
+@router.get("/material-prices/{providerItemId}/history",response_model=MaterialPriceHistoryListResponse)
+async def material_price_history(projectId:str,providerItemId:UUID,request:Request,
+    page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200)):
+    """Every observation for one listing, newest first. Append-only; nothing is rewritten."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items,total=await request.app.state.material_price_service.history(scope,providerItemId,page,pageSize)
+    return MaterialPriceHistoryListResponse(
+        items=[MaterialPriceHistoryResponse(**dict(x)) for x in items],
+        page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
+
+@router.get("/material-prices/runs",response_model=ImportRunListResponse)
+async def material_price_runs(projectId:str,request:Request,
+    page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200)):
+    """What each import did, including the ones that failed and why."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items,total=await request.app.state.material_price_service.runs(scope,page,pageSize)
+    return ImportRunListResponse(items=[ImportRunResponse(**dict(x)) for x in items],
+        page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
+
+@router.get("/material-prices/invalid-rows",response_model=MaterialPriceHistoryListResponse)
+async def material_price_invalid_rows(projectId:str,request:Request,
+    page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200)):
+    """Rows that were stored and could not be believed. Findable, not hidden."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items,total=await request.app.state.material_price_service.invalid_rows(scope,page,pageSize)
+    return MaterialPriceHistoryListResponse(
+        items=[MaterialPriceHistoryResponse(**dict(x)) for x in items],
+        page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
+
+@router.get("/material-prices/unit-settings",response_model=MaterialUnitSettingListResponse)
+async def material_unit_settings(projectId:str,request:Request,
+    category:str|None=Query(None,min_length=1,max_length=60)):
+    """The unit each category is displayed in, as most recently decided."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items=await request.app.state.material_price_service.unit_settings(scope,category)
+    return await _named(request, MaterialUnitSettingListResponse(
+        items=[MaterialUnitSettingResponse(**dict(x)) for x in items]))
+
+@router.post("/material-prices/unit-settings",response_model=MaterialUnitSettingResponse,status_code=201)
+async def set_material_unit(projectId:str,payload:MaterialUnitSettingCreate,request:Request):
+    """Choose the unit a category is displayed in. `finance.edit`, appended, with a reason.
+
+    The sheet's own unit never becomes this by itself: it is recorded as what the sheet
+    said and this is what a person decided, and they are different fields for that reason.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    row=await request.app.state.material_price_service.set_unit(scope,payload,scope.actor_user_id)
+    return await _named(request, MaterialUnitSettingResponse(**dict(row)))
