@@ -212,7 +212,13 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
     }));
   }
   if (route.key === "prices" || route.key === "report-prices") {
-    root.append(createPricesPage({ context, adapter: adapters.prices, surface: route.surface, focusResourceId: routeQuery.get("resourceId") ?? "" }));
+    root.append(createPricesPage({ context, adapter: adapters.prices,
+      // Passed by name rather than by handing the page every adapter: it uses one
+      // more than it used to, and that is the one it gets. A host that does not
+      // supply it -- an older one, or the preview -- passes null and the section
+      // says so rather than being replaced with sample rows.
+      materialPricesAdapter: adapters.materialPrices ?? null,
+      surface: route.surface, focusResourceId: routeQuery.get("resourceId") ?? "" }));
   }
   if (route.key === "progress") root.append(createProgressPage({ context, adapter: adapters.progress }));
   if (route.key === "invoices") root.append(createInvoicesPage({ context, adapter: adapters.invoices }));

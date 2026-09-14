@@ -660,7 +660,8 @@ export function renderConversionHistory(history) {
  * change a price they go to the page that is for changing prices. One mode per
  * route is a thing you can reason about; one mode per account is not.
  */
-export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIONS, focusResourceId = "" }) {
+export function createPricesPage({ context, adapter, materialPricesAdapter = null,
+                                  surface = SURFACES.OPERATIONS, focusResourceId = "" }) {
   const root = element("div", "prices-page");
   const readOnly = surface === SURFACES.REPORT;
   const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
@@ -837,12 +838,12 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
        no import configured has nothing to show here, and fetching hundreds of rows for a
        reader who came to check one Finance price would be rude.
 
-       `adapter.materialPrices` is absent when the host has not wired it -- an older host,
+       `materialPricesAdapter` is absent when the host has not wired it -- an older host,
        or the standalone preview -- and then the section says so. It is never replaced with
        sample rows. */
     const market = element("section", "prices-section");
     const marketTitle = element("h2", "", "قیمت روز بازار (برگه مصالح)");
-    if (!adapter.materialPrices) {
+    if (!materialPricesAdapter) {
       market.append(marketTitle,
         element("p", "inline-notice", "این بخش در این نسخه از میزبان در دسترس نیست."));
       fragment.append(toolbar, current, history, market);
@@ -888,7 +889,7 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
   let marketError = null;
 
   async function loadMarketPrices() {
-    if (!adapter.materialPrices) return;
+    if (!materialPricesAdapter) return;
     marketLoading = true;
     marketError = null;
     paint();
@@ -897,10 +898,10 @@ export function createPricesPage({ context, adapter, surface = SURFACES.OPERATIO
          backend labels nothing stale, because a request that does not say which day it
          means cannot say a price is old. */
       const [page, categories] = await Promise.all([
-        adapter.materialPrices.listCurrentPrices({
+        materialPricesAdapter.listCurrentPrices({
           category: marketCategory, asOf: getTehranTodayIso(), pageSize: 200,
         }),
-        adapter.materialPrices.listCategories(),
+        materialPricesAdapter.listCategories(),
       ]);
       marketPrices = page;
       marketCategories = categories;
