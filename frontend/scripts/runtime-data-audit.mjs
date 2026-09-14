@@ -19,7 +19,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const chromePath = process.env.CHROME_PATH ?? "C:\Program Files\Google\Chrome\Application\chrome.exe";
+// Forward slashes, which Windows accepts, because backslashes here were silently wrong:
+// "C:\Program Files\..." in a JS string is not a path, it is "C:Program Files..." -- \P,
+// \G, \C and \A are not escapes, so JavaScript drops each backslash without complaining.
+// The default therefore named a file that cannot exist, Chrome never started, and the run
+// failed with "Chrome opened no page target" -- which reads like a browser problem. Anyone
+// who had CHROME_PATH set never saw it.
+const chromePath = process.env.CHROME_PATH
+  ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const baseUrl = process.env.BAMBO_AUDIT_URL ?? "http://127.0.0.1:43127";
 const debugPort = Number(process.env.BAMBO_AUDIT_DEBUG_PORT ?? 43128);
 const DEMO = /\/adapters\/mock\//;
@@ -83,7 +90,30 @@ async function visit(page, portOffset) {
     await send("Runtime.enable");
     await send("Page.enable");
     await send("Page.navigate", { url: `${baseUrl}/${page}` });
-    await sleep(Number(process.env.BAMBO_AUDIT_SETTLE_MS ?? 5000));
+
+    // Wait for the NETWORK to go quiet, not for a number of seconds to pass.
+    //
+    // A fixed 5s sleep made this audit report what the machine was fast enough to finish
+    // rather than what the page fetches. On a slower run `index.html` recorded 38 requests
+    // and none of its ten demo modules, and the audit failed -- correctly refusing to trust
+    // `host.html`'s zero, but for a reason that had nothing to do with the code. The same
+    // sleep could equally cut `host.html` short, and a page measured before it finished
+    // fetching is exactly how a demo import would go unnoticed.
+    //
+    // Quiet is the real condition: the last module is loaded when nothing new has been
+    // requested for a while. The ceiling stops a page that polls from running forever, and
+    // reaching it is reported below rather than passed off as settled.
+    const quietFor = Number(process.env.BAMBO_AUDIT_QUIET_MS ?? 2000);
+    const ceiling = Number(process.env.BAMBO_AUDIT_SETTLE_MS ?? 30000);
+    const startedAt = Date.now();
+    let seen = -1;
+    let quietSince = Date.now();
+    while (Date.now() - startedAt < ceiling) {
+      if (requests.length !== seen) { seen = requests.length; quietSince = Date.now(); }
+      else if (Date.now() - quietSince >= quietFor) break;
+      await sleep(100);
+    }
+    const settled = Date.now() - quietSince >= quietFor;
 
     const evaluate = async (expression) => (await send("Runtime.evaluate", {
       expression, returnByValue: true,
@@ -94,7 +124,7 @@ async function visit(page, portOffset) {
     const landed = await evaluate("location.pathname");
 
     socket.close();
-    return { page, runtime, landed, requests,
+    return { page, runtime, landed, requests, settled,
              demo: requests.filter((url) => DEMO.test(url)), failures };
   } finally {
     chrome.kill();
@@ -109,10 +139,21 @@ async function visit(page, portOffset) {
 }
 
 const problems = [];
+
+/** A page still fetching when the ceiling arrived was not measured, only interrupted. */
+function mustHaveSettled(result) {
+  if (!result.settled) {
+    problems.push(`${result.page} was still fetching when the time limit arrived after ` +
+                  `${result.requests.length} request(s); nothing it did or did not fetch ` +
+                  "can be concluded from a run that was cut short");
+  }
+}
+
 const host = await visit("host.html", 0);
 console.log(`${host.landed}          runtime=${host.runtime || "(unset -> host)"}  ` +
             `requests=${host.requests.length}  demo=${host.demo.length}  ` +
             `uncaught=${host.failures.length}`);
+mustHaveSettled(host);
 if (host.runtime) {
   problems.push(`host.html declares data-finance-runtime="${host.runtime}"; the page the ` +
                 "host mounts must carry no such attribute, because standalone is the one " +
@@ -128,6 +169,7 @@ const preview = await visit("index.html", 1);
 console.log(`${preview.landed}         runtime=${preview.runtime || "(unset)"}  ` +
             `requests=${preview.requests.length}  demo=${preview.demo.length}  ` +
             `uncaught=${preview.failures.length}`);
+mustHaveSettled(preview);
 if (preview.runtime !== "standalone") {
   problems.push(`index.html should declare standalone, it declares ${preview.runtime || "nothing"}`);
 }
