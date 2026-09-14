@@ -77,6 +77,19 @@ jobs:
           CHROME_FLAGS: --no-sandbox --disable-dev-shm-usage
         run: npm run audit:layout
 
+      # What the host's page actually asks the server for, as opposed to what its
+      # imports say. Three static guards already assert that demo data cannot reach the
+      # host build; this one opens the page in the browser already running here and
+      # counts the requests. It fails if host.html fetches even one file from
+      # src/adapters/mock -- and equally if index.html fetches none, because two zeroes
+      # mean the probe stopped working rather than the module getting safer.
+      - name: Runtime data audit
+        working-directory: frontend
+        env:
+          CHROME_PATH: google-chrome
+          CHROME_FLAGS: --no-sandbox --disable-dev-shm-usage
+        run: npm run audit:runtime
+
   backend:
     name: Backend — pytest
     runs-on: ubuntu-latest
