@@ -366,6 +366,12 @@ class RuntimeImportIsolationTests(unittest.TestCase):
 
     #: Not "modules whose names look like fixtures": modules that write fixture rows. A test
     #: that matched on the word would pass by renaming the file.
+    #:
+    #: `scripts` covers `scripts.ops` because a root is a root, and the assertion below
+    #: compares import ROOTS. It is worth saying out loud anyway: those scripts open
+    #: database connections and run pg_dump, so a runtime able to reach them is one bad
+    #: import away from doing that during a request. If this tuple is ever narrowed to
+    #: individual modules, `scripts.ops` has to be named among them.
     FIXTURE_PACKAGES = ("devhost", "scripts")
 
     @staticmethod
@@ -388,6 +394,95 @@ class RuntimeImportIsolationTests(unittest.TestCase):
                 self.assertEqual(set(), reached,
                     "%s imports %s; the runtime must not be able to reach a fixture writer"
                     % (path.relative_to(BACKEND_ROOT), ", ".join(sorted(reached))))
+
+    def test_the_operational_scripts_are_unreachable_from_the_runtime(self):
+        """Said separately from the tuple above, because these are the riskiest of all.
+
+        `scripts/ops` connects to databases, runs pg_dump and applies migrations. The rule
+        that `app/` cannot import `scripts` already covers it; this states the specific
+        case so that narrowing the rule later fails here rather than quietly opening it.
+        """
+        ops = BACKEND_ROOT / "scripts" / "ops"
+        self.assertTrue(ops.is_dir(), "backend/scripts/ops must exist")
+        self.assertIn("scripts", self.FIXTURE_PACKAGES,
+                      "the guard must still cover the package scripts/ops lives in")
+        for path in sorted((BACKEND_ROOT / "app").rglob("*.py")):
+            with self.subTest(module=str(path.relative_to(BACKEND_ROOT))):
+                text = path.read_text(encoding="utf-8")
+                self.assertNotIn("scripts.ops", text,
+                                 "%s mentions scripts.ops" % path.relative_to(BACKEND_ROOT))
+
+    def test_no_operational_script_runs_on_import(self):
+        """Importing one must do nothing. Each is a `python -m` entry point and no more.
+
+        Read statically rather than by importing them: importing to prove that importing is
+        safe is the kind of test that passes until the day it matters.
+        """
+        import ast
+
+        for path in sorted((BACKEND_ROOT / "scripts" / "ops").glob("*.py")):
+            with self.subTest(script=path.name):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in tree.body:
+                    if isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef,
+                                         ast.AsyncFunctionDef, ast.ClassDef, ast.Assign,
+                                         ast.AnnAssign, ast.Expr, ast.If)):
+                        continue
+                    self.fail("%s runs %s at module level" % (path.name, type(node).__name__))
+                # Two module-level `if`s are allowed and no others: the entry-point
+                # guard, and the sys.path line that lets `python -m scripts.ops.x` find
+                # the backend package. Both are about being runnable; neither does work.
+                # Anything else at module level would run on import, which is the whole
+                # thing this test exists to prevent.
+                for node in tree.body:
+                    if isinstance(node, ast.If):
+                        source = ast.unparse(node.test)
+                        allowed = "__name__" in source or "sys.path" in source
+                        self.assertTrue(allowed,
+                                        "%s has a module-level `if` that is neither the "
+                                        "entry point guard nor the sys.path line: %s"
+                                        % (path.name, source))
+
+    def test_no_operational_script_carries_a_credential_or_a_default_dsn(self):
+        """No password, and no DSN that would become a target by being the default."""
+        import re
+
+        secret = re.compile(r"(password\s*=|:\w+@|PGPASSWORD)", re.I)
+        for path in sorted((BACKEND_ROOT / "scripts" / "ops").glob("*.py")):
+            with self.subTest(script=path.name):
+                for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                    if line.lstrip().startswith("#") or "postgresql://user@" in line:
+                        continue  # a usage example in a docstring names no real host
+                    self.assertIsNone(secret.search(line),
+                                      "%s:%d looks like a credential: %s"
+                                      % (path.name, number, line.strip()[:70]))
+
+    def test_the_protected_databases_are_refused_by_name(self):
+        """The two names that must never be written, wherever they appear."""
+        from scripts.ops._common import PROTECTED_DATABASES, Refused, refuse_protected
+
+        self.assertIn("bambo", PROTECTED_DATABASES)
+        self.assertIn("bambo_canonical_local", PROTECTED_DATABASES)
+        for dsn in ("postgresql://u@127.0.0.1:5432/bambo_canonical_local",
+                    "postgresql://u@192.168.100.200:5432/bambo",
+                    "host=127.0.0.1 dbname=bambo_canonical_local user=u"):
+            with self.subTest(dsn=dsn):
+                with self.assertRaises(Refused):
+                    refuse_protected(dsn)
+
+    def test_a_dsn_naming_no_database_is_refused_rather_than_allowed(self):
+        """Unknown is not permission. A rule applied to a misread address enforces nothing."""
+        from scripts.ops._common import Refused, refuse_protected
+
+        with self.assertRaises(Refused):
+            refuse_protected("not a dsn at all")
+
+    def test_an_ordinary_local_database_is_allowed(self):
+        """The guard must not be a blanket no, or it would be worked around."""
+        from scripts.ops._common import refuse_protected
+
+        self.assertEqual("bambo_canonical_test", refuse_protected(
+            "postgresql://u@127.0.0.1:5432/bambo_canonical_test"))
 
     def test_building_the_real_application_loads_no_fixture_package(self):
         """The dynamic half: importing and building the app must not pull one in.
