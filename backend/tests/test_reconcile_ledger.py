@@ -107,12 +107,13 @@ class ObjectDiscoveryTests(unittest.TestCase):
         # compare, and an index is exactly the kind of difference an environment drifts on.
         # `invoices` and `finance_invoice_counters` arrive with 0020. The six price names
         # arrive with 0021: four tables it alters and two it creates, and
-        # `provider_item_labels` with 0022 and `finance_mpp_currency_decisions`
-        # with 0023. That the discovery
-        # found them without being told is the property this test is really about.
+        # `provider_item_labels` with 0022, `finance_mpp_currency_decisions` with 0023,
+        # and `finance_item_price_mappings` with 0024. That the discovery found them
+        # without being told is the property this test is really about.
         self.assertEqual(
             ["estimate_line_source_completions", "estimate_lines",
-             "finance_invoice_counters", "finance_mpp_currency_decisions",
+             "finance_invoice_counters", "finance_item_price_mappings",
+             "finance_mpp_currency_decisions",
              "finance_mpp_rows", "finance_mpp_source_versions", "finance_resources",
              "invoices", "material_unit_settings", "price_collection_runs",
              "price_observations", "price_providers", "progress_snapshot_refs",
