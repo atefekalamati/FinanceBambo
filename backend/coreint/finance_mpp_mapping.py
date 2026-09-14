@@ -204,6 +204,24 @@ def estimate_basis(row):
     return quantity, rate
 
 
+def _resource_title(stated):
+    """A resource's name as Finance stores it: trimmed, bounded, never blank.
+
+    The trim is not cosmetic. `ResourceResponse` inherits `ResourceCreate.nonblank`, which
+    strips `title` -- so a resource created through the API is stored trimmed, while one
+    created here kept whatever padding the schedule carried. Nine of this project's 189
+    resources hold a trailing space for that reason, and the API strips it again on the way
+    out, which HIDES the difference: the page shows one string and the table holds another,
+    so an export, a report payload or anything joining on the title disagrees with the UI.
+
+    Trimmed on both sides of the length bound: before, so the file's own padding goes, and
+    after, because cutting at 120 characters can itself leave a trailing space.
+    """
+    title = (stated or "").strip()[:120].strip()
+    # A name of nothing but whitespace is a name the file did not give.
+    return title or "منبع بدون نام"
+
+
 def _finance_type(native_type):
     """Finance's kind for a schedule resource, or None when the file does not say.
 
@@ -444,7 +462,7 @@ class FinanceMppMappingService:
                         _INSERT_RESOURCE,
                         (resource_id, organization_id, project_id, resource_type,
                          "%s%s" % (RESOURCE_CODE_PREFIX, source_resource_uid),
-                         (row["name"] or "منبع بدون نام")[:120],
+                         _resource_title(row["name"]),
                          unit.code, unit.dimension, source_resource_uid, actor_user_id))
 
                     # A person decided something the file would not say, so the trail has
@@ -547,7 +565,7 @@ class FinanceMppMappingService:
                             _INSERT_RESOURCE,
                             (resource_id, organization_id, project_id, kind,
                              "%s%s" % (RESOURCE_CODE_PREFIX, uid),
-                             (row["resource_name"] or "منبع بدون نام")[:120],
+                             _resource_title(row["resource_name"]),
                              # A general cost is an amount, not a measured thing, so it
                              # carries no unit -- the same rule the resource form applies.
                              None if kind == "general_cost" else row["resource_unit"],

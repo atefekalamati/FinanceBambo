@@ -170,6 +170,44 @@ class ResourceIdentityTests(unittest.TestCase):
         self.assertEqual("%s97" % RESOURCE_CODE_PREFIX, insert[4])
         self.assertEqual("بتن ۴۰۰", insert[5], "named from the RESOURCE, never the task")
 
+    def test_the_files_padding_does_not_reach_the_stored_title(self):
+        """A schedule's names carry trailing spaces, and the table must not.
+
+        `ResourceResponse` inherits `ResourceCreate.nonblank`, which strips `title` -- so a
+        resource created through the API is stored trimmed while one created here kept the
+        file's padding. Nine of this project's 189 resources hold a trailing space for that
+        reason, and because the response strips it AGAIN on the way out, the page and the
+        table disagree silently: an export or a report payload reads one string while the
+        UI shows another.
+        """
+        _result, db = run([row(1, 100, 97, name="آرماتوربندي ستون ها ")])
+        insert = next(p for text, p in db.statements
+                      if "INSERT INTO finance_resources" in text)
+        self.assertEqual("آرماتوربندي ستون ها", insert[5])
+
+    def test_leading_padding_goes_too(self):
+        _result, db = run([row(1, 100, 97, name="  بتن ۴۰۰")])
+        insert = next(p for text, p in db.statements
+                      if "INSERT INTO finance_resources" in text)
+        self.assertEqual("بتن ۴۰۰", insert[5])
+
+    def test_a_name_of_nothing_but_spaces_is_a_name_the_file_did_not_give(self):
+        # Trimming must not produce a blank title: the API refuses to render one, and a
+        # financial item with no name is worse than one that says it has none.
+        _result, db = run([row(1, 100, 97, name="   ")])
+        insert = next(p for text, p in db.statements
+                      if "INSERT INTO finance_resources" in text)
+        self.assertEqual("منبع بدون نام", insert[5])
+
+    def test_a_very_long_name_is_bounded_and_still_not_left_padded(self):
+        # Cutting at 120 characters can itself land on a space, so the trim happens on both
+        # sides of the bound.
+        _result, db = run([row(1, 100, 97, name=("ب" * 119) + "  tail")])
+        insert = next(p for text, p in db.statements
+                      if "INSERT INTO finance_resources" in text)
+        self.assertLessEqual(len(insert[5]), 120)
+        self.assertEqual(insert[5], insert[5].strip())
+
     def test_the_task_never_becomes_a_resource(self):
         _result, db = run([row(1, 1244, 97, task_name="بتن فونداسیون")])
         insert = next(p for text, p in db.statements if "INSERT INTO finance_resources" in text)

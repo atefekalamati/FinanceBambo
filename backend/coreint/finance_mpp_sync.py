@@ -380,7 +380,24 @@ class FinanceMppSyncService:
                             "WHERE project_id = %s", (project_id,))
                         scopes = await cursor.fetchall()
                 if not scopes:
-                    continue                    # a stray file is not a Finance project
+                    # A stray file is not a Finance project -- but it is not nothing
+                    # either, and silence is the wrong way to say so.
+                    #
+                    # The rule is exact: a file belongs to a project when its stem IS the
+                    # project id. That is what stops `terrace-v2.mpp`, `terrace (1).mpp` or
+                    # a copy from another site being read into `terrace` on a filename
+                    # resemblance -- no sorting, no prefix match, no newest-wins. But an
+                    # operator who stages `terrace_final.mpp` and waits gets no import and
+                    # no reason, and "nothing happened" is indistinguishable from "the
+                    # importer is not running".
+                    #
+                    # So it is reported by name as belonging to no project, and still not
+                    # imported. Naming the file is observability; choosing which project
+                    # meant it would be the guess this rule exists to prevent.
+                    outcomes.append({"projectId": None, "status": "ignored",
+                                     "code": "FINANCE_MPP_FILE_NAMES_NO_PROJECT",
+                                     "fileName": candidate.name})
+                    continue
                 for scope in scopes:
                     outcome = await self.sync(str(scope["organization_id"]), project_id)
                     outcomes.append({"projectId": project_id,
