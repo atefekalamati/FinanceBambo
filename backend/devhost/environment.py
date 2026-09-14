@@ -412,13 +412,71 @@ def seeding_allowed() -> bool:
     Staging is not a seedable environment. It is deployed, and demo invoices there look
     exactly like real ones to anyone reviewing it.
 
-    The check is on the environment rather than the connection string on purpose: a
-    production DSN in a misconfigured shell would otherwise be seeded silently.
+    The environment is checked as well as the connection string, not instead of it: a
+    production DSN in a misconfigured shell must not be seeded even when it is named
+    something harmless, and a protected database must not be seeded even when the
+    environment says development. Either one refusing is a refusal.
     """
     configured = (setting(APP_ENV_SETTING) or "").strip().lower()
     if not configured:
         return False
-    return configured in SEEDABLE_ENVIRONMENTS and seed_opt_in()
+    if configured not in SEEDABLE_ENVIRONMENTS or not seed_opt_in():
+        return False
+    return protected_seed_target() is None
+
+
+#: Databases that never receive development fixture rows, whatever APP_ENV says.
+#:
+#: `bambo_canonical_local` is on this list for a reason that is easy to miss:
+#: `check_runtime_dsn` REQUIRES the central DSN to name it, so a host correctly
+#: configured against the central server is pointing at this database by the rules. An
+#: environment-only gate was then two variables away from `database.reset()`, which is a
+#: DELETE across sixteen Finance tables with the immutability triggers turned off, on the
+#: canonical database. `bambo_canonical_test` is the local database the real-data runs
+#: read, and `bambo` is Core's own, already refused for runtime use.
+SEED_PROTECTED_DATABASES = frozenset(
+    FORBIDDEN_DATABASES | {CENTRAL_DATABASE, "bambo_canonical_test"})
+
+#: Every setting a seed could be written through. Both are read because they are
+#: different doors: `FINANCE_MIGRATION_DSN` is what `devhost.database` resets and loads,
+#: `FINANCE_DEV_DSN` is what `synthetic_progress` writes fixture progress rows through.
+SEED_TARGET_SETTINGS = ("FINANCE_MIGRATION_DSN", "FINANCE_DEV_DSN")
+
+
+def protected_seed_target():
+    """`(setting, database)` for the first configured DSN naming a protected database.
+
+    `None` means nothing configured points at one -- which is not the same as "safe by
+    inspection": a DSN whose database cannot be read returns `(None, None)` from
+    `dsn_target` and is passed over here, exactly as `check_runtime_dsn` passes it over.
+    A rule applied to a misread address reads as enforcement while enforcing something
+    else. What stops an unreadable DSN is the environment half of the gate.
+    """
+    for name in SEED_TARGET_SETTINGS:
+        _, database = dsn_target(setting(name))
+        if database is not None and database in SEED_PROTECTED_DATABASES:
+            return name, database
+    return None
+
+
+def seed_refusal() -> str:
+    """Why seeding is off, in the words of whichever condition refused.
+
+    One line, for the host to print at startup. "seed DISABLED" on its own sent people
+    looking at APP_ENV when the answer was the database name.
+    """
+    configured = (setting(APP_ENV_SETTING) or "").strip().lower()
+    if not configured:
+        return "%s is not set; no default may authorize fixture rows" % APP_ENV_SETTING
+    if configured not in SEEDABLE_ENVIRONMENTS:
+        return "%s=%s is not a seedable environment" % (APP_ENV_SETTING, configured)
+    if not seed_opt_in():
+        return "%s does not say yes" % SEED_OPT_IN
+    blocked = protected_seed_target()
+    if blocked is not None:
+        return ("%s names %r, which is protected and never receives fixture rows"
+                % blocked)
+    return "seeding is allowed"
 
 
 def redacted(dsn: str) -> str:

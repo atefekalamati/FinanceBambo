@@ -61,11 +61,12 @@ from coreint.security import (CoreAuthContextAssembler, CoreRbacPermissionAuthor
 
 from . import database, seed
 from .connection import ReconnectingConnection
-from .environment import (SELF_HOSTED_EXTRACTION, app_env, core_identity_settings,
-                          core_progress_enabled, core_url, extraction_provider,
-                          migration_url, mpp_import_enabled, mpp_import_interval_minutes,
+from .environment import (SELF_HOSTED_EXTRACTION, SEED_OPT_IN, app_env,
+                          core_identity_settings, core_progress_enabled, core_url,
+                          dsn_target, extraction_provider, migration_url,
+                          mpp_import_enabled, mpp_import_interval_minutes,
                           mpp_import_root, mpp_java_home, mpp_max_file_size_mb,
-                          seeding_allowed)
+                          seed_refusal, seeding_allowed)
 from .ports import (ContextPermissionAuthorizer, LocalFileStorage, SeededActivityProvider,
                     SeededProgressSnapshotProvider, SingleTenantScopeAuthorizer,
                     StaticAuthContextProvider, UnavailableExtractor)
@@ -353,8 +354,22 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
         if admin_dsn and not seeding_allowed():
             # A deployed environment never gets the demo project, and there is nothing else
             # for the owner role to do here, so it is not connected at all.
-            print(f"development seed DISABLED (APP_ENV={app_env()})")
+            #
+            # The reason is printed, not just the verdict: this line used to read
+            # "seed DISABLED (APP_ENV=development)", which names the one condition that
+            # had PASSED and sends the reader to change the setting that was already right.
+            print(f"development seed DISABLED -- {seed_refusal()}")
         elif admin_dsn:
+            # Loud, and by name. Fixture rows are about to be written, and `--reseed`
+            # DELETEs from sixteen Finance tables first with the immutability triggers
+            # turned off. Whoever reads this log gets to see which database that lands in
+            # before it lands, rather than inferring it from two environment variables.
+            seed_host, seed_database = dsn_target(admin_dsn)
+            print("development seed ENABLED -- writing fixture rows into "
+                  f"{seed_database!r} on {seed_host or 'the configured host'} "
+                  f"(APP_ENV={app_env()}, {SEED_OPT_IN}=yes"
+                  + (", --reseed: existing rows for the demo project are deleted first"
+                     if reseed else "") + ")")
             admin = ReconnectingConnection(admin_dsn)
             try:
                 # The query is skipped when reseeding, because the answer cannot change what
