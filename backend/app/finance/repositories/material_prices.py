@@ -364,3 +364,139 @@ class PsycopgMaterialPriceRepository:
                     ORDER BY from_unit, to_unit, version DESC""",
                 (s.organization_id, s.project_id, provider_item_id))
             return await c.fetchall()
+
+    # ------------------------------------------------------- labels a person wrote
+
+    async def labels(self, s, *, provider_item_id=None, active_only=True):
+        """The current label for each listing.
+
+        `DISTINCT ON (provider_item_id)` over `version DESC`: a label is superseded by a
+        newer one, never updated, so the current answer is the highest version. A
+        superseded row stays readable and is simply not the current one.
+        """
+        where = [" WHERE organization_id=%s AND project_id=%s"]
+        args = [s.organization_id, s.project_id]
+        if provider_item_id is not None:
+            where.append(" AND provider_item_id=%s")
+            args.append(provider_item_id)
+        if active_only:
+            where.append(" AND superseded_at IS NULL")
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """SELECT DISTINCT ON (provider_item_id) *
+                     FROM provider_item_labels""" + "".join(where) +
+                " ORDER BY provider_item_id, version DESC", tuple(args))
+            return await c.fetchall()
+
+    async def label_history(self, s, provider_item_id):
+        """Every version, oldest first. Nothing here was ever rewritten."""
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """SELECT * FROM provider_item_labels
+                    WHERE organization_id=%s AND project_id=%s AND provider_item_id=%s
+                    ORDER BY version""",
+                (s.organization_id, s.project_id, provider_item_id))
+            return await c.fetchall()
+
+    async def append_label(self, s, *, provider_item_id, values, created_by):
+        """A new version of a listing label, with the previous one marked superseded.
+
+        Both statements in one transaction. A new version without the old one closed would
+        leave two rows claiming to be current; closing the old one without a new one would
+        leave a listing with no label at all. Neither is a state anybody should be able to
+        read, so neither is a state that exists between these two statements.
+        """
+        async with self.db.transaction():
+            async with self.db.cursor(row_factory=dict_row) as c:
+                await c.execute(
+                    """INSERT INTO provider_item_labels
+                           (id, organization_id, project_id, provider_item_id, version,
+                            label, display_name, category, product_type, source_unit,
+                            source_basis, target_unit, finance_resource_id,
+                            mapping_approved, mapping_approved_by, mapping_approved_at,
+                            active, notes, reason, created_by)
+                       SELECT %s, %s, %s, %s, coalesce(max(version), 0) + 1,
+                              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                         FROM provider_item_labels
+                        WHERE organization_id=%s AND project_id=%s AND provider_item_id=%s
+                    RETURNING *""",
+                    (uuid4(), s.organization_id, s.project_id, provider_item_id,
+                     values.get("label"), values.get("display_name"), values.get("category"),
+                     values.get("product_type"), values.get("source_unit"),
+                     values.get("source_basis"), values.get("target_unit"),
+                     values.get("finance_resource_id"),
+                     bool(values.get("mapping_approved")),
+                     values.get("mapping_approved_by"), values.get("mapping_approved_at"),
+                     values.get("active", True), values.get("notes"), values["reason"],
+                     created_by,
+                     s.organization_id, s.project_id, provider_item_id))
+                created = await c.fetchone()
+                await c.execute(
+                    """UPDATE provider_item_labels
+                          SET superseded_at = now(), superseded_by = %s
+                        WHERE organization_id=%s AND project_id=%s AND provider_item_id=%s
+                          AND id <> %s AND superseded_at IS NULL""",
+                    (created["id"], s.organization_id, s.project_id, provider_item_id,
+                     created["id"]))
+                return created
+
+    async def append_item_factor(self, s, *, provider_item_id, from_unit, to_unit, factor,
+                                 factor_type, origin, reason, created_by, approved_by=None):
+        """A factor somebody measured for one listing. Supersedes its own pair only.
+
+        Scoped to the (from, to) pair rather than the whole listing: a brick can have a
+        weight per piece and an area per piece at once, and recording a new weight must not
+        retire the area.
+        """
+        async with self.db.transaction():
+            async with self.db.cursor(row_factory=dict_row) as c:
+                await c.execute(
+                    """INSERT INTO provider_item_unit_factors
+                           (id, organization_id, project_id, provider_item_id, version,
+                            from_unit, to_unit, factor, origin, factor_type, reason,
+                            created_by, approved_by, approved_at)
+                       SELECT %s, %s, %s, %s, coalesce(max(version), 0) + 1,
+                              %s, %s, %s, %s, %s, %s, %s, %s,
+                              CASE WHEN %s::uuid IS NULL THEN NULL ELSE now() END
+                         FROM provider_item_unit_factors
+                        WHERE organization_id=%s AND project_id=%s AND provider_item_id=%s
+                          AND from_unit=%s AND to_unit=%s
+                    RETURNING *""",
+                    (uuid4(), s.organization_id, s.project_id, provider_item_id,
+                     from_unit, to_unit, factor, origin, factor_type, reason, created_by,
+                     approved_by, approved_by,
+                     s.organization_id, s.project_id, provider_item_id, from_unit, to_unit))
+                created = await c.fetchone()
+                await c.execute(
+                    """UPDATE provider_item_unit_factors
+                          SET superseded_at = now(), superseded_by = %s
+                        WHERE organization_id=%s AND project_id=%s AND provider_item_id=%s
+                          AND from_unit=%s AND to_unit=%s AND id <> %s
+                          AND superseded_at IS NULL""",
+                    (created["id"], s.organization_id, s.project_id, provider_item_id,
+                     from_unit, to_unit, created["id"]))
+                return created
+
+    async def unresolved_items(self, s, *, page=1, page_size=50):
+        """Listings somebody still has to say something about.
+
+        Unresolved here means: no current label, and the sheet stated no unit either. Those
+        are the rows where no amount of category-wide configuration can produce a price, so
+        they are the ones worth putting in front of a person.
+        """
+        clause = """
+             FROM provider_items i
+             LEFT JOIN provider_item_labels l
+               ON l.organization_id = i.organization_id AND l.project_id = i.project_id
+              AND l.provider_item_id = i.id AND l.superseded_at IS NULL
+            WHERE i.organization_id=%s AND i.project_id=%s AND i.active
+              AND l.id IS NULL
+              AND (i.source_unit IS NULL OR length(btrim(i.source_unit)) = 0)"""
+        args = (s.organization_id, s.project_id)
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute("SELECT count(*) AS total" + clause, args)
+            total = (await c.fetchone())["total"]
+            await c.execute(
+                "SELECT i.*" + clause + " ORDER BY i.category, i.external_name, i.id"
+                " LIMIT %s OFFSET %s", args + (page_size, (page - 1) * page_size))
+            return await c.fetchall(), total

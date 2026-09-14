@@ -101,6 +101,21 @@ class MaterialPriceResponse(ApiModel):
     source_row_number: int | None = None
     source_url: str | None = None
 
+    #: What a person wrote about this listing. All optional, all null until somebody does:
+    #: an unlabelled row is a row nobody has looked at, and saying so is the point.
+    label: str | None = None
+    label_display_name: str | None = None
+    label_product_type: str | None = None
+    label_source_basis: str | None = None
+    finance_resource_id: UUID | None = None
+    #: A mapping only counts once somebody approved it. False means either no mapping or
+    #: an unapproved one, and the resolution status says which.
+    mapping_approved: bool = False
+    labelled_by: UUID | None = None
+    labelled_by_name: str | None = None
+    labelled_at: datetime | None = None
+    label_version: int | None = None
+
 
 class MaterialPriceListResponse(ApiModel):
     items: list[MaterialPriceResponse]
@@ -189,3 +204,121 @@ class MaterialUnitSettingResponse(ApiModel):
 
 class MaterialUnitSettingListResponse(ApiModel):
     items: list[MaterialUnitSettingResponse]
+
+
+class ProviderItemLabelCreate(ApiModel):
+    """What a person says one listing is.
+
+    Every field is optional except `reason`, and that asymmetry is deliberate: a label may
+    say one thing or ten, but a decision nobody explained is one nobody can review later --
+    the same rule `price_versions` and `unit_conversions` already hold.
+
+    `mappingApprovedBy` is absent on purpose. The approver is the authenticated caller,
+    stamped by the service; accepting it from the request would let somebody approve a
+    mapping in another person's name.
+    """
+
+    label: str | None = Field(default=None, max_length=200)
+    display_name: str | None = Field(default=None, max_length=200)
+    category: str | None = Field(default=None, max_length=60)
+    product_type: str | None = Field(default=None, max_length=60)
+    #: A Finance unit code. Validated against the registry by the router, so a label cannot
+    #: introduce a unit the rest of Finance has never heard of.
+    source_unit: str | None = Field(default=None, max_length=20)
+    #: The commercial basis in words, for when the price is per something that is not a
+    #: unit at all -- "per branch of 12 metres", "per pallet".
+    source_basis: str | None = Field(default=None, max_length=120)
+    target_unit: str | None = Field(default=None, max_length=20)
+    finance_resource_id: UUID | None = None
+    mapping_approved: bool = False
+    active: bool = True
+    notes: str | None = Field(default=None, max_length=2000)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ProviderItemLabelResponse(ApiModel):
+    id: UUID
+    provider_item_id: UUID
+    version: int
+    label: str | None = None
+    display_name: str | None = None
+    category: str | None = None
+    product_type: str | None = None
+    source_unit: str | None = None
+    source_basis: str | None = None
+    target_unit: str | None = None
+    finance_resource_id: UUID | None = None
+    mapping_approved: bool
+    mapping_approved_by: UUID | None = None
+    mapping_approved_at: datetime | None = None
+    active: bool
+    notes: str | None = None
+    reason: str
+    created_by: UUID
+    created_by_name: str | None = None
+    created_at: datetime
+    #: Set when a newer version replaced this one. Null means this is the current label.
+    superseded_at: datetime | None = None
+    superseded_by: UUID | None = None
+
+
+class ProviderItemLabelListResponse(ApiModel):
+    items: list[ProviderItemLabelResponse]
+
+
+class ProviderItemFactorCreate(ApiModel):
+    """A measurement of one product: how much one of these is in another unit.
+
+    This is the only way a crossing between dimensions becomes possible -- piece to
+    kilogram, branch to metre. Nothing derives one; somebody weighs or measures the thing
+    and records it here with a reason.
+    """
+
+    from_unit: str = Field(min_length=1, max_length=20)
+    to_unit: str = Field(min_length=1, max_length=20)
+    factor: Decimal = Field(gt=0, max_digits=24, decimal_places=8)
+    factor_type: Literal["weight_per_piece", "weight_per_branch", "length_per_branch",
+                         "mass_per_bag", "area_per_piece", "volume_per_piece", "other"]
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ProviderItemFactorResponse(ApiModel):
+    id: UUID
+    provider_item_id: UUID
+    version: int
+    from_unit: str
+    to_unit: str
+    factor: Decimal
+    factor_type: str | None = None
+    origin: str
+    reason: str
+    created_by: UUID
+    created_by_name: str | None = None
+    created_at: datetime
+    approved_by: UUID | None = None
+    approved_at: datetime | None = None
+    superseded_at: datetime | None = None
+
+
+class ProviderItemFactorListResponse(ApiModel):
+    items: list[ProviderItemFactorResponse]
+
+
+class UnresolvedItemResponse(ApiModel):
+    """A listing nobody has labelled and the sheet said nothing useful about."""
+
+    id: UUID
+    external_id: str
+    external_name: str
+    category: str
+    source_unit: str | None = None
+    source_worksheet: str | None = None
+    active: bool
+
+
+class UnresolvedItemListResponse(ApiModel):
+    items: list[UnresolvedItemResponse]
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int

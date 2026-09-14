@@ -11,6 +11,7 @@ supplies both. This service does not read a clock -- a report for a date in the 
 not be told that everything in it is stale.
 """
 
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from .material_price_resolution import Resolution, canonical_unit, resolve
@@ -52,6 +53,53 @@ class MaterialPriceService:
             display_unit=payload.display_unit, reason=payload.reason.strip(),
             created_by=actor_id)
 
+    async def labels(self, scope, provider_item_id=None):
+        return await self.repository.labels(scope, provider_item_id=provider_item_id)
+
+    async def label_history(self, scope, provider_item_id):
+        return await self.repository.label_history(scope, provider_item_id)
+
+    async def save_label(self, scope, provider_item_id, payload, actor_id):
+        """Record what a person says this listing is. Appended, never an update.
+
+        An approval is stamped with the actor and the moment here rather than accepted from
+        the request: a caller that could supply `mappingApprovedBy` could approve a mapping
+        in somebody else's name.
+        """
+        values = {
+            "label": _clean(payload.label),
+            "display_name": _clean(payload.display_name),
+            "category": _clean(payload.category),
+            "product_type": _clean(payload.product_type),
+            "source_unit": _clean(payload.source_unit),
+            "source_basis": _clean(payload.source_basis),
+            "target_unit": _clean(payload.target_unit),
+            "finance_resource_id": payload.finance_resource_id,
+            "mapping_approved": bool(payload.mapping_approved),
+            "mapping_approved_by": actor_id if payload.mapping_approved else None,
+            "mapping_approved_at": datetime.now(timezone.utc) if payload.mapping_approved else None,
+            "active": payload.active,
+            "notes": _clean(payload.notes),
+            "reason": payload.reason.strip(),
+        }
+        return await self.repository.append_label(
+            scope, provider_item_id=provider_item_id, values=values, created_by=actor_id)
+
+    async def save_item_factor(self, scope, provider_item_id, payload, actor_id):
+        """A measurement of one product, stored so a crossing becomes possible.
+
+        `origin` is forced to 'manual': this endpoint is a person typing a number, and
+        'sheet_attribute' is reserved for a factor the importer read off a column.
+        """
+        return await self.repository.append_item_factor(
+            scope, provider_item_id=provider_item_id, from_unit=payload.from_unit,
+            to_unit=payload.to_unit, factor=payload.factor,
+            factor_type=payload.factor_type, origin="manual",
+            reason=payload.reason.strip(), created_by=actor_id, approved_by=actor_id)
+
+    async def unresolved(self, scope, page, page_size):
+        return await self.repository.unresolved_items(scope, page=page, page_size=page_size)
+
     async def current(self, scope, *, category=None, as_of=None, page=1, page_size=50,
                       only_active=True):
         """The newest observation per listing, resolved, paged.
@@ -66,22 +114,40 @@ class MaterialPriceService:
             scope, category=category, only_active=only_active)
         settings = {row["category"]: row["display_unit"]
                     for row in await self.repository.unit_settings(scope)
-                    if row["resource_id"] is None}
+                    if row.get("resource_id") is None and row.get("provider_item_id") is None}
+        # What a person said about one listing. Fetched once for the whole page rather than
+        # once per row: a project has hundreds of listings and one query answers all of them.
+        labels = {}
+        if hasattr(self.repository, "labels"):
+            labels = {row["provider_item_id"]: row for row in await self.repository.labels(scope)}
 
         resolved = []
         for row in observations:
-            display_unit = settings.get(row["category"])
-            source = canonical_unit(row.get("source_unit"))
+            label = labels.get(row["provider_item_id"])
+            # A label wins over the category-wide setting, and over the sheet. It is the
+            # narrower statement and the only one made by somebody who looked at this row.
+            # It never rewrites the observation: `row` is untouched and what the sheet said
+            # still travels to the reader beside what the label made of it.
+            display_unit = (label or {}).get("target_unit") or settings.get(row["category"])
+            source = (canonical_unit((label or {}).get("source_unit"))
+                      or canonical_unit(row.get("source_unit")))
             target = canonical_unit(display_unit)
             # Only fetched when the crossing actually needs one: a per-product factor is a
             # person's measurement, and asking for one where units already agree would
             # invite using it where it was never needed.
             factor = await self._product_factor(scope, row["provider_item_id"], source, target)
+            # A label that names a Finance resource is a mapping claim, and a mapping claim
+            # only counts once somebody has approved it. An unapproved one withholds the
+            # price rather than quietly becoming the source of it.
+            mapping_required = bool((label or {}).get("finance_resource_id"))
             outcome = resolve(
-                row, display_unit=display_unit, product_factor=factor, as_of=as_of,
+                dict(row, source_unit=source or row.get("source_unit")),
+                display_unit=display_unit, product_factor=factor, as_of=as_of,
                 stale_after_days=self.stale_after_days if as_of else None,
-                active=row.get("active", True))
-            resolved.append(self._shape(row, outcome, display_unit))
+                mapping_required=mapping_required,
+                mapping_approved=bool((label or {}).get("mapping_approved")),
+                active=row.get("active", True) and (label or {}).get("active", True))
+            resolved.append(self._shape(row, outcome, display_unit, label))
 
         total = len(resolved)
         start = (page - 1) * page_size
@@ -106,7 +172,7 @@ class MaterialPriceService:
 
 
     @staticmethod
-    def _shape(row, outcome, display_unit):
+    def _shape(row, outcome, display_unit, label=None):
         """One row of the API's answer. Every provenance field travels with the price."""
         return {
             "provider_item_id": row["provider_item_id"],
@@ -141,4 +207,23 @@ class MaterialPriceService:
             "resolution_reason": outcome.reason,
             "source_row_number": row["source_row_number"],
             "source_url": row["source_url"],
+            # What a person wrote about this listing, travelling with the price so the
+            # reader can see that a human decision is part of the answer.
+            "label": (label or {}).get("label"),
+            "label_display_name": (label or {}).get("display_name"),
+            "label_product_type": (label or {}).get("product_type"),
+            "label_source_basis": (label or {}).get("source_basis"),
+            "finance_resource_id": (label or {}).get("finance_resource_id"),
+            "mapping_approved": bool((label or {}).get("mapping_approved")),
+            "labelled_by": (label or {}).get("created_by"),
+            "labelled_at": (label or {}).get("created_at"),
+            "label_version": (label or {}).get("version"),
         }
+
+
+def _clean(value):
+    """A trimmed string, or None. An empty field is absent, not an empty string."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
