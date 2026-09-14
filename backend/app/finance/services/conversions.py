@@ -9,6 +9,9 @@ class UnitConversionService:
   if s.actor_user_id is None:raise PermissionError("authenticated actor is required")
   return s.actor_user_id
  async def list(self,s):return await self.repo.list(s)
+ async def page(self,s,page,page_size):
+  """One page of the listing and the total, as `(rows, total)`."""
+  return await self.repo.page(s,page,page_size)
  async def create(self,s,c):
   self._validate_units(c.source_unit.strip(),c.target_unit.strip(),c.dimension.strip())
   rows=await self.repo.list(s);version=max((x.version for x in rows if (x.scope_kind,x.source_unit,x.target_unit,x.dimension)==(c.scope_kind,c.source_unit,c.target_unit,c.dimension)),default=0)+1

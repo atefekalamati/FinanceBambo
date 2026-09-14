@@ -14,6 +14,7 @@ import { createPermissionNotice } from "../../shared/components/permission-notic
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
+import { actorLabel } from "../../shared/formatters/actor.js";
 import { IDENTITY, PRIMARY, SECONDARY, createDataTable, createTablePagination, createTableToolbar, defaultVisibleColumns, repaintPreservingFocus, updateFilterChips }
   from "../../shared/components/data-table.js";
 
@@ -400,8 +401,8 @@ export function renderDetail(invoice, { canEdit, project, onSubmit, onConfirm, o
     ["تاریخ فاکتور", formatBusinessDate(invoice.invoiceDate)], ["فروشنده یا ارائه‌دهنده", invoice.vendorName],
     ["منبع ثبت", SOURCE_LABELS[invoice.source] ?? "نامشخص"], ["تعداد خطوط", formatDisplayNumber(String(invoice.lines.length))],
     ["نسخه سند", formatDisplayNumber(String(invoice.version))], ["شناسه یکتای ثبت", invoice.idempotencyKey],
-    ["ثبت‌کننده", invoice.submittedBy], ["زمان ثبت", formatSystemDateTime(invoice.createdAt)],
-    ["تأییدکننده", invoice.confirmedBy ?? "تأیید نشده"], ["زمان تأیید", invoice.confirmedAt ? formatSystemDateTime(invoice.confirmedAt) : "تأیید نشده"],
+    ["ثبت‌کننده", actorLabel(invoice.submittedByName, invoice.submittedBy)], ["زمان ثبت", formatSystemDateTime(invoice.createdAt)],
+    ["تأییدکننده", actorLabel(invoice.confirmedByName, invoice.confirmedBy, "تأیید نشده")], ["زمان تأیید", invoice.confirmedAt ? formatSystemDateTime(invoice.confirmedAt) : "تأیید نشده"],
   ].forEach(([label, value], index) => {
     const printSecondary = [5, 6, 7].includes(index) ? " invoice-detail-grid__item--print-secondary" : "";
     const item = element("div", `invoice-detail-grid__item${printSecondary}`);

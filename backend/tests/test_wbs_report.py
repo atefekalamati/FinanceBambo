@@ -274,14 +274,76 @@ class WbsReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Decimal("100000"), formwork["initial_estimate_irr"])
         self.assertEqual(Decimal("90000"), formwork["actual_cost_irr"])
 
-    async def test_a_stage_with_no_finance_rows_is_still_returned_at_zero(self):
+    async def test_a_stage_with_no_finance_rows_appears_with_an_unknown_estimate(self):
+        """It must still be listed, and its estimate must not be reported as zero.
+
+        Being listed is the older half of this test and the reason is unchanged: a stage
+        missing from the report reads as "nothing was planned here".
+
+        What its estimate says is the half that was wrong. A sum over no rows is
+        arithmetically zero, and printing that zero told the reader the stage costs
+        nothing, when the only supportable statement is that nobody has costed it. The
+        actual cost stays zero, and that IS a measurement: an invoice line names an
+        estimate line, so a stage with no estimate lines has had nothing spent through it.
+        """
         result = await build().by_wbs(SCOPE, WHEN, level=1)
         empty = next(item for item in result["items"] if item["wbs_code"] == "2")
         self.assertEqual("نازک‌کاری", empty["title"])
-        self.assertEqual(Decimal(0), empty["initial_estimate_irr"])
+        self.assertIsNone(empty["initial_estimate_irr"])
+        self.assertIsNone(empty["forecast_final_irr"])
+        self.assertEqual("incomplete", empty["calculation_status"])
         self.assertEqual(Decimal(0), empty["actual_cost_irr"])
         self.assertEqual(0, empty["estimate_line_count"])
         self.assertEqual(1, empty["activity_count"])
+
+    async def test_a_stage_whose_lines_all_state_a_basis_still_reports_its_total(self):
+        """The fully known case, so the change above cannot be read as "nulls everywhere"."""
+        result = await build().by_wbs(SCOPE, WHEN, parent_wbs_code="1.8")
+        formwork = next(item for item in result["items"] if item["wbs_code"] == "1.8.1")
+        self.assertEqual(Decimal("100000"), formwork["initial_estimate_irr"])
+        self.assertEqual(1, formwork["estimate_line_count"])
+        self.assertEqual(0, formwork["missing_estimate_line_count"])
+
+    async def test_a_costed_stage_that_comes_out_at_zero_still_reports_zero(self):
+        """A supported zero is a fact, and the fix must not turn it into an absence.
+
+        One line, a stated quantity, a stated price of zero: the stage IS estimated, and
+        its estimate is nothing. That is a different sentence from "not estimated", and it
+        is the sentence this asserts, keyed on the line existing rather than on the total.
+        """
+        repository = Repository(estimates=[estimate(line(1), CONCRETE, "material",
+                                                    "ACT-810", "100", "0")],
+                                invoices=[])
+        result = await build(repository).by_wbs(SCOPE, WHEN, parent_wbs_code="1.8")
+        formwork = next(item for item in result["items"] if item["wbs_code"] == "1.8.1")
+        self.assertEqual(Decimal(0), formwork["initial_estimate_irr"])
+        self.assertIsNotNone(formwork["initial_estimate_irr"],
+                             "a costed zero must stay a figure, not become an absence")
+        self.assertEqual(1, formwork["estimate_line_count"])
+
+    async def test_a_stage_with_some_unestimated_lines_keeps_its_subtotal_and_says_so(self):
+        """The partial case: the figure is the sum of the lines that state a basis."""
+        repository = Repository(estimates=[
+            estimate(line(1), CONCRETE, "material", "ACT-810", "100", "1000"),
+            estimate(line(2), CREW, "labor", "ACT-810", None, None),
+        ], invoices=[])
+        result = await build(repository).by_wbs(SCOPE, WHEN, parent_wbs_code="1.8")
+        formwork = next(item for item in result["items"] if item["wbs_code"] == "1.8.1")
+        self.assertEqual(Decimal("100000"), formwork["initial_estimate_irr"])
+        self.assertEqual(2, formwork["estimate_line_count"])
+        self.assertEqual(1, formwork["missing_estimate_line_count"])
+        self.assertEqual("incomplete", formwork["calculation_status"])
+
+    async def test_an_estimate_whose_activity_reaches_no_stage_is_carried_separately(self):
+        """The unmapped case. It belongs to no stage, so no stage may absorb it."""
+        result = await build().by_wbs(SCOPE, WHEN, level=1)
+        self.assertEqual(1, result["unmapped_estimate_line_count"])
+        self.assertEqual(Decimal("5000"), result["unmapped_estimate_irr"])
+        stated = [item["initial_estimate_irr"] for item in result["items"]
+                  if item["initial_estimate_irr"] is not None]
+        self.assertEqual(result["totals"]["initialEstimateIrr"],
+                         sum(stated, Decimal(0)) + result["unmapped_estimate_irr"],
+                         "stages plus unmapped must still equal the project")
 
     async def test_titles_and_codes_come_from_the_activity_catalogue(self):
         result = await build().by_wbs(SCOPE, WHEN, parent_wbs_code="1")
@@ -408,10 +470,17 @@ class WbsReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(".", first["initialEstimateIrr"])
 
     async def test_every_amount_stays_decimal_never_float(self):
+        """Money is a Decimal or it is absent. It is never a float and never a stand-in.
+
+        `None` joins Decimal here because a stage with no estimate basis has no figure to
+        state -- see the test above. What is still refused is a float, which is how an
+        exact rial total turns into a number that nearly balances.
+        """
         result = await build().by_wbs(SCOPE, WHEN, level=1)
         for item in result["items"]:
             for key in ("initial_estimate_irr", "revised_estimate_irr", "actual_cost_irr"):
-                self.assertIsInstance(item[key], Decimal, key)
+                self.assertIsInstance(item[key], (Decimal, type(None)), key)
+                self.assertNotIsInstance(item[key], float, key)
             for amount in item["breakdown"].values():
                 self.assertIsInstance(amount, Decimal)
 
@@ -489,6 +558,50 @@ class ActivityCountTests(unittest.IsolatedAsyncioTestCase):
         rows = [activity("ACT-1", "7.1", "اول"), activity(None, "7.1", "بدون کد")]
         nodes = wbs.build_tree(rows)
         self.assertEqual(1, len(nodes["7.1"]["activityCodes"]))
+
+
+class EstimatePartitionTests(unittest.IsolatedAsyncioTestCase):
+    """The stages plus the unplaced lines must equal the project's own estimate.
+
+    The actual-cost side of this response has always partitioned exactly, and the response
+    said so in its own docstring. The estimate side did not: `unmappedEstimateLineCount`
+    said how many lines reached no stage and nothing said what they were worth, so the
+    stages added up to less than the project and the page had nothing to explain the gap
+    with.
+
+    Measured on the candidate before this existed: the overview reported
+    3,665,923,847,782 rial, the level-1 stages summed to 3,665,515,847,782, and the
+    408,000,000 between them sat in 75 lines that reached no stage. The page's total card
+    showed the smaller figure, which is how "366.55 billion toman" came to sit beside an
+    API answer of 3,658,923,847,782 in a report -- two different aggregations, and a test
+    state between them.
+    """
+
+    async def test_the_stages_plus_the_unplaced_lines_equal_the_project_estimate(self):
+        response = await build().by_wbs(SCOPE, WHEN, level=1)
+        stages = sum((Decimal(node["initial_estimate_irr"]) for node in response["items"]
+                      if node["initial_estimate_irr"] is not None), Decimal(0))
+        unplaced = Decimal(response["unmapped_estimate_irr"] or 0)
+        project = Decimal(response["totals"]["initialEstimateIrr"])
+        self.assertEqual(project, stages + unplaced,
+                         "the stages and the unplaced lines must account for the whole")
+
+    async def test_the_count_and_the_amount_agree_about_whether_anything_is_unplaced(self):
+        # A count without an amount is what the reader had before, and an amount without a
+        # count would be as bad: neither answers "how much, in how many".
+        response = await build().by_wbs(SCOPE, WHEN, level=1)
+        count = response["unmapped_estimate_line_count"]
+        amount = response["unmapped_estimate_irr"]
+        self.assertEqual(count == 0, Decimal(amount or 0) == 0,
+                         "a zero amount and a non-zero count cannot both be true here")
+
+    async def test_an_unplaced_amount_is_never_a_stand_in_zero(self):
+        # Decimal(0) means "they are worth nothing". None means "nobody could say". The
+        # field is allowed to be null for the second, and must not fake the first.
+        response = await build().by_wbs(SCOPE, WHEN, level=1)
+        amount = response["unmapped_estimate_irr"]
+        self.assertTrue(amount is None or isinstance(amount, Decimal),
+                        "the amount is a decimal or an honest null, never a string zero")
 
 
 if __name__ == "__main__":

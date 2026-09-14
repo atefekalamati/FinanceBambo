@@ -27,13 +27,18 @@ class LiveMetrics(ApiModel):
 class TypeBreakdown(ApiModel):
     """One resource type's share, with the same nullability as the totals above it.
 
-    `initialEstimateIrr` and `revisedEstimateIrr` were already nullable here, because a row
-    built from some of its lines is not that row's total. The two figures DERIVED from them
-    were not, and that was an inconsistency rather than a decision: whenever the estimate
-    behind a row is unknown, the remaining cost and the forecast computed from it are
-    unknown too, and the response could not say so -- it raised a validation error instead
-    of publishing "-". `LiveMetrics` and `WbsNode` both already carry the null; this row now
-    agrees with them.
+    `initialEstimateIrr` and `revisedEstimateIrr` are nullable, and the two figures DERIVED
+    from them are too -- whenever the estimate behind a row is unknown, the remaining cost
+    and the forecast computed from it are unknown as well, and the response has to be able
+    to say so rather than raise a validation error. `LiveMetrics` and `WbsNode` both carry
+    the same null.
+
+    A row with lines that state no baseline is NOT one of those cases. It publishes the sum
+    of the lines that do state one, `missingEstimateLineCount` says how many it could not
+    include, and `calculationStatus` is `incomplete`. A subtotal a reader can see and
+    qualify beats a blank they can only wonder about -- and the blank was reaching them for
+    equipment, which this file states no price for anywhere, so the material estimate on the
+    same row disappeared with it.
 
     Nullable is not the same as defaulted. `calculate_live_report` always states both
     figures for a row it could compute, so a null here means the calculation said so.
@@ -46,6 +51,9 @@ class TypeBreakdown(ApiModel):
     forecast_final_irr: Decimal | None
     calculation_status: Literal["complete","incomplete"] = "complete"
     excluded_estimate_line_count: int = 0
+    #: Lines of this type that state no baseline of their own, and so are not in the two
+    #: estimate figures above. Zero means the row's estimate is its total.
+    missing_estimate_line_count: int = 0
     @field_serializer("initial_estimate_irr","revised_estimate_irr","actual_cost_irr","remaining_physical_cost_irr","forecast_final_irr")
     def serialize_money(self,value): return None if value is None else format(value,"f")
 
@@ -154,6 +162,10 @@ class LiveReportResponse(ApiModel):
     calculation_status:Literal["complete","incomplete"]="complete"
     incomplete_metric_keys:list[str]=Field(default_factory=list)
     missing_price_count:int=0
+    #: Estimate lines that state no baseline. When this is not zero, `initialEstimateIrr`
+    #: is the sum of the lines that DO state one -- a subtotal, named as such by
+    #: `incompleteMetricKeys` -- rather than the project's estimate.
+    missing_estimate_line_count:int=0
     excluded_estimate_line_count:int=0
     excluded_estimate_line_ids:list[UUID]=Field(default_factory=list,
         description="Reporting-only: names individual estimate lines and is absent from the finance.view projection.")
@@ -187,6 +199,9 @@ class OperationalOverviewResponse(ApiModel):
     calculation_status:Literal["complete","incomplete"]="complete"
     incomplete_metric_keys:list[str]=Field(default_factory=list)
     missing_price_count:int=0
+    #: The same counter as on the full report: it qualifies an operational metric, so it
+    #: belongs in the operational projection beside missingPriceCount.
+    missing_estimate_line_count:int=0
     excluded_estimate_line_count:int=0
     progress_quality:ProgressQuality|None=None
 
@@ -310,6 +325,9 @@ class WbsNode(ApiModel):
     activity_count:int=0
     child_count:int=0
     estimate_line_count:int=0
+    #: Of those lines, how many state no baseline of their own. The estimate figures below
+    #: are the sum of the rest, which is why this number has to travel with them.
+    missing_estimate_line_count:int=0
     initial_estimate_irr:Decimal|None
     revised_estimate_irr:Decimal|None=Decimal(0)
     actual_cost_irr:Decimal
@@ -337,6 +355,15 @@ class WbsReportResponse(ApiModel):
     `unmappedWbsActualIrr`, equals `totals.actualCostIrr`. They are separate because they
     are fixed by different people -- one is an invoice never tied to an estimate line, the
     other an estimate line whose activity carries no stage.
+
+    THE ESTIMATE IS PARTITIONED THE SAME WAY, AND UNTIL NOW WAS NOT
+    `sum(items.initialEstimateIrr)` plus `unmappedEstimateIrr` equals
+    `totals.initialEstimateIrr`. `unmappedEstimateLineCount` said how MANY lines reached no
+    stage and nothing said what they were WORTH, so a reader adding the stages up got a
+    smaller number than the project's own and had nothing to explain the gap with.
+    Measured on the candidate: 408,000,000 rial across 75 lines, missing from the stage
+    total and disclosed nowhere -- while the same response has disclosed the actual-cost
+    equivalent all along.
     """
     reporting_date:date
     progress_snapshot_id:UUID|None=None
@@ -348,9 +375,14 @@ class WbsReportResponse(ApiModel):
     unattributed_actual_irr:Decimal=Decimal(0)
     unmapped_wbs_actual_irr:Decimal=Decimal(0)
     unmapped_estimate_line_count:int=0
+    #: What those lines are worth. Null when the estimate behind them cannot be worked out
+    #: at all -- the same null `initialEstimateIrr` uses, and never a stand-in zero, which
+    #: would read as "they are worth nothing" rather than "nobody could say".
+    unmapped_estimate_irr:Decimal|None=Decimal(0)
     totals:LiveMetrics
     calculation_status:Literal["complete","incomplete"]="complete"
     warnings:list[ReportWarning]=Field(default_factory=list)
 
-    @field_serializer("unattributed_actual_irr","unmapped_wbs_actual_irr")
+    @field_serializer("unattributed_actual_irr","unmapped_wbs_actual_irr",
+                      "unmapped_estimate_irr")
     def serialize_money(self,value):return None if value is None else format(value,"f")

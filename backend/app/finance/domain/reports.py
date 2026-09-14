@@ -87,6 +87,10 @@ class LiveReport:
     calculation_status: str
     incomplete_metric_keys: list[str]
     missing_price_count: int
+    #: Estimate lines that state no baseline of their own. The counterpart of
+    #: `missing_price_count`, and the reason `initialEstimateIrr` is a subtotal rather
+    #: than a total whenever it is not zero.
+    missing_estimate_line_count: int
     excluded_estimate_line_count: int
     excluded_estimate_line_ids: list[str]
     progress_quality: dict
@@ -332,12 +336,11 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     breakdown["general_cost"]["forecastFinalIrr"] += general_required
     for kind in breakdown:
         breakdown[kind]["excludedEstimateLineCount"] = excluded_lines_by_type[kind]
-        if missing_estimate_by_type[kind]:
-            # This type has a line nobody estimated, so its estimate is unknown. Zero here
-            # read as "this type was estimated at nothing" -- and equipment, 426 lines of
-            # it, said exactly that.
-            breakdown[kind]["initialEstimateIrr"] = None
-            breakdown[kind]["revisedEstimateIrr"] = None
+        # How many of this type's lines state no baseline. The sum beside it is the sum of
+        # the others -- a real subtotal of real lines, not the type's total -- and this is
+        # the number that says so. Published even when zero, because "0 of them" is an
+        # answer a reader needs as much as "88 of them".
+        breakdown[kind]["missingEstimateLineCount"] = missing_estimate_by_type[kind]
         breakdown[kind]["calculationStatus"] = ("incomplete"
             if excluded_lines_by_type[kind] or missing_estimate_by_type[kind] or kind in missing_conversion_types
             else "complete")
@@ -363,7 +366,14 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             excluded=True,affected=("actualCostPerSquareMeterIrr","forecastPerSquareMeterIrr")))
     else:
         actual_per_area = money(actual_total / area);forecast_per_area = money(forecast / area)
-    metrics = {"initialEstimateIrr":None if missing_estimate_count else money(initial_total),"actualCostIrr":money(actual_total),
+    # The estimate is the sum of the lines that state one. When some state none it is a
+    # PARTIAL sum, and `incompleteMetricKeys` and `missingEstimateLineCount` are what say
+    # so -- withholding the figure entirely said it too, and said nothing else: a reader
+    # looking at 342 billion toman of stated material estimate saw an em dash and had no
+    # way to reach the number, while the lines it was missing were equipment the file
+    # states no price for anywhere. A flagged subtotal is usable and honest; a blank is
+    # only honest.
+    metrics = {"initialEstimateIrr":money(initial_total),"actualCostIrr":money(actual_total),
         "currentExecutedValueIrr":None if missing_price_count or progress_unknown else money(current_executed),
         "remainingPhysicalCostIrr":None if missing_price_count or progress_unknown else money(remaining_physical_cost),
         "moneyRequiredToContinueIrr":None if missing_price_count or missing_conversion_count or progress_unknown else money(money_required),
@@ -377,4 +387,4 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         item["impactSharePercent"] = None if total_impact == 0 or not item["priceAvailable"] else (abs(item["varianceIrr"]) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     for item in quantity_variances:
         item["impactSharePercent"] = None if total_impact == 0 or not item["priceAvailable"] else (abs(item["remainingPhysicalCostIrr"] or ZERO) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-    return LiveReport(metrics,list(breakdown.values()),price_variances[:10],quantity_variances[:10],price_variances,quantity_variances,warnings,_calculation_status(missing_price_count,missing_conversion_count,progress_quality),incomplete_metric_keys,missing_price_count,len(excluded_estimate_line_ids),excluded_estimate_line_ids,progress_quality)
+    return LiveReport(metrics,list(breakdown.values()),price_variances[:10],quantity_variances[:10],price_variances,quantity_variances,warnings,_calculation_status(missing_price_count,missing_conversion_count,progress_quality),incomplete_metric_keys,missing_price_count,missing_estimate_count,len(excluded_estimate_line_ids),excluded_estimate_line_ids,progress_quality)

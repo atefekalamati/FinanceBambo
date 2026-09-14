@@ -8,6 +8,7 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { CURRENCY_LABELS } from "../../shared/constants/currency.js";
 import { formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
+import { actorLabel } from "../../shared/formatters/actor.js";
 import { displayCurrencyNote, formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
@@ -641,7 +642,7 @@ function createRevisionHistoryDialog(line, resource) {
     head.append(element("strong", "", `اصلاح ${revision.revisionNumber}`), element("time", "", formatSystemDateTime(revision.occurredAt)));
     const values = element("div", "revision-record__values");
     values.append(element("span", "", resource.type === "general_cost" ? `از ${formatTomanFromIrr(revision.previousValue)} به ${formatTomanFromIrr(revision.newValue)}` : `از ${formatDisplayNumber(revision.previousValue)} به ${formatDisplayNumber(revision.newValue)}`), element("small", "", resource.type === "general_cost" ? getDisplayCurrencyLabel() : formatUnitLabel(resource.baseUnit)));
-    item.append(head, values, element("p", "", revision.reason), element("small", "revision-record__actor", revision.actorName || revision.actorId));
+    item.append(head, values, element("p", "", revision.reason), element("small", "revision-record__actor", actorLabel(revision.actorName, revision.actorId)));
     if (revision.isOverrun) item.append(element("span", "overrun-badge", "بیشتر از برآورد اولیه"));
     wrapper.append(item);
   });

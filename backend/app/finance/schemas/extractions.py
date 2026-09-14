@@ -68,7 +68,10 @@ class ExtractionFieldConfirmation(ApiModel):
 
 
 class ReviewedInvoiceCreate(ApiModel):
-    invoice_number: str | None = None
+    # No `invoice_number`, for the same reason as `InvoiceCreate`. The vendor's own printed
+    # number is not lost by this: it is an extracted FIELD, kept with the rest of what was
+    # read off the document in `extraction_drafts.extracted_fields`, and it was never the
+    # same thing as this system's number for the invoice.
     invoice_date: date
     vendor_name: str = Field(min_length=1)
     description: str | None = None

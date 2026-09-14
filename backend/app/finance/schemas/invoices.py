@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import ConfigDict,Field,field_serializer,field_validator,model_validator
 from .base import ApiModel
 from .numeric import strict_decimal,strict_optional_decimal
+from ..domain.invoices import format_invoice_number
 Money=Decimal
 class InvoiceLineCreate(ApiModel):
  model_config=ConfigDict(json_schema_extra={"examples":[{"resourceId":"77777777-7777-4777-8777-777777777777","lineAmountIrr":"12000000","description":"هزینه مجوز"}]})
@@ -20,7 +21,11 @@ class InvoiceLineCreate(ApiModel):
 class DirectAdjustmentAllocation(ApiModel):
  kind:Literal["discount","tax","shipping","other"];general_cost_line_index:int=Field(ge=0)
 class InvoiceCreate(ApiModel):
- invoice_number:str|None=None;invoice_date:date;vendor_name:str=Field(min_length=1);description:str|None=None;source:Literal["manual"]="manual";discount_irr:Decimal=Field(default=0,ge=0,max_digits=18,decimal_places=0);tax_irr:Decimal=Field(default=0,ge=0,max_digits=18,decimal_places=0);shipping_irr:Decimal=Field(default=0,ge=0,max_digits=18,decimal_places=0);other_costs_irr:Decimal=Field(default=0,ge=0,max_digits=18,decimal_places=0);idempotency_key:str=Field(min_length=1);duplicate_reason:str|None=None;direct_adjustment_allocations:list[DirectAdjustmentAllocation]=Field(default_factory=list);lines:list[InvoiceLineCreate]=Field(min_length=1)
+ # No `invoice_number`. The number is the project's to allocate, not the client's to
+ # choose, and `extra="forbid"` on ApiModel turns a client that still sends one into a
+ # 422 that names the field -- which is the answer that gets it removed, rather than a
+ # value silently ignored.
+ invoice_date:date;vendor_name:str=Field(min_length=1);description:str|None=None;source:Literal["manual"]="manual";discount_irr:Decimal=Field(default=0,ge=0,max_digits=18,decimal_places=0);tax_irr:Decimal=Field(default=0,ge=0,max_digits=18,decimal_places=0);shipping_irr:Decimal=Field(default=0,ge=0,max_digits=18,decimal_places=0);other_costs_irr:Decimal=Field(default=0,ge=0,max_digits=18,decimal_places=0);idempotency_key:str=Field(min_length=1);duplicate_reason:str|None=None;direct_adjustment_allocations:list[DirectAdjustmentAllocation]=Field(default_factory=list);lines:list[InvoiceLineCreate]=Field(min_length=1)
  @field_validator("discount_irr","tax_irr","shipping_irr","other_costs_irr",mode="before")
  @classmethod
  def strict_invoice_money(cls,v):return strict_decimal(v)
@@ -63,11 +68,21 @@ class InvoiceLineResponse(ApiModel):
  @field_serializer("quantity","unit_price_irr","line_amount_irr","raw_amount_irr","allocated_discount_irr","allocated_tax_irr","allocated_shipping_irr","allocated_other_costs_irr","final_line_amount_irr")
  def number(self,v):return None if v is None else format(v,"f")
 class InvoiceResponse(ApiModel):
- id:UUID;invoice_number:str|None;invoice_date:date;vendor_name:str;description:str|None;source:str;status:str;discount_irr:Decimal;tax_irr:Decimal;shipping_irr:Decimal;other_costs_irr:Decimal;final_amount_irr:Decimal;financial_effect_sign:Literal[-1,1]=1;original_invoice_id:UUID|None=None;idempotency_key:str;version:int;submitted_by:UUID;confirmed_by:UUID|None=None;confirmed_at:datetime|None=None;created_at:datetime;lines:list[InvoiceLineResponse]
+ #: Both forms of the one number. `invoiceSeq` is what it is -- an integer a client can
+ #: sort and compare -- and `invoiceNumber` is what it looks like, zero-padded to three so
+ #: a column of them lines up. The name `invoiceNumber` is kept because every reader and
+ #: every existing client already knows it; what changed underneath is that it is now
+ #: derived rather than stored.
+ id:UUID;invoice_seq:int;invoice_number:str;invoice_date:date;vendor_name:str;description:str|None;source:str;status:str;discount_irr:Decimal;tax_irr:Decimal;shipping_irr:Decimal;other_costs_irr:Decimal;final_amount_irr:Decimal;financial_effect_sign:Literal[-1,1]=1;original_invoice_id:UUID|None=None;idempotency_key:str;version:int;submitted_by:UUID;confirmed_by:UUID|None=None;confirmed_at:datetime|None=None;created_at:datetime;lines:list[InvoiceLineResponse]
+ # What the host calls this actor, filled at the API boundary and never stored.
+ # None when the host has no directory or does not know the id; the reader then sees
+ # the id, exactly as before. See `app.finance.domain.actors`.
+ submitted_by_name:str|None=None
+ confirmed_by_name:str|None=None
  @field_serializer("discount_irr","tax_irr","shipping_irr","other_costs_irr","final_amount_irr")
  def money(self,v):return format(v,"f")
  @classmethod
- def from_domain(cls,v):return cls(**{k:x for k,x in v.__dict__.items() if k in cls.model_fields})
+ def from_domain(cls,v):return cls(invoice_number=format_invoice_number(v.invoice_seq,getattr(v,"legacy_invoice_number",None)),**{k:x for k,x in v.__dict__.items() if k in cls.model_fields and k!="invoice_number"})
 class InvoiceListResponse(ApiModel):
  model_config=ConfigDict(json_schema_extra={"examples":[{"items":[],"page":1,"pageSize":50,"totalItems":0,"totalPages":0}]})
  items:list[InvoiceResponse];page:int;page_size:int;total_items:int;total_pages:int

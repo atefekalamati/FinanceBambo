@@ -1,4 +1,5 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
+import { actorLabel } from "../../shared/formatters/actor.js";
 import { capabilitiesFor, describeAccess } from "../../core/auth/capabilities.js";
 import { SURFACES } from "../../core/config/routes.js";
 import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
@@ -78,7 +79,7 @@ function createRevisionTable(revisions = [], paging) {
       previousValue: revision.previousValue ? formatArea(revision.previousValue) : "ثبت اولیه",
       newValue: formatArea(revision.newValue),
       reason: revision.reason || "بدون دلیل ثبت‌شده",
-      actor: revision.actorName || revision.actorId || "نامشخص",
+      actor: actorLabel(revision.actorName, revision.actorId, "نامشخص"),
       occurredAt: revision.occurredAt ? formatSystemDateTime(revision.occurredAt) : "—",
     }),
   });

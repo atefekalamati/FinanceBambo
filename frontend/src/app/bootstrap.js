@@ -1,13 +1,6 @@
 import { subscribeHostProjectContext } from "../adapters/host/context-adapter.js";
 import { resolveRuntimeContext } from "../adapters/host/runtime-context.js";
 import { discoverHostContext } from "../adapters/host/host-context-discovery.js";
-import { getStandaloneContext } from "../adapters/mock/standalone-context.js";
-import { createMockSettingsAdapter } from "../adapters/mock/settings-adapter.js";
-import { createMockFinancialItemsAdapter } from "../adapters/mock/financial-items-adapter.js";
-import { createMockPricesAdapter } from "../adapters/mock/prices-adapter.js";
-import { createMockProgressAdapter } from "../adapters/mock/progress-adapter.js";
-import { createMockInvoicesAdapter } from "../adapters/mock/invoices-adapter.js";
-import { createMockAttachmentsAdapter } from "../adapters/mock/attachments-adapter.js";
 import { SESSION_ENDED_EVENT, createApiClient } from "../core/api/api-client.js";
 import { createApiSettingsAdapter } from "../adapters/api/settings-api-adapter.js";
 import { createApiFinancialItemsAdapter } from "../adapters/api/financial-items-api-adapter.js";
@@ -16,9 +9,7 @@ import { createApiProgressAdapter } from "../adapters/api/progress-api-adapter.j
 import { createApiInvoicesAdapter } from "../adapters/api/invoices-api-adapter.js";
 import { createApiAttachmentsAdapter } from "../adapters/api/attachments-api-adapter.js";
 import { createApiReportsAdapter } from "../adapters/api/reports-api-adapter.js";
-import { createMockReportsAdapter } from "../adapters/mock/reports-adapter.js";
 import { createApiAuditAdapter } from "../adapters/api/audit-api-adapter.js";
-import { createMockAuditAdapter } from "../adapters/mock/audit-adapter.js";
 import { canAccessRoute, defaultRouteFor } from "../core/auth/permissions.js";
 import { ROUTES, readOnlyTwinOf } from "../core/config/routes.js";
 import { createHashRouter } from "../core/routing/router.js";
@@ -35,6 +26,44 @@ import { createReportBuilderPage } from "../features/report-builder/report-build
 import { createLevelOnePage } from "../features/level-one/level-one-page.js";
 import { createAuditPage } from "../features/audit/audit-page.js";
 import { DISPLAY_CURRENCY_CHANGED_EVENT } from "../shared/preferences/currency-preference.js";
+
+/**
+ * The preview's adapters, fetched only by the preview.
+ *
+ * Imported dynamically rather than at the top of this file, and that is the whole point:
+ * a static import is in the module graph whether it is called or not, so the packager
+ * shipped `src/adapters/mock/` to the host and every load of `host.html` downloaded it.
+ * Reached from here, the host never asks for those files at all.
+ *
+ * Only a page that marks itself `data-finance-runtime="standalone"` gets this far.
+ * `host.html` carries no such mark, `host` is the default, and a missing or invalid
+ * context is an error rather than a way in -- see `resolveRuntimeContext`.
+ */
+async function loadPreviewAdapters() {
+  const [standaloneContext, settings, financialItems, prices, progress, invoices,
+         attachments, reports, audit] = await Promise.all([
+    import("../adapters/mock/standalone-context.js"),
+    import("../adapters/mock/settings-adapter.js"),
+    import("../adapters/mock/financial-items-adapter.js"),
+    import("../adapters/mock/prices-adapter.js"),
+    import("../adapters/mock/progress-adapter.js"),
+    import("../adapters/mock/invoices-adapter.js"),
+    import("../adapters/mock/attachments-adapter.js"),
+    import("../adapters/mock/reports-adapter.js"),
+    import("../adapters/mock/audit-adapter.js"),
+  ]);
+  return {
+    getStandaloneContext: standaloneContext.getStandaloneContext,
+    createMockSettingsAdapter: settings.createMockSettingsAdapter,
+    createMockFinancialItemsAdapter: financialItems.createMockFinancialItemsAdapter,
+    createMockPricesAdapter: prices.createMockPricesAdapter,
+    createMockProgressAdapter: progress.createMockProgressAdapter,
+    createMockInvoicesAdapter: invoices.createMockInvoicesAdapter,
+    createMockAttachmentsAdapter: attachments.createMockAttachmentsAdapter,
+    createMockReportsAdapter: reports.createMockReportsAdapter,
+    createMockAuditAdapter: audit.createMockAuditAdapter,
+  };
+}
 
 const root = document.querySelector("#finance-module-root");
 
@@ -75,11 +104,18 @@ async function resolveContext() {
     // anyone opens a console to check when a page shows the wrong project.
     if (hostContext) window.__BAMBO_FINANCE_CONTEXT__ = hostContext;
   }
-  const { runtime, context } = resolveRuntimeContext({
-    mode,
-    hostContext,
-    createStandaloneContext: getStandaloneContext,
-  });
+  // The preview's context factory is fetched only when the preview is what will actually
+  // run: the page is marked standalone AND no host context arrived. A page can be marked
+  // and still be driven by a host -- the development host serves the marked page -- and in
+  // that case the demo adapters must not be downloaded at all.
+  //
+  // `resolveRuntimeContext` still decides. This only controls what is loaded before it is
+  // asked, and it refuses to fall back to demo data when a host context is missing.
+  const previewWillRun = mode === "standalone" && (hostContext === undefined || hostContext === null);
+  const createStandaloneContext = previewWillRun
+    ? (await loadPreviewAdapters()).getStandaloneContext
+    : () => { throw new Error("حالت پیش‌نمایش در این صفحه فعال نیست."); };
+  const { runtime, context } = resolveRuntimeContext({ mode, hostContext, createStandaloneContext });
   document.body.dataset.financeRuntime = runtime;
   return context;
 }
@@ -236,17 +272,20 @@ try {
   if (document.body.dataset.financeRuntime === "host") {
     adapters = createHostAdapters(context);
   } else {
-    const invoices = createMockInvoicesAdapter(context, { initialState: invoicesState });
-    const financialItems = createMockFinancialItemsAdapter(context, { initialState: itemsState });
+    // Reached only when resolveRuntimeContext chose the standalone branch, which it does
+    // only for a marked page with no host context of its own.
+    const preview = await loadPreviewAdapters();
+    const invoices = preview.createMockInvoicesAdapter(context, { initialState: invoicesState });
+    const financialItems = preview.createMockFinancialItemsAdapter(context, { initialState: itemsState });
     adapters = Object.freeze({
-      settings: createMockSettingsAdapter(context, { initialState: settingsState }),
+      settings: preview.createMockSettingsAdapter(context, { initialState: settingsState }),
       financialItems,
-      prices: createMockPricesAdapter(context, { initialState: pricesState, resourceProvider: () => financialItems.getResourceSnapshot() }),
-      progress: createMockProgressAdapter(context, { initialState: progressState }),
+      prices: preview.createMockPricesAdapter(context, { initialState: pricesState, resourceProvider: () => financialItems.getResourceSnapshot() }),
+      progress: preview.createMockProgressAdapter(context, { initialState: progressState }),
       invoices,
-      attachments: createMockAttachmentsAdapter(context, { initialState: filesState, invoiceAdapter: invoices }),
-      reports: createMockReportsAdapter(context, { initialState: reportsState }),
-      audit: createMockAuditAdapter(context, { initialState: auditState }),
+      attachments: preview.createMockAttachmentsAdapter(context, { initialState: filesState, invoiceAdapter: invoices }),
+      reports: preview.createMockReportsAdapter(context, { initialState: reportsState }),
+      audit: preview.createMockAuditAdapter(context, { initialState: auditState }),
     });
   }
   let activeRoute = null;

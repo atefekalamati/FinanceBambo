@@ -43,7 +43,9 @@
   }
 
   .report-doc__section > * {
-    margin-block: 3mm;
+    /* The gap between a section's own parts. Half a millimetre each, across five gaps on
+       a typical chapter, is the rest of what the S-curve needed. */
+    margin-block: 2.5mm;
   }
 
   .report-doc__section-title {
@@ -55,8 +57,12 @@
   .report-doc .report-header {
     flex-direction: row;
     align-items: center;
-    padding: 7mm;
-    margin-block-end: 5mm;
+    /* 5mm, not 7mm, and 4mm below instead of 5mm. Measured: the S-curve chapter was
+       1,027px against 1,013px of printable height, so a document that is one page of
+       content was printing on two. Nothing is removed or scaled -- this is the padding
+       of a coloured block, and 5mm still holds the title clear of its edge. */
+    padding: 5mm;
+    margin-block-end: 4mm;
     border-radius: 1mm;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;

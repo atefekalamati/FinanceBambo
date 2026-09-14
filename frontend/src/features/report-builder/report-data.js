@@ -36,10 +36,15 @@ async function readPeriodOverview(adapter, period) {
   const read = async (reportingDate) => {
     try {
       return await adapter.getOverview({ reportingDate });
-    } catch {
-      // A date the project cannot report on is an answer, not a failure. The
-      // renderer says which end is missing; a thrown error would take the whole
+    } catch (error) {
+      // A date the project cannot report on is an answer, not a failure: it answers 404,
+      // the renderer says which end is missing, and a thrown error would take the whole
       // document down over one absent day.
+      //
+      // A 422 is not that. It is the service saying the request itself was wrong -- an
+      // impossible day, a malformed one -- and swallowing it printed a finished report
+      // for a period nobody had asked for. It goes up.
+      if (error?.status === 422) throw error;
       return null;
     }
   };

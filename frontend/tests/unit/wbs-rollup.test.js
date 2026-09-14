@@ -56,6 +56,82 @@ test("a phase with no estimate reports nothing rather than nothing spent", () =>
   assert.equal(view.rows[0].deviationIrr, null);
 });
 
+test("a phase missing some of its lines reports a subtotal that says so", () => {
+  // The service sums the lines that state a baseline and counts the ones it could not
+  // include. The figure alone is a smaller number wearing the name of the whole, so the
+  // row has to carry the count with it or the page has nothing to qualify it with.
+  const view = buildWbsView({
+    nodes: [node("1.5", 1000, 400, { missingEstimateLineCount: 62 })],
+  });
+  assert.equal(view.rows[0].initialEstimateIrr, "1000");
+  assert.equal(view.rows[0].missingEstimateLineCount, 62);
+  assert.equal(view.rows[0].estimateIsPartial, true);
+});
+
+test("a phase with every line estimated is not marked partial", () => {
+  const view = buildWbsView({ nodes: [node("1.5", 1000, 400)] });
+  assert.equal(view.rows[0].missingEstimateLineCount, 0);
+  assert.equal(view.rows[0].estimateIsPartial, false);
+  assert.equal(view.totals.estimateIsPartial, false);
+});
+
+test("the project total counts every phase's missing lines", () => {
+  const view = buildWbsView({
+    nodes: [node("1.5", 1000, 400, { missingEstimateLineCount: 62 }),
+            node("1.7", 2000, 900, { missingEstimateLineCount: 64 }),
+            node("1.6", 500, 100)],
+  });
+  assert.equal(view.totals.initialEstimateIrr, "3500", "the phases that stated one still sum");
+  assert.equal(view.totals.missingEstimateLineCount, 126);
+  assert.equal(view.totals.estimateIsPartial, true);
+});
+
+test("a phase whose estimate is unknowable stays null rather than partial", () => {
+  // Different gap, different answer: a reporting date whose estimate coverage cannot be
+  // proven withholds the figure entirely, and there is no subtotal to qualify.
+  const view = buildWbsView({
+    nodes: [node("1.5", 0, 400, { initialEstimateIrr: null, missingEstimateLineCount: 0 })],
+  });
+  assert.equal(view.rows[0].initialEstimateIrr, null);
+  assert.equal(view.rows[0].estimateIsPartial, false);
+  assert.equal(view.totals.initialEstimateIrr, null);
+  assert.equal(view.totals.estimateIsPartial, false);
+});
+
+test("an estimate that reaches no phase is carried, and named", () => {
+  // The other absence. «برآورد ناقص» is lines INSIDE a phase that state no baseline; this
+  // is lines that are in no phase at all, so no amount of completeness in the rows above
+  // can contain them. Measured on the candidate: 40.8 million toman across 75 lines, which
+  // is exactly why the page's total card and the project's own estimate disagreed.
+  const view = buildWbsView({
+    nodes: [node("1.5", 1000, 400), node("1.7", 2000, 900)],
+    unmappedEstimateIrr: "408000000",
+    unmappedEstimateLineCount: 75,
+  });
+  assert.equal(view.totals.unmappedEstimateIrr, "408000000");
+  assert.equal(view.totals.unmappedEstimateLineCount, 75);
+  assert.equal(view.totals.initialEstimateIrr, "3000",
+    "the stage total stays the stages -- the unplaced amount is reported beside it");
+});
+
+test("no unplaced estimate means nothing to report, not a zero to explain", () => {
+  const view = buildWbsView({ nodes: [node("1.5", 1000, 400)] });
+  assert.equal(view.totals.unmappedEstimateIrr, null);
+  assert.equal(view.totals.unmappedEstimateLineCount, 0);
+});
+
+test("an unplaced amount nobody could work out stays null rather than becoming zero", () => {
+  // null means "nobody could say". 0 would mean "they are worth nothing", and the page
+  // would then show a confident zero for money it cannot account for.
+  const view = buildWbsView({
+    nodes: [node("1.5", 1000, 400)],
+    unmappedEstimateIrr: null,
+    unmappedEstimateLineCount: 12,
+  });
+  assert.equal(view.totals.unmappedEstimateIrr, null);
+  assert.equal(view.totals.unmappedEstimateLineCount, 12);
+});
+
 test("cost that reaches no phase is carried, not dropped", () => {
   const view = buildWbsView({
     nodes: [node("1.1", 1000, 600), node("1.2", 1000, 400)],
@@ -145,4 +221,79 @@ test("the mock reports empty and error states like every other adapter", async (
   await assert.rejects(
     createMockReportsAdapter(context, { initialState: "error" }).getWbsRollup({}),
     (error) => error.code === "WBS_ROLLUP_UNAVAILABLE");
+});
+
+/**
+ * Five states an estimate can be in, and none of them may be mistaken for another.
+ *
+ * The service now distinguishes them: a phase with no estimate lines answers null rather
+ * than 0, a phase with some unestimated lines answers the subtotal of the rest, and a phase
+ * whose lines all state a basis answers their total -- zero included, when zero is what
+ * they add up to. These hold the view to the same five sentences.
+ */
+
+const phase = (wbsCode, over = {}) => ({
+  wbsCode, title: `مرحله ${wbsCode}`, parentWbsCode: null, activityCount: 1, childCount: 0,
+  estimateLineCount: 1, missingEstimateLineCount: 0,
+  initialEstimateIrr: "1000", actualCostIrr: "0", forecastFinalIrr: "1000", ...over,
+});
+
+test("a phase with no estimate lines is unknown, not a phase that costs nothing", () => {
+  const view = buildWbsView({ nodes: [phase("1.2", {
+    estimateLineCount: 0, initialEstimateIrr: null, forecastFinalIrr: null })] });
+  const row = view.rows[0];
+  assert.equal(row.initialEstimateIrr, null, "no basis must not become a figure");
+  assert.equal(row.hasEstimateBasis, false);
+  assert.equal(row.estimateIsPartial, false, "nothing is missing from a sum nobody made");
+  assert.equal(row.consumedPercent, null, "a ratio against no estimate is not a ratio");
+  assert.equal(view.totals.stagesWithoutEstimateBasis, 1);
+});
+
+test("a phase costed at zero still says zero, because somebody costed it", () => {
+  const view = buildWbsView({ nodes: [phase("1.3", {
+    estimateLineCount: 1, initialEstimateIrr: "0", forecastFinalIrr: "0" })] });
+  const row = view.rows[0];
+  assert.equal(row.initialEstimateIrr, "0", "a supported zero is a fact, not an absence");
+  assert.equal(row.hasEstimateBasis, true);
+  assert.equal(view.totals.stagesWithoutEstimateBasis, 0);
+});
+
+test("a phase with some lines costed keeps the subtotal and is marked partial", () => {
+  const view = buildWbsView({ nodes: [phase("1.5", {
+    estimateLineCount: 10, missingEstimateLineCount: 4, initialEstimateIrr: "600" })] });
+  assert.equal(view.rows[0].initialEstimateIrr, "600");
+  assert.equal(view.rows[0].estimateIsPartial, true);
+  assert.equal(view.rows[0].hasEstimateBasis, true);
+});
+
+test("an unknown forecast stays unknown instead of being drawn as zero", () => {
+  const view = buildWbsView({ nodes: [
+    phase("1.4", { forecastFinalIrr: null }),
+    phase("1.6", { forecastFinalIrr: "2000" }),
+  ] });
+  assert.equal(view.rows[0].forecastFinalIrr, null, "null must survive to the table");
+  assert.equal(view.rows[0].forecastMagnitude, null, "and to the chart");
+  assert.equal(view.rows[1].forecastFinalIrr, "2000");
+  assert.equal(view.totals.forecastFinalIrr, null,
+    "a total over an unknown is a subtotal wearing the name of a total");
+});
+
+test("the forecast total is stated when every phase states one", () => {
+  const view = buildWbsView({ nodes: [
+    phase("1.4", { forecastFinalIrr: "2000" }),
+    phase("1.6", { forecastFinalIrr: "3000" }),
+  ] });
+  assert.equal(view.totals.forecastFinalIrr, "5000");
+});
+
+test("phases with no basis do not drag the project estimate down to a subtotal silently", () => {
+  // The known phases still sum, and the count of phases with no basis says what is not in
+  // that sum -- the same pairing the missing-line count already provides inside a phase.
+  const view = buildWbsView({ nodes: [
+    phase("1.1", { initialEstimateIrr: "1000" }),
+    phase("1.2", { estimateLineCount: 0, initialEstimateIrr: null, forecastFinalIrr: null }),
+  ] });
+  assert.equal(view.totals.initialEstimateIrr, null,
+    "a total missing a phase is not a total");
+  assert.equal(view.totals.stagesWithoutEstimateBasis, 1);
 });

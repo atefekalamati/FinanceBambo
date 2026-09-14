@@ -147,6 +147,49 @@ class RepositoryBoundaryTests(unittest.TestCase):
                     self.assertIsNone(drive_letter.search(text))
                     self.assertNotIn('Path("/', text)
 
+    def test_the_demo_identity_header_cannot_reach_the_deployable_library(self):
+        """`X-Demo-User` says who the browser is acting as, and a host must never accept it.
+
+        The dev host has never authenticated anybody: it trusts a static context and lets
+        this header choose which seeded user that context names, which is what makes the
+        Core authorization rules demonstrable. On a real host the same header would be an
+        impersonation of any user whose id the caller can guess.
+
+        What keeps that from happening is that `app/` and `coreint/` -- the two packages a
+        host installs -- never read a request header for identity at all. The seam is
+        `AuthProvider.current(request)`, a Protocol with no implementation on this side, so
+        the host supplies the one function and this repository supplies none. Nothing
+        asserted that until now, and the header is one import away from being convenient.
+        """
+        for root in ("app", "coreint"):
+            for path in (BACKEND_ROOT / root).rglob("*.py"):
+                if "__pycache__" in path.parts:
+                    continue
+                text = path.read_text(encoding="utf-8")
+                with self.subTest(path=str(path.relative_to(BACKEND_ROOT))):
+                    self.assertNotIn("DEMO_USER_HEADER", text)
+                    self.assertNotIn("X-Demo-User", text)
+                    self.assertNotIn("x-demo-user", text.lower().replace("x_demo_user", ""))
+                    # Not "no header is ever read" -- a response may set one, and the file
+                    # route sets three. What may not happen is a header being read, which
+                    # is the only way one becomes an input to a decision.
+                    self.assertNotIn("request.headers", text)
+
+    def test_the_identity_seam_is_declared_and_left_unimplemented(self):
+        """The host writes `current`; this repository states its shape and stops there.
+
+        A default implementation here would be the thing every deployment forgets to
+        replace, and it would authenticate nobody while looking like it did.
+        """
+        ports = (BACKEND_ROOT / "app" / "finance" / "adapters" / "ports.py").read_text(
+            encoding="utf-8")
+        self.assertIn("async def current(self, request: Request) -> AuthContext: ...", ports)
+        self.assertIn("Protocol", ports)
+        # The demo's own implementation lives where it belongs and says so.
+        devhost = (BACKEND_ROOT / "devhost" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("DEMO_USER_HEADER", devhost)
+        self.assertIn("DEVELOPMENT HOST ONLY", devhost)
+
     def test_no_module_walks_out_of_the_repository(self):
         """`parents[n]` climbing past the repository root reaches a sibling checkout.
 

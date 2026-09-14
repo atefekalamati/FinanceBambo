@@ -7,18 +7,43 @@ class PsycopgFinancePriceRepository:
  def __init__(self,connection): self.db=connection
  @staticmethod
  def map(r): return PriceVersion(r["id"],r["organization_id"],r["project_id"],r["resource_id"],r["scope_kind"],r["version"],r["unit_price_irr"],r["effective_from"],r["reason"],r["created_by"],r["created_at"])
- async def history(self,scope,resource_id=None):
-  # Scoped to the operational set, so the history a person reads is the history of the
-  # items they are shown. A withheld item keeps every version it ever had; this listing
-  # simply is not where they are read from. `current()` below is deliberately NOT scoped:
-  # resolving one item by id must keep working for invoices and reports for ever.
-  sql=("SELECT pv.* FROM price_versions pv JOIN finance_resources r"
+ #: One ordering for both the whole history and any page of it. Two spellings would let
+ #: a row sit on two pages or on none; the id tiebreak is what makes it total.
+ ORDER=" ORDER BY pv.effective_from DESC,pv.version DESC,pv.created_at DESC,pv.id DESC"
+
+ def _history_where(self,scope,resource_id,date_from,date_to):
+  """The FROM and WHERE the whole history and a page of it must agree on.
+
+  Scoped to the operational set, so the history a person reads is the history of the
+  items they are shown. A withheld item keeps every version it ever had; this listing
+  simply is not where they are read from. `current()` below is deliberately NOT scoped:
+  resolving one item by id must keep working for invoices and reports for ever.
+
+  The dates bound `effective_from` -- the day a price started applying, which is the date
+  a reader means by "between these two dates". `created_at` is when somebody typed it.
+  """
+  sql=(" FROM price_versions pv JOIN finance_resources r"
        " ON r.organization_id=pv.organization_id AND r.project_id=pv.project_id AND r.id=pv.resource_id"
        " WHERE pv.organization_id=%s AND pv.project_id=%s AND r.deleted_at IS NULL AND "
        + active_price_resource("r")); args=[scope.organization_id,scope.project_id]
   if resource_id is not None: sql+=" AND pv.resource_id=%s";args.append(resource_id)
-  sql+=" ORDER BY pv.effective_from DESC,pv.version DESC,pv.created_at DESC,pv.id DESC"
-  async with self.db.cursor(row_factory=dict_row) as c: await c.execute(sql,tuple(args)); return [self.map(x) for x in await c.fetchall()]
+  if date_from is not None: sql+=" AND pv.effective_from>=%s";args.append(date_from)
+  if date_to is not None: sql+=" AND pv.effective_from<=%s";args.append(date_to)
+  return sql,args
+ async def history(self,scope,resource_id=None):
+  where,args=self._history_where(scope,resource_id,None,None)
+  async with self.db.cursor(row_factory=dict_row) as c: await c.execute("SELECT pv.*"+where+self.ORDER,tuple(args)); return [self.map(x) for x in await c.fetchall()]
+ async def history_page(self,scope,page,page_size,resource_id=None,date_from=None,date_to=None):
+  """One page of the same history, with the total the filter matched.
+
+  The count is taken over the identical predicate, so `totalItems` and the rows always
+  describe the same set. Both run in one cursor rather than two round trips.
+  """
+  where,args=self._history_where(scope,resource_id,date_from,date_to)
+  async with self.db.cursor(row_factory=dict_row) as c:
+   await c.execute("SELECT count(*) AS total"+where,tuple(args)); total=(await c.fetchone())["total"]
+   await c.execute("SELECT pv.*"+where+self.ORDER+" LIMIT %s OFFSET %s",tuple(args+[page_size,(page-1)*page_size]))
+   return [self.map(x) for x in await c.fetchall()],total
  async def current(self,scope,resource_id,as_of):
   async with self.db.cursor(row_factory=dict_row) as c:
    await c.execute("""SELECT * FROM price_versions WHERE organization_id=%s AND project_id=%s AND resource_id=%s AND effective_from<=%s ORDER BY (scope_kind='project') DESC,effective_from DESC,version DESC,created_at DESC,id DESC LIMIT 1""",(scope.organization_id,scope.project_id,resource_id,as_of)); row=await c.fetchone()

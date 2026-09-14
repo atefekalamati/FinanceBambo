@@ -28,7 +28,7 @@ export const ENTITY_LABELS = Object.freeze({
 export function filterAuditEvents(events, filters) {
   const query = String(filters.query ?? "").trim().toLocaleLowerCase("fa-IR");
   return events.filter((event) => {
-    const searchable = `${event.actorUserId} ${event.entityId} ${event.reason ?? ""} ${ACTION_LABELS[event.action] ?? event.action} ${ENTITY_LABELS[event.entityType] ?? event.entityType}`.toLocaleLowerCase("fa-IR");
+    const searchable = `${event.actorUserId} ${event.actorUserName ?? ""} ${event.entityId} ${event.reason ?? ""} ${ACTION_LABELS[event.action] ?? event.action} ${ENTITY_LABELS[event.entityType] ?? event.entityType}`.toLocaleLowerCase("fa-IR");
     const date = String(event.occurredAt ?? "").slice(0, 10);
     return (!query || searchable.includes(query))
       && (!filters.action || event.action === filters.action)

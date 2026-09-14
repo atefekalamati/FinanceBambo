@@ -8,6 +8,22 @@
 میزبان BAMBO این ۱۴ کلید را روی `application.state` می‌گذارد و ماژول مالی کار می‌کند. اگر
 یکی نباشد، مسیرهای وابسته‌اش شکست می‌خورند — و این درست است.
 
+> **به‌روزرسانی ۲۰۲۶-۰۹-۱۲ · Alembic `0019`.** قرارداد چهارده‌کلیدی زیر تغییر نکرده. دو
+> چیز به آن اضافه شده که میزبان باید بداند:
+>
+> 1. **`AuthProvider.current` هنوز باز است** و باید بماند. `app/` و `coreint/` هیچ هدر
+>    درخواستی را **نمی‌خوانند** — دو آزمون در `tests/test_demo_isolation.py` این را نگه
+>    می‌دارند، چون `X-Demo-User` که در `devhost` هست روی یک میزبان واقعی معنایش جعل هویت
+>    هر کسی است که شناسه‌اش را حدس بزند.
+> 2. **متغیرهای محیطی که پیکربندی واقعاً می‌خواند:** `FINANCE_DEV_DSN`،
+>    `FINANCE_MIGRATION_DSN`، `FINANCE_CORE_DSN`، `FINANCE_CORE_PROGRESS`،
+>    `MPP_IMPORT_ENABLED`، `MPP_IMPORT_ROOT`، `MPP_MAX_FILE_SIZE_MB`،
+>    `MPP_IMPORT_INTERVAL_MINUTES`، `MPP_JAVA_HOME`، `EXTRACTION_PROVIDER`، و سه
+>    `FINANCE_DEMO_*` که فقط میزبان توسعه می‌خواند. نمونهٔ کامل و فقط-placeholder در
+>    `.env.example` ریشهٔ مخزن.
+>
+> فهرست کامل تحویل‌دادنی‌ها و معیارهای پذیرش در `INTEGRATION_KIT_FA.md`.
+
 ---
 
 ## خط تقسیم

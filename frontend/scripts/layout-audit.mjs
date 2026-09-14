@@ -6,29 +6,37 @@ import { join } from "node:path";
 const chromePath = process.env.CHROME_PATH ?? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const baseUrl = process.env.BAMBO_AUDIT_URL ?? "http://127.0.0.1:43127";
 const routes = [
-  "finance",
-  "finance-report",
-  "report-prices",
-  "report-items",
-  "report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines",
+  "finance/operations",
+  "finance/report",
+  "finance/report-prices",
+  "finance/report-items",
+  "finance/report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines",
   // The two that read the project at two dates. They only draw when a range is
   // chosen, so the range is part of the address the audit measures.
-  "report-builder?sections=periodMetrics,periodBreakdown&from=2026-01-01&to=2026-06-31",
-  "report-settings",
-  "financial-items",
-  "prices",
-  "progress",
-  "invoices",
-  "invoice-files",
-  "ai-review",
+  // June has thirty days. The 31st was in this list and the page passed it straight
+  // through to /overview, which answered 422 -- and the rejection was never handled,
+  // so the run recorded an uncaught promise on whichever page came next.
+  "finance/report-builder?sections=periodMetrics,periodBreakdown&from=2026-01-01&to=2026-06-30",
+  // A range the calendar does not contain. June has thirty days, so this must draw the
+  // refusal -- named end, usable correction path -- and must not send a request or draw a
+  // report for some other range. The page used to substitute the year-to-date preset and
+  // print a finished document for it.
+  "finance/report-builder?sections=periodMetrics,periodBreakdown&from=2026-01-01&to=2026-06-31",
+  "finance/report-settings",
+  "finance/financial-items",
+  "finance/prices",
+  "finance/progress",
+  "finance/invoices",
+  "finance/invoice-files",
+  "finance/ai-review",
   // reports, period-report and work-areas are withdrawn: the router sends a
   // reader who types one to their own home, so measuring them measures that
   // home twice rather than the page.
   // Both shapes the level-1 report takes: the phase list, and one phase opened.
-  "level-one",
-  "level-one?wbs=1.8",
-  "audit",
-  "settings",
+  "finance/level-one",
+  "finance/level-one?wbs=1.8",
+  "finance/audit",
+  "finance/settings",
 ];
 
 const widths = process.env.BAMBO_AUDIT_WIDTHS
@@ -88,6 +96,33 @@ ${chromeStderr.trim()}`);
 flags: ${extraFlags.join(" ") || "(none)"}
 ${chromeStderr.trim()}`,
   );
+}
+
+/**
+ * Refuse to measure a page the router did not open.
+ *
+ * A route it does not recognise, or one this account may not reach, lands on the default
+ * route -- and a fallback page has no overflow and throws no exceptions, so it passes
+ * every check here while proving nothing about the page named. The router rewrites
+ * `location.hash` to what it actually opened, so asking for that is enough and needs no
+ * per-page selector.
+ */
+async function assertPageIdentity(cdp, route) {
+  const wanted = route.split("?")[0].replace(/^#?\/?/, "");
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const result = await cdp.send("Runtime.evaluate", {
+      expression: "location.hash.replace(/^#\\/?/, '').split('?')[0]",
+      returnByValue: true,
+    });
+    const opened = result.result.value ?? "";
+    if (opened === wanted) return opened;
+    if (opened && opened !== wanted && attempt > 8) {
+      throw new Error(
+        `asked for ${wanted} and the router opened ${opened} -- a fallback, not the page`);
+    }
+    await delay(150);
+  }
+  throw new Error(`${wanted}: the router never settled on a route`);
 }
 
 async function createPage(url) {
@@ -263,10 +298,15 @@ try {
   await waitForDebugger();
   for (const width of widths) {
     for (const route of routes) {
-      const page = await createPage(`${baseUrl}/#/${route}`);
+      // `#finance/...`, not `#/finance/...`. The router writes the first form and matches
+      // only that; the extra slash fails every match and lands on the default route, which
+      // is how this audit spent its runs measuring the fallback page and reporting success.
+      const page = await createPage(`${baseUrl}/#${route}`);
       const cdp = connect(page.webSocketDebuggerUrl);
       await cdp.ready;
       await cdp.send("Runtime.enable");
+      // Before anything is measured: is this the page that was asked for?
+      await assertPageIdentity(cdp, route);
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width,
         height: 900,

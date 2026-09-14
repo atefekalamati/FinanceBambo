@@ -24,6 +24,10 @@ class PriceCreate(ApiModel):
 
 class PriceResponse(PriceCreate):
     id: UUID; resource_id: UUID; version: int; created_by: UUID; created_at: datetime
+    # What the host calls this actor, filled at the API boundary and never stored.
+    # None when the host has no directory or does not know the id; the reader then
+    # sees the id, exactly as before. See `app.finance.domain.actors`.
+    created_by_name: str | None = None
     @field_serializer("unit_price_irr")
     def money(self,v): return format(v,"f")
     @classmethod
@@ -55,3 +59,18 @@ class CurrentPriceTrendResponse(ApiModel):
     trend_points:list[PriceTrendPoint]
     @field_serializer("organization_price_irr","project_price_irr","current_price_irr","previous_price_irr","latest_change_percent")
     def decimal_string(self,v):return None if v is None else format(v,"f")
+
+
+
+class PriceHistoryListResponse(ApiModel):
+    """Paged envelope, so a reader cannot mistake an unfetched page for the end of the history.
+
+    `totalItems` is what the filter matched, not what this page holds -- the difference is
+    the whole reason the envelope exists on an append-only table.
+    """
+
+    items: list[PriceResponse]
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int

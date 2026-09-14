@@ -209,6 +209,10 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
       return clone(repeated.invoice);
     }
     if (!header?.invoiceDate || !header.vendorName || !Array.isArray(lines) || !lines.length) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "اطلاعات فاکتور کامل نیست." });
+    // A client that still sends a number is told, exactly as the service tells it: the
+    // endpoint answers 422 naming the field, and a demo surface that accepted what the
+    // real one refuses would hide the very defect this change exists to fix.
+    if (header.invoiceNumber != null) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "شماره فاکتور را سرویس تعیین می‌کند و نباید ارسال شود." });
     const preview = buildPreview(lines, adjustments);
     if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ نهایی فاکتور نمی‌تواند منفی باشد." });
     const duplicateMatches = findSimilarInvoices(header, preview.finalAmountIRR);

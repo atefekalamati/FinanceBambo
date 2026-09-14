@@ -36,6 +36,63 @@ test("every feature page renders its states through the shared page-state helper
   );
 });
 
+/**
+ * WHY THIS EXISTS
+ * `settings-page.js` called `actorLabel(...)` and never imported it. The page threw
+ * `ReferenceError: actorLabel is not defined` inside the render of the revision-history
+ * table -- which runs inside an async load, so it surfaced as an unhandled promise
+ * rejection and the page simply stopped drawing. It survived because the code path needs a
+ * project that HAS settings revisions, and the seeded demo project has none.
+ *
+ * Nothing in the suite asks whether a module imports what it calls, so nothing could have
+ * caught it. This asks, for every shared and core helper, in every module.
+ */
+const SHARED_EXPORTS = SOURCES
+  .filter(([name]) => name.startsWith("shared/") || name.startsWith("core/"))
+  .flatMap(([name, source]) => [
+    ...source.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g),
+    ...source.matchAll(/export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\(|async|function)/g),
+  ].map((match) => [match[1], name]));
+
+const EXPORTED_BY = new Map(SHARED_EXPORTS);
+
+function importedNames(source) {
+  const names = new Set();
+  for (const match of source.matchAll(/import\s*\{([^}]*)\}\s*from/g)) {
+    for (const part of match[1].split(",")) {
+      const name = part.trim().split(/\s+as\s+/).pop().trim();
+      if (name) names.add(name);
+    }
+  }
+  // A namespace or default import brings the name in too.
+  for (const match of source.matchAll(/import\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,|from)/g)) {
+    names.add(match[1]);
+  }
+  return names;
+}
+
+function definedLocally(source, name) {
+  return new RegExp(`(?:function|const|let|class)\\s+${name}\\b`).test(source);
+}
+
+test("every module imports the shared helper it calls", () => {
+  assert.ok(EXPORTED_BY.size > 20, "no shared helpers were discovered; the scan is broken");
+  const offenders = [];
+  for (const [name, source] of SOURCES) {
+    if (name.startsWith("shared/") || name.startsWith("core/")) continue;
+    const imported = importedNames(source);
+    for (const [helper, home] of EXPORTED_BY) {
+      if (imported.has(helper) || definedLocally(source, helper)) continue;
+      // Called as a bare function, not as a property of something else and not as part
+      // of a longer identifier: `x.element(` and `myElement(` are not calls to `element`.
+      if (!new RegExp(`(?<![.\\w$])${helper}\\s*\\(`).test(source)) continue;
+      offenders.push(`${name} calls ${helper}() from ${home} without importing it`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    "a module that calls an unimported helper throws ReferenceError the moment that branch renders");
+});
+
 test("no module builds markup through innerHTML", () => {
   const offenders = SOURCES.filter(([name, source]) => name !== "shared/dom/elements.js" && source.includes(".innerHTML")).map(([name]) => name);
   assert.deepEqual(offenders, [], "build nodes with element()/tableHead() so Backend values can never be parsed as markup");
@@ -114,4 +171,64 @@ test("stylesheets break only at the documented responsive scale", () => {
     "add the width to the scale above and say why, or reuse a tier. A px value is caught here too: "
     + "the scan used to read rem only, which is how 425px and 424.98px once reached the stylesheet unnoticed.",
   );
+});
+
+/**
+ * Demo data must not be in what the host is served.
+ *
+ * The runtime decision was already right -- `host` is the default, an invalid context is an
+ * error and never a fall back to samples -- but the ten preview adapters were imported
+ * STATICALLY at the top of the entry point. A static import is in the module graph whether
+ * it is called or not, so the packager shipped `src/adapters/mock/` to the host and every
+ * page load fetched it. A bundle that contains demo data is one edit away from using it.
+ *
+ * They are now reached by `import()` inside the branch that has already decided the
+ * standalone preview is running.
+ */
+
+const ENTRY = SOURCES.find(([name]) => name === "app/bootstrap.js");
+
+test("the application entry point imports no demo adapter statically", () => {
+  assert.ok(ENTRY, "app/bootstrap.js was not found");
+  const staticImports = [...ENTRY[1].matchAll(/(?:^|\n)\s*import\s[^\n(]*?["']([^"']+)["']/g)]
+    .map((match) => match[1]);
+  const demo = staticImports.filter((specifier) => specifier.includes("adapters/mock"));
+  assert.deepEqual(demo, [],
+    "a static import puts demo data in the host's bundle even when it is never called");
+});
+
+test("the entry point still reaches the preview adapters, dynamically", () => {
+  // The preview must keep working: this is not a deletion, it is a change of when.
+  const dynamic = [...ENTRY[1].matchAll(/import\(\s*["']([^"']+)["']/g)].map((m) => m[1]);
+  const demo = dynamic.filter((specifier) => specifier.includes("adapters/mock"));
+  assert.ok(demo.length >= 8,
+    `expected the preview's adapters behind import(), found ${demo.length}`);
+});
+
+test("no feature, core or API adapter imports demo data at all", () => {
+  // The entry point is the only module allowed to know the preview exists, and only
+  // through import(). Anything else reaching for a demo adapter is a production path
+  // borrowing sample rows.
+  const offenders = SOURCES
+    .filter(([name]) => !name.startsWith("adapters/mock/") && name !== "app/bootstrap.js")
+    .filter(([, source]) => /["'][^"']*adapters\/mock\/[^"']*["']/.test(source))
+    .map(([name]) => name);
+  assert.deepEqual(offenders, [],
+    "production modules must read from the API adapters, never from the preview's");
+});
+
+test("the packager's host build follows static imports only", () => {
+  // The guard above is about the source; this is about what the script actually collects.
+  // Its pattern used to allow an optional paren, which walked `import("x")` exactly like a
+  // static import -- so making the imports dynamic would not have trimmed the package.
+  const packager = readFileSync(join(SRC_DIR, "..", "scripts", "build-package.mjs"), "utf8");
+  assert.ok(packager.includes("WITH_PREVIEW"),
+    "the packager must distinguish the host build from the preview build");
+  const lines = packager.split("\n");
+  const hostPattern = lines.find((line) => line.includes(": /(?:from") && line.includes("]+)"));
+  assert.ok(hostPattern, "the host build's import pattern was not found");
+  assert.ok(!hostPattern.includes("\\(?"),
+    "the host pattern allows an optional paren, so it walks import() like a static import");
+  assert.ok(packager.includes('["host.html", "index.html"] : ["host.html"]'),
+    "index.html is the page that enables demo data and must not ship by default");
 });

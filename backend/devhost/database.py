@@ -107,6 +107,9 @@ async def reset(connection) -> None:
               "unit_conversions", "price_versions", "estimate_revisions", "estimate_lines",
               "finance_resources", "finance_project_settings", "finance_audit_events",
               "report_snapshots", "finance_attachments", "extraction_drafts",
+              # Cleared with the invoices it counts: a counter left behind would resume at
+              # a number the reseeded invoices already hold.
+              "finance_invoice_counters",
               "finance_import_batches")
     async with connection.cursor() as cursor:
         await cursor.execute("SET session_replication_role = replica")

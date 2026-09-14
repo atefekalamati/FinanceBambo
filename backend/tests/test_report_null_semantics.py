@@ -45,21 +45,37 @@ def line(quantity, price, kind="material", line_id=MATERIAL_LINE, resource=MATER
 
 
 class EstimateBaselineTests(unittest.TestCase):
-    def test_a_line_stating_neither_quantity_nor_price_leaves_the_total_unknown(self):
+    """A total built from some of its lines: published, and never published bare.
+
+    The rule used to be that one unstated line withheld the figure entirely. It was honest
+    and it was unusable: this project's equipment states no price anywhere in its schedule
+    -- the file simply does not contain one -- so every stage that carries equipment
+    withheld the material estimate sitting beside it, and 342 billion toman of stated
+    estimate reached the reader as an em dash. The figure is now the subtotal of the lines
+    that state a baseline, and three separate things say so: `incompleteMetricKeys` names
+    the metric, `missingEstimateLineCount` says how many lines are not in it, and
+    `calculationStatus` is `incomplete`. What must never happen is the subtotal travelling
+    without them, which is what these tests hold.
+    """
+
+    def test_a_line_stating_neither_quantity_nor_price_is_counted_and_named(self):
         report = build_report([line(None, None)])
-        self.assertIsNone(report.metrics["initialEstimateIrr"],
-                          "a total built from none of its lines is not zero")
+        self.assertEqual(Decimal(0), report.metrics["initialEstimateIrr"],
+                         "no line states a baseline, so the subtotal of those that do is zero")
+        self.assertEqual(1, report.missing_estimate_line_count,
+                         "and the zero arrives beside the count that explains it")
         self.assertIn("initialEstimateIrr", report.incomplete_metric_keys)
         self.assertEqual("incomplete", report.calculation_status)
 
     def test_a_line_with_a_quantity_and_no_price_is_the_same_kind_of_gap(self):
         report = build_report([line("10", None)])
-        self.assertIsNone(report.metrics["initialEstimateIrr"])
+        self.assertEqual(1, report.missing_estimate_line_count)
         self.assertIn("initialEstimateIrr", report.incomplete_metric_keys)
 
     def test_a_line_with_a_price_and_no_quantity_is_too(self):
         report = build_report([line(None, "100000")])
-        self.assertIsNone(report.metrics["initialEstimateIrr"])
+        self.assertEqual(1, report.missing_estimate_line_count)
+        self.assertIn("initialEstimateIrr", report.incomplete_metric_keys)
 
     def test_a_real_zero_quantity_is_an_estimate_of_zero_and_still_counts(self):
         report = build_report([line("0", "100000")])
@@ -77,11 +93,40 @@ class EstimateBaselineTests(unittest.TestCase):
         self.assertEqual(Decimal("1000000"), report.metrics["initialEstimateIrr"])
         self.assertNotIn("initialEstimateIrr", report.incomplete_metric_keys)
 
-    def test_one_unstated_line_makes_the_whole_total_unknown(self):
-        # Not "the sum of the ones we could read". A total that silently drops rows is a
-        # smaller number wearing the name of the whole.
+    def test_one_unstated_line_makes_the_total_a_flagged_subtotal(self):
+        # The sum of the ones that state a baseline -- which is a smaller number than the
+        # whole, and must never wear the name of the whole. Everything that says so is
+        # asserted here, because the figure alone would be exactly the old defect.
         report = build_report([line("10", "100000"), line(None, None, line_id=LABOR_TWO)])
-        self.assertIsNone(report.metrics["initialEstimateIrr"])
+        self.assertEqual(Decimal("1000000"), report.metrics["initialEstimateIrr"])
+        self.assertEqual(1, report.missing_estimate_line_count)
+        self.assertIn("initialEstimateIrr", report.incomplete_metric_keys)
+        self.assertIn("revisedEstimateIrr", report.incomplete_metric_keys)
+        self.assertEqual("incomplete", report.calculation_status)
+
+    def test_a_type_whose_lines_are_all_unstated_says_so_on_its_own_row(self):
+        # The per-type row has the same problem in miniature: a type made entirely of
+        # unestimated lines must not publish a confident zero beside a type that really
+        # was estimated at nothing.
+        report = build_report([line("10", "100000"),
+                               line(None, None, kind="equipment", line_id=LABOR_TWO)])
+        rows = {row["resourceType"]: row for row in report.breakdown}
+        self.assertEqual(0, rows["material"]["missingEstimateLineCount"],
+                         "this type stated its baseline; its estimate is its total")
+        self.assertEqual(1, rows["equipment"]["missingEstimateLineCount"])
+        self.assertEqual("incomplete", rows["equipment"]["calculationStatus"])
+        # `labor` has no lines here at all, which is a third state again: nothing to
+        # estimate, nothing missing, and a status that stays complete.
+        self.assertEqual(0, rows["labor"]["missingEstimateLineCount"])
+        self.assertEqual("complete", rows["labor"]["calculationStatus"])
+
+    def test_a_fully_stated_project_carries_a_zero_count(self):
+        # The counter is published even when there is nothing to report: "none of them"
+        # is the answer that lets a reader trust the figure, and its absence would read
+        # the same as a reader who forgot to look.
+        report = build_report([line("10", "100000")])
+        self.assertEqual(0, report.missing_estimate_line_count)
+        self.assertNotIn("initialEstimateIrr", report.incomplete_metric_keys)
 
     def test_the_gap_is_named_on_the_line_that_has_it(self):
         report = build_report([line(None, None)])

@@ -2,11 +2,17 @@ from uuid import uuid4
 from psycopg import errors
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from dataclasses import replace
 from ..domain.invoices import Invoice
+from .invoice_numbering import InvoiceNumberConflict,allocate_invoice_number
 class PsycopgInvoiceRepository:
  def __init__(self,db):self.db=db
- async def duplicate(self,s,key,vendor,number,day,amount):
-  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT id,idempotency_key FROM invoices WHERE organization_id=%s AND project_id=%s AND (idempotency_key=%s OR (vendor_name=%s AND invoice_number IS NOT DISTINCT FROM %s AND invoice_date=%s AND final_amount_irr=%s)) LIMIT 1",(s.organization_id,s.project_id,key,vendor,number,day,amount));r=await c.fetchone()
+ # Vendor, date and amount. The invoice number is deliberately NOT part of this: it is
+ # allocated by the counter now, so every invoice has a different one and including it
+ # would make the predicate match nothing -- the same two documents entered twice would
+ # stop being recognised as the same two documents.
+ async def duplicate(self,s,key,vendor,day,amount):
+  async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT id,idempotency_key FROM invoices WHERE organization_id=%s AND project_id=%s AND (idempotency_key=%s OR (vendor_name=%s AND invoice_date=%s AND final_amount_irr=%s)) LIMIT 1",(s.organization_id,s.project_id,key,vendor,day,amount));r=await c.fetchone()
   if r is None:return None
   if r["idempotency_key"]==key:return await self.get(s,r["id"])
   return "similar"
@@ -29,7 +35,12 @@ class PsycopgInvoiceRepository:
  async def list(self,s,page,page_size,query=None,status=None,source=None,invoice_date_from=None,invoice_date_to=None):
   clauses=["organization_id=%s","project_id=%s"];args=[s.organization_id,s.project_id]
   if query:
-   clauses.append("(invoice_number ILIKE %s OR vendor_name ILIKE %s OR COALESCE(description,'') ILIKE %s)");term=f"%{query}%";args.extend([term,term,term])
+   # The number is an integer now, so it is cast rather than matched as text. Searching
+   # "12" finds invoice 12 and also 120; that is what a substring search on a number
+   # means, and it is what the vendor and description columns beside it already do.
+   # Both numbers: the sequence every invoice has, and the string the historical ones were
+   # issued with. A reader holding a paper invoice searches for what is printed on it.
+   clauses.append("(CAST(invoice_seq AS text) ILIKE %s OR COALESCE(invoice_number,'') ILIKE %s OR vendor_name ILIKE %s OR COALESCE(description,'') ILIKE %s)");term=f"%{query}%";args.extend([term,term,term,term])
   if status:clauses.append("status=%s");args.append(status)
   if source:clauses.append("source=%s");args.append(source)
   # invoice_date is a date, not a timestamptz, so both ends compare directly and both
@@ -60,15 +71,30 @@ class PsycopgInvoiceRepository:
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT estimate_line_id,resource_id,quantity,unit,unit_price_snapshot_irr unit_price_irr,CASE WHEN quantity IS NULL AND unit IS NULL AND unit_price_snapshot_irr IS NULL THEN raw_amount_irr ELSE NULL END line_amount_irr,raw_amount_irr,allocated_discount_irr,allocated_tax_irr,allocated_shipping_irr,allocated_other_costs_irr,final_line_amount_irr,description FROM invoice_lines WHERE organization_id=%s AND project_id=%s AND invoice_id=%s ORDER BY created_at,id",(s.organization_id,s.project_id,r["id"]));lines=await c.fetchall()
   return self._invoice(r,lines)
  @staticmethod
- def _invoice(r,lines):return Invoice(r["id"],r["organization_id"],r["project_id"],r["invoice_number"],r["invoice_date"],r["vendor_name"],r["description"],r["source"],r["status"],r["discount_irr"],r["tax_irr"],r["shipping_irr"],r["other_costs_irr"],r["final_amount_irr"],r["idempotency_key"],r["version"],r["submitted_by"],r["confirmed_by"],r["confirmed_at"],r["created_at"],lines,r["financial_effect_sign"],r["original_invoice_id"])
+ def _invoice(r,lines):return Invoice(r["id"],r["organization_id"],r["project_id"],r["invoice_seq"],r["invoice_date"],r["vendor_name"],r["description"],r["source"],r["status"],r["discount_irr"],r["tax_irr"],r["shipping_irr"],r["other_costs_irr"],r["final_amount_irr"],r["idempotency_key"],r["version"],r["submitted_by"],r["confirmed_by"],r["confirmed_at"],r["created_at"],lines,r["financial_effect_sign"],r["original_invoice_id"],r.get("invoice_number"))
  async def create(self,s,v,audit_id,duplicate_reason,action="invoice.created"):
+  """Write one invoice, its lines and its audit event, and give it its number.
+
+  The number is allocated HERE rather than by the caller, inside the transaction that
+  writes the row. That is what makes it correct under concurrency and what makes a rolled
+  back invoice leave no gap: the counter moves and unmoves with the invoice it numbered.
+  """
   try:
    async with self.db.transaction():
-    async with self.db.cursor() as c:
-     await c.execute("INSERT INTO invoices(id,organization_id,project_id,invoice_number,invoice_date,vendor_name,description,source,status,discount_irr,tax_irr,shipping_irr,other_costs_irr,final_amount_irr,financial_effect_sign,idempotency_key,original_invoice_id,version,submitted_by,confirmed_by,confirmed_at,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(v.id,v.organization_id,v.project_id,v.invoice_number,v.invoice_date,v.vendor_name,v.description,v.source,v.status,v.discount_irr,v.tax_irr,v.shipping_irr,v.other_costs_irr,v.final_amount_irr,v.financial_effect_sign,v.idempotency_key,v.original_invoice_id,v.version,v.submitted_by,v.confirmed_by,v.confirmed_at,v.created_at,v.created_at))
+    async with self.db.cursor(row_factory=dict_row) as c:
+     invoice_seq=await allocate_invoice_number(c,s.organization_id,s.project_id)
+     v=replace(v,invoice_seq=invoice_seq)
+     await c.execute("INSERT INTO invoices(id,organization_id,project_id,invoice_seq,invoice_date,vendor_name,description,source,status,discount_irr,tax_irr,shipping_irr,other_costs_irr,final_amount_irr,financial_effect_sign,idempotency_key,original_invoice_id,version,submitted_by,confirmed_by,confirmed_at,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(v.id,v.organization_id,v.project_id,v.invoice_seq,v.invoice_date,v.vendor_name,v.description,v.source,v.status,v.discount_irr,v.tax_irr,v.shipping_irr,v.other_costs_irr,v.final_amount_irr,v.financial_effect_sign,v.idempotency_key,v.original_invoice_id,v.version,v.submitted_by,v.confirmed_by,v.confirmed_at,v.created_at,v.created_at))
      for x in v.lines:await c.execute("INSERT INTO invoice_lines(id,organization_id,project_id,invoice_id,estimate_line_id,resource_id,quantity,unit,unit_price_snapshot_irr,raw_amount_irr,allocated_discount_irr,allocated_tax_irr,allocated_shipping_irr,allocated_other_costs_irr,final_line_amount_irr,description) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(uuid4(),s.organization_id,s.project_id,v.id,x["estimate_line_id"],x["resource_id"],x["quantity"],x["unit"],x["unit_price_irr"],x["raw_amount_irr"],x["allocated_discount_irr"],x["allocated_tax_irr"],x["allocated_shipping_irr"],x["allocated_other_costs_irr"],x["final_line_amount_irr"],x["description"]))
      await c.execute("INSERT INTO finance_audit_events(id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,reason,after_values,occurred_at) VALUES(%s,%s,%s,%s,%s,'invoices',%s,%s,%s,%s)",(audit_id,s.organization_id,s.project_id,v.submitted_by,action,v.id,duplicate_reason,Jsonb({"status":v.status,"finalAmountIrr":str(v.final_amount_irr),"financialEffectSign":v.financial_effect_sign,"originalInvoiceId":None if v.original_invoice_id is None else str(v.original_invoice_id)}),v.created_at))
-  except errors.UniqueViolation as error:raise ValueError("invoice idempotency or linked document conflict") from error
+  # Two different failures, and they must not be told apart by the caller's guesswork.
+  # A violated invoice number means the safety net caught something that bypassed the
+  # counter -- not a retryable conflict -- so it is raised as itself and never becomes the
+  # ValueError that the create, void and corrective paths translate into a 409.
+  except errors.UniqueViolation as error:
+   if getattr(getattr(error,"diag",None),"constraint_name","")=="ux_invoices_project_seq":
+    raise InvoiceNumberConflict("an invoice number was written without the counter") from error
+   raise ValueError("invoice idempotency or linked document conflict") from error
   return v
  async def update_draft(self,s,v,description,status,audit_id,at):
   next_status=status or "draft"
@@ -77,7 +103,7 @@ class PsycopgInvoiceRepository:
     await c.execute("UPDATE invoices SET description=%s,status=%s,version=version+1,updated_at=%s WHERE organization_id=%s AND project_id=%s AND id=%s AND status='draft' AND version=%s",(description,next_status,at,s.organization_id,s.project_id,v.id,v.version))
     if c.rowcount!=1:raise ValueError("stale invoice version")
     await c.execute("INSERT INTO finance_audit_events(id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,before_values,after_values,occurred_at) VALUES(%s,%s,%s,%s,'invoice.updated','invoices',%s,%s,%s,%s)",(audit_id,s.organization_id,s.project_id,s.actor_user_id,v.id,Jsonb({"description":v.description,"status":v.status,"version":v.version}),Jsonb({"description":description,"status":next_status,"version":v.version+1}),at))
-  return Invoice(v.id,v.organization_id,v.project_id,v.invoice_number,v.invoice_date,v.vendor_name,description,v.source,next_status,v.discount_irr,v.tax_irr,v.shipping_irr,v.other_costs_irr,v.final_amount_irr,v.idempotency_key,v.version+1,v.submitted_by,v.confirmed_by,v.confirmed_at,v.created_at,v.lines)
+  return replace(v,description=description,status=next_status,version=v.version+1)
  async def confirmation_matches(self,s,invoice_id,key):
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT confirmation_idempotency_key FROM invoices WHERE organization_id=%s AND project_id=%s AND id=%s AND status='confirmed'",(s.organization_id,s.project_id,invoice_id));row=await c.fetchone()
   return row is not None and row["confirmation_idempotency_key"]==key
@@ -102,4 +128,4 @@ class PsycopgInvoiceRepository:
      if not repeated:await c.execute("INSERT INTO finance_audit_events(id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,before_values,after_values,occurred_at) VALUES(%s,%s,%s,%s,'invoice.confirmed','invoices',%s,%s,%s,%s)",(audit_id,s.organization_id,s.project_id,s.actor_user_id,v.id,Jsonb({"status":"awaitingConfirmation","version":v.version}),Jsonb({"status":"confirmed","version":v.version+1,"finalAmountIrr":str(v.final_amount_irr)}),at))
   except errors.UniqueViolation as error:raise ValueError("confirmation idempotency key conflict") from error
   if repeated:return await self.get(s,v.id)
-  return Invoice(v.id,v.organization_id,v.project_id,v.invoice_number,v.invoice_date,v.vendor_name,v.description,v.source,"confirmed",v.discount_irr,v.tax_irr,v.shipping_irr,v.other_costs_irr,v.final_amount_irr,v.idempotency_key,v.version+1,v.submitted_by,s.actor_user_id,at,v.created_at,v.lines)
+  return replace(v,status="confirmed",version=v.version+1,confirmed_by=s.actor_user_id,confirmed_at=at)

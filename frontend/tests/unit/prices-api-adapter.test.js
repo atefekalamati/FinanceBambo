@@ -10,8 +10,8 @@ function clientWith(payloads) {
     async request(path, options) {
       this.calls.push({ path, options });
       if (path.endsWith("/resources")) return payloads.resources;
-      if (path.endsWith("/price-history")) return payloads.prices;
-      if (path.endsWith("/unit-conversions")) return payloads.conversions ?? [];
+      if (path.includes("/price-history")) return payloads.prices;
+      if (path.includes("/unit-conversions")) return payloads.conversions ?? [];
       if (path.includes("/prices/current?asOf=")) return payloads.current ?? [];
       throw new Error(`unexpected path: ${path}`);
     },
@@ -44,7 +44,7 @@ test("builds a dynamic trend from real backend price history in effective order"
      nothing on the page reads it: the sparkline above is drawn from this
      endpoint's own trendPoints, which is what the assertion before this one
      checks. The reader asks for the history when they want to see it. */
-  assert.ok(!client.calls.some((call) => call.path.endsWith("/price-history")),
+  assert.ok(!client.calls.some((call) => call.path.includes("/price-history")),
     "opening the page fetched the whole price history");
   assert.ok(client.calls.some((call) => call.path.includes("/prices/current?asOf=")),
     "the current prices, which the page does read, were not fetched");
@@ -83,7 +83,7 @@ test("the history is fetched only when the reader asks for it", async () => {
   assert.equal(workspace.history, null);
 
   const history = await adapter.getPriceHistory();
-  assert.ok(client.calls.some((call) => call.path.endsWith("/price-history")));
+  assert.ok(client.calls.some((call) => call.path.includes("/price-history")));
   // Newest first, the order the table has always shown.
   assert.deepEqual(history.map((price) => price.priceId), ["price-2", "price-1"]);
 });

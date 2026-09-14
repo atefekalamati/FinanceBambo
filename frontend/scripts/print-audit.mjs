@@ -5,6 +5,11 @@ import { join } from "node:path";
 
 const chromePath = process.env.CHROME_PATH ?? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const baseUrl = process.env.BAMBO_AUDIT_URL ?? "http://127.0.0.1:43127";
+// Which cases to run, by key. Unset means all of them, so CI behaves exactly as before.
+// A comma-separated list narrows the run -- useful when one case cannot render on the data
+// at hand and would otherwise block every case behind it.
+const onlyKeys = (process.env.BAMBO_AUDIT_ONLY ?? "")
+  .split(",").map((key) => key.trim()).filter(Boolean);
 const port = 49334;
 const profile = await mkdtemp(join(tmpdir(), "bambo-print-audit-"));
 const chrome = spawn(chromePath, [
@@ -30,6 +35,33 @@ async function waitForDebugger() {
     await delay(100);
   }
   throw new Error("Chrome DevTools endpoint did not become ready.");
+}
+
+/**
+ * Refuse to measure a page the router did not open.
+ *
+ * A route it does not recognise, or one this account may not reach, lands on the default
+ * route -- and a fallback page has no overflow and throws no exceptions, so it passes
+ * every check here while proving nothing about the page named. The router rewrites
+ * `location.hash` to what it actually opened, so asking for that is enough and needs no
+ * per-page selector.
+ */
+async function assertPageIdentity(cdp, route) {
+  const wanted = route.split("?")[0].replace(/^#?\/?/, "");
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const result = await cdp.send("Runtime.evaluate", {
+      expression: "location.hash.replace(/^#\\/?/, '').split('?')[0]",
+      returnByValue: true,
+    });
+    const opened = result.result.value ?? "";
+    if (opened === wanted) return opened;
+    if (opened && opened !== wanted && attempt > 8) {
+      throw new Error(
+        `asked for ${wanted} and the router opened ${opened} -- a fallback, not the page`);
+    }
+    await delay(150);
+  }
+  throw new Error(`${wanted}: the router never settled on a route`);
 }
 
 async function createPage(url) {
@@ -84,54 +116,56 @@ function countPdfPages(base64) {
 const documents = [
   {
     key: "priority-followups",
-    route: "report-builder?sections=completionBudget,areaCosts,unpricedItems,supplierDocuments,pendingDocuments,correctiveDocuments,estimateChanges",
+    route: "finance/report-builder?sections=completionBudget,areaCosts,unpricedItems,supplierDocuments,pendingDocuments,correctiveDocuments,estimateChanges",
     chapters: 7,
     maxPages: 24,
   },
-  { key: "financial-report", route: "reports", prepare: null },
+  { key: "financial-report", route: "finance/report", prepare: null },
   {
     // Everything the builder can produce, in one document. Each chosen report
     // starts its own page, so the count is the guard against a section that
     // silently grew or one that stopped rendering at all.
     key: "custom-report",
-    route: "report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines,sCurve,levelOne",
+    route: "finance/report-builder?sections=overview,deviation,breakdown,monthly,priceVariance,quantityVariance,invoices,auditEvents,warnings,prices,estimateLines,sCurve,levelOne",
     prepare: null,
     chapters: 13,
     maxPages: 32,
   },
   {
     key: "suggested-six",
-    route: "report-builder?sections=overview,breakdown,levelOne,sCurve,warnings,invoices",
+    route: "finance/report-builder?sections=overview,breakdown,levelOne,sCurve,warnings,invoices",
     chapters: 6,
     maxPages: 20,
   },
   {
     key: "s-curve",
-    route: "report-builder?sections=sCurve",
+    route: "finance/report-builder?sections=sCurve",
     chapters: 1,
     maxPages: 1,
   },
   {
-    // The period report only exists once it is built, so the audit builds one
-    // the same way a reader would before checking what comes off the printer.
+    // The period report, through the surface that replaced it.
+    //
+    // `period-report` was withdrawn from the router -- see the comment in
+    // layout-audit.mjs -- and this case used to drive it, so the audit failed on a page
+    // that does not exist and the period report's print coverage was lost with it. The
+    // approved workflow is the report builder with the two period sections and the range
+    // in the address, which is what layout-audit measures.
+    //
+    // No click sequence: the builder reads the range from the URL, so there is no preset
+    // to press and nothing to submit. Waiting is `chapters`, the mechanism this file
+    // already has -- one chapter per chosen section, so two -- which also makes a section
+    // that stopped rendering a failure rather than a shorter document.
     key: "period-report",
-    route: "period-report",
-    prepare: `(() => {
-      const preset = [...document.querySelectorAll('.period-presets button')]
-        .find((button) => button.textContent.includes('ابتدای سال'));
-      if (!preset) return false;
-      preset.click();
-      const form = document.querySelector('.period-builder__form');
-      if (!form) return false;
-      form.requestSubmit();
-      return true;
-    })()`,
+    route: "finance/report-builder?sections=periodMetrics,periodBreakdown"
+           + "&from=2026-09-01&to=2026-10-31",
+    chapters: 2,
     settle: 4200,
     maxPages: 6,
   },
   {
     key: "invoice-detail",
-    route: "invoices",
+    route: "finance/invoices",
     prepare: `(() => {
       const trigger = document.querySelector('.invoices-table .button');
       if (!trigger) return false;
@@ -145,12 +179,23 @@ const results = [];
 
 try {
   await waitForDebugger();
-  for (const documentCase of documents) {
-    const page = await createPage(`${baseUrl}/#/${documentCase.route}`);
+  const selected = onlyKeys.length
+  ? documents.filter((entry) => onlyKeys.includes(entry.key))
+  : documents;
+if (onlyKeys.length && selected.length !== onlyKeys.length) {
+  throw new Error(`BAMBO_AUDIT_ONLY names a case that does not exist: ${onlyKeys.join(",")}`);
+}
+for (const documentCase of selected) {
+    // `#finance/...`, not `#/finance/...`. The router writes the first form and matches
+    // only that; the extra slash fails every match and lands on the default route, which
+    // is how this audit spent its runs measuring the fallback page and reporting success.
+    const page = await createPage(`${baseUrl}/#${documentCase.route}`);
     const cdp = connect(page.webSocketDebuggerUrl);
     await cdp.ready;
     await cdp.send("Runtime.enable");
     await cdp.send("Page.enable");
+    // Before anything is measured: is this the page that was asked for?
+    await assertPageIdentity(cdp, documentCase.route);
     await delay(1100);
 
     if (documentCase.chapters) {

@@ -63,6 +63,7 @@ export function createApiProgressAdapter(context, client) {
       newValue: row.overrideValue,
       reason: row.reason,
       userId: row.createdBy,
+      userName: row.createdByName,
       occurredAt: row.createdAt,
       source: row.source,
     }));

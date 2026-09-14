@@ -7,6 +7,7 @@ persisted rows carry the file's own identifiers, never a database id from anothe
 """
 
 import asyncio
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -18,6 +19,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from coreint.finance_mpp_sync import FinanceMppSyncRefused, FinanceMppSyncService
+from coreint.mpp_files import ResolvedMppFile
 
 ORG = "c4ee6a23-b2a8-4afe-94c8-63baba552ca4"
 VERSION = UUID("afe50159-86e5-4e65-9f31-e0fd01ef29e7")
@@ -85,6 +87,9 @@ class Cursor:
         if self._c.fail_on and self._c.fail_on in text:
             raise RuntimeError("simulated failure on: " + self._c.fail_on)
         self._c.statements.append(text)
+        # Parameters too: a statement's text says what was asked, and only the parameters
+        # say what it was asked ABOUT -- which is the whole question for a lock key.
+        self._c.parameters.append(params)
         self._rows = [dict(row, actual_row_count=self._c.actual_rows,
                            quantity_row_count=self._c.quantity_rows)
                       for row in self._c.existing] if "FROM finance_mpp_source_versions" in text else []
@@ -97,7 +102,7 @@ class Connection:
     def __init__(self, existing=(), fail_on=None, actual_rows=2, quantity_rows=0):
         self.existing, self.fail_on = list(existing), fail_on
         self.actual_rows, self.quantity_rows = actual_rows, quantity_rows
-        self.statements, self.log = [], []
+        self.statements, self.parameters, self.log = [], [], []
 
     async def __aenter__(self):
         return self
@@ -235,6 +240,163 @@ class SyncTests(unittest.TestCase):
             self.assertIn(column, row_inserts[0])
         for forbidden in ("msp_tasks", "snapshot_id", "bridge"):
             self.assertNotIn(forbidden, row_inserts[0])
+
+
+class HashedBytesAreParsedBytesTests(SyncTests):
+    """The sha a version is stored under must describe the rows stored beside it.
+
+    The first version of this guarantee compared digests before and after the parse. That
+    was close and measurably not all the way: on an isolated database, a file changed
+    DURING the parse and changed back before it returned satisfied both digests, was
+    accepted, and stored a version whose sha described bytes nobody had parsed.
+
+    So the parse reads a private copy instead. The copy is made under a directory only that
+    call knows, its digest is checked against the staged file's before the parser is allowed
+    near it, and it is removed afterwards. "The sha describes the bytes parsed" is then true
+    because there was only ever one set of bytes -- a structural answer rather than a
+    timing one.
+
+    A consequence worth stating: changing the staged file while the parse runs is now
+    HARMLESS rather than fatal. The copy already holds bytes that really existed, and the
+    version describing them is correct; the next sync picks up the new bytes. The old test
+    asserted a refusal there, and that refusal was over-strict.
+    """
+
+    class RecordingReader(Reader):
+        """Notes which path it was handed and what was in it."""
+
+        def __init__(self, parsed):
+            super().__init__(parsed)
+            self.seen_path = None
+            self.seen_bytes = None
+
+        def read(self, file_path):
+            self.seen_path = Path(file_path)
+            self.seen_bytes = self.seen_path.read_bytes()
+            return super().read(file_path)
+
+    class MeddlingReader(RecordingReader):
+        """Overwrites the STAGED file while the parse is under way."""
+
+        def __init__(self, parsed, staged):
+            super().__init__(parsed)
+            self._staged = staged
+
+        def read(self, file_path):
+            result = super().read(file_path)
+            self._staged.write_bytes(OLE2 + b"the host restaged this mid-parse")
+            return result
+
+    def staged(self):
+        return Path(self.root.name) / "terrace.mpp"
+
+    def test_the_parser_is_handed_a_private_copy_and_never_the_staged_file(self):
+        connection = Connection()
+        reader = self.RecordingReader(self.parsed)
+        result = run(self.service(connection, reader).sync(ORG, "terrace"))
+        self.assertEqual("imported", result["status"])
+        self.assertIsNotNone(reader.seen_path)
+        self.assertNotEqual(self.staged().resolve(), reader.seen_path.resolve(),
+                            "the parse must not read the file a host can still write")
+        self.assertEqual(self.staged().read_bytes(), reader.seen_bytes,
+                         "and the copy must be the same bytes")
+
+    def test_the_private_copy_does_not_outlive_the_parse(self):
+        # A temporary directory per sync that nobody removes is a disk that fills up
+        # quietly, on a timer.
+        connection = Connection()
+        reader = self.RecordingReader(self.parsed)
+        run(self.service(connection, reader).sync(ORG, "terrace"))
+        self.assertFalse(reader.seen_path.exists())
+        self.assertFalse(reader.seen_path.parent.exists())
+
+    def test_a_file_changed_after_it_was_hashed_is_refused(self):
+        # Driven through the digest the resolver reported rather than by racing the disk:
+        # a `resolved` whose sha does not match the bytes on disk is exactly the state a
+        # file replaced between hashing and copying leaves behind.
+        connection = Connection()
+        service = self.service(connection, Reader(self.parsed))
+        wrong = ResolvedMppFile(self.staged(), "terrace.mpp",
+                                self.staged().stat().st_size, "0" * 64)
+        with self.assertRaises(FinanceMppSyncRefused) as caught:
+            service._parse_a_private_copy(wrong)
+        self.assertEqual("MPP_FILE_NOT_STABLE", caught.exception.code)
+        self.assertEqual([], [s for s in connection.statements
+                              if s.startswith(("INSERT", "UPDATE", "DELETE"))],
+                         "nothing may be written when the bytes are in doubt")
+
+    def test_changing_the_staged_file_during_the_parse_no_longer_refuses(self):
+        # The case the digest-before/after design got wrong in both directions: it refused
+        # a change that did not matter, and accepted a change-and-revert that did.
+        connection = Connection()
+        reader = self.MeddlingReader(self.parsed, self.staged())
+        result = run(self.service(connection, reader).sync(ORG, "terrace"))
+        self.assertEqual("imported", result["status"])
+        self.assertEqual(hashlib.sha256(reader.seen_bytes).hexdigest(),
+                         result["fileSha256"],
+                         "the stored sha describes the bytes the parser actually read")
+        self.assertNotEqual(reader.seen_bytes, self.staged().read_bytes(),
+                            "the staged file really did move on")
+
+    def test_an_ordinary_import_still_states_the_files_own_digest(self):
+        connection = Connection()
+        reader = self.RecordingReader(self.parsed)
+        result = run(self.service(connection, reader).sync(ORG, "terrace"))
+        self.assertEqual(hashlib.sha256(OLE2).hexdigest(), result["fileSha256"])
+        self.assertEqual(2, result["rowCount"])
+
+
+class ConcurrentFirstImportTests(SyncTests):
+    """Two callers, the same never-seen content, at the same moment.
+
+    Measured on an isolated database before this was here: one call imported and the other
+    raised a raw UniqueViolation from the index on (organization, project, sha256). The
+    DATA was right -- one version, ready, with its rows -- and the answer was a 500 on a
+    request whose honest reply is "somebody else just imported these exact bytes".
+
+    A fake connection cannot race, so what this pins is the thing that removes the race:
+    the transaction takes an advisory lock on the content identity BEFORE it looks the
+    version up, so the second caller waits and then finds the first one's row. After the
+    change, the same two concurrent syncs answer `imported` and `unchanged`.
+    """
+
+    def statements_of(self, connection):
+        return [" ".join(str(s).split()) for s in connection.statements]
+
+    def test_the_content_identity_is_locked_before_it_is_looked_up(self):
+        connection = Connection()
+        run(self.service(connection, Reader(self.parsed)).sync(ORG, "terrace"))
+        statements = self.statements_of(connection)
+        locks = [index for index, text in enumerate(statements)
+                 if "pg_advisory_xact_lock" in text]
+        lookups = [index for index, text in enumerate(statements)
+                   if "FROM finance_mpp_source_versions v" in text]
+        self.assertTrue(locks, "no advisory lock was taken")
+        self.assertTrue(lookups, "the version look-up did not happen")
+        self.assertLess(locks[0], lookups[0],
+                        "locking after the look-up leaves the race exactly where it was")
+
+    def test_the_lock_is_keyed_on_the_tenant_and_the_content(self):
+        # A lock on the project alone would serialise unrelated files; one on the sha alone
+        # would serialise across tenants. The key is all three.
+        connection = Connection()
+        run(self.service(connection, Reader(self.parsed)).sync(ORG, "terrace"))
+        key = next(params for text, params in
+                   [(" ".join(str(s).split()), p) for s, p in
+                    zip(connection.statements, connection.parameters)]
+                   if "pg_advisory_xact_lock" in text)
+        self.assertIn(ORG, key[0])
+        self.assertIn("terrace", key[0])
+        self.assertIn(hashlib.sha256(OLE2).hexdigest(), key[0])
+
+    def test_the_lock_needs_no_unlocking(self):
+        # `pg_advisory_xact_lock` is released by the commit or the rollback. A session-scoped
+        # lock would need an explicit unlock on every path out, including the failing ones.
+        connection = Connection()
+        run(self.service(connection, Reader(self.parsed)).sync(ORG, "terrace"))
+        statements = self.statements_of(connection)
+        self.assertFalse([s for s in statements if "advisory_unlock" in s])
+        self.assertFalse([s for s in statements if "pg_advisory_lock(" in s])
 
 
 if __name__ == "__main__":

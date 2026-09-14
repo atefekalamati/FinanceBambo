@@ -11,6 +11,10 @@ class ProgressSnapshotResponse(ApiModel):
  # by a timer has no importer, and inventing a user id to fill a required field would
  # put a person's name on work nobody did. A Core-ingested reference always has one.
  imported_by:UUID|None=None
+ # What the host calls this actor, filled at the API boundary and never stored.
+ # None when the host has no directory or does not know the id; the reader then sees
+ # the id, exactly as before. See `app.finance.domain.actors`.
+ imported_by_name:str|None=None
  status:Literal["ready","superseded"];reporting_date:date
  # Optional since revision 0006. A reference ingested from Core has no Finance-side file
  # identifier to record, and inventing a UUID would look like a Host reference while being
@@ -51,6 +55,10 @@ class ProgressOverrideCreate(ApiModel):
   return v.strip()
 class ProgressOverrideResponse(ProgressOverrideCreate):
  id:UUID;estimate_line_id:UUID;computed_value:Decimal;created_by:UUID;created_at:datetime;source:Literal["manual_override"]="manual_override"
+ # What the host calls this actor, filled at the API boundary and never stored.
+ # None when the host has no directory or does not know the id; the reader then sees
+ # the id, exactly as before. See `app.finance.domain.actors`.
+ created_by_name:str|None=None
  @field_serializer("computed_value","override_value")
  def decimal_string(self,v):return format(v,"f")
  @classmethod

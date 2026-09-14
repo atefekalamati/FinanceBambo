@@ -62,7 +62,7 @@ test("previews and creates a zero-effect manual invoice draft with exact IRR tot
     { targetId: targets[2].targetId, targetType: "general_cost", targetLabel: targets[2].label, quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "500000", description: "" },
   ];
   const adjustments = { discountIRR: "100", taxIRR: "200", shippingIRR: "300", otherCostsIRR: "400" };
-  const header = { invoiceNumber: "ف-جدید", invoiceDate: "2026-08-09", vendorName: "فروشنده نمونه", description: "" };
+  const header = { invoiceDate: "2026-08-09", vendorName: "فروشنده نمونه", description: "" };
   const preview = await adapter.previewDraft({ header, lines, adjustments });
   assert.equal(preview.lines[0].lineAmountIRR, "100001");
   assert.equal(preview.rawLinesTotalIRR, "600001");
@@ -75,13 +75,13 @@ test("previews and creates a zero-effect manual invoice draft with exact IRR tot
 
 test("rejects draft creation without the coarse approved edit permission", async () => {
   const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.view"] });
-  await assert.rejects(adapter.createDraft({ header: { invoiceNumber: "x", invoiceDate: "2026-08-09", vendorName: "v" }, lines: [{}], adjustments: { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" }, idempotencyKey: "denied-create" }), (error) => error.status === 403);
+  await assert.rejects(adapter.createDraft({ header: { invoiceDate: "2026-08-09", vendorName: "v" }, lines: [{}], adjustments: { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" }, idempotencyKey: "denied-create" }), (error) => error.status === 403);
 });
 
 test("detects a similar invoice and requires an audited continuation reason", async () => {
   const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.view", "finance.edit"] });
   // Matches invoice-demo-001 in the seed, whose date now sits in the spread month range.
-  const header = { invoiceNumber: "ف-001", invoiceDate: "2025-09-08", vendorName: "فروشگاه ساختمانی بامبو نمونه", description: "" };
+  const header = { invoiceDate: "2025-09-08", vendorName: "فروشگاه ساختمانی بامبو نمونه", description: "" };
   const lines = [{ targetId: "general-permit", targetType: "general_cost", targetLabel: "هزینه مجوز نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "121750000", description: "" }];
   const adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
   const preview = await adapter.previewDraft({ header, lines, adjustments });
@@ -96,7 +96,7 @@ test("detects a similar invoice and requires an audited continuation reason", as
 
 test("replays the same create idempotency key and rejects a changed payload", async () => {
   const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.edit"] });
-  const header = { invoiceNumber: "ف-یکتا", invoiceDate: "2026-08-09", vendorName: "فروشنده یکتا", description: "" };
+  const header = { invoiceDate: "2026-08-09", vendorName: "فروشنده یکتا", description: "" };
   const lines = [{ targetId: "general-permit", targetType: "general_cost", targetLabel: "هزینه مجوز نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "1000", description: "" }];
   const adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
   const first = await adapter.createDraft({ header, lines, adjustments, idempotencyKey: "stable-create-key" });
@@ -108,7 +108,7 @@ test("replays the same create idempotency key and rejects a changed payload", as
 
 test("submits only the current draft version for confirmation", async () => {
   const adapter = createMockInvoicesAdapter({ ...context, permissionCodes: ["finance.edit"] });
-  const header = { invoiceNumber: "ف-نسخه", invoiceDate: "2026-08-09", vendorName: "فروشنده نسخه", description: "" };
+  const header = { invoiceDate: "2026-08-09", vendorName: "فروشنده نسخه", description: "" };
   const lines = [{ targetId: "general-permit", targetType: "general_cost", targetLabel: "هزینه مجوز نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "1000", description: "" }];
   const adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
   const draft = await adapter.createDraft({ header, lines, adjustments, idempotencyKey: "version-create-key" });
@@ -169,11 +169,74 @@ test("creates an immutable corrective document linked to a confirmed original", 
   const original = await adapter.getInvoice("invoice-demo-003");
   const lines = [{ targetId: "general-permit", targetType: "general_cost", targetLabel: "هزینه مجوز نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: "250000", description: "اصلاح مبلغ" }];
   const adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
-  const corrective = await adapter.createCorrective({ originalInvoiceId: original.invoiceId, header: { invoiceNumber: "ف-003-اصلاح", invoiceDate: "2026-08-09", vendorName: original.vendorName, description: "سند اصلاحی" }, lines, adjustments, financialEffectSign: -1, reason: "اصلاح مبلغ ثبت‌شده", idempotencyKey: "corrective-stable-key" });
+  const corrective = await adapter.createCorrective({ originalInvoiceId: original.invoiceId, header: { invoiceDate: "2026-08-09", vendorName: original.vendorName, description: "سند اصلاحی" }, lines, adjustments, financialEffectSign: -1, reason: "اصلاح مبلغ ثبت‌شده", idempotencyKey: "corrective-stable-key" });
   assert.equal(corrective.source, "corrective");
   assert.equal(corrective.invoiceStatus, "corrected");
   assert.equal(corrective.originalInvoiceId, original.invoiceId);
   assert.equal(corrective.financialEffectSign, -1);
   assert.equal(corrective.correctionReason, "اصلاح مبلغ ثبت‌شده");
   assert.equal((await adapter.getInvoice(original.invoiceId)).invoiceStatus, "confirmed");
+});
+
+/**
+ * The number is the project's to allocate, not the client's to choose.
+ *
+ * The shipped wizard sent `invoiceNumber` and the endpoint answered 422 with that exact
+ * field name, so manual invoice creation was unavailable from the browser. These hold both
+ * halves of the fix: nothing sends a number, and the number still appears -- assigned.
+ */
+
+const numberingContext = {
+  userId: "00000000-0000-4000-8000-000000000001",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  projectId: "sample_site_01",
+  permissionCodes: ["finance.view", "finance.edit", "finance.manage_invoice"],
+};
+
+const aLine = () => [{ targetId: "general-permit", targetType: "general_cost",
+  targetLabel: "هزینه مجوز نمونه", quantity: null, unit: null, unitPriceIRR: null,
+  lineAmountIRR: "1000", description: "" }];
+const noAdjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
+
+test("a created draft is given a number, and the caller never supplies one", async () => {
+  const adapter = createMockInvoicesAdapter(numberingContext);
+  const created = await adapter.createDraft({
+    header: { invoiceDate: "2026-08-09", vendorName: "فروشنده شماره‌گذاری", description: "" },
+    lines: aLine(), adjustments: noAdjustments, idempotencyKey: "numbering-1" });
+  assert.ok(created.invoiceNumber, "an invoice with no number cannot be referred to");
+  assert.match(created.invoiceNumber, /^\d{3,}$/, "the display form is padded to three digits");
+  assert.equal(created.invoiceSeq, Number(created.invoiceNumber));
+});
+
+test("two drafts in one project take consecutive numbers", async () => {
+  const adapter = createMockInvoicesAdapter(numberingContext);
+  const first = await adapter.createDraft({
+    header: { invoiceDate: "2026-08-09", vendorName: "الف", description: "" },
+    lines: aLine(), adjustments: noAdjustments, idempotencyKey: "numbering-a" });
+  const second = await adapter.createDraft({
+    header: { invoiceDate: "2026-08-10", vendorName: "ب", description: "" },
+    lines: aLine(), adjustments: noAdjustments, idempotencyKey: "numbering-b" });
+  assert.equal(second.invoiceSeq, first.invoiceSeq + 1);
+});
+
+test("a client that still sends a number is refused, exactly as the service refuses it", async () => {
+  // Accepting and discarding it would leave the caller believing it had set the number.
+  const adapter = createMockInvoicesAdapter(numberingContext);
+  await assert.rejects(adapter.createDraft({
+    header: { invoiceNumber: "ف-۱۰۱", invoiceDate: "2026-08-09", vendorName: "فروشنده", description: "" },
+    lines: aLine(), adjustments: noAdjustments, idempotencyKey: "numbering-refused" }),
+    (error) => error.status === 422);
+});
+
+test("duplicate detection survives the number leaving its predicate", async () => {
+  // Every invoice now has a different number, so a predicate that included it would match
+  // nothing at all -- the quietest way for a safeguard to stop working.
+  const adapter = createMockInvoicesAdapter(numberingContext);
+  const header = { invoiceDate: "2026-08-09", vendorName: "فروشنده تکراری", description: "" };
+  await adapter.createDraft({ header, lines: aLine(), adjustments: noAdjustments,
+    idempotencyKey: "dup-first" });
+  const preview = await adapter.previewDraft({ header, lines: aLine(), adjustments: noAdjustments });
+  assert.equal(preview.duplicateMatches.length, 1, "the same vendor, date and amount is a duplicate");
+  await assert.rejects(adapter.createDraft({ header, lines: aLine(), adjustments: noAdjustments,
+    idempotencyKey: "dup-second" }), (error) => error.status === 422);
 });

@@ -4,7 +4,7 @@ import { createRequestState, REQUEST_STATUS } from "../../core/state/request-sta
 import { defaultSnapshot } from "../../shared/progress/project-snapshot.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatCompactMoneyFromIrr, formatTomanFromIrr } from "../../shared/formatters/money.js";
-import { formatDisplayNumber } from "../../shared/formatters/display.js";
+import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { buildWbsView } from "../../shared/reports/wbs-rollup.js";
 import { createLevelOneChart } from "./level-one-chart.js";
@@ -63,7 +63,27 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
 
   function renderHeader(data) {
     const parent = data ? data.top.nodes.find((node) => node.wbsCode === wbsCode) : null;
-    return createFinancePageHeader(wbsCode ? (parent?.title ?? `مرحله ${wbsCode}`) : "هزینه مراحل پروژه");
+    return createFinancePageHeader(
+      wbsCode ? (parent?.title ?? `مرحله ${wbsCode}`) : "هزینه مراحل پروژه");
+  }
+
+  /**
+   * Which day these figures are for, and from which schedule.
+   *
+   * Every amount on this page is bound by the reporting date: at the snapshot's own date
+   * the estimates are all unknown, and at a later one they are stated -- same page, same
+   * project, same source version, two different readings. A page that does not name its
+   * date produces numbers that cannot be compared with anything.
+   *
+   * It sits with the figures rather than in the header, which by contract carries a
+   * heading and a back link and nothing else.
+   */
+  function renderProvenance(data) {
+    const snapshot = data?.snapshot;
+    if (!snapshot?.reportingDate) return null;
+    return element("p", "level-one-provenance",
+      `تاریخ گزارش: ${formatBusinessDate(snapshot.reportingDate)}`
+      + (snapshot.sourceFileNameSafe ? ` · برنامه زمانی: ${snapshot.sourceFileNameSafe}` : ""));
   }
 
   function renderUnavailable() {
@@ -73,6 +93,52 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       element("p", "", "سرویس مالی هنوز هزینه‌ها را بر اساس ساختار شکست کار جمع نمی‌زند. ساختار این صفحه آماده است و به‌محض آماده‌شدن سرویس، همین صفحه داده واقعی را نشان می‌دهد."),
     );
     return card;
+  }
+
+  /**
+   * What the estimate on this page does NOT include.
+   *
+   * The service reports the sum of the lines that state a baseline, and says how
+   * many it could not include. Those two facts have to arrive together: the figure
+   * alone is a smaller number wearing the name of the whole, which is exactly the
+   * reason it used to be withheld entirely — and withholding it hid the estimate
+   * that WAS stated, which was most of it.
+   */
+  function renderPartialEstimateNotice(view) {
+    if (!view.totals?.estimateIsPartial) return null;
+    const count = formatDisplayNumber(String(view.totals.missingEstimateLineCount));
+    const notice = element("aside", "level-one-partial");
+    notice.append(
+      element("h3", "", "برآورد ناقص است"),
+      element("p", "", `${count} ردیف برآوردی مبلغ اولیه‌ای ثبت نکرده‌اند و در ارقام «برآورد اولیه» این صفحه نیامده‌اند. آنچه می‌بینید جمع ردیف‌هایی است که برآورد دارند، نه کل برآورد پروژه.`),
+    );
+    return notice;
+  }
+
+  /**
+   * Phases nobody has costed at all.
+   *
+   * Their estimate cell is blank, and a blank cell is read as "nothing here" unless
+   * something says otherwise. The service reports zero estimate lines for them, which is
+   * the evidence: there is nothing to sum, so there is no figure -- as opposed to a figure
+   * that came out at zero, which would print as zero and mean something quite different.
+   */
+  function renderUnknownEstimateNotice(view) {
+    const without = (view.rows ?? []).filter((row) => !row.hasEstimateBasis);
+    if (!without.length) return null;
+    const notice = element("aside", "level-one-partial");
+    notice.append(
+      element("h3", "", "برآورد این مراحل نامعلوم است، نه صفر"),
+      // "As of this report's date" is not a hedge: an estimate line recorded after the
+      // reporting date is not part of that date's picture, so a stage can have no lines on
+      // one day and many on another. Saying it without the date would describe the project
+      // when it only describes the day.
+      element("p", "", `تا تاریخ این گزارش، ${formatDisplayNumber(String(without.length))} مرحله `
+        + `هیچ ردیف برآوردی ندارند، پس مبلغی برای جمع‌زدن وجود ندارد و خانه برآوردشان خالی است: `
+        + `${without.map((row) => row.wbsCode).join("، ")}. `
+        + `این با مرحله‌ای که برآوردش محاسبه و صفر شده فرق دارد؛ آن یکی صفر نشان داده می‌شود.`),
+    );
+    return notice;
   }
 
   function renderTotals(view) {
@@ -88,9 +154,43 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
         kind === "text" ? value : formatCompactMoneyFromIrr(value));
       if (kind !== "text") figure.title = formatTomanFromIrr(value);
       card.append(figure, element("span", "level-one-totals__label", label));
+      // The estimate card is the one figure on this grid that can be a subtotal, so
+      // it is the one that has to say so where it is read, not only in the notice.
+      if (label === "برآورد اولیه مراحل" && view.totals.estimateIsPartial) {
+        card.dataset.partial = "true";
+        card.append(element("span", "level-one-totals__note",
+          `ناقص — ${formatDisplayNumber(String(view.totals.missingEstimateLineCount))} ردیف بدون برآورد`));
+      }
       grid.append(card);
     });
     return grid;
+  }
+
+  /**
+   * The ESTIMATE that reaches no phase, for the same reason the cost below is shown.
+   *
+   * A line reaches a phase through its activity. One naming an activity the catalogue
+   * does not know, or an activity carrying no WBS code, is in the project's estimate and
+   * in none of the rows above -- so the stages sum to less than the project and nothing
+   * said by how much. Measured on the candidate: 40.8 million toman across 75 lines,
+   * which is why the page's total card and the API's own figure disagreed.
+   *
+   * Separate from «برآورد ناقص است», which is a different absence: that one is lines
+   * inside a phase that state no baseline. A line can be in neither, either, or both.
+   */
+  function renderUnplacedEstimate(view) {
+    const amount = view.totals?.unmappedEstimateIrr;
+    const count = view.totals?.unmappedEstimateLineCount ?? 0;
+    if (!count || amount === null || amount === undefined) return null;
+    const notice = element("aside", "level-one-unattributed");
+    notice.append(
+      element("h3", "", "برآورد خارج از مراحل"),
+      element("p", "", `${formatCompactMoneyFromIrr(amount)} برآورد روی ${formatDisplayNumber(String(count))} ردیف ثبت شده که فعالیتشان به هیچ مرحله‌ای نمی‌رسد، پس در جمع مراحل بالا نیامده است. این مبلغ در «برآورد اولیه» کل پروژه هست.`),
+    );
+    const value = element("strong", "numeric", formatCompactMoneyFromIrr(amount));
+    value.title = formatTomanFromIrr(amount);
+    notice.append(value);
+    return notice;
   }
 
   /**
@@ -115,7 +215,12 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
     const wrapper = element("div", "table-scroll");
     const table = element("table", "data-table level-one-table");
     const columns = ["کد", "عنوان", "تعداد فعالیت", "برآورد اولیه", "هزینه واقعی", "نسبت به برآورد", "پیش‌بینی نهایی"];
-    table.append(tableCaption(caption), tableHead(columns));
+    const marked = view.rows.some((row) => row.estimateIsPartial);
+    table.append(
+      tableCaption(marked
+        ? `${caption} — ٭ یعنی برآورد این مرحله ناقص است و ردیف‌های بدون برآورد در آن نیامده‌اند`
+        : caption),
+      tableHead(columns));
     const body = document.createElement("tbody");
     view.rows.forEach((row) => {
       const record = document.createElement("tr");
@@ -132,7 +237,12 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       const cells = [
         row.title,
         formatDisplayNumber(String(row.activityCount)),
-        formatCompactMoneyFromIrr(row.initialEstimateIrr),
+        // A phase whose estimate is a subtotal is marked in the cell itself. The
+        // mark is explained in the table's caption and in the notice above it, so
+        // it is never the only thing a reader has to go on.
+        row.estimateIsPartial
+          ? `${formatCompactMoneyFromIrr(row.initialEstimateIrr)}٭`
+          : formatCompactMoneyFromIrr(row.initialEstimateIrr),
         formatCompactMoneyFromIrr(row.actualCostIrr),
         row.hasEstimate ? percent(row.consumedPercent) : "—",
         formatCompactMoneyFromIrr(row.forecastFinalIrr),
@@ -143,6 +253,10 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
         cell.textContent = text;
         if (index === 2 || index === 3 || index === 5) {
           cell.title = formatTomanFromIrr([row.initialEstimateIrr, row.actualCostIrr, row.forecastFinalIrr][index === 2 ? 0 : index === 3 ? 1 : 2]);
+        }
+        if (index === 2 && row.estimateIsPartial) {
+          cell.dataset.partial = "true";
+          cell.title = `${cell.title} — ${formatDisplayNumber(String(row.missingEstimateLineCount))} ردیف این مرحله برآورد اولیه ندارند و در این مبلغ نیستند`;
         }
         record.append(cell);
       });
@@ -180,6 +294,8 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
 
   function renderContent(data) {
     const fragment = document.createDocumentFragment();
+    const provenance = renderProvenance(data);
+    if (provenance) fragment.append(provenance);
     if (data.top.available === false) {
       fragment.append(renderUnavailable());
       return fragment;
@@ -188,6 +304,10 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
     const topView = buildWbsView({
       nodes: data.top.nodes,
       unattributedActualIrr: data.top.unattributedActualIrr,
+      // Only the top level carries these: a phase's children account for all of it, so
+      // claiming the project's unplaced lines again inside one phase would double-count.
+      unmappedEstimateIrr: data.top.unmappedEstimateIrr,
+      unmappedEstimateLineCount: data.top.unmappedEstimateLineCount,
     });
     if (topView.isEmpty) {
       fragment.append(renderUnavailable());
@@ -203,6 +323,12 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
         ariaLabel: "نمودار هزینه واقعی هر مرحله در برابر برآورد اولیه همان مرحله",
       }));
       fragment.append(renderTotals(topView), chartCard);
+      const partial = renderPartialEstimateNotice(topView);
+      if (partial) fragment.append(partial);
+      const unknown = renderUnknownEstimateNotice(topView);
+      if (unknown) fragment.append(unknown);
+      const unplaced = renderUnplacedEstimate(topView);
+      if (unplaced) fragment.append(unplaced);
       if (topView.unattributed) fragment.append(renderUnattributed(topView));
       fragment.append(renderTable(topView, { caption: "هزینه مراحل سطح ۱", linked: true }));
       return fragment;
@@ -213,7 +339,12 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
       fragment.append(element("p", "inline-notice", "این مرحله در ساختار پروژه پیدا نشد."));
       return fragment;
     }
-    fragment.append(renderTotals(buildWbsView({ nodes: [rawOf(data.top.nodes, wbsCode)] })));
+    const parentView = buildWbsView({ nodes: [rawOf(data.top.nodes, wbsCode)] });
+    fragment.append(renderTotals(parentView));
+    const parentPartial = renderPartialEstimateNotice(parentView);
+    if (parentPartial) fragment.append(parentPartial);
+    const parentUnknown = renderUnknownEstimateNotice(parentView);
+    if (parentUnknown) fragment.append(parentUnknown);
 
     const childView = buildWbsView({ nodes: data.children?.nodes ?? [] });
     const childCard = element("section", "level-one-card");

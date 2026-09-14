@@ -4,9 +4,11 @@ from dataclasses import replace
 from psycopg import errors
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from dataclasses import replace
 from uuid import uuid4
 
 from ..domain.attachments import FinanceAttachment
+from .invoice_numbering import allocate_invoice_number
 from ..domain.extractions import ExtractionDraft, ExtractionField
 
 
@@ -89,7 +91,12 @@ class PsycopgExtractionRepository:
                 await cursor.execute("SELECT id,version,review_status FROM extraction_drafts WHERE organization_id=%s AND project_id=%s AND attachment_id=%s ORDER BY version DESC LIMIT 1 FOR UPDATE", (scope.organization_id, scope.project_id, draft.file.file_id))
                 latest = await cursor.fetchone()
                 if latest is None or latest["id"] != draft.draft_id or latest["version"] != draft.version or latest["review_status"] != "awaitingReview": raise ValueError("stale extraction")
-                await cursor.execute("INSERT INTO invoices(id,organization_id,project_id,invoice_number,invoice_date,vendor_name,description,source,status,discount_irr,tax_irr,shipping_irr,other_costs_irr,final_amount_irr,financial_effect_sign,idempotency_key,version,submitted_by,confirmed_by,confirmed_at,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'confirmed',%s,%s,%s,%s,%s,1,%s,1,%s,%s,%s,%s,%s)", (invoice.id,scope.organization_id,scope.project_id,invoice.invoice_number,invoice.invoice_date,invoice.vendor_name,invoice.description,invoice.source,invoice.discount_irr,invoice.tax_irr,invoice.shipping_irr,invoice.other_costs_irr,invoice.final_amount_irr,invoice.idempotency_key,invoice.submitted_by,invoice.confirmed_by,invoice.confirmed_at,invoice.created_at,invoice.created_at))
+                # The same allocation as the ordinary create path, in this transaction. An
+                # invoice born from a photograph is an invoice: it takes the project's next
+                # number, and if this confirmation rolls back it gives the number back.
+                invoice = replace(invoice, invoice_seq=await allocate_invoice_number(
+                    cursor, scope.organization_id, scope.project_id))
+                await cursor.execute("INSERT INTO invoices(id,organization_id,project_id,invoice_seq,invoice_date,vendor_name,description,source,status,discount_irr,tax_irr,shipping_irr,other_costs_irr,final_amount_irr,financial_effect_sign,idempotency_key,version,submitted_by,confirmed_by,confirmed_at,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'confirmed',%s,%s,%s,%s,%s,1,%s,1,%s,%s,%s,%s,%s)", (invoice.id,scope.organization_id,scope.project_id,invoice.invoice_seq,invoice.invoice_date,invoice.vendor_name,invoice.description,invoice.source,invoice.discount_irr,invoice.tax_irr,invoice.shipping_irr,invoice.other_costs_irr,invoice.final_amount_irr,invoice.idempotency_key,invoice.submitted_by,invoice.confirmed_by,invoice.confirmed_at,invoice.created_at,invoice.created_at))
                 for line in invoice.lines:
                     await cursor.execute("INSERT INTO invoice_lines(id,organization_id,project_id,invoice_id,estimate_line_id,resource_id,quantity,unit,unit_price_snapshot_irr,raw_amount_irr,allocated_discount_irr,allocated_tax_irr,allocated_shipping_irr,allocated_other_costs_irr,final_line_amount_irr,description) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (uuid4(),scope.organization_id,scope.project_id,invoice.id,line["estimate_line_id"],line["resource_id"],line["quantity"],line["unit"],line["unit_price_irr"],line["raw_amount_irr"],line["allocated_discount_irr"],line["allocated_tax_irr"],line["allocated_shipping_irr"],line["allocated_other_costs_irr"],line["final_line_amount_irr"],line["description"]))
                 await cursor.execute("UPDATE extraction_drafts SET review_status='accepted',version=version+1,confirmed_fields=%s,confirmed_by=%s,confirmed_at=%s,updated_at=%s WHERE organization_id=%s AND project_id=%s AND id=%s AND version=%s AND review_status='awaitingReview'", (Jsonb(fields),scope.actor_user_id,at,at,scope.organization_id,scope.project_id,draft.draft_id,draft.version))

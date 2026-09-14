@@ -12,8 +12,24 @@ import { getPersianMonthDays, gregorianIsoToPersian, persianToGregorianIso } fro
 
 const DAY_MS = 86400000;
 
+/**
+ * A date that exists, not a string shaped like one.
+ *
+ * The shape test alone accepted `2026-06-31` and `2026-02-29`, and `Date.UTC` turns both
+ * into the following day without complaining -- so a period could close on a day the
+ * reader never named and the document would print that day in its heading. The round trip
+ * is what refuses it: a day that survives being built and read back is a real day.
+ *
+ * A leap day is a real day. `2028-02-29` passes here and `2026-02-29` does not.
+ */
 export function isIsoDate(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ""));
+  const text = String(value ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const [year, month, day] = text.split("-").map(Number);
+  const built = new Date(Date.UTC(year, month - 1, day));
+  return built.getUTCFullYear() === year
+    && built.getUTCMonth() === month - 1
+    && built.getUTCDate() === day;
 }
 
 function isoToUtc(value) {
@@ -43,10 +59,24 @@ export function isWithinPeriod(value, { from, to } = {}) {
   return true;
 }
 
+/**
+ * Three different things can be wrong with a period, and they need three different
+ * sentences. "Choose a start date" is the wrong thing to tell somebody who chose one --
+ * they typed `2026-06-31` and what they need to hear is that June has thirty days.
+ */
+function dateProblem(value, whichEnd) {
+  const text = String(value ?? "").trim();
+  if (!text) return `تاریخ ${whichEnd} دوره را انتخاب کنید.`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return `تاریخ ${whichEnd} دوره خوانا نیست: «${text}». قالب درست سال-ماه-روز است، مثل ۲۰۲۶-۰۶-۳۰.`;
+  }
+  return `تاریخ ${whichEnd} دوره در تقویم وجود ندارد: «${text}». یک روز واقعی انتخاب کنید.`;
+}
+
 export function validatePeriod({ from, to } = {}) {
   const errors = {};
-  if (!isIsoDate(from)) errors.from = "تاریخ شروع دوره را انتخاب کنید.";
-  if (!isIsoDate(to)) errors.to = "تاریخ پایان دوره را انتخاب کنید.";
+  if (!isIsoDate(from)) errors.from = dateProblem(from, "شروع");
+  if (!isIsoDate(to)) errors.to = dateProblem(to, "پایان");
   if (!errors.from && !errors.to && isoToUtc(from) > isoToUtc(to)) {
     errors.to = "پایان دوره نمی‌تواند پیش از شروع آن باشد.";
   }

@@ -25,15 +25,49 @@ export function createReportBuilderPage({ context, adapters, selection = [], per
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let generatedAt = null;
 
-  const range = resolvePeriod(period);
+  // A period the reader ASKED for and a period nobody asked for are different situations.
+  // The first, when it is wrong, is something to say out loud; the second is just an
+  // absent setting, and the year-to-date preset is a reasonable default for it.
+  const requestedPeriod = period?.from || period?.to ? period : null;
+  const periodValidation = requestedPeriod
+    ? validatePeriod(requestedPeriod)
+    : { valid: true, errors: {} };
+  const range = periodValidation.valid ? (requestedPeriod ?? defaultPeriod()) : null;
 
-  function resolvePeriod(requested) {
-    if (requested?.from && requested?.to && validatePeriod(requested).valid) return requested;
+  function defaultPeriod() {
     const presets = buildPeriodPresets(getTehranTodayIso());
     return presets.find((preset) => preset.key === "yearToDate")?.range ?? null;
   }
 
+  /**
+   * What a rejected range looks like on the page.
+   *
+   * Not the generic error card: nothing failed on the service, and there is nothing to
+   * retry until the address is corrected. It names the end that is wrong, repeats what was
+   * received so a mistyped address can be spotted, and points at the one place a range is
+   * chosen.
+   */
+  function renderInvalidPeriod() {
+    const card = element("section", "state-card report-builder-page__invalid-period");
+    card.setAttribute("role", "alert");
+    card.append(element("h2", "", "بازه گزارش معتبر نیست"));
+    [periodValidation.errors.from, periodValidation.errors.to]
+      .filter(Boolean)
+      .forEach((message) => card.append(element("p", "", message)));
+    card.append(element("p", "", "گزارشی ساخته نشد. با بازه درست دوباره تلاش کنید."));
+    const back = element("a", "button button--primary", "انتخاب دوباره بازه");
+    back.href = `#${homeRouteFor(SURFACES.REPORT)?.path ?? "finance/report"}`;
+    card.append(back);
+    return card;
+  }
+
   async function load() {
+    // Nothing is requested while the range is wrong: the document that would come back
+    // would be a document for a different period, which is the failure being fixed.
+    if (!periodValidation.valid) {
+      paint();
+      return;
+    }
     if (!chosen.length) {
       state = createRequestState(REQUEST_STATUS.EMPTY);
       paint();
@@ -109,6 +143,10 @@ export function createReportBuilderPage({ context, adapters, selection = [], per
   }
 
   function paint() {
+    if (!periodValidation.valid) {
+      root.replaceChildren(renderHeader(), renderInvalidPeriod());
+      return;
+    }
     root.replaceChildren(renderHeader(), renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
   }
 

@@ -78,11 +78,26 @@ class BlastRadiusTests(unittest.TestCase):
         self.assertNotIn("active_price_resource", append)
 
     def test_the_operational_listings_are_scoped(self):
+        """Every listing of prices is scoped to the active set.
+
+        `history` and `history_page` share one predicate builder now -- one page of a
+        history and the whole of it must not be able to disagree about what is in it -- so
+        the check is that the builder carries the scoping and that every listing goes
+        through the builder. Reading each method's own text would pass a method that
+        stopped calling it and inlined an unscoped query of its own.
+        """
         prices = self.source("app", "finance", "repositories", "prices.py")
-        for method in ("async def history", "async def trend_history"):
+        builder = prices[prices.index("def _history_where"):]
+        builder = builder[:builder.index("async def", 10)]
+        self.assertIn("active_price_resource", builder,
+                      "the shared price predicate is not scoped to the active set")
+        for method in ("async def history(", "async def history_page("):
             body = prices[prices.index(method):]
             body = body[:body.index("async def", 10)] if "async def" in body[10:] else body
-            self.assertIn("active_price_resource", body, method)
+            self.assertIn("_history_where", body, method)
+        trends = prices[prices.index("async def trend_history"):]
+        trends = trends[:trends.index("async def", 10)]
+        self.assertIn("active_price_resource", trends, "trend_history")
 
     def test_the_price_calculation_itself_is_untouched(self):
         # The selection rule: project scope first, then the latest effective date.

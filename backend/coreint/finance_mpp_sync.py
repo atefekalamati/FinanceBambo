@@ -22,6 +22,7 @@ report says so instead of inventing one.
 
 import logging
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from pathlib import Path
 from uuid import uuid4
 
 from psycopg.rows import dict_row
@@ -81,6 +82,14 @@ def finance_rows(parsed, *, source_sha256=None):
             "source_cost": _decimal(metrics.get("task_cost")),
             "source_actual_cost": _decimal(metrics.get("task_actual_cost")),
             "source_fixed_cost": _decimal(metrics.get("task_fixed_cost")),
+            # The same figure in the unit Finance counts in. The raw column above is the
+            # file's own number and stays that way; this one has been through the same
+            # currency decision the assignment cost passes through, so the two amounts on
+            # one row can finally be added together. Read by the mapper, never summed
+            # across rows without de-duplicating by task: like `source_cost`, a task's
+            # fixed cost is repeated on every row the task has.
+            "source_fixed_cost_irr": _file_fixed_cost_rials(
+                metrics.get("task_fixed_cost"), currency_scale),
             # Absent here on purpose. These belong to an assignment, and a task that has
             # none -- a stage heading -- has none of them either. The loop below fills them
             # for the rows that do.
@@ -275,6 +284,22 @@ def _file_rials(value, currency_scale=None):
     return number * currency_scale
 
 
+def _file_fixed_cost_rials(value, currency_scale):
+    """The task's own fixed cost in rials, or None when the file states none.
+
+    Zero is exempt from the currency decision, and only zero: nothing is nothing in every
+    currency, and MS Project writes 0.0 here for every task nobody entered a fixed cost on
+    -- which is almost all of them. Refusing a whole file over those would make an
+    undecided currency fatal to schedules that state no task money at all, which is a
+    stricter rule than the one the amounts themselves are held to. Any other amount goes
+    through exactly the decision the assignment cost goes through, and refuses the same way.
+    """
+    number = _decimal(value)
+    if number is None or number == 0:
+        return number
+    return _file_rials(number, currency_scale)
+
+
 _COLUMNS = ("source_task_uid", "source_assignment_uid", "source_resource_uid",
             "task_name", "task_wbs", "task_start", "task_finish",
             "resource_name", "resource_type", "resource_unit",
@@ -283,6 +308,7 @@ _COLUMNS = ("source_task_uid", "source_assignment_uid", "source_resource_uid",
             "actual_progress_percent", "physical_progress", "planned_progress",
             "progress_variance",
             "source_cost", "source_actual_cost", "source_fixed_cost",
+            "source_fixed_cost_irr",
             "source_assignment_units", "source_assignment_cost_irr",
             "normalized_unit", "unit_source", "unit_confidence",
             "source_material_quantity", "source_resource_rate_irr", "source_rate_basis")
@@ -345,6 +371,41 @@ class FinanceMppSyncService:
         self._max_size_mb = max_size_mb
         self._ids = id_factory
 
+    def _parse_a_private_copy(self, resolved):
+        """Copy, verify the copy is the same bytes, parse the copy, remove it.
+
+        Returns the parsed project and the digest those exact bytes hashed to -- the same
+        value `resolved.sha256` carries when nothing moved, and a refusal when it did.
+
+        Runs on a worker thread as one unit: the copy, the check and the parse belong
+        together, and splitting them would put the gap back.
+        """
+        import hashlib
+        import shutil
+        import tempfile
+
+        workspace = tempfile.mkdtemp(prefix="finance-mpp-")
+        try:
+            private = Path(workspace) / resolved.path.name
+            shutil.copyfile(resolved.path, private)
+
+            digest = hashlib.sha256()
+            with private.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            copied_sha = digest.hexdigest()
+            if copied_sha != resolved.sha256:
+                # The staged file changed between being hashed and being copied. Nothing is
+                # stored, and the previous source version keeps being the active one.
+                raise FinanceMppSyncRefused(
+                    "MPP_FILE_NOT_STABLE",
+                    "the file changed between being hashed and being copied, so nothing "
+                    "was stored: %s" % resolved.relative_name)
+
+            return self._reader.read(private), copied_sha
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+
     def _file_name(self, project_id, file_name=None):
         """Which file to read: the caller's choice, else the project's own name.
 
@@ -380,8 +441,27 @@ class FinanceMppSyncService:
         except MppFileError as error:
             raise FinanceMppSyncRefused(error.code, str(error)) from error
 
-        parsed = await asyncio.to_thread(self._reader.read, resolved.path)
-        rows = finance_rows(parsed, source_sha256=resolved.sha256)
+        # THE PARSE READS A PRIVATE COPY, NOT THE STAGED FILE.
+        #
+        # `resolve_import_file` hashes the staged file and hands back a path; opening that
+        # path again is a second read of a file the host may have moved on from. Comparing
+        # digests before and after the parse gets close, and measurably not all the way: a
+        # file changed DURING the parse and changed back before it returned satisfies both
+        # digests while the parser saw different bytes. Measured on an isolated database --
+        # the version was stored, and its sha described bytes nobody parsed.
+        #
+        # Copying first replaces that timing argument with a structural one. The copy lives
+        # under a directory only this call knows, so nothing can write it, and its digest is
+        # checked against the staged file's before the parser is allowed near it. After
+        # that, "the sha describes the bytes parsed" is true because there was only ever one
+        # set of bytes.
+        #
+        # This is not a new storage architecture: no watcher, no queue, no callback, and the
+        # copy is gone before the function returns. The size ceiling already bounds it.
+        parsed, verified_sha = await asyncio.to_thread(
+            self._parse_a_private_copy, resolved)
+
+        rows = finance_rows(parsed, source_sha256=verified_sha)
         if not rows:
             raise FinanceMppSyncRefused(
                 "MPP_NO_FINANCE_ROWS",
@@ -390,6 +470,25 @@ class FinanceMppSyncService:
         async with await self._connect() as connection:
             async with connection.transaction():
                 async with connection.cursor(row_factory=dict_row) as cursor:
+                    # SERIALISE ON THE FILE'S IDENTITY BEFORE LOOKING FOR IT.
+                    #
+                    # The look-up below and the insert further down are two statements, and
+                    # two callers reaching them at once both saw nothing and both inserted.
+                    # The unique index on (organization, project, sha256) then did its job
+                    # -- one version, ready, with its rows, which is the right DATA -- but
+                    # the loser got a raw UniqueViolation, which is a 500 on a request whose
+                    # honest answer is "somebody else just imported these exact bytes".
+                    # Measured: two concurrent first-time syncs, one imported, one crashed.
+                    #
+                    # The lock is the one `PsycopgFinanceImportRepository.commit` already
+                    # takes for the same shape of race, keyed the same way: whoever arrives
+                    # second waits, then finds the first one's row and answers `unchanged`.
+                    # It is transaction-scoped, so it is released by the commit or the
+                    # rollback and never needs unlocking by hand.
+                    await cursor.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)",
+                        ("finance_mpp_sync:%s:%s:%s"
+                         % (organization_id, project_id, resolved.sha256),))
                     await cursor.execute("""
                         SELECT v.id, v.row_count, v.source_file_name_safe,
                                v.reporting_date,

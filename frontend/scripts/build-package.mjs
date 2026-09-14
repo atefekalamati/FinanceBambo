@@ -18,14 +18,14 @@
  * a public server. index.html goes in as a preview and is not what the host
  * mounts -- host.html is.
  *
- * WHAT IS DELIBERATELY LEFT IN
- * src/adapters/mock. It is 117 KB the host never executes -- demo data is
- * reached only when a page marks itself `data-finance-runtime="standalone"`,
- * and a missing context is an error, never a fall back to it. But the imports
- * are static, so removing the folder does not trim the package, it stops the
- * module from loading at all: a white page with nothing in the console, on the
- * host's server, on day one. Making it droppable means making those imports
- * dynamic, which is a change with its own risk and is not this script's job.
+ * WHAT IS NO LONGER IN IT
+ * src/adapters/mock, and index.html which is the only page that turns it on. The entry
+ * point now reaches the preview adapters through a dynamic import inside the standalone
+ * branch, so they are no longer in the static graph -- and the host is served a package
+ * that does not contain demo data at all, rather than one that merely never runs it.
+ *
+ * Pass --with-preview to get the old output: index.html plus everything the dynamic
+ * imports reach. That is a development artefact and the file list says so.
  */
 
 import { readFile, mkdir, copyFile, rm, writeFile } from "node:fs/promises";
@@ -39,9 +39,17 @@ const outDir = resolve(process.argv[2] ?? join(root, "..", "finance-package"));
 
 const ENTRY_JS = "src/app/bootstrap.js";
 const ENTRY_CSS = "src/shared/styles/index.css";
-const HTML = ["host.html", "index.html"];
+/* The host mounts host.html. index.html is the standalone preview and is the only page
+   that sets `data-finance-runtime="standalone"`, so it ships only when asked for. */
+const WITH_PREVIEW = process.argv.includes("--with-preview");
+const HTML = WITH_PREVIEW ? ["host.html", "index.html"] : ["host.html"];
 
-const IMPORT = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;
+/* `from "x"` and a bare `import "x"`, but NOT `import("x")`: a dynamic import is how the
+   preview's adapters are reached, and following it would put them back in the package the
+   host is served. With --with-preview the paren is allowed again. */
+const IMPORT = WITH_PREVIEW
+  ? /(?:from|import)\s*\(?\s*["']([^"']+)["']/g
+  : /(?:from\s*|import\s+)["']([^"']+)["']/g;
 const CSS_IMPORT = /@import\s+url\(\s*["']?([^"')]+)/g;
 const HTML_REF = /(?:href|src)="([^"]+)"/g;
 const CSS_URL = /url\(\s*["']?([^"')]+?)["']?\s*\)/g;
@@ -102,7 +110,9 @@ for (const file of files) {
 await writeFile(join(outDir, "MANIFEST.txt"),
   `# ${files.length} files, derived from the module graph on ${new Date().toISOString().slice(0, 10)}\n`
   + `# entry: ${ENTRY_JS} and ${ENTRY_CSS}\n`
-  + `# the host mounts host.html; index.html is the standalone preview\n\n`
+  + (WITH_PREVIEW
+      ? `# DEVELOPMENT BUILD: includes index.html and the standalone preview's adapters\n\n`
+      : `# the host mounts host.html; the standalone preview is not in this package\n\n`)
   + files.join("\n") + "\n", "utf8");
 
 const counts = files.reduce((tally, f) => {

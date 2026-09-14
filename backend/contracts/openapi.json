@@ -344,6 +344,17 @@
             "title": "Actoruserid",
             "type": "string"
           },
+          "actorUserName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actorusername"
+          },
           "afterValues": {
             "anyOf": [
               {
@@ -530,6 +541,44 @@
         "title": "ConversionCreate",
         "type": "object"
       },
+      "ConversionListResponse": {
+        "additionalProperties": false,
+        "description": "Paged envelope, matching the invoice listing field for field.\n\nConversions are appended and never deleted, so this listing grows for the life of a\nproject and a client needs to be told how much of it it is holding.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "totalItems": {
+            "title": "Totalitems",
+            "type": "integer"
+          },
+          "totalPages": {
+            "title": "Totalpages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "title": "ConversionListResponse",
+        "type": "object"
+      },
       "ConversionPatch": {
         "additionalProperties": false,
         "properties": {
@@ -577,6 +626,17 @@
             "format": "uuid",
             "title": "Createdby",
             "type": "string"
+          },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
           },
           "dimension": {
             "minLength": 1,
@@ -705,17 +765,6 @@
             "format": "date",
             "title": "Invoicedate",
             "type": "string"
-          },
-          "invoiceNumber": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoicenumber"
           },
           "lines": {
             "items": {
@@ -1050,6 +1099,7 @@
       },
       "EstimateLineResponse": {
         "additionalProperties": false,
+        "description": "What a line IS, which is not the same contract as what a person may create.\n\nInheriting the create model shares the field list and the serialisers, and that is\nworth keeping -- but it also inherited `ge=0`, and a validation rule about what may be\nTYPED became a rule about what may be REPORTED. The two are not the same rule, and\nwhen they disagree the response cannot be produced at all: the whole list answers 500\nbecause one row is outside the bound, which is the least useful way for a database to\ntell a reader something is unusual.\n\nA negative amount reaches here from the schedule. MS Project states a task Fixed Cost\nof -2,972,160,000 on «نصب بتن پیش ساخته دال» against +5,290,960,000.5 on the activity\nbeside it: one correction spread across two related activities, which nets to what the\nproject actually plans. Dropping it would publish a total the file does not have, and\nrefusing to serialise it hides every other line as well.\n\nSo the bound is lifted HERE and nowhere else. `EstimateLineCreate` keeps it, so a\nperson still cannot enter a negative amount by hand; a correction someone means to\nmake goes through a corrective invoice, which is what that workflow is for.",
         "properties": {
           "activityExternalId": {
             "anyOf": [
@@ -1323,6 +1373,17 @@
             "format": "uuid",
             "title": "Createdby",
             "type": "string"
+          },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
           },
           "id": {
             "format": "uuid",
@@ -1814,6 +1875,17 @@
             "format": "uuid",
             "title": "Createdby",
             "type": "string"
+          },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
           },
           "effectiveFrom": {
             "format": "date",
@@ -2344,17 +2416,6 @@
             "title": "Invoicedate",
             "type": "string"
           },
-          "invoiceNumber": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoicenumber"
-          },
           "lines": {
             "items": {
               "$ref": "#/components/schemas/InvoiceLineCreate"
@@ -2764,6 +2825,17 @@
             ],
             "title": "Confirmedby"
           },
+          "confirmedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedbyname"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -2814,15 +2886,12 @@
             "type": "string"
           },
           "invoiceNumber": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoicenumber"
+            "title": "Invoicenumber",
+            "type": "string"
+          },
+          "invoiceSeq": {
+            "title": "Invoiceseq",
+            "type": "integer"
           },
           "lines": {
             "items": {
@@ -2866,6 +2935,17 @@
             "title": "Submittedby",
             "type": "string"
           },
+          "submittedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submittedbyname"
+          },
           "taxIrr": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Taxirr",
@@ -2882,6 +2962,7 @@
         },
         "required": [
           "id",
+          "invoiceSeq",
           "invoiceNumber",
           "invoiceDate",
           "vendorName",
@@ -3088,6 +3169,11 @@
           },
           "metrics": {
             "$ref": "#/components/schemas/LiveMetrics"
+          },
+          "missingEstimateLineCount": {
+            "default": 0,
+            "title": "Missingestimatelinecount",
+            "type": "integer"
           },
           "missingPriceCount": {
             "default": 0,
@@ -3447,6 +3533,11 @@
           "metrics": {
             "$ref": "#/components/schemas/LiveMetrics"
           },
+          "missingEstimateLineCount": {
+            "default": 0,
+            "title": "Missingestimatelinecount",
+            "type": "integer"
+          },
           "missingPriceCount": {
             "default": 0,
             "title": "Missingpricecount",
@@ -3556,6 +3647,44 @@
         "title": "PriceCreate",
         "type": "object"
       },
+      "PriceHistoryListResponse": {
+        "additionalProperties": false,
+        "description": "Paged envelope, so a reader cannot mistake an unfetched page for the end of the history.\n\n`totalItems` is what the filter matched, not what this page holds -- the difference is\nthe whole reason the envelope exists on an append-only table.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PriceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "totalItems": {
+            "title": "Totalitems",
+            "type": "integer"
+          },
+          "totalPages": {
+            "title": "Totalpages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "title": "PriceHistoryListResponse",
+        "type": "object"
+      },
       "PriceResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3568,6 +3697,17 @@
             "format": "uuid",
             "title": "Createdby",
             "type": "string"
+          },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
           },
           "effectiveFrom": {
             "format": "date",
@@ -3968,6 +4108,17 @@
             "title": "Createdby",
             "type": "string"
           },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
+          },
           "estimateLineId": {
             "format": "uuid",
             "title": "Estimatelineid",
@@ -4123,6 +4274,17 @@
               }
             ],
             "title": "Importedby"
+          },
+          "importedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importedbyname"
           },
           "isActiveSource": {
             "default": false,
@@ -5173,17 +5335,6 @@
             "title": "Invoicedate",
             "type": "string"
           },
-          "invoiceNumber": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoicenumber"
-          },
           "lines": {
             "items": {
               "$ref": "#/components/schemas/InvoiceLineCreate"
@@ -5250,7 +5401,7 @@
       },
       "TypeBreakdown": {
         "additionalProperties": false,
-        "description": "One resource type's share, with the same nullability as the totals above it.\n\n`initialEstimateIrr` and `revisedEstimateIrr` were already nullable here, because a row\nbuilt from some of its lines is not that row's total. The two figures DERIVED from them\nwere not, and that was an inconsistency rather than a decision: whenever the estimate\nbehind a row is unknown, the remaining cost and the forecast computed from it are\nunknown too, and the response could not say so -- it raised a validation error instead\nof publishing \"-\". `LiveMetrics` and `WbsNode` both already carry the null; this row now\nagrees with them.\n\nNullable is not the same as defaulted. `calculate_live_report` always states both\nfigures for a row it could compute, so a null here means the calculation said so.",
+        "description": "One resource type's share, with the same nullability as the totals above it.\n\n`initialEstimateIrr` and `revisedEstimateIrr` are nullable, and the two figures DERIVED\nfrom them are too -- whenever the estimate behind a row is unknown, the remaining cost\nand the forecast computed from it are unknown as well, and the response has to be able\nto say so rather than raise a validation error. `LiveMetrics` and `WbsNode` both carry\nthe same null.\n\nA row with lines that state no baseline is NOT one of those cases. It publishes the sum\nof the lines that do state one, `missingEstimateLineCount` says how many it could not\ninclude, and `calculationStatus` is `incomplete`. A subtotal a reader can see and\nqualify beats a blank they can only wonder about -- and the blank was reaching them for\nequipment, which this file states no price for anywhere, so the material estimate on the\nsame row disappeared with it.\n\nNullable is not the same as defaulted. `calculate_live_report` always states both\nfigures for a row it could compute, so a null here means the calculation said so.",
         "properties": {
           "actualCostIrr": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -5294,6 +5445,11 @@
               }
             ],
             "title": "Initialestimateirr"
+          },
+          "missingEstimateLineCount": {
+            "default": 0,
+            "title": "Missingestimatelinecount",
+            "type": "integer"
           },
           "remainingPhysicalCostIrr": {
             "anyOf": [
@@ -5502,6 +5658,11 @@
             ],
             "title": "Initialestimateirr"
           },
+          "missingEstimateLineCount": {
+            "default": 0,
+            "title": "Missingestimatelinecount",
+            "type": "integer"
+          },
           "moneyRequiredIrr": {
             "anyOf": [
               {
@@ -5576,7 +5737,7 @@
       },
       "WbsReportResponse": {
         "additionalProperties": false,
-        "description": "The live report rolled up to WBS stages.\n\nThe three actual-cost figures partition the project exactly:\n`sum(items.actualCostIrr)` over the root level, plus `unattributedActualIrr`, plus\n`unmappedWbsActualIrr`, equals `totals.actualCostIrr`. They are separate because they\nare fixed by different people -- one is an invoice never tied to an estimate line, the\nother an estimate line whose activity carries no stage.",
+        "description": "The live report rolled up to WBS stages.\n\nThe three actual-cost figures partition the project exactly:\n`sum(items.actualCostIrr)` over the root level, plus `unattributedActualIrr`, plus\n`unmappedWbsActualIrr`, equals `totals.actualCostIrr`. They are separate because they\nare fixed by different people -- one is an invoice never tied to an estimate line, the\nother an estimate line whose activity carries no stage.\n\nTHE ESTIMATE IS PARTITIONED THE SAME WAY, AND UNTIL NOW WAS NOT\n`sum(items.initialEstimateIrr)` plus `unmappedEstimateIrr` equals\n`totals.initialEstimateIrr`. `unmappedEstimateLineCount` said how MANY lines reached no\nstage and nothing said what they were WORTH, so a reader adding the stages up got a\nsmaller number than the project's own and had nothing to explain the gap with.\nMeasured on the candidate: 408,000,000 rial across 75 lines, missing from the stage\ntotal and disclosed nowhere -- while the same response has disclosed the actual-cost\nequivalent all along.",
         "properties": {
           "calculationStatus": {
             "default": "complete",
@@ -5652,6 +5813,19 @@
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Unattributedactualirr",
             "type": "string"
+          },
+          "unmappedEstimateIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "0",
+            "title": "Unmappedestimateirr"
           },
           "unmappedEstimateLineCount": {
             "default": 0,
@@ -9735,6 +9909,7 @@
     },
     "/api/projects/{projectId}/finance/price-history": {
       "get": {
+        "description": "A page of the price history, newest effective date first.\n\nEvery parameter is optional and the defaults are the same fifty `/invoices` uses, so a\nclient that sends none still gets a valid answer -- but it gets a page, and `totalItems`\nis how it learns there is more. `from` and `to` bound the effective date inclusively.",
         "operationId": "price_history_api_projects__projectId__finance_price_history_get",
         "parameters": [
           {
@@ -9745,6 +9920,80 @@
               "title": "Projectid",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "resourceId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resourceid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
           }
         ],
         "responses": {
@@ -9752,11 +10001,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/PriceResponse"
-                  },
-                  "title": "Response Price History Api Projects  Projectid  Finance Price History Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/PriceHistoryListResponse"
                 }
               }
             },
@@ -11381,6 +11626,7 @@
     },
     "/api/projects/{projectId}/finance/unit-conversions": {
       "get": {
+        "description": "A page of the unit conversions, oldest first.\n\nSame envelope and same defaults as the price history above; the ordering differs\nbecause a conversion list is read forwards and a price history backwards.",
         "operationId": "unit_conversions_api_projects__projectId__finance_unit_conversions_get",
         "parameters": [
           {
@@ -11391,6 +11637,29 @@
               "title": "Projectid",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -11398,11 +11667,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ConversionResponse"
-                  },
-                  "title": "Response Unit Conversions Api Projects  Projectid  Finance Unit Conversions Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/ConversionListResponse"
                 }
               }
             },

@@ -12,7 +12,7 @@ from ..domain import wbs as wbs_tree
 from ..domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT,monthly_report
 from ..domain.persian_calendar import persian_month_window
 from ..domain.reports import calculate_live_report
-from ..domain.report_coverage import require_estimate_coverage
+from ..domain.report_coverage import report_of_an_empty_basis, require_estimate_coverage
 from ..domain.progress import (finance_version_id,
     apply_progress_overrides,reference_from_header,
  snapshot_assignments,snapshot_metadata)
@@ -212,9 +212,9 @@ class FinanceLiveReportService:
 
     async def live(self,scope,reporting_date:date,progress_snapshot_id=None):
         report,_data,snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
-        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"host_snapshot_id":snapshot.get("host_snapshot_id"),"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality}
+        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"host_snapshot_id":snapshot.get("host_snapshot_id"),"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"missing_estimate_line_count":report.missing_estimate_line_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality}
 
-    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","host_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","excluded_estimate_line_count","progress_quality")
+    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","host_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","missing_estimate_line_count","excluded_estimate_line_count","progress_quality")
 
     async def overview(self,scope,reporting_date:date,progress_snapshot_id=None):
         """Project the live report down to the operational fields finance.view may read."""
@@ -252,6 +252,17 @@ class FinanceLiveReportService:
         catalogue=await self._activity_catalogue(scope)
         nodes=wbs_tree.build_tree(catalogue.values())
         placed,unplaced_line_ids=wbs_tree.line_nodes(data["estimates"],catalogue)
+        # What the unplaced lines are WORTH, through the canonical engine over just those
+        # rows rather than a second copy of the formula: a general cost is its amount and
+        # everything else is quantity times price, and one of those rules changing in two
+        # places is how a total starts disagreeing with its own parts.
+        unplaced_ids=set(unplaced_line_ids)
+        unplaced_rows=[row for row in data["estimates"] if row["id"] in unplaced_ids]
+        unplaced_estimate=Decimal(0)
+        if unplaced_rows:
+            unplaced_estimate=require_estimate_coverage(
+                calculate_live_report(unplaced_rows,[],[],data["conversions"],None),
+                data.get("estimate_coverage_known",True)).metrics["initialEstimateIrr"]
         linked,unattributed,unplaced_invoices=wbs_tree.split_invoices(data["invoices"],placed)
 
         estimates_by_code={}
@@ -272,10 +283,16 @@ class FinanceLiveReportService:
             node_report=calculate_live_report(rows,invoices,assignments,data["conversions"],
                                               data["gross_area"])
             node_report=require_estimate_coverage(node_report,data.get("estimate_coverage_known",True))
+            # A stage with no estimate lines has no estimate, which is not the same as an
+            # estimate of zero. Applied after the coverage rule so a node that is already
+            # unknown for the historical reason stays unknown for it.
+            node_report=report_of_an_empty_basis(node_report,len(rows))
             metrics=node_report.metrics
-            # One unknown type makes the node's revised estimate unknown. Skipping the
-            # None entries instead would publish the sum of the types that happened to be
-            # estimated, under the name of the node's whole revised estimate.
+            # Still null when a type's revised estimate is genuinely unknowable -- a past
+            # reporting date whose estimate coverage cannot be proven nulls every type, and
+            # a sum over that would be a number with no meaning. A type with SOME unestimated
+            # lines is a different thing and no longer arrives as None: it arrives as the
+            # subtotal of the lines that state a baseline, counted by the field below.
             revised_parts=[entry["revisedEstimateIrr"] for entry in node_report.breakdown]
             revised=(None if any(part is None for part in revised_parts)
                      else sum(revised_parts, wbs_tree.ZERO))
@@ -287,6 +304,7 @@ class FinanceLiveReportService:
                 "activity_count":len(node["activityCodes"]),
                 "child_count":len(node["children"]),
                 "estimate_line_count":len(rows),
+                "missing_estimate_line_count":node_report.missing_estimate_line_count,
                 "initial_estimate_irr":metrics["initialEstimateIrr"],
                 "revised_estimate_irr":revised,
                 "actual_cost_irr":metrics["actualCostIrr"],
@@ -311,6 +329,9 @@ class FinanceLiveReportService:
             # Purchases that do have an estimate line, whose activity carries no WBS code.
             "unmapped_wbs_actual_irr":wbs_tree.actual_of(unplaced_invoices),
             "unmapped_estimate_line_count":len(unplaced_line_ids),
+            # And what they are worth, so the stages plus this equal the project's own
+            # estimate rather than silently falling short of it.
+            "unmapped_estimate_irr":unplaced_estimate,
             "totals":report.metrics,
             "calculation_status":report.calculation_status,
             "warnings":report.warnings,
@@ -389,7 +410,7 @@ class FinanceLiveReportService:
             "topPriceVariances":report.price_variances,"topQuantityVariances":report.quantity_variances,
             "priceVariances":report.all_price_variances,"quantityVariances":report.all_quantity_variances,
             "calculationStatus":report.calculation_status,"incompleteMetricKeys":report.incomplete_metric_keys,
-            "missingPriceCount":report.missing_price_count,"excludedEstimateLineCount":report.excluded_estimate_line_count,
+            "missingPriceCount":report.missing_price_count,"missingEstimateLineCount":report.missing_estimate_line_count,"excludedEstimateLineCount":report.excluded_estimate_line_count,
             "excludedEstimateLineIds":report.excluded_estimate_line_ids,"progressQuality":report.progress_quality,"warnings":report.warnings})
         await self.repo.issue(scope,value,payload,self.ids())
         return self._response(scope,value)

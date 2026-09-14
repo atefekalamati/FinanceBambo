@@ -9,8 +9,10 @@ class StaleInvoice(FinanceDomainError):status=409;code="STALE_VERSION"
 class InvoiceAlreadyConfirmed(FinanceDomainError):status=409;code="INVOICE_ALREADY_CONFIRMED"
 class InvoiceOperationConflict(FinanceDomainError):status=409;code="INVOICE_ALREADY_CONFIRMED"
 class InvoiceValidationError(FinanceDomainError):status=422;code="VALIDATION_ERROR"
-def invoice_code(invoice_id):return f"F-{str(invoice_id).split('-')[0].upper()}"
-def resolve_invoice_number(value,invoice_id):return value.strip() if isinstance(value,str) and value.strip() else invoice_code(invoice_id)
+# `invoice_code` and `resolve_invoice_number` used to live here. They are gone: the number
+# is not the service's to decide any more. It is allocated by the database inside the
+# transaction that writes the invoice, which is the only place it can be decided correctly
+# when two people are entering invoices at the same moment.
 class FinanceInvoiceService:
  def __init__(self,repo,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.ids=id_factory;self.clock=clock
  async def list(self,s,page=1,page_size=50,query=None,status=None,source=None,invoice_date_from=None,invoice_date_to=None):return await self.repo.list(s,page,page_size,query,status,source,invoice_date_from,invoice_date_to)
@@ -22,18 +24,17 @@ class FinanceInvoiceService:
  async def prepare_extracted(self,s,c,source,idempotency_key,at):
   if s.actor_user_id is None:raise PermissionError("actor required")
   lines,calc=await self._calculate_lines(s,c)
-  duplicate=await self.repo.duplicate(s,idempotency_key,c.vendor_name,c.invoice_number,c.invoice_date,calc.final_total)
+  duplicate=await self.repo.duplicate(s,idempotency_key,c.vendor_name,c.invoice_date,calc.final_total)
   if duplicate is not None and not (c.duplicate_reason and c.duplicate_reason.strip()):raise DuplicateInvoice("similar extracted invoice requires reason")
-  invoice_id=self.ids();invoice_number=resolve_invoice_number(c.invoice_number,invoice_id)
-  return Invoice(invoice_id,s.organization_id,s.project_id,invoice_number,c.invoice_date,c.vendor_name,c.description,source,"confirmed",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,lines)
+  # No number yet: `confirm_with_invoice` allocates it in the transaction that writes it.
+  return Invoice(self.ids(),s.organization_id,s.project_id,None,c.invoice_date,c.vendor_name,c.description,source,"confirmed",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,lines)
  async def create(self,s,c):
   if s.actor_user_id is None:raise PermissionError("actor required")
   lines,calc=await self._calculate_lines(s,c)
-  duplicate=await self.repo.duplicate(s,c.idempotency_key,c.vendor_name,c.invoice_number,c.invoice_date,calc.final_total)
+  duplicate=await self.repo.duplicate(s,c.idempotency_key,c.vendor_name,c.invoice_date,calc.final_total)
   if duplicate!="similar" and duplicate is not None:return duplicate
   if duplicate=="similar" and not (c.duplicate_reason and c.duplicate_reason.strip()):raise DuplicateInvoice("similar invoice requires reason")
-  invoice_id=self.ids();invoice_number=resolve_invoice_number(c.invoice_number,invoice_id)
-  invoice=Invoice(invoice_id,s.organization_id,s.project_id,invoice_number,c.invoice_date,c.vendor_name,c.description,c.source,"draft",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,None,None,self.clock(),lines)
+  invoice=Invoice(self.ids(),s.organization_id,s.project_id,None,c.invoice_date,c.vendor_name,c.description,c.source,"draft",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,None,None,self.clock(),lines)
   action="invoice.duplicate_warning_overridden" if duplicate=="similar" else "invoice.created"
   return await self.repo.create(s,invoice,self.ids(),c.duplicate_reason,action)
  async def _calculate_lines(self,s,c):
@@ -82,7 +83,11 @@ class FinanceInvoiceService:
   original=await self.get(s,invoice_id)
   if original.status!="confirmed" or original.version!=c.expected_version:raise InvoiceOperationConflict("only the current confirmed invoice can be voided")
   if await self.repo.has_reversal(s,invoice_id):raise InvoiceOperationConflict("invoice already has a reversal")
-  at=self.clock();reversal=Invoice(self.ids(),s.organization_id,s.project_id,original.invoice_number,original.invoice_date,original.vendor_name,c.reason,"reversal","voided",original.discount_irr,original.tax_irr,original.shipping_irr,original.other_costs_irr,original.final_amount_irr,c.idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,original.lines,-1,original.id)
+  # The reversal does NOT reuse the original's number. It used to, and that made one
+  # number name two documents with opposite signs -- so "invoice 7" was a question with
+  # two answers, one of which cancelled the other. A void is its own document and takes
+  # the project's next number, allocated by `repo.create` like any other.
+  at=self.clock();reversal=Invoice(self.ids(),s.organization_id,s.project_id,None,original.invoice_date,original.vendor_name,c.reason,"reversal","voided",original.discount_irr,original.tax_irr,original.shipping_irr,original.other_costs_irr,original.final_amount_irr,c.idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,original.lines,-1,original.id)
   try:return await self.repo.create(s,reversal,self.ids(),c.reason,"invoice.voided")
   except ValueError as error:raise InvoiceOperationConflict("invoice already has a reversal") from error
  async def corrective(self,s,invoice_id,c):
@@ -92,8 +97,7 @@ class FinanceInvoiceService:
   original=await self.get(s,invoice_id)
   if original.status!="confirmed" or await self.repo.has_reversal(s,invoice_id):raise InvoiceOperationConflict("corrective invoice requires a non-voided confirmed original")
   lines,calc=await self._calculate_lines(s,c);at=self.clock()
-  invoice_id=self.ids();invoice_number=resolve_invoice_number(c.invoice_number,invoice_id)
-  correction=Invoice(invoice_id,s.organization_id,s.project_id,invoice_number,c.invoice_date,c.vendor_name,c.description,"corrective","corrected",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,lines,c.financial_effect_sign,original.id)
+  correction=Invoice(self.ids(),s.organization_id,s.project_id,None,c.invoice_date,c.vendor_name,c.description,"corrective","corrected",c.discount_irr,c.tax_irr,c.shipping_irr,c.other_costs_irr,calc.final_total,c.idempotency_key,1,s.actor_user_id,s.actor_user_id,at,at,lines,c.financial_effect_sign,original.id)
   try:return await self.repo.create(s,correction,self.ids(),c.reason,"invoice.corrected")
   except ValueError as error:
    repeated=await self.repo.get_by_idempotency(s,c.idempotency_key)

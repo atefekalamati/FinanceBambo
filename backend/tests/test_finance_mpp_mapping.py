@@ -17,19 +17,31 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from coreint.finance_mpp_sync import MATERIAL_UNIT_RATE
-from coreint.finance_mpp_mapping import (CLASSIFIABLE_TYPES, RESOURCE_CODE_PREFIX,
+from coreint.finance_mpp_mapping import (CLASSIFIABLE_TYPES, FIXED_COST_RESOURCE_CODE,
+                                         FIXED_COST_RESOURCE_TITLE, RESOURCE_CODE_PREFIX,
                                          FinanceMppClassificationRefused,
                                          FinanceMppMappingService, _finance_type)
+
+
+def found_by_its_own_code(sql):
+    """Whether a lookup is the fixed cost item's, found by code because it comes from
+    no schedule resource at all -- and a code no legacy record carries is no more
+    reachable than a source uid is."""
+    return "AND code=%s" in sql and "finance_resources" in sql
 
 ORG = "c4ee6a23-b2a8-4afe-94c8-63baba552ca4"
 VERSION = UUID("afe50159-86e5-4e65-9f31-e0fd01ef29e7")
 
 
 def row(assignment, task, resource, *, name="بتن ۴۰۰", kind="MATERIAL",
-        unit="مترمکعب", wbs="1.5.1", task_name="بتن ریزی"):
+        unit="مترمکعب", wbs="1.5.1", task_name="بتن ریزی",
+        fixed_cost=None, fixed_cost_irr=None):
+    """One persisted schedule row. `fixed_cost` is the TASK's, repeated on every row it has,
+    which is why the fixed-cost query de-duplicates and these tests can hand it in twice."""
     return {"source_task_uid": task, "source_assignment_uid": assignment,
             "source_resource_uid": resource, "task_name": task_name, "task_wbs": wbs,
-            "resource_name": name, "resource_type": kind, "resource_unit": unit}
+            "resource_name": name, "resource_type": kind, "resource_unit": unit,
+            "source_fixed_cost": fixed_cost, "source_fixed_cost_irr": fixed_cost_irr}
 
 
 class Cursor:
@@ -52,18 +64,43 @@ class Cursor:
             self._rows = [{"name": named[0]["resource_name"],
                            "native": named[0]["resource_type"]}] if named else [
                 {"name": None, "native": None}]
+        elif "source_fixed_cost_irr" in text and "FROM finance_mpp_rows" in text:
+            # The task-level query, which the real one narrows and de-duplicates in SQL:
+            # one row per task, and only where the file states a fixed cost at all.
+            seen, stated = set(), []
+            for source in self._db.source_rows:
+                uid = source["source_task_uid"]
+                if uid in seen or not source.get("source_fixed_cost"):
+                    continue
+                if source.get("source_fixed_cost_irr") is None:
+                    continue
+                seen.add(uid)
+                stated.append(source)
+            self._rows = stated
         elif "FROM finance_mpp_rows" in text:
             self._rows = list(self._db.source_rows)
+        elif "AND code=%s" in text and "FROM finance_resources" in text:
+            found = self._db.resources.get(params[2])   # the code names this one
+            self._rows = [{"id": found}] if found else []
         elif "FROM finance_resources" in text and text.startswith("SELECT id"):
             # Two callers, two shapes: the mapping asks for `id`, `classify` asks for
             # `id, resource_type`. Both look the resource up by its source identity.
             found = self._db.resources.get(params[2])
             self._rows = [{"id": found, "resource_type": "equipment"}] if found else []
+        elif text.startswith("SELECT id FROM estimate_lines") and "source_task_uid=%s" in text:
+            found = self._db.fixed_cost_lines.get(params[2])   # keyed on the TASK
+            self._rows = [{"id": found}] if found else []
         elif text.startswith("SELECT id FROM estimate_lines"):
             found = self._db.lines.get(params[2])
             self._rows = [{"id": found}] if found else []
+        elif "INSERT INTO finance_resources" in text and "'general_cost'" in text:
+            self._db.resources[params[3]] = params[0]      # code -> id
+            self._rows = []
         elif "INSERT INTO finance_resources" in text:
             self._db.resources[params[8]] = params[0]      # source_resource_uid -> id
+            self._rows = []
+        elif "INSERT INTO estimate_lines" in text and "'progress_feed',NULL," in text:
+            self._db.fixed_cost_lines[params[6]] = params[0]   # source_task_uid -> id
             self._rows = []
         elif "INSERT INTO estimate_lines" in text:
             self._db.lines[params[8]] = params[0]          # source_assignment_uid -> id
@@ -90,6 +127,9 @@ class Db:
     def __init__(self, source_rows):
         self.source_rows = list(source_rows)
         self.statements, self.resources, self.lines = [], {}, {}
+        #: Fixed cost lines live in their own book because they are keyed on the task, and
+        #: a task uid and an assignment uid are different numbers that look alike.
+        self.fixed_cost_lines = {}
 
     async def __aenter__(self):
         return self
@@ -362,11 +402,14 @@ class IdempotenceTests(unittest.TestCase):
 
     def test_a_legacy_record_can_never_be_matched(self):
         # Legacy rows carry no source_resource_uid and no source_assignment_uid, so the
-        # lookups here cannot see them and nothing updates or deletes them.
-        _result, db = run([row(1, 100, 97)])
+        # lookups here cannot see them and nothing updates or deletes them. A fixed cost
+        # row is in the data on purpose: that pass has lookups of its own and is held to
+        # the same rule.
+        _result, db = run([row(1, 100, 97),
+                           row(2, 101, 98, fixed_cost="500", fixed_cost_irr="5000")])
         lookups = [(t, p) for t, p in db.statements if t.startswith("SELECT id FROM")]
         for text, _params in lookups:
-            self.assertIn("source_", text)
+            self.assertTrue("source_" in text or found_by_its_own_code(text), text)
             self.assertNotIn("external_resource_id", text)
             self.assertNotIn("assignment_external_id", text)
 
@@ -378,6 +421,125 @@ class IdempotenceTests(unittest.TestCase):
 
     def test_every_write_tolerates_an_existing_row(self):
         _result, db = run([row(1, 100, 97)])
+        for text, _params in db.statements:
+            if text.startswith("INSERT"):
+                self.assertIn("ON CONFLICT DO NOTHING", text)
+
+
+class TaskFixedCostTests(unittest.TestCase):
+    """The money MS Project puts on the task rather than on anyone working on it.
+
+    It was read from the file and stored from the day 0012 landed, and no financial
+    calculation ever opened the column. These tests pin what it becomes and, as
+    importantly, what it does not: it is never attributed to a resource on the task,
+    because every equipment assignment in this project shares its task with a material one
+    and the money moved would be the material's, counted a second time.
+    """
+
+    def lines(self, db):
+        return [p for text, p in db.statements
+                if "INSERT INTO estimate_lines" in text and "'progress_feed',NULL," in text]
+
+    def test_a_task_fixed_cost_becomes_one_general_cost_line(self):
+        result, db = run([row(1, 100, 97, wbs="1.5.1.2",
+                              fixed_cost="2829688000.0", fixed_cost_irr="28296880000.0")])
+        self.assertEqual(1, result["fixedCostLinesCreated"])
+        self.assertEqual("28296880000", result["fixedCostIrr"])
+        params, = self.lines(db)
+        self.assertEqual("1.5.1.2", params[4], "the activity is the task's own WBS code")
+        self.assertEqual(Decimal("28296880000"), params[5], "the amount is the whole line")
+        self.assertEqual(100, params[6], "keyed on the task, because that is whose it is")
+
+    def test_the_line_states_no_quantity_and_no_assignment(self):
+        # A general cost has nothing to measure, and a fixed cost has no assignment to
+        # measure it on. Both absences are in the statement itself rather than in a value,
+        # so no caller can pass a number into either.
+        _result, db = run([row(1, 100, 97, fixed_cost="500", fixed_cost_irr="5000")])
+        statement, = [t for t, _p in db.statements
+                      if "INSERT INTO estimate_lines" in t and "'progress_feed',NULL," in t]
+        self.assertIn("VALUES (%s,%s,%s,%s,%s,NULL,NULL,%s,'progress_feed',NULL,%s,%s)",
+                      statement)
+
+    def test_the_amount_is_the_rial_column_and_never_the_files_own_number(self):
+        # The file is denominated in toman, and the column that has been through that
+        # decision is `source_fixed_cost_irr`. Reading the raw column instead would be
+        # wrong by a factor of ten in the direction nobody notices.
+        _result, db = run([row(1, 100, 97,
+                               fixed_cost="2829688000.0", fixed_cost_irr="28296880000.0")])
+        params, = self.lines(db)
+        self.assertEqual(Decimal("28296880000"), params[5])
+
+    def test_an_amount_with_a_fraction_of_a_rial_is_rounded_to_whole_rials(self):
+        _result, db = run([row(1, 100, 97,
+                               fixed_cost="5290960000.5", fixed_cost_irr="52909600004.6")])
+        params, = self.lines(db)
+        self.assertEqual(Decimal("52909600005"), params[5])
+
+    def test_a_negative_fixed_cost_is_carried_as_the_file_states_it(self):
+        # This project's file states -2,972,160,000 on one activity and +5,290,960,000.5
+        # on the next: one correction across two related activities. Dropping the negative
+        # would publish a total the schedule does not have.
+        result, db = run([row(1, 100, 97, fixed_cost="-2972160000.0",
+                              fixed_cost_irr="-29721600000.0")])
+        params, = self.lines(db)
+        self.assertEqual(Decimal("-29721600000"), params[5])
+        self.assertEqual("-29721600000", result["fixedCostIrr"])
+
+    def test_residue_below_one_unit_of_the_files_currency_is_not_money(self):
+        # MS Project holds Task.Cost = its assignments + Fixed Cost, in doubles, so a task
+        # nobody entered a fixed cost on still carries what is left of that arithmetic.
+        # This project shows both kinds and they are not close: twenty-one tasks between
+        # -0.25 and 0.5 of a toman, and three holding the whole of it.
+        result, db = run([row(1, 100, 97, fixed_cost="0.5", fixed_cost_irr="5"),
+                          row(2, 101, 98, fixed_cost="-0.25", fixed_cost_irr="-2.5"),
+                          row(3, 102, 99, fixed_cost="2829688000.0",
+                              fixed_cost_irr="28296880000.0")])
+        self.assertEqual(1, result["fixedCostLinesCreated"])
+        self.assertEqual(2, result["fixedCostResidueRows"], "counted, never quietly dropped")
+        self.assertEqual("0.25", result["fixedCostResidueFileUnits"])
+        params, = self.lines(db)
+        self.assertEqual(Decimal("28296880000"), params[5])
+
+    def test_a_task_fixed_cost_repeated_on_every_row_of_the_task_makes_one_line(self):
+        # The column holds the TASK's figure on each of the task's rows, exactly as
+        # `source_cost` does. Summing it across rows is how a project's cost comes out
+        # several times too large.
+        result, _db = run([row(1, 100, 97, fixed_cost="500", fixed_cost_irr="5000"),
+                           row(2, 100, 98, fixed_cost="500", fixed_cost_irr="5000"),
+                           row(3, 100, 99, fixed_cost="500", fixed_cost_irr="5000")])
+        self.assertEqual(1, result["fixedCostLinesCreated"])
+        self.assertEqual("5000", result["fixedCostIrr"])
+
+    def test_a_currency_nobody_decided_produces_no_fixed_cost_line(self):
+        # `source_fixed_cost_irr` is NULL when the reader refused to call the file's
+        # amounts rials. A line built from the raw column would be a currency guess.
+        result, db = run([row(1, 100, 97, fixed_cost="2829688000.0", fixed_cost_irr=None)])
+        self.assertEqual(0, result["fixedCostLinesCreated"])
+        self.assertEqual([], self.lines(db))
+
+    def test_the_item_the_lines_hang_on_is_one_general_cost_with_no_unit(self):
+        _result, db = run([row(1, 100, 97, fixed_cost="500", fixed_cost_irr="5000"),
+                           row(2, 101, 98, fixed_cost="700", fixed_cost_irr="7000")])
+        inserts = [p for text, p in db.statements
+                   if "INSERT INTO finance_resources" in text and "'general_cost'" in text]
+        self.assertEqual(1, len(inserts), "one item per project, not one per task")
+        self.assertEqual(FIXED_COST_RESOURCE_CODE, inserts[0][3])
+        self.assertEqual(FIXED_COST_RESOURCE_TITLE, inserts[0][4])
+        statement, = [t for t, _p in db.statements
+                      if "INSERT INTO finance_resources" in t and "'general_cost'" in t]
+        self.assertIn("'general_cost',%s,%s,NULL,NULL,%s", statement)
+
+    def test_reading_the_same_source_twice_creates_no_second_fixed_cost_line(self):
+        rows = [row(1, 100, 97, fixed_cost="500", fixed_cost_irr="5000")]
+        db = Db(rows)
+        first, _ = run(rows, db=db)
+        second, _ = run(rows, db=db)
+        self.assertEqual(1, first["fixedCostLinesCreated"])
+        self.assertEqual(0, second["fixedCostLinesCreated"])
+        self.assertEqual(1, second["fixedCostLinesMatched"])
+
+    def test_the_fixed_cost_write_tolerates_an_existing_row(self):
+        _result, db = run([row(1, 100, 97, fixed_cost="500", fixed_cost_irr="5000")])
         for text, _params in db.statements:
             if text.startswith("INSERT"):
                 self.assertIn("ON CONFLICT DO NOTHING", text)
