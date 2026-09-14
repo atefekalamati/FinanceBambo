@@ -114,6 +114,15 @@ class WiringTests(unittest.TestCase):
                 # finance.edit, the same permission a price version already needs.
                 ("/api/projects/{projectId}/finance/material-prices/labels", "get"),
                 ("/api/projects/{projectId}/finance/material-prices/unresolved", "get"),
+                # The bridge between the schedule and the market price. Read endpoints are
+                # finance.view; the one that writes a mapping is finance.edit.
+                ("/api/projects/{projectId}/finance/item-price-mappings/status", "get"),
+                ("/api/projects/{projectId}/finance/item-price-mappings/candidates", "get"),
+                ("/api/projects/{projectId}/finance/item-price-mappings/filters", "get"),
+                ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping", "get"),
+                ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping", "post"),
+                ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping/history", "get"),
+                ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-preview", "get"),
                 ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/labels", "get"),
                 ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/labels", "post"),
                 ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/factors", "get"),

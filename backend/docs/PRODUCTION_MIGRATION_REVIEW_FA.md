@@ -33,7 +33,8 @@
 20. `0020_invoice_sequence_per_project`
 21. `0021_material_price_sheet_ingestion`
 22. `0022_material_unit_labels`
-23. `0023_mpp_currency_decisions` (head)
+23. `0023_mpp_currency_decisions`
+24. `0024_finance_item_price_mappings` (head)
 
 ### گراف نهایی · ۲۰۲۶-۰۹-۱۲
 

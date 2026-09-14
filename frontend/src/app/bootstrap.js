@@ -6,6 +6,7 @@ import { createApiSettingsAdapter } from "../adapters/api/settings-api-adapter.j
 import { createApiFinancialItemsAdapter } from "../adapters/api/financial-items-api-adapter.js";
 import { createApiPricesAdapter } from "../adapters/api/prices-api-adapter.js";
 import { createMaterialPricesApiAdapter } from "../adapters/api/material-prices-api-adapter.js";
+import { createItemPriceMappingsApiAdapter } from "../adapters/api/item-price-mappings-api-adapter.js";
 import { createApiProgressAdapter } from "../adapters/api/progress-api-adapter.js";
 import { createApiInvoicesAdapter } from "../adapters/api/invoices-api-adapter.js";
 import { createApiAttachmentsAdapter } from "../adapters/api/attachments-api-adapter.js";
@@ -81,6 +82,10 @@ function createHostAdapters(context) {
        supplier was quoting. One adapter for both would be the first step towards
        one meaning for both. */
     materialPrices: createMaterialPricesApiAdapter(context, { client }),
+    /* The bridge between the two: which market listing prices which schedule item. Its
+       own adapter because it is neither module's data -- it is the decision joining
+       them, and it has its own table, its own history and its own permission. */
+    itemPriceMappings: createItemPriceMappingsApiAdapter(context, { client }),
     progress: createApiProgressAdapter(context, client),
     invoices,
     attachments: createApiAttachmentsAdapter(context, client, invoices),
@@ -206,6 +211,12 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
     root.append(createFinancialItemsPage({
       context,
       adapter: adapters.financialItems,
+      // Passed by name, like the material prices adapter above it and for the same
+      // reason: `adapters.financialItems` is one module's data and this is another's.
+      // A host that does not supply it -- an older one, or the preview -- passes null,
+      // and the table renders exactly as it did before the feature existed rather than
+      // showing sample links.
+      priceMappingAdapter: adapters.itemPriceMappings ?? null,
       surface: route.surface,
       focusResourceId: routeQuery.get("resourceId") ?? "",
       focusEstimateLineId: routeQuery.get("estimateLineId") ?? "",
