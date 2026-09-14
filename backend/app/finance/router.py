@@ -21,6 +21,7 @@ from .schemas.resources import (EstimateLineCreate, EstimateLineResponse,
 from .schemas.activities import ActivityCreate, ActivityListResponse, ActivityResponse
 from .schemas.unit_registry import UnitDefinitionResponse, UnitRegistryResponse
 from .domain.unit_registry import UNIT_REGISTRY
+from .domain.unit_conversion import can_convert, quantity_factor
 from .schemas.prices import CurrentPriceTrendResponse,PriceCreate, PriceHistoryListResponse, PriceResponse
 from .schemas.conversions import ConversionCreate,ConversionListResponse,ConversionPatch,ConversionResponse
 from .schemas.progress import ProgressFeedResponse,ProgressOverrideCreate,ProgressOverrideResponse,ProgressSnapshotResponse
@@ -35,7 +36,10 @@ from .schemas.audit import AuditEventListResponse,AuditEventResponse
 from .schemas.material_prices import (ImportRunListResponse,ImportRunResponse,
     MaterialCategoryListResponse,MaterialCategoryResponse,MaterialPriceHistoryListResponse,
     MaterialPriceHistoryResponse,MaterialPriceListResponse,MaterialPriceResponse,
-    MaterialUnitSettingCreate,MaterialUnitSettingListResponse,MaterialUnitSettingResponse)
+    MaterialUnitSettingCreate,MaterialUnitSettingListResponse,MaterialUnitSettingResponse,
+    ProviderItemFactorCreate,ProviderItemFactorListResponse,ProviderItemFactorResponse,
+    ProviderItemLabelCreate,ProviderItemLabelListResponse,ProviderItemLabelResponse,
+    UnresolvedItemListResponse,UnresolvedItemResponse)
 from datetime import date
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
@@ -567,7 +571,7 @@ async def material_categories(projectId:str,request:Request):
     """Every category present, counted from the database. No category is assumed to exist."""
     scope=await _resource_scope(projectId,request,"finance.view")
     items=await request.app.state.material_price_service.categories(scope)
-    return MaterialCategoryListResponse(items=[MaterialCategoryResponse(**dict(x)) for x in items])
+    return MaterialCategoryListResponse(items=[_declared(MaterialCategoryResponse, x) for x in items])
 
 @router.get("/material-prices/current",response_model=MaterialPriceListResponse)
 async def material_prices_current(projectId:str,request:Request,
@@ -593,7 +597,7 @@ async def material_price_history(projectId:str,providerItemId:UUID,request:Reque
     scope=await _resource_scope(projectId,request,"finance.view")
     items,total=await request.app.state.material_price_service.history(scope,providerItemId,page,pageSize)
     return MaterialPriceHistoryListResponse(
-        items=[MaterialPriceHistoryResponse(**dict(x)) for x in items],
+        items=[_declared(MaterialPriceHistoryResponse, x) for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 
 @router.get("/material-prices/runs",response_model=ImportRunListResponse)
@@ -602,7 +606,7 @@ async def material_price_runs(projectId:str,request:Request,
     """What each import did, including the ones that failed and why."""
     scope=await _resource_scope(projectId,request,"finance.view")
     items,total=await request.app.state.material_price_service.runs(scope,page,pageSize)
-    return ImportRunListResponse(items=[ImportRunResponse(**dict(x)) for x in items],
+    return ImportRunListResponse(items=[_declared(ImportRunResponse, x) for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 
 @router.get("/material-prices/invalid-rows",response_model=MaterialPriceHistoryListResponse)
@@ -612,7 +616,7 @@ async def material_price_invalid_rows(projectId:str,request:Request,
     scope=await _resource_scope(projectId,request,"finance.view")
     items,total=await request.app.state.material_price_service.invalid_rows(scope,page,pageSize)
     return MaterialPriceHistoryListResponse(
-        items=[MaterialPriceHistoryResponse(**dict(x)) for x in items],
+        items=[_declared(MaterialPriceHistoryResponse, x) for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 
 @router.get("/material-prices/unit-settings",response_model=MaterialUnitSettingListResponse)
@@ -622,7 +626,7 @@ async def material_unit_settings(projectId:str,request:Request,
     scope=await _resource_scope(projectId,request,"finance.view")
     items=await request.app.state.material_price_service.unit_settings(scope,category)
     return await _named(request, MaterialUnitSettingListResponse(
-        items=[MaterialUnitSettingResponse(**dict(x)) for x in items]))
+        items=[_declared(MaterialUnitSettingResponse, x) for x in items]))
 
 @router.post("/material-prices/unit-settings",response_model=MaterialUnitSettingResponse,status_code=201)
 async def set_material_unit(projectId:str,payload:MaterialUnitSettingCreate,request:Request):
@@ -633,4 +637,115 @@ async def set_material_unit(projectId:str,payload:MaterialUnitSettingCreate,requ
     """
     scope=await _resource_scope(projectId,request,"finance.edit")
     row=await request.app.state.material_price_service.set_unit(scope,payload,scope.actor_user_id)
-    return await _named(request, MaterialUnitSettingResponse(**dict(row)))
+    return await _named(request, _declared(MaterialUnitSettingResponse, row))
+
+
+# ------------------------------------------------------ labels a person writes by hand
+#
+# The sheet states no unit for six of its seven categories, so for those rows no amount of
+# category-wide configuration can produce a price: somebody has to look at «لوله پلی اتیلن
+# ۱۱۰» and say what it is and what its price is per. These endpoints are where they say it.
+#
+# A label is CONFIGURATION. It never changes the imported observation it describes, and it
+# cannot invent a price -- it can only make an existing price usable, or leave it withheld.
+
+def _declared(model, row):
+    """Only the fields the response declares, from a row that carries more.
+
+    `RETURNING *` hands back every column, including `organization_id` and `project_id`
+    which no response says anything about -- and `ApiModel` forbids extras, correctly, so
+    the endpoint answered 500. Narrowing here rather than naming columns in each RETURNING
+    keeps the scope columns out of one place instead of six, and a field the model DOES
+    declare but the row lacks still fails loudly rather than being defaulted.
+    """
+    return model(**{name: row[name] for name in model.model_fields if name in row})
+
+def _registry_unit(value, field):
+    """A unit code the Finance registry knows, or a 422 naming the field.
+
+    Checked here rather than in the schema so the refusal can list what IS allowed. A label
+    that could introduce a unit the rest of Finance has never heard of would be the start of
+    a second vocabulary, which is the one thing this whole area is not allowed to grow.
+    """
+    if value is None:
+        return None
+    code = str(value).strip()
+    if code not in UNIT_REGISTRY:
+        raise HTTPException(status_code=422, detail=(
+            "%s must be one of the Finance units: %s" % (field, ", ".join(sorted(UNIT_REGISTRY)))))
+    return code
+
+@router.get("/material-prices/labels",response_model=ProviderItemLabelListResponse)
+async def material_item_labels(projectId:str,request:Request,providerItemId:UUID|None=None):
+    """The current label for each listing, or for one of them."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items=await request.app.state.material_price_service.labels(scope,providerItemId)
+    return await _named(request, ProviderItemLabelListResponse(
+        items=[_declared(ProviderItemLabelResponse, x) for x in items]))
+
+@router.get("/material-prices/{providerItemId}/labels",response_model=ProviderItemLabelListResponse)
+async def material_item_label_history(projectId:str,providerItemId:UUID,request:Request):
+    """Every version of one listing's label, oldest first. Nothing here was rewritten."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items=await request.app.state.material_price_service.label_history(scope,providerItemId)
+    return await _named(request, ProviderItemLabelListResponse(
+        items=[_declared(ProviderItemLabelResponse, x) for x in items]))
+
+@router.post("/material-prices/{providerItemId}/labels",response_model=ProviderItemLabelResponse,status_code=201)
+async def save_material_item_label(projectId:str,providerItemId:UUID,
+    payload:ProviderItemLabelCreate,request:Request):
+    """Record what this listing is. `finance.edit`, appended, with a reason.
+
+    Supersedes the previous version rather than replacing it: what was believed last month
+    stays readable, which is the same rule every other decision in Finance follows.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    payload.source_unit=_registry_unit(payload.source_unit,"sourceUnit")
+    payload.target_unit=_registry_unit(payload.target_unit,"targetUnit")
+    row=await request.app.state.material_price_service.save_label(
+        scope,providerItemId,payload,scope.actor_user_id)
+    return await _named(request, _declared(ProviderItemLabelResponse, row))
+
+@router.get("/material-prices/{providerItemId}/factors",response_model=ProviderItemFactorListResponse)
+async def material_item_factors(projectId:str,providerItemId:UUID,request:Request):
+    """The conversion factors somebody measured for this one product."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items=await request.app.state.material_price_service.repository.item_unit_factors(scope,providerItemId)
+    return await _named(request, ProviderItemFactorListResponse(
+        items=[_declared(ProviderItemFactorResponse, x) for x in items]))
+
+@router.post("/material-prices/{providerItemId}/factors",response_model=ProviderItemFactorResponse,status_code=201)
+async def save_material_item_factor(projectId:str,providerItemId:UUID,
+    payload:ProviderItemFactorCreate,request:Request):
+    """Store a measurement of this product, so a crossing between dimensions becomes possible.
+
+    Both units must be Finance units, and they must actually cross a dimension: a factor
+    between two units the registry can already convert would be a project quietly redefining
+    the gram, and it is refused with the ratio that already exists.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    payload.from_unit=_registry_unit(payload.from_unit,"fromUnit")
+    payload.to_unit=_registry_unit(payload.to_unit,"toUnit")
+    if payload.from_unit==payload.to_unit:
+        raise HTTPException(status_code=422,detail="fromUnit and toUnit must differ")
+    if can_convert(payload.from_unit,payload.to_unit):
+        raise HTTPException(status_code=422,detail=(
+            "%s and %s are the same dimension and already convert at %s; a product factor "
+            "is only for a crossing units alone cannot answer"
+            % (payload.from_unit,payload.to_unit,quantity_factor(payload.from_unit,payload.to_unit))))
+    row=await request.app.state.material_price_service.save_item_factor(
+        scope,providerItemId,payload,scope.actor_user_id)
+    return await _named(request, _declared(ProviderItemFactorResponse, row))
+
+@router.get("/material-prices/unresolved",response_model=UnresolvedItemListResponse)
+async def material_unresolved_items(projectId:str,request:Request,
+    page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200)):
+    """Listings nobody has labelled that the sheet said nothing useful about.
+
+    The work queue: these are the rows where no category-wide setting can produce a price,
+    so they are the ones worth putting in front of a person.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items,total=await request.app.state.material_price_service.unresolved(scope,page,pageSize)
+    return UnresolvedItemListResponse(items=[_declared(UnresolvedItemResponse, x) for x in items],
+        page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)

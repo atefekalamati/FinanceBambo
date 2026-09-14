@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Which of the four ways a price can be unusable this one is -- and never a zero.
+"""Which of the ways a price can be unusable this one is -- and never a zero.
 
 A reader shown nothing cannot tell a missing price from a missing unit from a missing
-mapping. A reader shown a zero is being told the thing is free. So every case here checks
-two things: that the price is withheld, and that the status says which case it is.
+factor from a missing mapping. A reader shown a zero is being told the thing is free. So
+every case here checks two things: that the price is withheld, and that the status says
+which case it is.
+
+The statuses this file exercises are the ones the API publishes, so a rename in one place
+fails here rather than reaching a screen as an untranslated word.
 """
 
 import sys
@@ -15,8 +19,14 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.finance.services.material_price_resolution import (UNIT_ALIASES, canonical_unit,
-                                                            convert_unit_price, resolve)
+from app.finance.domain.unit_registry import UNIT_REGISTRY
+from app.finance.services.material_price_resolution import (ALL_STATUSES, INACTIVE,
+                                                            INCOMPATIBLE_UNIT, INVALID_SOURCE,
+                                                            MISSING_FACTOR, RESOLVED,
+                                                            SHEET_UNIT_SPELLINGS, STALE,
+                                                            UNRESOLVED_MAPPING,
+                                                            UNRESOLVED_PRICE, UNRESOLVED_UNIT,
+                                                            canonical_unit, resolve)
 
 
 def observation(**changes):
@@ -31,112 +41,147 @@ def observation(**changes):
     return row
 
 
-class UnitNameTests(unittest.TestCase):
-    def test_the_sheet_and_the_registry_spell_kilogram_differently_and_both_are_read(self):
-        for spelling in ("کیلو", "کیلوگرم", "kg", "KG", "Kilogram"):
+class VocabularyTests(unittest.TestCase):
+    """The spellings map onto the registry and nowhere else."""
+
+    def test_every_sheet_spelling_resolves_to_a_real_finance_unit(self):
+        for spelling, code in SHEET_UNIT_SPELLINGS.items():
+            with self.subTest(spelling=spelling):
+                self.assertIn(code, UNIT_REGISTRY,
+                              "%r maps to %r, which is not a Finance unit" % (spelling, code))
+                self.assertEqual(code, canonical_unit(spelling))
+
+    def test_the_sheet_word_for_kilogram_is_read(self):
+        for spelling in ("کیلو", "کیلوگرم", "kg", "KG"):
             with self.subTest(spelling=spelling):
                 self.assertEqual("kg", canonical_unit(spelling))
 
-    def test_an_unstated_unit_is_none_not_a_default(self):
+    def test_a_spelling_the_registry_cannot_name_returns_nothing(self):
+        """Returning the raw text would let it travel on looking like a unit code."""
+        for unknown in ("فرغون", "piece-ish", "???"):
+            with self.subTest(unknown=unknown):
+                self.assertIsNone(canonical_unit(unknown))
+
+    def test_an_unstated_unit_is_none_and_not_a_default(self):
         for blank in (None, "", "   "):
             with self.subTest(blank=repr(blank)):
                 self.assertIsNone(canonical_unit(blank))
 
-    def test_an_unknown_unit_stays_unknown_rather_than_becoming_a_guess(self):
-        self.assertEqual("فرغون", canonical_unit("فرغون"))
-        self.assertNotEqual("kg", canonical_unit("فرغون"))
-
-
-class ConversionTests(unittest.TestCase):
-    def test_a_unit_price_converts_inversely_which_is_the_whole_point(self):
-        """1000 Toman per kilogram is 1 Toman per gram -- divided, not multiplied."""
-        self.assertEqual(Decimal("1"), convert_unit_price(Decimal("1000"), Decimal("1000")))
-
-    def test_kilogram_to_gram_and_back_agree(self):
-        per_kg = Decimal("955000")
-        per_g = convert_unit_price(per_kg, Decimal("1000"))
-        self.assertEqual(Decimal("955"), per_g)
-        self.assertEqual(per_kg, convert_unit_price(per_g, Decimal("0.001")))
-
-    def test_a_zero_or_negative_factor_is_refused_rather_than_dividing(self):
-        for bad in (Decimal("0"), Decimal("-2")):
-            with self.subTest(bad=bad):
-                with self.assertRaises(ValueError):
-                    convert_unit_price(Decimal("100"), bad)
-
-    def test_an_absent_factor_converts_nothing(self):
-        self.assertIsNone(convert_unit_price(Decimal("100"), None))
-        self.assertIsNone(convert_unit_price(None, Decimal("10")))
-
 
 class ResolutionTests(unittest.TestCase):
-    def test_a_price_in_the_unit_asked_for_needs_no_conversion(self):
-        price, status, reason, factor, note = resolve(observation(), display_unit="kg")
-        self.assertEqual(Decimal("955000"), price)
-        self.assertEqual("resolved", status)
-        self.assertIsNone(reason)
-        self.assertIsNone(factor, "nothing was converted, so nothing is claimed to be")
+    def test_a_price_already_in_the_unit_asked_for_needs_no_conversion(self):
+        outcome = resolve(observation(), display_unit="kg")
+        self.assertEqual(RESOLVED, outcome.status)
+        self.assertEqual(Decimal("955000"), outcome.price)
+        self.assertIsNone(outcome.conversion_factor,
+                          "nothing was converted, so nothing is claimed to be")
+        self.assertTrue(outcome.usable)
+
+    def test_a_dimension_conversion_happens_and_explains_itself(self):
+        outcome = resolve(observation(), display_unit="g")
+        self.assertEqual(RESOLVED, outcome.status)
+        self.assertEqual(Decimal("955.00000000"), outcome.price)
+        self.assertEqual(Decimal("1000"), outcome.conversion_factor)
+        self.assertEqual("dimension", outcome.factor_origin)
+        self.assertIn("تقسیم", outcome.conversion_note)
 
     def test_a_missing_price_is_unresolved_and_never_zero(self):
-        price, status, reason, _, _ = resolve(
-            observation(normalized_price_irr=None, validation_status="rejected",
-                        validation_reasons=["price is blank"]), display_unit="kg")
-        self.assertIsNone(price, "a missing price must stay missing")
-        self.assertEqual("unresolved_price", status)
-        self.assertIn("blank", reason)
+        outcome = resolve(observation(normalized_price_irr=None,
+                                      validation_reasons=["price is blank"]),
+                          display_unit="kg")
+        self.assertEqual(UNRESOLVED_PRICE, outcome.status)
+        self.assertIsNone(outcome.price)
+        self.assertIn("blank", outcome.reason)
+        self.assertFalse(outcome.usable)
 
-    def test_a_missing_factor_withholds_the_price_rather_than_relabelling_it(self):
-        price, status, reason, _, _ = resolve(
-            observation(), display_unit="piece", conversion_lookup=lambda a, b: None)
-        self.assertIsNone(price, "kg to piece needs a weight this product never stated")
-        self.assertEqual("unresolved_unit", status)
-        self.assertIn("kg", reason)
-        self.assertIn("piece", reason)
+    def test_a_row_rejected_at_import_says_so_rather_than_looking_merely_empty(self):
+        outcome = resolve(observation(validation_status="rejected",
+                                      normalized_price_irr=None,
+                                      validation_reasons=["price is not a number"]),
+                          display_unit="kg")
+        self.assertEqual(INVALID_SOURCE, outcome.status)
+        self.assertIsNone(outcome.price)
 
     def test_a_price_with_no_stated_basis_is_not_relabelled_into_one(self):
         """Six of the seven categories state no unit. That is not permission to assume."""
-        price, status, reason, _, _ = resolve(
-            observation(source_unit=None), display_unit="kg")
-        self.assertIsNone(price)
-        self.assertEqual("unresolved_unit", status)
-        self.assertIn("states no unit", reason)
+        outcome = resolve(observation(source_unit=None), display_unit="kg")
+        self.assertEqual(UNRESOLVED_UNIT, outcome.status)
+        self.assertIsNone(outcome.price)
+        self.assertIn("واحدی", outcome.reason)
 
-    def test_a_present_factor_converts_and_says_exactly_what_it_did(self):
-        price, status, _, factor, note = resolve(
-            observation(), display_unit="g", conversion_lookup=lambda a, b: Decimal("1000"))
-        self.assertEqual("resolved", status)
-        self.assertEqual(Decimal("955"), price)
-        self.assertEqual(Decimal("1000"), factor)
-        self.assertIn("dividing", note)
+    def test_a_crossing_that_needs_a_product_factor_is_refused_by_name(self):
+        outcome = resolve(observation(source_unit="عدد"), display_unit="kg")
+        self.assertEqual(MISSING_FACTOR, outcome.status)
+        self.assertIsNone(outcome.price, "the price is withheld, not relabelled")
+        self.assertIn("همین کالا", outcome.reason)
 
-    def test_an_old_price_is_stale_but_is_still_shown(self):
-        """Stale is not missing: the last known valid price is kept, and labelled."""
-        price, status, reason, _, _ = resolve(
-            observation(workflow_date_gregorian=date(2026, 8, 1)), display_unit="kg",
-            as_of=date(2026, 9, 14), stale_after_days=7)
-        self.assertEqual(Decimal("955000"), price, "a stale price is preserved, not dropped")
-        self.assertEqual("stale", status)
-        self.assertIn("2026-08-01", reason)
+    def test_a_stored_product_factor_makes_the_crossing_possible(self):
+        # "this brick weighs 2.8 kg", stored by a person against this listing.
+        outcome = resolve(observation(source_unit="عدد", normalized_price_irr=Decimal("28000")),
+                          display_unit="kg", product_factor=(Decimal("2.8"), "manual"))
+        self.assertEqual(RESOLVED, outcome.status)
+        self.assertEqual(Decimal("10000.00000000"), outcome.price)
+        self.assertEqual("manual", outcome.factor_origin)
+        self.assertIn("ضریب ثبت‌شده", outcome.conversion_note)
+
+    def test_branch_to_kilogram_needs_a_factor_and_says_which_units(self):
+        outcome = resolve(observation(source_unit="شاخه"), display_unit="kg")
+        self.assertEqual(MISSING_FACTOR, outcome.status)
+        self.assertIn("شاخه", outcome.reason)
+        self.assertIn("کیلوگرم", outcome.reason)
+
+    def test_an_unapproved_mapping_withholds_the_price_when_one_is_required(self):
+        outcome = resolve(observation(), display_unit="kg", mapping_required=True,
+                          mapping_approved=False)
+        self.assertEqual(UNRESOLVED_MAPPING, outcome.status)
+        self.assertIsNone(outcome.price)
+
+    def test_an_approved_mapping_lets_the_price_through(self):
+        outcome = resolve(observation(), display_unit="kg", mapping_required=True,
+                          mapping_approved=True)
+        self.assertEqual(RESOLVED, outcome.status)
+
+    def test_an_old_price_is_stale_but_is_still_shown_and_still_usable(self):
+        outcome = resolve(observation(workflow_date_gregorian=date(2026, 8, 1)),
+                          display_unit="kg", as_of=date(2026, 9, 14), stale_after_days=7)
+        self.assertEqual(STALE, outcome.status)
+        self.assertEqual(Decimal("955000"), outcome.price, "a stale price is preserved")
+        self.assertTrue(outcome.usable, "stale is a label, not a refusal")
+        self.assertIn("2026-08-01", outcome.reason)
 
     def test_a_fresh_price_is_not_called_stale(self):
-        _, status, _, _, _ = resolve(observation(), display_unit="kg",
-                                     as_of=date(2026, 9, 14), stale_after_days=7)
-        self.assertEqual("resolved", status)
+        outcome = resolve(observation(), display_unit="kg", as_of=date(2026, 9, 14),
+                          stale_after_days=7)
+        self.assertEqual(RESOLVED, outcome.status)
 
-    def test_no_display_unit_means_no_conversion_and_no_complaint(self):
-        """Before anybody has chosen a unit, the price is shown as the sheet states it."""
-        price, status, _, factor, _ = resolve(observation(), display_unit=None)
-        self.assertEqual(Decimal("955000"), price)
-        self.assertEqual("resolved", status)
-        self.assertIsNone(factor)
+    def test_an_inactive_listing_resolves_to_inactive_and_no_price(self):
+        outcome = resolve(observation(), display_unit="kg", active=False)
+        self.assertEqual(INACTIVE, outcome.status)
+        self.assertIsNone(outcome.price)
+        self.assertFalse(outcome.usable)
 
-    def test_every_alias_maps_to_something_this_module_also_knows(self):
-        """An alias pointing at a spelling nothing else uses is a silent dead end."""
-        targets = set(UNIT_ALIASES.values())
-        for alias, target in UNIT_ALIASES.items():
-            with self.subTest(alias=alias):
-                self.assertIn(target, targets)
-                self.assertEqual(target, canonical_unit(alias))
+    def test_no_chosen_unit_means_the_price_is_shown_as_the_sheet_states_it(self):
+        outcome = resolve(observation(), display_unit=None)
+        self.assertEqual(RESOLVED, outcome.status)
+        self.assertEqual(Decimal("955000"), outcome.price)
+        self.assertIsNone(outcome.conversion_factor)
+
+    def test_no_status_is_ever_a_price_of_zero(self):
+        """The property, over every refusal this module can produce."""
+        cases = (
+            resolve(observation(normalized_price_irr=None), display_unit="kg"),
+            resolve(observation(validation_status="rejected"), display_unit="kg"),
+            resolve(observation(source_unit=None), display_unit="kg"),
+            resolve(observation(source_unit="عدد"), display_unit="kg"),
+            resolve(observation(), display_unit="kg", mapping_required=True),
+            resolve(observation(), display_unit="kg", active=False),
+        )
+        for outcome in cases:
+            with self.subTest(status=outcome.status):
+                self.assertIn(outcome.status, ALL_STATUSES)
+                self.assertNotEqual(Decimal("0"), outcome.price)
+                self.assertIsNone(outcome.price)
+                self.assertTrue(outcome.reason, "a refusal without a reason is a blank cell")
 
 
 if __name__ == "__main__":

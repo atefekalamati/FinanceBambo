@@ -20,13 +20,23 @@ import { formatTomanFromIrr } from "../../shared/formatters/money.js";
  *   * It fetches nothing from Google. Everything on screen came from the database.
  */
 
-/** Why a price is not shown, in the reader's own language. */
+/* Why a price is not shown, in the reader's own language.
+ *
+ * Nine rather than five, and the extra four are not pedantry: each needs a different
+ * person to do a different thing. `missing_factor` needs somebody to weigh the product.
+ * `incompatible_unit` needs somebody to choose a different target unit. `invalid_source`
+ * needs the sheet fixed. `unresolved_mapping` needs an approval. Collapsing them into
+ * "no price" would tell every one of those people the same useless thing. */
 const RESOLUTION_LABELS = Object.freeze({
   resolved: null,
   stale: "قیمت قدیمی است",
   unresolved_price: "قیمت خوانا نیست",
-  unresolved_unit: "واحد تبدیل نشده",
-  unmapped: "به قلم هزینه وصل نشده",
+  unresolved_unit: "واحد اعلام نشده",
+  incompatible_unit: "واحدها با هم سازگار نیستند",
+  missing_factor: "ضریب تبدیل این کالا ثبت نشده",
+  unresolved_mapping: "اتصال به قلم هزینه تأیید نشده",
+  invalid_source: "ردیف منبع نامعتبر است",
+  inactive: "غیرفعال",
 });
 
 const RESOLUTION_CLASS = Object.freeze({
@@ -34,7 +44,22 @@ const RESOLUTION_CLASS = Object.freeze({
   stale: "material-price__status--stale",
   unresolved_price: "material-price__status--missing",
   unresolved_unit: "material-price__status--missing",
-  unmapped: "material-price__status--missing",
+  incompatible_unit: "material-price__status--missing",
+  missing_factor: "material-price__status--action",
+  unresolved_mapping: "material-price__status--action",
+  invalid_source: "material-price__status--missing",
+  inactive: "material-price__status--muted",
+});
+
+/* What the schedule says, against what the price is in. A verdict the backend reached;
+   nothing here recomputes it. */
+const ALIGNMENT_LABELS = Object.freeze({
+  not_mapped: "وصل نشده",
+  missing_finance_unit: "واحد قلم هزینه ثبت نشده",
+  aligned: "هم‌واحد",
+  convertible: "قابل تبدیل",
+  needs_factor: "نیازمند ضریب",
+  unresolved: "—",
 });
 
 const COLUMNS = Object.freeze([
@@ -43,6 +68,7 @@ const COLUMNS = Object.freeze([
   "منبع",
   "قیمت روز",
   "واحد",
+  "واحد قلم هزینه",
   "تاریخ برگه",
   "وضعیت",
 ]);
@@ -65,12 +91,24 @@ export function priceCell(row) {
   return formatTomanFromIrr(row.currentPriceIRR, { withCurrency: false });
 }
 
-/** The unit a price is quoted in, and what it was converted from if it was. */
+/** The unit the PRICE is in -- not the one somebody asked for, which may not be reachable.
+ *
+ * `targetUnit` is what the backend says the returned number is actually in. Falling back to
+ * the chosen unit would be the one lie this column can tell: showing «متر» beside a price
+ * that is still per branch. So when nothing converted, what the source said is shown. */
 export function unitCell(row) {
-  const shown = row.displayUnit ?? row.sourceUnit;
+  const shown = row.targetUnit ?? row.sourceUnitCode ?? row.sourceUnit;
   if (!shown) return "واحد اعلام نشده";
   if (!row.conversionFactor) return formatUnitLabel(shown);
-  return `${formatUnitLabel(shown)} (تبدیل‌شده)`;
+  const how = row.factorOrigin === "dimension" ? "تبدیل‌شده" : "تبدیل با ضریب کالا";
+  return `${formatUnitLabel(shown)} (${how})`;
+}
+
+/** The Finance/MSP unit and whether the price can be expressed in it. */
+export function alignmentCell(row) {
+  const verdict = ALIGNMENT_LABELS[row.unitAlignment] ?? row.unitAlignment;
+  if (!row.financeResourceUnit) return verdict;
+  return `${formatUnitLabel(row.financeResourceUnit)} — ${verdict}`;
 }
 
 /** The status sentence, or an empty string when the price stands on its own. */
@@ -90,11 +128,14 @@ export function statusText(row) {
 function renderRow(row) {
   const tr = element("tr", "material-price__row");
   tr.append(
-    element("td", "material-price__name", row.name),
+    /* The label a person wrote wins the name, because they wrote it precisely because the
+       supplier's own name was not usable. What the sheet said is still in the row's title. */
+    element("td", "material-price__name", row.labelDisplayName || row.label || row.name),
     element("td", "", row.category),
     element("td", "", row.providerName),
     element("td", "numeric", priceCell(row)),
     element("td", "", unitCell(row)),
+    element("td", "", alignmentCell(row)),
     element("td", "", sheetDateLabel(row)),
   );
 
@@ -108,11 +149,14 @@ function renderRow(row) {
   }
   tr.append(status);
 
-  if (row.conversionNote) {
-    /* A converted price that cannot be checked is a number nobody should trust. The note
-       says exactly which factor was applied and in which direction. */
-    tr.title = row.conversionNote;
-  }
+  /* Everything a reader might need to check this number, on the row itself: what was
+     converted and how, and what the supplier actually called the thing. A converted price
+     nobody can check is a number nobody should trust. */
+  const notes = [];
+  if (row.conversionNote) notes.push(row.conversionNote);
+  if ((row.labelDisplayName || row.label) && row.name) notes.push(`نام در برگه: ${row.name}`);
+  if (row.labelSourceBasis) notes.push(`مبنای قیمت: ${row.labelSourceBasis}`);
+  if (notes.length) tr.title = notes.join(" · ");
   return tr;
 }
 

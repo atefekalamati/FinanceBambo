@@ -103,6 +103,21 @@ class FakeNode {
 
   matchesOne(selector) {
     const text = selector.trim();
+
+    /* `[name="x"]`, optionally after a tag. Forms are addressed by field name far more
+       often than by class, and a helper that could not do it would push every form test
+       into indexing into `children`, which breaks the moment a field moves. */
+    const attribute = text.match(/^([a-zA-Z]*)\[([a-zA-Z-]+)=["']?([^"'\]]*)["']?\]$/);
+    if (attribute) {
+      const [, tag, name, value] = attribute;
+      if (tag && this.tagName !== tag.toUpperCase()) return false;
+      /* A property first, then the attribute: `element.name = "x"` and
+         `setAttribute("name", "x")` are both ordinary ways to set one, and a test should
+         not have to know which the module used. */
+      const actual = this[name] ?? this.getAttribute(name);
+      return actual === value;
+    }
+
     if (text.startsWith(".")) return this.classList.contains(text.slice(1));
     const [tag, ...classes] = text.split(".");
     if (tag && this.tagName !== tag.toUpperCase()) return false;

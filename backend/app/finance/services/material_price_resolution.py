@@ -1,139 +1,224 @@
 # -*- coding: utf-8 -*-
 """From an observation to a price somebody can act on -- or to a stated reason they cannot.
 
-This is where the four ways a price can be unusable are told apart, because a reader who is
-shown nothing cannot tell them apart and a reader who is shown a zero is being misled:
+This is where the ways a price can be unusable are told apart, because a reader who is
+shown nothing cannot tell them apart and a reader who is shown a zero is being misled.
 
-    unresolved_price   the newest observation could not be read (blank, unparseable)
-    unresolved_unit    there is a price, but not in the unit this category is displayed in,
-                       and no factor exists to convert it
-    unmapped           there is a price, but no approved mapping to a Finance resource
-    stale              there is a price and it is older than the freshness window
-    resolved           a price, in the right unit, with its provenance
+    resolved             a price, in the right unit, with its provenance
+    stale                older than the freshness window -- kept, and labelled
+    unresolved_price     the newest observation could not be read
+    unresolved_unit      the source states no unit, so there is no basis to convert from
+    incompatible_unit    both units are known and belong to different dimensions
+    missing_factor       the crossing is real but needs a fact about THIS product
+    unresolved_mapping   a price with no approved mapping to a Finance resource
+    invalid_source       the observation itself was rejected at import
+    inactive             the listing is kept but is not part of the active list
 
-CONVERSION, AND WHAT IS NEVER INVENTED
+THE ONE VOCABULARY
 
-A unit price converts INVERSELY to a quantity: 1000 Toman per kilogram is 1 Toman per gram,
-so the price is divided by the same factor a quantity would be multiplied by. Only two
-kinds of factor are used, and both must already exist:
+Units are named by `domain/unit_registry.py` and nothing else. What arrives from the sheet
+is Persian text a supplier typed -- «کیلو», «متر», «شاخه» -- and `SHEET_UNIT_SPELLINGS`
+maps those onto registry codes. That is an input normaliser, not a second vocabulary: every
+value it produces is a key of `UNIT_REGISTRY`, and a test asserts it.
 
-  * a dimension-compatible one from `unit_conversions` (gram/kilogram, metre/centimetre);
-  * a product-specific one from `provider_item_unit_factors` (this brick weighs this much).
-
-Nothing here derives a density, a weight per piece, a length per branch, a bag mass or a
-coverage factor. When the factor needed is absent the answer is `unresolved_unit` with the
-two units named, and the price is withheld rather than relabelled.
+An earlier draft of this file kept its own list and invented `piece`, `g`, `cm` and
+`branch` as unit names of its own. Four of those the registry did not have at all and one
+was a synonym for `each`, so a price and a Finance resource could only have agreed about a
+unit by accident.
 """
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
-#: How a converted unit price is rounded. Stated once, in one place, so two callers cannot
-#: round differently and then disagree about the same price. Eight places is the same
-#: precision `unit_conversions.factor` is stored at.
-PRICE_QUANTUM = Decimal("0.00000001")
+from ..domain.unit_conversion import (ConversionRefused, apply_product_factor, can_convert,
+                                      convert_unit_price, quantity_factor)
+from ..domain.unit_registry import UNIT_REGISTRY
 
-#: Units that mean the same thing written differently. The sheet says «کیلو», the Finance
-#: unit registry says «kg», and neither is wrong. Comparing them as strings without this
-#: would report `unresolved_unit` for a price that needs no conversion at all.
-UNIT_ALIASES = {
-    "کیلو": "kg",
-    "کیلوگرم": "kg",
-    "kilogram": "kg",
-    "kg": "kg",
-    "گرم": "g",
-    "gram": "g",
-    "g": "g",
-    "متر": "m",
-    "meter": "m",
-    "metre": "m",
-    "m": "m",
-    "سانتیمتر": "cm",
-    "سانتی‌متر": "cm",
-    "cm": "cm",
-    "عدد": "piece",
-    "piece": "piece",
+#: How the sheet spells a unit, and which registry code that is. Left side: what people
+#: write. Right side: always a key of UNIT_REGISTRY.
+SHEET_UNIT_SPELLINGS = {
+    "کیلو": "kg", "کیلوگرم": "kg", "كيلو": "kg", "kilogram": "kg", "kilo": "kg",
+    "گرم": "g", "gram": "g",
+    "تن": "ton", "tonne": "ton",
+    "متر": "m", "متری": "m", "meter": "m", "metre": "m",
+    "سانتیمتر": "cm", "سانتی‌متر": "cm", "centimeter": "cm",
+    "میلیمتر": "mm", "میلی‌متر": "mm", "millimeter": "mm",
+    "مترمربع": "m2", "متر مربع": "m2", "square meter": "m2",
+    "مترمکعب": "m3", "متر مکعب": "m3",
+    "لیتر": "liter", "litre": "liter",
+    "عدد": "each", "piece": "each", "pcs": "each", "قطعه": "each",
     "شاخه": "branch",
-    "branch": "branch",
-    "تن": "ton",
-    "ton": "ton",
-    "مترمربع": "m2",
-    "m2": "m2",
+    "کیسه": "bag", "پاکت": "bag",
 }
+
+#: Statuses, named once so the API, the UI and these tests cannot drift apart.
+RESOLVED = "resolved"
+STALE = "stale"
+UNRESOLVED_PRICE = "unresolved_price"
+UNRESOLVED_UNIT = "unresolved_unit"
+INCOMPATIBLE_UNIT = "incompatible_unit"
+MISSING_FACTOR = "missing_factor"
+UNRESOLVED_MAPPING = "unresolved_mapping"
+INVALID_SOURCE = "invalid_source"
+INACTIVE = "inactive"
+
+ALL_STATUSES = (RESOLVED, STALE, UNRESOLVED_PRICE, UNRESOLVED_UNIT, INCOMPATIBLE_UNIT,
+                MISSING_FACTOR, UNRESOLVED_MAPPING, INVALID_SOURCE, INACTIVE)
+
+
+class Resolution:
+    """What one observation resolved to. Every field a reader needs to judge it."""
+
+    __slots__ = ("price", "status", "reason", "source_unit", "target_unit",
+                 "conversion_factor", "conversion_note", "factor_origin")
+
+    def __init__(self, price=None, status=UNRESOLVED_PRICE, reason=None, source_unit=None,
+                 target_unit=None, conversion_factor=None, conversion_note=None,
+                 factor_origin=None):
+        self.price = price
+        self.status = status
+        self.reason = reason
+        self.source_unit = source_unit
+        self.target_unit = target_unit
+        self.conversion_factor = conversion_factor
+        self.conversion_note = conversion_note
+        self.factor_origin = factor_origin
+
+    @property
+    def usable(self) -> bool:
+        """Whether a Finance calculation may use this. Stale counts; unresolved never does."""
+        return self.status in (RESOLVED, STALE) and self.price is not None
 
 
 def canonical_unit(unit):
-    """The agreed spelling of a unit, or `None` when nothing was stated.
+    """A registry code, or `None` when nothing usable was stated.
 
-    An unrecognised unit is returned as it arrived, lowercased and trimmed. It is not
-    mapped to a guess: an unknown unit that silently became `kg` would be worse than one
-    that stays unknown and reports `unresolved_unit`.
+    An unrecognised spelling returns `None` rather than itself: a unit this system cannot
+    name is a unit it cannot convert, and returning the raw text would let it travel on
+    looking like a code.
     """
     if unit is None:
         return None
     text = str(unit).strip()
     if not text:
         return None
-    return UNIT_ALIASES.get(text, UNIT_ALIASES.get(text.lower(), text.lower()))
+    if text in UNIT_REGISTRY:
+        return text
+    lowered = text.lower()
+    if lowered in UNIT_REGISTRY:
+        return lowered
+    return SHEET_UNIT_SPELLINGS.get(text) or SHEET_UNIT_SPELLINGS.get(lowered)
 
 
-def convert_unit_price(price, factor):
-    """A unit price in a new unit. Inverse, because it is a price PER something.
+def unit_label(code):
+    """The Persian name of a registry code, for a message a person will read."""
+    definition = UNIT_REGISTRY.get(code or "")
+    return definition.label_fa if definition else (code or "نامشخص")
 
-    `factor` is the quantity factor: how many target units make one source unit. One
-    kilogram is 1000 grams, so a per-kilogram price becomes a per-gram price by dividing
-    by 1000 -- the opposite of what a quantity does, which is the mistake this function
-    exists to make impossible to write by accident.
+
+def resolve(observation, *, display_unit=None, product_factor=None, as_of=None,
+            stale_after_days=None, mapping_required=False, mapping_approved=False,
+            active=True):
+    """Resolve one observation against the unit a person chose.
+
+    `product_factor` is `(factor, origin)` or `None`: a number somebody stored against THIS
+    listing. It is consulted only when the units are known and cross a dimension, which is
+    the only situation no fact about units can answer.
     """
-    if price is None or factor is None:
-        return None
-    if factor <= 0:
-        raise ValueError("a conversion factor must be positive, got %s" % factor)
-    return (Decimal(price) / Decimal(factor)).quantize(PRICE_QUANTUM, rounding=ROUND_HALF_UP)
+    if not active:
+        return Resolution(status=INACTIVE, reason="این قلم در فهرست فعال نیست")
 
-
-def resolve(observation, *, display_unit=None, conversion_lookup=None, as_of=None,
-            stale_after_days=None):
-    """`(price, status, reason, factor, note)` for one observation.
-
-    `conversion_lookup(source_unit, target_unit)` returns a factor or `None`. It is passed
-    in rather than reached for, so this function stays pure and the caller decides which
-    of the two factor tables answers -- and, importantly, so an absent factor is an
-    ordinary `None` rather than an exception nobody handles.
-    """
     price = observation.get("normalized_price_irr")
-    status_of_row = observation.get("validation_status")
-
-    if price is None or status_of_row in ("rejected", "pending"):
-        reasons = observation.get("validation_reasons") or []
-        return (None, "unresolved_price",
-                "; ".join(str(r) for r in reasons) or "the newest observation has no readable price",
-                None, None)
-
+    row_status = observation.get("validation_status")
     source = canonical_unit(observation.get("source_unit"))
     target = canonical_unit(display_unit)
 
+    if row_status in ("rejected",):
+        return Resolution(status=INVALID_SOURCE, source_unit=source, target_unit=target,
+                          reason=_reasons(observation)
+                          or "این ردیف هنگام درون‌ریزی نامعتبر شناخته شد")
+    if price is None or row_status == "pending":
+        return Resolution(status=UNRESOLVED_PRICE, source_unit=source, target_unit=target,
+                          reason=_reasons(observation)
+                          or "آخرین مشاهده قیمت خوانا ندارد")
+
+    price = Decimal(price)
     factor = None
     note = None
-    if target is not None and source is not None and source != target:
-        factor = conversion_lookup(source, target) if conversion_lookup else None
-        if factor is None:
-            return (None, "unresolved_unit",
-                    "no conversion factor from %r to %r for this product; the price is "
-                    "withheld rather than relabelled" % (source, target), None, None)
-        price = convert_unit_price(price, factor)
-        note = "converted from %s to %s by dividing the unit price by %s" % (source, target, factor)
-    elif target is not None and source is None:
-        # A price exists and the category is displayed in a unit, but the sheet never said
-        # what the price is per. Relabelling it would be inventing the basis.
-        return (None, "unresolved_unit",
-                "the source states no unit for this price, so it cannot be shown per %s"
-                % target, None, None)
+    origin = None
+
+    if target is not None:
+        if source is None:
+            # The sheet states no unit for six of its seven categories. That is not
+            # permission to assume the price is per anything.
+            return Resolution(status=UNRESOLVED_UNIT, target_unit=target,
+                              reason="منبع واحدی برای این قیمت اعلام نکرده است؛ تا وقتی "
+                                     "مبنای قیمت ثبت نشود، نمایش بر حسب %s ممکن نیست"
+                                     % unit_label(target))
+        if source != target:
+            if can_convert(source, target):
+                factor = quantity_factor(source, target)
+                price = convert_unit_price(price, source, target)
+                origin = "dimension"
+                note = ("از %s به %s: قیمت واحد بر %s تقسیم شد"
+                        % (unit_label(source), unit_label(target), factor))
+            else:
+                stored, stored_origin = (product_factor or (None, None))
+                if stored is None:
+                    return Resolution(status=_crossing_status(source, target),
+                                      source_unit=source, target_unit=target,
+                                      reason=_crossing_reason(source, target))
+                try:
+                    price = apply_product_factor(price, stored)
+                except ConversionRefused as exc:
+                    return Resolution(status=MISSING_FACTOR, source_unit=source,
+                                      target_unit=target, reason=str(exc))
+                factor = Decimal(stored)
+                origin = stored_origin or "manual"
+                note = ("از %s به %s با ضریب ثبت‌شدهٔ همین کالا (%s): قیمت واحد تقسیم شد"
+                        % (unit_label(source), unit_label(target), factor))
+
+    if mapping_required and not mapping_approved:
+        return Resolution(price=None, status=UNRESOLVED_MAPPING, source_unit=source,
+                          target_unit=target,
+                          reason="این کالا هنوز به قلم هزینهٔ مالی وصل و تأیید نشده است")
 
     if stale_after_days is not None and as_of is not None:
         when = observation.get("workflow_date_gregorian")
         if when is not None and (as_of - when).days > stale_after_days:
-            return (price, "stale",
-                    "the newest price the sheet states is from %s, more than %d days ago"
-                    % (when.isoformat(), stale_after_days), factor, note)
+            return Resolution(price=price, status=STALE, source_unit=source,
+                              target_unit=target, conversion_factor=factor,
+                              conversion_note=note, factor_origin=origin,
+                              reason="تازه‌ترین قیمتی که برگه اعلام کرده مربوط به %s است"
+                                     % when.isoformat())
 
-    return (price, "resolved", None, factor, note)
+    return Resolution(price=price, status=RESOLVED, source_unit=source, target_unit=target,
+                      conversion_factor=factor, conversion_note=note, factor_origin=origin)
+
+
+def _crossing_status(source, target):
+    """`incompatible_unit` when nothing could ever bridge them; `missing_factor` otherwise.
+
+    Both are refusals. They are separate because the fix is different: one needs somebody to
+    choose a different target unit, the other needs somebody to measure this product.
+    """
+    left, right = UNIT_REGISTRY.get(source), UNIT_REGISTRY.get(target)
+    if left is None or right is None:
+        return INCOMPATIBLE_UNIT
+    # A count crossing into a physical dimension is exactly what a per-product factor
+    # answers: how much one piece weighs, how long one branch is.
+    if "count" in (left.dimension, right.dimension):
+        return MISSING_FACTOR
+    # mass to length, area to volume: no measurement of one product bridges these either.
+    return MISSING_FACTOR if {left.dimension, right.dimension} <= {
+        "mass", "length", "area", "volume"} else INCOMPATIBLE_UNIT
+
+
+def _crossing_reason(source, target):
+    return ("برای تبدیل %s به %s ضریبی لازم است که مخصوص همین کالاست و هنوز ثبت نشده؛ "
+            "قیمت نمایش داده نمی‌شود تا برچسب اشتباه نخورد"
+            % (unit_label(source), unit_label(target)))
+
+
+def _reasons(observation):
+    values = observation.get("validation_reasons") or []
+    return "; ".join(str(value) for value in values) or None

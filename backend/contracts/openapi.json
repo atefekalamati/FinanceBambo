@@ -3702,10 +3702,55 @@
             "title": "Externalname",
             "type": "string"
           },
+          "factorOrigin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factororigin"
+          },
           "fetchedAt": {
             "format": "date-time",
             "title": "Fetchedat",
             "type": "string"
+          },
+          "financeResourceId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financeresourceid"
+          },
+          "financeResourceTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financeresourcetitle"
+          },
+          "financeResourceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financeresourceunit"
           },
           "inactiveReason": {
             "anyOf": [
@@ -3717,6 +3762,101 @@
               }
             ],
             "title": "Inactivereason"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "labelDisplayName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labeldisplayname"
+          },
+          "labelProductType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labelproducttype"
+          },
+          "labelSourceBasis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labelsourcebasis"
+          },
+          "labelVersion": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labelversion"
+          },
+          "labelledAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labelledat"
+          },
+          "labelledBy": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labelledby"
+          },
+          "labelledByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labelledbyname"
+          },
+          "mappingApproved": {
+            "default": false,
+            "title": "Mappingapproved",
+            "type": "boolean"
           },
           "observedAt": {
             "format": "date-time",
@@ -3822,6 +3962,17 @@
             ],
             "title": "Sourceunit"
           },
+          "sourceUnitCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceunitcode"
+          },
           "sourceUrl": {
             "anyOf": [
               {
@@ -3832,6 +3983,22 @@
               }
             ],
             "title": "Sourceurl"
+          },
+          "targetUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetunit"
+          },
+          "unitAlignment": {
+            "default": "not_mapped",
+            "title": "Unitalignment",
+            "type": "string"
           },
           "validationReasons": {
             "items": {
@@ -5184,6 +5351,568 @@
         "title": "ProgressSnapshotResponse",
         "type": "object"
       },
+      "ProviderItemFactorCreate": {
+        "additionalProperties": false,
+        "description": "A measurement of one product: how much one of these is in another unit.\n\nThis is the only way a crossing between dimensions becomes possible -- piece to\nkilogram, branch to metre. Nothing derives one; somebody weighs or measures the thing\nand records it here with a reason.",
+        "properties": {
+          "factor": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,16}|(?=[\\d.]{1,25}0*$)\\d{0,16}\\.\\d{0,8}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Factor"
+          },
+          "factorType": {
+            "enum": [
+              "weight_per_piece",
+              "weight_per_branch",
+              "length_per_branch",
+              "mass_per_bag",
+              "area_per_piece",
+              "volume_per_piece",
+              "other"
+            ],
+            "title": "Factortype",
+            "type": "string"
+          },
+          "fromUnit": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Fromunit",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "toUnit": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Tounit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fromUnit",
+          "toUnit",
+          "factor",
+          "factorType",
+          "reason"
+        ],
+        "title": "ProviderItemFactorCreate",
+        "type": "object"
+      },
+      "ProviderItemFactorListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderItemFactorResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ProviderItemFactorListResponse",
+        "type": "object"
+      },
+      "ProviderItemFactorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approvedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approvedat"
+          },
+          "approvedBy": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approvedby"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "format": "uuid",
+            "title": "Createdby",
+            "type": "string"
+          },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
+          },
+          "factor": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Factor",
+            "type": "string"
+          },
+          "factorType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factortype"
+          },
+          "fromUnit": {
+            "title": "Fromunit",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "providerItemId": {
+            "format": "uuid",
+            "title": "Provideritemid",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "supersededAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersededat"
+          },
+          "toUnit": {
+            "title": "Tounit",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "providerItemId",
+          "version",
+          "fromUnit",
+          "toUnit",
+          "factor",
+          "origin",
+          "reason",
+          "createdBy",
+          "createdAt"
+        ],
+        "title": "ProviderItemFactorResponse",
+        "type": "object"
+      },
+      "ProviderItemLabelCreate": {
+        "additionalProperties": false,
+        "description": "What a person says one listing is.\n\nEvery field is optional except `reason`, and that asymmetry is deliberate: a label may\nsay one thing or ten, but a decision nobody explained is one nobody can review later --\nthe same rule `price_versions` and `unit_conversions` already hold.\n\n`mappingApprovedBy` is absent on purpose. The approver is the authenticated caller,\nstamped by the service; accepting it from the request would let somebody approve a\nmapping in another person's name.",
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "displayName": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayname"
+          },
+          "financeResourceId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financeresourceid"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "mappingApproved": {
+            "default": false,
+            "title": "Mappingapproved",
+            "type": "boolean"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "productType": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Producttype"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "sourceBasis": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcebasis"
+          },
+          "sourceUnit": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceunit"
+          },
+          "targetUnit": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetunit"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ProviderItemLabelCreate",
+        "type": "object"
+      },
+      "ProviderItemLabelListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderItemLabelResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ProviderItemLabelListResponse",
+        "type": "object"
+      },
+      "ProviderItemLabelResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "format": "uuid",
+            "title": "Createdby",
+            "type": "string"
+          },
+          "createdByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdbyname"
+          },
+          "displayName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayname"
+          },
+          "financeResourceId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financeresourceid"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "mappingApproved": {
+            "title": "Mappingapproved",
+            "type": "boolean"
+          },
+          "mappingApprovedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mappingapprovedat"
+          },
+          "mappingApprovedBy": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mappingapprovedby"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "productType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Producttype"
+          },
+          "providerItemId": {
+            "format": "uuid",
+            "title": "Provideritemid",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "sourceBasis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcebasis"
+          },
+          "sourceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceunit"
+          },
+          "supersededAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersededat"
+          },
+          "supersededBy": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersededby"
+          },
+          "targetUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetunit"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "providerItemId",
+          "version",
+          "mappingApproved",
+          "active",
+          "reason",
+          "createdBy",
+          "createdAt"
+        ],
+        "title": "ProviderItemLabelResponse",
+        "type": "object"
+      },
       "QuantityVariance": {
         "additionalProperties": false,
         "properties": {
@@ -6349,6 +7078,101 @@
           "items"
         ],
         "title": "UnitRegistryResponse",
+        "type": "object"
+      },
+      "UnresolvedItemListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UnresolvedItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "totalItems": {
+            "title": "Totalitems",
+            "type": "integer"
+          },
+          "totalPages": {
+            "title": "Totalpages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "title": "UnresolvedItemListResponse",
+        "type": "object"
+      },
+      "UnresolvedItemResponse": {
+        "additionalProperties": false,
+        "description": "A listing nobody has labelled and the sheet said nothing useful about.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "externalId": {
+            "title": "Externalid",
+            "type": "string"
+          },
+          "externalName": {
+            "title": "Externalname",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "sourceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceunit"
+          },
+          "sourceWorksheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceworksheet"
+          }
+        },
+        "required": [
+          "id",
+          "externalId",
+          "externalName",
+          "category",
+          "active"
+        ],
+        "title": "UnresolvedItemResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -10856,6 +11680,66 @@
         ]
       }
     },
+    "/api/projects/{projectId}/finance/material-prices/labels": {
+      "get": {
+        "description": "The current label for each listing, or for one of them.",
+        "operationId": "material_item_labels_api_projects__projectId__finance_material_prices_labels_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerItemId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provideritemid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderItemLabelListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Item Labels",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/api/projects/{projectId}/finance/material-prices/runs": {
       "get": {
         "description": "What each import did, including the ones that failed and why.",
@@ -11034,6 +11918,186 @@
         ]
       }
     },
+    "/api/projects/{projectId}/finance/material-prices/unresolved": {
+      "get": {
+        "description": "Listings nobody has labelled that the sheet said nothing useful about.\n\nThe work queue: these are the rows where no category-wide setting can produce a price,\nso they are the ones worth putting in front of a person.",
+        "operationId": "material_unresolved_items_api_projects__projectId__finance_material_prices_unresolved_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnresolvedItemListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Unresolved Items",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/{providerItemId}/factors": {
+      "get": {
+        "description": "The conversion factors somebody measured for this one product.",
+        "operationId": "material_item_factors_api_projects__projectId__finance_material_prices__providerItemId__factors_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerItemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provideritemid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderItemFactorListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Item Factors",
+        "tags": [
+          "finance"
+        ]
+      },
+      "post": {
+        "description": "Store a measurement of this product, so a crossing between dimensions becomes possible.\n\nBoth units must be Finance units, and they must actually cross a dimension: a factor\nbetween two units the registry can already convert would be a project quietly redefining\nthe gram, and it is refused with the ratio that already exists.",
+        "operationId": "save_material_item_factor_api_projects__projectId__finance_material_prices__providerItemId__factors_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerItemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provideritemid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderItemFactorCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderItemFactorResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Material Item Factor",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/api/projects/{projectId}/finance/material-prices/{providerItemId}/history": {
       "get": {
         "description": "Every observation for one listing, newest first. Append-only; nothing is rewritten.",
@@ -11105,6 +12169,120 @@
           }
         },
         "summary": "Material Price History",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/{providerItemId}/labels": {
+      "get": {
+        "description": "Every version of one listing's label, oldest first. Nothing here was rewritten.",
+        "operationId": "material_item_label_history_api_projects__projectId__finance_material_prices__providerItemId__labels_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerItemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provideritemid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderItemLabelListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Item Label History",
+        "tags": [
+          "finance"
+        ]
+      },
+      "post": {
+        "description": "Record what this listing is. `finance.edit`, appended, with a reason.\n\nSupersedes the previous version rather than replacing it: what was believed last month\nstays readable, which is the same rule every other decision in Finance follows.",
+        "operationId": "save_material_item_label_api_projects__projectId__finance_material_prices__providerItemId__labels_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerItemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provideritemid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderItemLabelCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderItemLabelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Material Item Label",
         "tags": [
           "finance"
         ]

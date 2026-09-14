@@ -31,10 +31,18 @@ function mapPrice(value) {
     secondaryPriceIRR: value.secondaryPriceIrr ?? null,
     secondaryPriceBasis: value.secondaryPriceBasis ?? null,
 
+    /* What the supplier wrote, and what this system was able to make of it. Two fields
+       because they answer two questions, and a page that showed only the second would hide
+       a spelling nobody has taught the registry yet. */
     sourceUnit: value.sourceUnit ?? null,
+    sourceUnitCode: value.sourceUnitCode ?? null,
     displayUnit: value.displayUnit ?? null,
+    /* The unit the returned price is actually in. Null when no conversion was possible --
+       a reader must never have to infer which unit a number is in. */
+    targetUnit: value.targetUnit ?? null,
     conversionFactor: value.conversionFactor ?? null,
     conversionNote: value.conversionNote ?? null,
+    factorOrigin: value.factorOrigin ?? null,
 
     workflowDateRaw: value.workflowDateRaw ?? null,
     workflowDateJalali: value.workflowDateJalali ?? null,
@@ -45,12 +53,81 @@ function mapPrice(value) {
 
     validationStatus: value.validationStatus,
     validationReasons: value.validationReasons ?? [],
-    /* resolved | unresolved_price | unresolved_unit | unmapped | stale */
+    /* resolved | stale | unresolved_price | unresolved_unit | incompatible_unit |
+       missing_factor | unresolved_mapping | invalid_source | inactive. Nine rather
+       than five because the fixes differ: `missing_factor` needs somebody to measure
+       this product, `incompatible_unit` needs a different target unit. */
     resolutionStatus: value.resolutionStatus,
     resolutionReason: value.resolutionReason ?? null,
 
     sourceRowNumber: value.sourceRowNumber ?? null,
     sourceUrl: value.sourceUrl ?? null,
+
+    /* What a person decided about this listing. All null until somebody does. */
+    label: value.label ?? null,
+    labelDisplayName: value.labelDisplayName ?? null,
+    labelProductType: value.labelProductType ?? null,
+    labelSourceBasis: value.labelSourceBasis ?? null,
+    financeResourceId: value.financeResourceId ?? null,
+    mappingApproved: value.mappingApproved ?? false,
+    labelledBy: value.labelledBy ?? null,
+    labelledByName: value.labelledByName ?? null,
+    labelledAt: value.labelledAt ?? null,
+    labelVersion: value.labelVersion ?? null,
+
+    /* The MSP/Finance side of the comparison, and the verdict. */
+    financeResourceTitle: value.financeResourceTitle ?? null,
+    financeResourceUnit: value.financeResourceUnit ?? null,
+    unitAlignment: value.unitAlignment ?? "not_mapped",
+  };
+}
+
+function mapLabel(value) {
+  return {
+    labelId: value.id,
+    providerItemId: value.providerItemId,
+    version: value.version,
+    label: value.label ?? null,
+    displayName: value.displayName ?? null,
+    category: value.category ?? null,
+    productType: value.productType ?? null,
+    sourceUnit: value.sourceUnit ?? null,
+    sourceBasis: value.sourceBasis ?? null,
+    targetUnit: value.targetUnit ?? null,
+    financeResourceId: value.financeResourceId ?? null,
+    mappingApproved: value.mappingApproved,
+    mappingApprovedBy: value.mappingApprovedBy ?? null,
+    mappingApprovedAt: value.mappingApprovedAt ?? null,
+    active: value.active,
+    notes: value.notes ?? null,
+    reason: value.reason,
+    actorId: value.createdBy,
+    actorName: value.createdByName ?? null,
+    createdAt: value.createdAt,
+    /* Set when a newer version replaced this one. Null means this is the current label. */
+    supersededAt: value.supersededAt ?? null,
+  };
+}
+
+function mapFactor(value) {
+  return {
+    factorId: value.id,
+    providerItemId: value.providerItemId,
+    version: value.version,
+    fromUnit: value.fromUnit,
+    toUnit: value.toUnit,
+    /* An exact decimal string. Never parsed into a Number: a conversion factor that went
+       through a float would come back subtly wrong, and it multiplies a price. */
+    factor: value.factor,
+    factorType: value.factorType ?? null,
+    origin: value.origin,
+    reason: value.reason,
+    actorId: value.createdBy,
+    actorName: value.createdByName ?? null,
+    createdAt: value.createdAt,
+    approvedBy: value.approvedBy ?? null,
+    approvedAt: value.approvedAt ?? null,
+    supersededAt: value.supersededAt ?? null,
   };
 }
 
@@ -182,6 +259,81 @@ export function createMaterialPricesApiAdapter(context, { client }) {
       const payload = await client.request(`${base}/material-prices/unit-settings`,
         jsonOptions("POST", { category, resourceId, displayUnit, reason }));
       return mapUnitSetting(payload);
+    },
+
+    async listLabels({ providerItemId = null } = {}) {
+      const query = providerItemId
+        ? `?providerItemId=${encodeURIComponent(providerItemId)}` : "";
+      const payload = await client.request(`${base}/material-prices/labels${query}`);
+      return (payload.items ?? []).map(mapLabel);
+    },
+
+    async listLabelHistory(providerItemId) {
+      const payload = await client.request(
+        `${base}/material-prices/${encodeURIComponent(providerItemId)}/labels`);
+      return (payload.items ?? []).map(mapLabel);
+    },
+
+    async saveLabel(providerItemId, values) {
+      /* Sent exactly as given. `mappingApprovedBy` is deliberately not in this payload:
+         the approver is whoever is authenticated, stamped by the backend, and a client
+         that could name one could approve a mapping in somebody else's name. */
+      const payload = await client.request(
+        `${base}/material-prices/${encodeURIComponent(providerItemId)}/labels`,
+        jsonOptions("POST", {
+          label: values.label ?? null,
+          displayName: values.displayName ?? null,
+          category: values.category ?? null,
+          productType: values.productType ?? null,
+          sourceUnit: values.sourceUnit ?? null,
+          sourceBasis: values.sourceBasis ?? null,
+          targetUnit: values.targetUnit ?? null,
+          financeResourceId: values.financeResourceId ?? null,
+          mappingApproved: values.mappingApproved ?? false,
+          active: values.active ?? true,
+          notes: values.notes ?? null,
+          reason: values.reason,
+        }));
+      return mapLabel(payload);
+    },
+
+    async listItemFactors(providerItemId) {
+      const payload = await client.request(
+        `${base}/material-prices/${encodeURIComponent(providerItemId)}/factors`);
+      return (payload.items ?? []).map(mapFactor);
+    },
+
+    async saveItemFactor(providerItemId, values) {
+      const payload = await client.request(
+        `${base}/material-prices/${encodeURIComponent(providerItemId)}/factors`,
+        jsonOptions("POST", {
+          fromUnit: values.fromUnit,
+          toUnit: values.toUnit,
+          factor: values.factor,
+          factorType: values.factorType,
+          reason: values.reason,
+        }));
+      return mapFactor(payload);
+    },
+
+    async listUnresolved({ page = 1, pageSize = 50 } = {}) {
+      const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      const payload = await client.request(`${base}/material-prices/unresolved?${query}`);
+      return {
+        items: (payload.items ?? []).map((item) => ({
+          providerItemId: item.id,
+          externalId: item.externalId,
+          name: item.externalName,
+          category: item.category,
+          sourceUnit: item.sourceUnit ?? null,
+          worksheet: item.sourceWorksheet ?? null,
+          active: item.active,
+        })),
+        page: payload.page,
+        pageSize: payload.pageSize,
+        totalItems: payload.totalItems,
+        totalPages: payload.totalPages,
+      };
     },
   });
 }
