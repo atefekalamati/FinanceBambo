@@ -3702,6 +3702,17 @@
             "title": "Externalname",
             "type": "string"
           },
+          "factorOrigin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factororigin"
+          },
           "fetchedAt": {
             "format": "date-time",
             "title": "Fetchedat",
@@ -3822,6 +3833,17 @@
             ],
             "title": "Sourceunit"
           },
+          "sourceUnitCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceunitcode"
+          },
           "sourceUrl": {
             "anyOf": [
               {
@@ -3832,6 +3854,17 @@
               }
             ],
             "title": "Sourceurl"
+          },
+          "targetUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetunit"
           },
           "validationReasons": {
             "items": {

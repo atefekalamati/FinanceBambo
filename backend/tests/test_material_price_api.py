@@ -85,7 +85,8 @@ class FakeRepository:
         return [s for s in self.settings if s["category"] == category]
 
     async def item_unit_factors(self, _scope, _item):
-        return self.factors
+        """Factors a person stored against this listing. `origin` says who supplied them."""
+        return [dict(row, origin=row.get("origin", "manual")) for row in self.factors]
 
     async def categories(self, _scope):
         return [{"category": "rebar", "item_count": 1, "active_count": 1,
@@ -134,7 +135,9 @@ class ServiceShapeTests(unittest.IsolatedAsyncioTestCase):
             validation_reasons=["price is blank"])])
         row = items[0]
         self.assertIsNone(row["current_price_irr"])
-        self.assertEqual("unresolved_price", row["resolution_status"])
+        # The import already judged this row and said so. `invalid_source` keeps that
+        # judgement visible instead of flattening it into "we have no price".
+        self.assertEqual("invalid_source", row["resolution_status"])
         self.assertIn("blank", row["resolution_reason"])
         self.assertNotEqual(0, row["current_price_irr"])
 
@@ -144,14 +147,18 @@ class ServiceShapeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(0, total)
 
     async def test_a_missing_factor_is_reported_and_the_price_is_withheld(self):
+        """kg to each needs a weight this product never stated. `each` is the Finance word;
+        `piece` is not a unit here, which is why the earlier draft of this test used one."""
         items, _ = await self.current(
             rows=[observation()],
-            settings=[{"category": "rebar", "resource_id": None, "display_unit": "piece"}])
+            settings=[{"category": "rebar", "resource_id": None, "display_unit": "each"}])
         row = items[0]
         self.assertIsNone(row["current_price_irr"])
-        self.assertEqual("unresolved_unit", row["resolution_status"])
-        self.assertEqual("piece", row["display_unit"])
-        self.assertEqual("کیلو", row["source_unit"], "the sheet's unit is still reported")
+        self.assertEqual("missing_factor", row["resolution_status"],
+                         "this crossing CAN be answered -- by measuring this product")
+        self.assertEqual("each", row["display_unit"])
+        self.assertEqual("کیلو", row["source_unit"], "the sheet's spelling is still reported")
+        self.assertEqual("kg", row["source_unit_code"], "and so is what it was read as")
 
     async def test_a_converted_price_explains_itself(self):
         items, _ = await self.current(
@@ -161,7 +168,13 @@ class ServiceShapeTests(unittest.IsolatedAsyncioTestCase):
         row = items[0]
         self.assertEqual(Decimal("955"), row["current_price_irr"])
         self.assertEqual(Decimal("1000"), row["conversion_factor"])
-        self.assertIn("dividing", row["conversion_note"])
+        self.assertEqual("dimension", row["factor_origin"],
+                         "units alone answered this; no product measurement was needed")
+        # The note is read by a person on a Finance page, so it is written in the language
+        # of that page. It must name both units and say what was done to the number.
+        self.assertIn("کیلوگرم", row["conversion_note"])
+        self.assertIn("گرم", row["conversion_note"])
+        self.assertIn("تقسیم", row["conversion_note"])
 
     async def test_an_inactive_listing_is_left_out_of_the_active_answer(self):
         items, total = await self.current(rows=[observation(

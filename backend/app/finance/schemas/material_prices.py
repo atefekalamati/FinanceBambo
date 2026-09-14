@@ -58,11 +58,22 @@ class MaterialPriceResponse(ApiModel):
     secondary_price_irr: Decimal | None = None
     secondary_price_basis: str | None = None
 
-    #: What the sheet said the unit was. Absent for six of the seven categories, because
-    #: the sheet does not say. Never treated as the display unit.
+    #: What the sheet said the unit was, verbatim -- «کیلو», or nothing at all. Absent for
+    #: six of the seven categories, because the sheet does not say.
     source_unit: str | None = None
+    #: The same thing as a Finance unit code, or null when the spelling is one the registry
+    #: cannot name. Two fields because they answer two questions: what the supplier wrote,
+    #: and what this system was able to make of it.
+    source_unit_code: str | None = None
     #: The unit an authorised person chose for this category, if one has been chosen.
     display_unit: str | None = None
+    #: The unit the returned price is actually in. Equal to the display unit when a
+    #: conversion succeeded, and null when none was possible -- a reader must never have to
+    #: infer which unit a number is in.
+    target_unit: str | None = None
+    #: `dimension` when units alone answered it, `manual` or `sheet_attribute` when a factor
+    #: stored against this product did. Null when nothing was converted.
+    factor_origin: str | None = None
     #: Present only when the displayed price is a CONVERTED one, and then it says exactly
     #: what was applied. A converted price with no explanation is a number nobody can check.
     conversion_factor: Decimal | None = None
@@ -79,8 +90,11 @@ class MaterialPriceResponse(ApiModel):
 
     validation_status: Literal["pending", "valid", "needs_review", "rejected"]
     validation_reasons: list[str] = Field(default_factory=list)
-    #: `resolved` | `unresolved_price` | `unresolved_unit` | `unmapped` | `stale`.
-    #: A status, not a guess: the reader is told which of these it is.
+    #: One of: resolved, stale, unresolved_price, unresolved_unit, incompatible_unit,
+    #: missing_factor, unresolved_mapping, invalid_source, inactive. A status, not a guess:
+    #: the reader is told which kind of nothing they are looking at. `missing_factor` and
+    #: `incompatible_unit` are separate because the fix differs -- one needs somebody to
+    #: measure this product, the other needs a different target unit.
     resolution_status: str
     resolution_reason: str | None = None
 

@@ -13,7 +13,7 @@ not be told that everything in it is stale.
 
 from decimal import Decimal
 
-from .material_price_resolution import canonical_unit, resolve
+from .material_price_resolution import Resolution, canonical_unit, resolve
 
 #: How old the newest workflow date may be before a price is labelled stale. Seven days is
 #: the sheet's own rhythm -- its four dates span five days -- and it is a label, never a
@@ -71,44 +71,42 @@ class MaterialPriceService:
         resolved = []
         for row in observations:
             display_unit = settings.get(row["category"])
-            lookup = await self._factor_lookup(scope, row["provider_item_id"])
-            price, status, reason, factor, note = resolve(
-                row, display_unit=display_unit, conversion_lookup=lookup, as_of=as_of,
-                stale_after_days=self.stale_after_days if as_of else None)
-            resolved.append(self._shape(row, price, status, reason, factor, note,
-                                        display_unit))
+            source = canonical_unit(row.get("source_unit"))
+            target = canonical_unit(display_unit)
+            # Only fetched when the crossing actually needs one: a per-product factor is a
+            # person's measurement, and asking for one where units already agree would
+            # invite using it where it was never needed.
+            factor = await self._product_factor(scope, row["provider_item_id"], source, target)
+            outcome = resolve(
+                row, display_unit=display_unit, product_factor=factor, as_of=as_of,
+                stale_after_days=self.stale_after_days if as_of else None,
+                active=row.get("active", True))
+            resolved.append(self._shape(row, outcome, display_unit))
 
         total = len(resolved)
         start = (page - 1) * page_size
         return resolved[start:start + page_size], total
 
-    async def _factor_lookup(self, scope, provider_item_id):
-        """A `(source, target) -> factor` for one listing, product-specific first.
+    async def _product_factor(self, scope, provider_item_id, source, target):
+        """`(factor, origin)` for one listing's own crossing, or `None`.
 
-        A product-specific factor wins over a dimension one on purpose: "this brick weighs
-        1.2 kg" is a fact about this brick, and a generic piece-to-kilogram factor cannot
-        exist. The generic table answers only the crossings that are true of every product,
-        like gram to kilogram.
+        Only a factor stored against THIS listing answers here. `unit_conversions` is not
+        consulted: it holds dimension-level factors, and a dimension-level factor is
+        exactly what `unit_conversion.py` already knows -- reaching for it at this point
+        would mean a project could quietly define its own gram.
         """
-        specific = {}
-        if hasattr(self.repository, "item_unit_factors"):
-            for row in await self.repository.item_unit_factors(scope, provider_item_id):
-                key = (canonical_unit(row["from_unit"]), canonical_unit(row["to_unit"]))
-                specific[key] = Decimal(row["factor"])
+        if source is None or target is None or source == target:
+            return None
+        if not hasattr(self.repository, "item_unit_factors"):
+            return None
+        for row in await self.repository.item_unit_factors(scope, provider_item_id):
+            if (canonical_unit(row["from_unit"]), canonical_unit(row["to_unit"])) == (source, target):
+                return Decimal(row["factor"]), row.get("origin")
+        return None
 
-        generic = {}
-        if self.conversions is not None:
-            for row in await self.conversions.list(scope):
-                key = (canonical_unit(row.source_unit), canonical_unit(row.target_unit))
-                generic[key] = Decimal(row.factor)
-
-        def lookup(source, target):
-            return specific.get((source, target)) or generic.get((source, target))
-
-        return lookup
 
     @staticmethod
-    def _shape(row, price, status, reason, factor, note, display_unit):
+    def _shape(row, outcome, display_unit):
         """One row of the API's answer. Every provenance field travels with the price."""
         return {
             "provider_item_id": row["provider_item_id"],
@@ -119,15 +117,18 @@ class MaterialPriceService:
             "active": row["active"],
             "inactive_reason": row["inactive_reason"],
             "worksheet": row.get("item_worksheet") or row.get("source_worksheet"),
-            "current_price_irr": price,
+            "current_price_irr": outcome.price,
             "raw_price": row["raw_price"],
             "source_currency": row["source_currency"],
             "secondary_price_irr": row["secondary_price_irr"],
             "secondary_price_basis": row["secondary_price_basis"],
             "source_unit": row["source_unit"],
+            "source_unit_code": outcome.source_unit,
             "display_unit": display_unit,
-            "conversion_factor": factor,
-            "conversion_note": note,
+            "target_unit": outcome.target_unit,
+            "conversion_factor": outcome.conversion_factor,
+            "conversion_note": outcome.conversion_note,
+            "factor_origin": outcome.factor_origin,
             "workflow_date_raw": row["workflow_date_raw"],
             "workflow_date_jalali": row["workflow_date_jalali"],
             "workflow_date_gregorian": row["workflow_date_gregorian"],
@@ -136,8 +137,8 @@ class MaterialPriceService:
             "fetched_at": row["fetched_at"],
             "validation_status": row["validation_status"],
             "validation_reasons": list(row["validation_reasons"] or []),
-            "resolution_status": status,
-            "resolution_reason": reason,
+            "resolution_status": outcome.status,
+            "resolution_reason": outcome.reason,
             "source_row_number": row["source_row_number"],
             "source_url": row["source_url"],
         }
