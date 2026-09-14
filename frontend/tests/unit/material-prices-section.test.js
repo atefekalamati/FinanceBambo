@@ -5,7 +5,8 @@ import { installDom } from "../helpers/dom.js";
 
 installDom();
 
-const { priceCell, renderMaterialPrices, sheetDateLabel, statusText, unitCell } =
+const { alignmentCell, priceCell, renderMaterialPrices, sheetDateLabel, statusText,
+        unitCell } =
   await import("../../src/features/prices/material-prices-section.js");
 
 function row(changes = {}) {
@@ -24,9 +25,17 @@ function row(changes = {}) {
     secondaryPriceIRR: null,
     secondaryPriceBasis: null,
     sourceUnit: "کیلو",
+    sourceUnitCode: "kg",
     displayUnit: null,
+    targetUnit: null,
     conversionFactor: null,
     conversionNote: null,
+    factorOrigin: null,
+    label: null,
+    labelDisplayName: null,
+    labelSourceBasis: null,
+    financeResourceUnit: null,
+    unitAlignment: "not_mapped",
     workflowDateRaw: "1405-06-22",
     workflowDateJalali: "1405/06/22",
     workflowDate: "2026-09-13",
@@ -61,7 +70,10 @@ test("a real price is rendered through the shared money formatter", () => {
 
 test("each way a price can be unusable gets its own sentence", () => {
   const seen = new Set();
-  for (const status of ["unresolved_price", "unresolved_unit", "unmapped", "stale"]) {
+  // All nine, because collapsing any two would tell two different people the same
+  // useless thing: one has to weigh a product, another has to approve a mapping.
+  for (const status of ["stale", "unresolved_price", "unresolved_unit", "incompatible_unit",
+                        "missing_factor", "unresolved_mapping", "invalid_source", "inactive"]) {
     const text = statusText(row({ resolutionStatus: status }));
     assert.ok(text, `${status} must say something`);
     assert.ok(!seen.has(text), `${status} must not reuse another status's wording`);
@@ -75,12 +87,12 @@ test("a resolved price needs no explanation", () => {
 
 test("the backend's reason is shown beside the label, not instead of it", () => {
   const text = statusText(row({
-    resolutionStatus: "unresolved_unit",
-    resolutionReason: "no conversion factor from 'kg' to 'piece' for this product",
+    resolutionStatus: "missing_factor",
+    resolutionReason: "برای تبدیل کیلوگرم به عدد ضریبی لازم است که مخصوص همین کالاست",
   }));
-  assert.match(text, /واحد تبدیل نشده/);
-  assert.match(text, /kg/);
-  assert.match(text, /piece/);
+  assert.match(text, /ضریب تبدیل این کالا ثبت نشده/);
+  assert.match(text, /کیلوگرم/);
+  assert.match(text, /عدد/);
 });
 
 test("the sheet's own Jalali date is what the reader sees", () => {
@@ -103,12 +115,39 @@ test("a row with no date at all says there is none", () => {
 });
 
 test("a price with no stated unit says so instead of assuming one", () => {
-  assert.equal(unitCell(row({ sourceUnit: null, displayUnit: null })), "واحد اعلام نشده");
+  // All three cleared: the code the backend read, the raw spelling, and the unit the price
+  // ended up in. Leaving any one set would make this pass for the wrong reason.
+  assert.equal(unitCell(row({
+    sourceUnit: null, sourceUnitCode: null, targetUnit: null, displayUnit: null,
+  })), "واحد اعلام نشده");
 });
 
-test("a converted price is marked as converted", () => {
-  const cell = unitCell(row({ displayUnit: "g", conversionFactor: "1000" }));
-  assert.match(cell, /تبدیل‌شده/);
+test("a converted price is marked as converted, and says which kind", () => {
+  const byUnits = unitCell(row({
+    targetUnit: "g", conversionFactor: "1000", factorOrigin: "dimension" }));
+  assert.match(byUnits, /تبدیل‌شده/);
+
+  const byProduct = unitCell(row({
+    targetUnit: "kg", conversionFactor: "2.8", factorOrigin: "manual" }));
+  assert.match(byProduct, /ضریب کالا/,
+    "a factor somebody measured is not the same claim as a ratio between units");
+});
+
+test("the unit column shows the unit the PRICE is in, never the one merely asked for", () => {
+  // The one lie this column could tell: «متر» beside a price still per branch.
+  const cell = unitCell(row({
+    displayUnit: "m", targetUnit: null, sourceUnitCode: "branch", conversionFactor: null }));
+  assert.doesNotMatch(cell, /متر$/, "the chosen unit was not reached and is not claimed");
+});
+
+test("the Finance unit and the verdict travel together", () => {
+  assert.match(alignmentCell(row({ financeResourceUnit: "kg", unitAlignment: "aligned" })),
+    /هم‌واحد/);
+  const convertible = alignmentCell(row({
+    financeResourceUnit: "ton", unitAlignment: "convertible" }));
+  assert.match(convertible, /قابل تبدیل/);
+  assert.match(convertible, /تن/, "both units are shown, not a verdict on its own");
+  assert.match(alignmentCell(row()), /وصل نشده/);
 });
 
 test("an empty answer is an empty state, never an example row", () => {
@@ -133,7 +172,7 @@ test("a row whose price is unusable still appears, with its reason", () => {
     resolutionReason: "price is blank",
   })]);
   const cells = [...section.querySelectorAll("tbody tr td")].map((td) => td.textContent);
-  assert.equal(cells.length, 7);
+  assert.equal(cells.length, 8);
   assert.ok(cells.includes("—"), "the price cell is an em dash");
   assert.match(section.textContent, /قیمت خوانا نیست/);
   assert.match(section.textContent, /price is blank/);

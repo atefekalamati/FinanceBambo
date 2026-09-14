@@ -571,7 +571,7 @@ async def material_categories(projectId:str,request:Request):
     """Every category present, counted from the database. No category is assumed to exist."""
     scope=await _resource_scope(projectId,request,"finance.view")
     items=await request.app.state.material_price_service.categories(scope)
-    return MaterialCategoryListResponse(items=[MaterialCategoryResponse(**dict(x)) for x in items])
+    return MaterialCategoryListResponse(items=[_declared(MaterialCategoryResponse, x) for x in items])
 
 @router.get("/material-prices/current",response_model=MaterialPriceListResponse)
 async def material_prices_current(projectId:str,request:Request,
@@ -597,7 +597,7 @@ async def material_price_history(projectId:str,providerItemId:UUID,request:Reque
     scope=await _resource_scope(projectId,request,"finance.view")
     items,total=await request.app.state.material_price_service.history(scope,providerItemId,page,pageSize)
     return MaterialPriceHistoryListResponse(
-        items=[MaterialPriceHistoryResponse(**dict(x)) for x in items],
+        items=[_declared(MaterialPriceHistoryResponse, x) for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 
 @router.get("/material-prices/runs",response_model=ImportRunListResponse)
@@ -606,7 +606,7 @@ async def material_price_runs(projectId:str,request:Request,
     """What each import did, including the ones that failed and why."""
     scope=await _resource_scope(projectId,request,"finance.view")
     items,total=await request.app.state.material_price_service.runs(scope,page,pageSize)
-    return ImportRunListResponse(items=[ImportRunResponse(**dict(x)) for x in items],
+    return ImportRunListResponse(items=[_declared(ImportRunResponse, x) for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 
 @router.get("/material-prices/invalid-rows",response_model=MaterialPriceHistoryListResponse)
@@ -616,7 +616,7 @@ async def material_price_invalid_rows(projectId:str,request:Request,
     scope=await _resource_scope(projectId,request,"finance.view")
     items,total=await request.app.state.material_price_service.invalid_rows(scope,page,pageSize)
     return MaterialPriceHistoryListResponse(
-        items=[MaterialPriceHistoryResponse(**dict(x)) for x in items],
+        items=[_declared(MaterialPriceHistoryResponse, x) for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 
 @router.get("/material-prices/unit-settings",response_model=MaterialUnitSettingListResponse)
@@ -626,7 +626,7 @@ async def material_unit_settings(projectId:str,request:Request,
     scope=await _resource_scope(projectId,request,"finance.view")
     items=await request.app.state.material_price_service.unit_settings(scope,category)
     return await _named(request, MaterialUnitSettingListResponse(
-        items=[MaterialUnitSettingResponse(**dict(x)) for x in items]))
+        items=[_declared(MaterialUnitSettingResponse, x) for x in items]))
 
 @router.post("/material-prices/unit-settings",response_model=MaterialUnitSettingResponse,status_code=201)
 async def set_material_unit(projectId:str,payload:MaterialUnitSettingCreate,request:Request):
@@ -637,7 +637,7 @@ async def set_material_unit(projectId:str,payload:MaterialUnitSettingCreate,requ
     """
     scope=await _resource_scope(projectId,request,"finance.edit")
     row=await request.app.state.material_price_service.set_unit(scope,payload,scope.actor_user_id)
-    return await _named(request, MaterialUnitSettingResponse(**dict(row)))
+    return await _named(request, _declared(MaterialUnitSettingResponse, row))
 
 
 # ------------------------------------------------------ labels a person writes by hand
@@ -648,6 +648,17 @@ async def set_material_unit(projectId:str,payload:MaterialUnitSettingCreate,requ
 #
 # A label is CONFIGURATION. It never changes the imported observation it describes, and it
 # cannot invent a price -- it can only make an existing price usable, or leave it withheld.
+
+def _declared(model, row):
+    """Only the fields the response declares, from a row that carries more.
+
+    `RETURNING *` hands back every column, including `organization_id` and `project_id`
+    which no response says anything about -- and `ApiModel` forbids extras, correctly, so
+    the endpoint answered 500. Narrowing here rather than naming columns in each RETURNING
+    keeps the scope columns out of one place instead of six, and a field the model DOES
+    declare but the row lacks still fails loudly rather than being defaulted.
+    """
+    return model(**{name: row[name] for name in model.model_fields if name in row})
 
 def _registry_unit(value, field):
     """A unit code the Finance registry knows, or a 422 naming the field.
@@ -670,7 +681,7 @@ async def material_item_labels(projectId:str,request:Request,providerItemId:UUID
     scope=await _resource_scope(projectId,request,"finance.view")
     items=await request.app.state.material_price_service.labels(scope,providerItemId)
     return await _named(request, ProviderItemLabelListResponse(
-        items=[ProviderItemLabelResponse(**dict(x)) for x in items]))
+        items=[_declared(ProviderItemLabelResponse, x) for x in items]))
 
 @router.get("/material-prices/{providerItemId}/labels",response_model=ProviderItemLabelListResponse)
 async def material_item_label_history(projectId:str,providerItemId:UUID,request:Request):
@@ -678,7 +689,7 @@ async def material_item_label_history(projectId:str,providerItemId:UUID,request:
     scope=await _resource_scope(projectId,request,"finance.view")
     items=await request.app.state.material_price_service.label_history(scope,providerItemId)
     return await _named(request, ProviderItemLabelListResponse(
-        items=[ProviderItemLabelResponse(**dict(x)) for x in items]))
+        items=[_declared(ProviderItemLabelResponse, x) for x in items]))
 
 @router.post("/material-prices/{providerItemId}/labels",response_model=ProviderItemLabelResponse,status_code=201)
 async def save_material_item_label(projectId:str,providerItemId:UUID,
@@ -693,7 +704,7 @@ async def save_material_item_label(projectId:str,providerItemId:UUID,
     payload.target_unit=_registry_unit(payload.target_unit,"targetUnit")
     row=await request.app.state.material_price_service.save_label(
         scope,providerItemId,payload,scope.actor_user_id)
-    return await _named(request, ProviderItemLabelResponse(**dict(row)))
+    return await _named(request, _declared(ProviderItemLabelResponse, row))
 
 @router.get("/material-prices/{providerItemId}/factors",response_model=ProviderItemFactorListResponse)
 async def material_item_factors(projectId:str,providerItemId:UUID,request:Request):
@@ -701,7 +712,7 @@ async def material_item_factors(projectId:str,providerItemId:UUID,request:Reques
     scope=await _resource_scope(projectId,request,"finance.view")
     items=await request.app.state.material_price_service.repository.item_unit_factors(scope,providerItemId)
     return await _named(request, ProviderItemFactorListResponse(
-        items=[ProviderItemFactorResponse(**dict(x)) for x in items]))
+        items=[_declared(ProviderItemFactorResponse, x) for x in items]))
 
 @router.post("/material-prices/{providerItemId}/factors",response_model=ProviderItemFactorResponse,status_code=201)
 async def save_material_item_factor(projectId:str,providerItemId:UUID,
@@ -724,7 +735,7 @@ async def save_material_item_factor(projectId:str,providerItemId:UUID,
             % (payload.from_unit,payload.to_unit,quantity_factor(payload.from_unit,payload.to_unit))))
     row=await request.app.state.material_price_service.save_item_factor(
         scope,providerItemId,payload,scope.actor_user_id)
-    return await _named(request, ProviderItemFactorResponse(**dict(row)))
+    return await _named(request, _declared(ProviderItemFactorResponse, row))
 
 @router.get("/material-prices/unresolved",response_model=UnresolvedItemListResponse)
 async def material_unresolved_items(projectId:str,request:Request,
@@ -736,5 +747,5 @@ async def material_unresolved_items(projectId:str,request:Request,
     """
     scope=await _resource_scope(projectId,request,"finance.view")
     items,total=await request.app.state.material_price_service.unresolved(scope,page,pageSize)
-    return UnresolvedItemListResponse(items=[UnresolvedItemResponse(**dict(x)) for x in items],
+    return UnresolvedItemListResponse(items=[_declared(UnresolvedItemResponse, x) for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)

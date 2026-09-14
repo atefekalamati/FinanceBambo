@@ -525,7 +525,13 @@ class PsycopgMaterialPriceRepository:
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute("SELECT count(*) AS total" + clause, args)
             total = (await c.fetchone())["total"]
+            # The columns the response declares, named rather than `i.*`. A star selects
+            # every column the table happens to have, and the response model forbids extras
+            # -- so `i.*` turned a working query into a 500 the moment anybody added a
+            # column. Naming them makes the query and the contract one change, not two.
             await c.execute(
-                "SELECT i.*" + clause + " ORDER BY i.category, i.external_name, i.id"
-                " LIMIT %s OFFSET %s", args + (page_size, (page - 1) * page_size))
+                "SELECT i.id, i.external_id, i.external_name, i.category, i.source_unit,"
+                " i.source_worksheet, i.active" + clause +
+                " ORDER BY i.category, i.external_name, i.id LIMIT %s OFFSET %s",
+                args + (page_size, (page - 1) * page_size))
             return await c.fetchall(), total

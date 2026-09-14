@@ -667,3 +667,103 @@ html[data-theme="light"] .price-form select {
     border: 1px solid var(--color-border);
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Two more status colours, and the label form
+   ─────────────────────────────────────────────────────────────────────────
+
+   `--action` is for the two refusals somebody can actually fix from this page:
+   a missing product factor and an unapproved mapping. They read differently from
+   `--missing`, where the fix is elsewhere — the sheet, or the choice of target
+   unit — because telling those two groups apart is the whole reason there are
+   nine statuses instead of five. */
+
+.material-price__status--action {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  color: var(--color-text-primary);
+}
+
+.material-price__status--muted {
+  background: var(--color-surface-panel);
+  color: var(--color-text-muted);
+}
+
+.material-label-form {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-panel);
+}
+
+.material-label-form__source {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem var(--space-md);
+  margin: 0;
+  padding: var(--space-md);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-canvas);
+  font-size: var(--font-size-sm);
+}
+
+.material-label-form__source dt {
+  color: var(--color-text-muted);
+}
+
+.material-label-form__source dd {
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.material-label-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.app-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.app-field--inline {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.app-field__label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.app-field__hint {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* A disabled control is how a reader without edit permission sees this form. It has
+   to look deliberately unavailable rather than broken, because the values in it are
+   still the real ones and still worth reading. */
+.material-label-form .app-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+@media (max-width: 48rem) {
+  .material-label-form__source {
+    grid-template-columns: 1fr;
+  }
+
+  .material-label-form__source dt {
+    margin-block-start: var(--space-sm);
+  }
+}
+
+@media print {
+  .material-label-form {
+    display: none;
+  }
+}
