@@ -197,7 +197,8 @@ class FeedFromPersistedRowTests(unittest.TestCase):
                "task_name": "تخریب جداول", "task_wbs": "1.5.1.2",
                "task_start": "2025-08-19T08:00", "task_finish": "2025-09-17T17:00",
                "resource_name": "آرماتور", "resource_type": "MATERIAL",
-               "resource_unit": "مترطول", "quantity": None, "quantity_unit": None,
+               "resource_unit": "مترطول", "normalized_unit": "m",
+               "quantity": None, "quantity_unit": None,
                "weight_rial": Decimal("1.55"), "weight_time": None, "weight_base": None,
                "actual_progress": None, "actual_progress_percent": Decimal("84"),
                "physical_progress": None, "planned_progress": None,
@@ -211,7 +212,35 @@ class FeedFromPersistedRowTests(unittest.TestCase):
         self.assertEqual("2025-08-19T08:00", feed["task"]["taskStart"])
         self.assertEqual("2025-09-17T17:00", feed["task"]["taskFinish"])
         self.assertEqual("material", feed["resourceType"])
-        self.assertEqual("مترطول", feed["unit"])
+        # The RESOLVED unit, not the file's text. The page maps this code to "متر".
+        self.assertEqual("m", feed["unit"])
+
+    def test_a_resource_initial_does_not_reach_the_page_as_a_unit(self):
+        """MS Project's `initials` is not a unit, and must not be shown as one.
+
+        On a real schedule this is the common case, not the edge one: 394 of 789 rows of
+        `test_progress.mpp` carry a single Persian letter in the file's unit field, because
+        that field is `initials` -- the first letter of the resource's name. The sync
+        already decided about each of them and wrote NULL to `normalized_unit`. The feed
+        used to fall back to the raw text, and the page prints any non-Latin string through
+        unchanged, so the واحد column showed 'د'. NULL renders as "بدون واحد" instead.
+        """
+        feed = self.stored(resource_unit="د", normalized_unit=None)
+        self.assertIsNone(feed["unit"])
+
+    def test_an_unrecognised_unit_is_unresolved_rather_than_passed_through(self):
+        # `دسیمترمکعب` is a real unit the registry does not carry, and two rows of the
+        # schedule use it. Unresolved is the correct answer: inventing a conversion to m3
+        # here would put a number in a report that nobody approved.
+        self.assertIsNone(self.stored(resource_unit="دسیمترمکعب",
+                                      normalized_unit=None)["unit"])
+
+    def test_an_approved_quantity_unit_still_wins_over_the_resolved_one(self):
+        # `quantity_unit` belongs to the APPROVED quantity, which a person entered. When
+        # one exists it is the unit that quantity is in, and it outranks anything derived
+        # from the file.
+        self.assertEqual("kg", self.stored(quantity=Decimal("5"), quantity_unit="kg",
+                                           normalized_unit="m")["unit"])
 
     def test_a_work_resource_is_not_classified_as_labour_or_equipment(self):
         self.assertIsNone(self.stored(resource_type="WORK")["resourceType"])

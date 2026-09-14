@@ -54,7 +54,7 @@ _BY_ID = ("SELECT %s FROM finance_mpp_source_versions"
 _ROWS = """
     SELECT source_task_uid, source_assignment_uid, source_resource_uid,
            task_name, task_wbs, task_start, task_finish,
-           resource_name, resource_type, resource_unit,
+           resource_name, resource_type, resource_unit, normalized_unit,
            quantity, quantity_unit,
            weight_rial, weight_time, weight_base, actual_progress,
            actual_progress_percent, physical_progress, planned_progress,
@@ -106,7 +106,21 @@ def _builder_row(row):
         "bambo_resource_type": ("material"
                                 if (row["resource_type"] or "").upper() == "MATERIAL"
                                 else None),
-        "resource_quantity_unit": row["resource_unit"],
+        # The RESOLVED unit, never the file's raw text.
+        #
+        # `resource_unit` is whatever MS Project held, and for most rows of a real schedule
+        # that is `initials` -- usually the first letter of the resource's name. On
+        # `test_progress.mpp` 394 of 789 rows carry a single Persian letter there: د, ت,
+        # ج, پ. The sync already decided about every one of them and wrote the verdict
+        # down: `normalized_unit` is the unit when the text IS one, and NULL when it is
+        # not, with `unit_source='not_a_unit'` beside it saying so.
+        #
+        # Passing the raw text put 'د' in the feed's `unit` field, and the page prints any
+        # non-Latin string through unchanged -- so a resource's initial was rendered in the
+        # واحد column as though it were a unit of measure. NULL is the honest answer and
+        # the page already renders it as "بدون واحد". This is the same rule the estimate
+        # lines already follow, where `mppUnit` is null for exactly these rows.
+        "resource_quantity_unit": row["normalized_unit"],
     }
 
 

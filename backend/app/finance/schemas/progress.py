@@ -34,9 +34,17 @@ class ProgressSnapshotResponse(ApiModel):
  # Whether this snapshot came from the project's ACTIVE source version -- the schedule
  # its estimate lines are mapped to and priced from. Distinct from `is_latest`, which is
  # about arrival order: a snapshot of an unrelated file can be the newest row and still not
- # be this project's schedule. False also means "no active source version", which is why it
- # defaults rather than being optional.
- is_active_source:bool=False
+ # be this project's schedule.
+ #
+ # Three values, not two. False is a CLAIM -- "this is not the project's schedule" -- and
+ # `mark_active_source` makes that claim explicitly for every row it returns, including
+ # when the project has no active version at all. None means the answer was not computed
+ # here, which is the feed endpoint's case: its header is built from the provider's
+ # metadata, which knows nothing about version ranking, and the two fields above are None
+ # for exactly that reason. Defaulting to False made the feed assert that the active
+ # schedule was NOT the active schedule -- seen on `test_progress.mpp`, where the listing
+ # said true and the feed for that same snapshot said false in the same breath.
+ is_active_source:bool|None=None
  # Where the snapshot came from. None means it was not recorded, which is the honest
  # answer for rows imported before the column existed -- a filename extension is not
  # evidence of a tool.

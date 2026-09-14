@@ -42,7 +42,7 @@ class FinanceMppSyncRefused(RuntimeError):
         self.code = code
 
 
-def finance_rows(parsed, *, source_sha256=None):
+def finance_rows(parsed, *, source_sha256=None, recorded_decision=None):
     """Finance-relevant rows from a parsed file, keyed by the file's own identifiers.
 
     One row per assignment, plus one row per task that has no assignment at all. The
@@ -52,10 +52,15 @@ def finance_rows(parsed, *, source_sha256=None):
     assignment, so they label the tree without entering any sum.
 
     The MSP identifiers travel as data; no database identity from any module appears.
+
+    `recorded_decision` is what a person decided about THIS file's amounts, read from
+    `finance_mpp_currency_decisions` and handed in: 'toman', 'rial', 'unknown', or None
+    when nobody has decided. It arrives as a parameter rather than being looked up, so
+    this function stays pure and a test can state every case without a database.
     """
     tasks = {task["uid"]: task for task in parsed.tasks if task["uid"] is not None}
     resources = {r["uid"]: r for r in parsed.resources if r["uid"] is not None}
-    currency_scale = _currency_scale(parsed, source_sha256)
+    currency_scale = _currency_scale(parsed, source_sha256, recorded_decision)
 
     def base(task):
         metrics = task.get("metrics") or {}
@@ -195,9 +200,37 @@ _APPROVED_TOMAN_SHA256 = frozenset({
 })
 
 
-def _currency_scale(parsed, source_sha256):
+def _currency_scale(parsed, source_sha256, recorded_decision=None):
+    """What to multiply the file's amounts by to get rials, or None to leave costs null.
+
+    Three sources, in this order, and the order is the point:
+
+      1. A decision a person recorded for exactly these bytes, in
+         `finance_mpp_currency_decisions`. First because it is the most specific thing
+         anybody knows about this file, and because it carries evidence, an author and a
+         date -- none of which a constant in this file can.
+      2. The two shas approved in code. Kept, and still authoritative for those two files:
+         moving them would mean an existing, reviewed decision stopped applying the moment
+         a table was empty.
+      3. A file that states rials plainly, with nothing to disagree about.
+
+    Anything else returns None, and None means the costs stay null. A file saying تومان
+    with code IRR and no recorded decision is the case this whole function exists for:
+    believing the symbol stores toman as rial and every cost is a tenth of the truth;
+    believing the code does the opposite.
+    """
     symbol = str(getattr(parsed, "currency_symbol", None) or "").strip()
     code = str(getattr(parsed, "currency_code", None) or "").strip().upper()
+
+    if recorded_decision == "toman":
+        return _TOMAN_TO_RIAL
+    if recorded_decision == "rial":
+        return Decimal(1)
+    if recorded_decision == "unknown":
+        # Somebody looked and could not tell. That is a finding, and it outranks the
+        # guess the plain-rial branch below would otherwise make.
+        return None
+
     if (source_sha256 in _APPROVED_TOMAN_SHA256
             and symbol == "تومان" and code == "IRR"):
         return _TOMAN_TO_RIAL
@@ -415,6 +448,33 @@ class FinanceMppSyncService:
         """
         return file_name or ("%s.mpp" % project_id)
 
+    async def _recorded_currency_decision(self, organization_id, project_id, source_sha256):
+        """What a person decided this file's amounts are in, or None if nobody has.
+
+        The highest version wins. There is no `superseded_at` to consult because the table
+        is immutable by trigger -- a correction is a new version, and the previous one stays
+        exactly as it was recorded so a report issued last month still has an answer to
+        "what did we believe then".
+
+        A missing table is treated as "nobody has decided", not as an error: a deployment
+        that has not run 0023 yet must keep importing exactly as it did before, with the
+        two code-approved shas still working and everything else leaving costs null.
+        """
+        from psycopg import errors
+
+        try:
+            async with await self._connect() as connection:
+                async with connection.cursor(row_factory=dict_row) as cursor:
+                    await cursor.execute(
+                        """SELECT amounts_are FROM finance_mpp_currency_decisions
+                            WHERE organization_id=%s AND project_id=%s AND source_sha256=%s
+                            ORDER BY version DESC LIMIT 1""",
+                        (organization_id, project_id, source_sha256))
+                    row = await cursor.fetchone()
+            return row["amounts_are"] if row else None
+        except errors.UndefinedTable:
+            return None
+
     async def sync(self, organization_id, project_id, actor_user_id=None, refresh=False,
                    file_name=None):
         """One sync. Returns what happened; raises `FinanceMppSyncRefused` on refusal.
@@ -461,7 +521,15 @@ class FinanceMppSyncService:
         parsed, verified_sha = await asyncio.to_thread(
             self._parse_a_private_copy, resolved)
 
-        rows = finance_rows(parsed, source_sha256=verified_sha)
+        # What, if anything, a person has decided about this file's currency. Read before
+        # the rows are built because it changes what the amounts mean -- and read on its
+        # own short connection so a slow decision lookup is not inside the transaction that
+        # holds the import's advisory lock.
+        recorded_decision = await self._recorded_currency_decision(
+            organization_id, project_id, verified_sha)
+
+        rows = finance_rows(parsed, source_sha256=verified_sha,
+                            recorded_decision=recorded_decision)
         if not rows:
             raise FinanceMppSyncRefused(
                 "MPP_NO_FINANCE_ROWS",

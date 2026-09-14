@@ -82,14 +82,28 @@ class CurrencyAndAssignmentTests(unittest.TestCase):
         self.assertIsNone(rows[1]["source_assignment_units"])
         self.assertTrue(all(r["source_cost"] == Decimal(900) for r in rows))
 
-    def test_unresolved_currency_refuses_before_any_database_access(self):
+    def test_unresolved_currency_refuses_without_a_transaction_a_lock_or_a_write(self):
+        """A file nobody can price must leave the database exactly as it found it.
+
+        This used to assert NO database access at all. Since 0023 the decision itself
+        lives in `finance_mpp_currency_decisions`, so asking whether a person has decided
+        is necessarily a read -- and refusing to look would mean the table could never be
+        the answer. What must still hold is everything the original guard was actually
+        protecting: no transaction is opened, no advisory lock is taken, and nothing is
+        written. The assertion is therefore exact rather than dropped -- ONE read-only
+        SELECT, named, and nothing else.
+        """
         fixture = _sync_fixtures().SyncTests()
         fixture.setUp()
         self.addCleanup(fixture.tearDown)
         connection = _sync_fixtures().Connection()
         with self.assertRaises(FinanceMppSyncRefused):
             asyncio.run(fixture.service(connection, _sync_fixtures().Reader(parsed())).sync("org", "terrace"))
-        self.assertEqual([], connection.statements)
+        self.assertEqual(1, len(connection.statements), connection.statements)
+        only = " ".join(connection.statements[0].split())
+        self.assertTrue(
+            only.startswith("SELECT amounts_are FROM finance_mpp_currency_decisions"), only)
+        # No transaction, so no advisory lock and no write could have happened inside one.
         self.assertEqual([], connection.log)
 
 

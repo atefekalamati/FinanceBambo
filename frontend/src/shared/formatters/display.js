@@ -8,15 +8,40 @@ const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 const persianDate = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Tehran" });
 const persianDateTime = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tehran" });
 
-// Codes come from the Backend UNIT_REGISTRY: kg, ton, m, m2, m3, each, hour, day.
+// Codes come from the Backend UNIT_REGISTRY, and EVERY code in it must appear here.
+//
+// This table had eight of the registry's fifteen. The other seven were added to the
+// backend when the material-price units were coordinated, and a resource carrying one of
+// them rendered as «واحد تعریف‌نشده» -- the page calling a unit undefined that the backend
+// defines, validates `finance_resources.base_unit` against, and publishes on
+// `/unit-registry`. A missing label is indistinguishable on screen from a genuinely
+// unknown unit, which is the one thing this label exists to tell apart.
+//
+// `tests/contract/unit-labels-cover-the-registry.test.js` reads the backend registry and
+// fails if a code here is missing, so the two lists cannot drift apart again. The wording
+// stays this file's own: `day` is «روز دستگاه» here because the page shows equipment days,
+// while the registry calls it «روز».
 const UNIT_LABELS = Object.freeze({
   IRR: CURRENCY_LABELS.IRR,
+  // mass
+  g: "گرم",
   kg: "کیلوگرم",
   ton: "تن",
+  // length
+  mm: "میلی‌متر",
+  cm: "سانتی‌متر",
   m: "متر",
+  // area
+  cm2: "سانتی‌مترمربع",
   m2: "مترمربع",
+  // volume
+  liter: "لیتر",
   m3: "مترمکعب",
+  // count
   each: "عدد",
+  branch: "شاخه",
+  bag: "کیسه",
+  // time
   hour: "ساعت",
   day: "روز دستگاه",
 });

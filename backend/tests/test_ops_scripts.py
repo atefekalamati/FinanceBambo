@@ -119,11 +119,23 @@ class RevisionChainTests(unittest.TestCase):
         self.assertEqual(1, len(head), "more than one head means the parser missed a parent")
 
     def test_pending_is_everything_after_the_current_revision(self):
+        """Asserted against the head the chain actually has, never against a name.
+
+        This named 0022 and broke the day 0023 was added -- a test failing because the
+        repository moved forward, not because anything regressed. The property worth
+        pinning is relational: nothing is pending at the head, exactly the head is pending
+        one step behind it, and an empty database runs the whole chain rather than part.
+        """
         revisions = chain()
-        self.assertEqual([], pending("0022", revisions), "at head, nothing is pending")
-        self.assertEqual(["0021", "0022"], pending("0020", revisions))
+        parents = {revisions[name][1] for name in revisions}
+        head, = [name for name in revisions if name not in parents]
+        self.assertEqual([], pending(head, revisions), "at head, nothing is pending")
+        self.assertEqual([head], pending(revisions[head][1], revisions),
+                         "one step behind the head, only the head is pending")
         self.assertIn("0001", pending(None, revisions),
                       "an empty database runs the whole chain")
+        self.assertEqual(len(revisions), len(pending(None, revisions)),
+                         "an empty database runs every revision, not a prefix of them")
 
     def test_an_unknown_current_revision_reports_nothing_rather_than_everything(self):
         """A database at a revision this checkout does not have is not a database to
