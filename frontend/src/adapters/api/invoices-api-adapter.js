@@ -10,10 +10,13 @@ import { financeBase, jsonOptions, mapResource } from "./api-utils.js";
 function mapInvoice(value, targets = []) {
   return {
     invoiceId: value.id,
-    // Both forms the service sends: the padded string a reader sees, and the integer it is
-    // built from, which is what a client sorts or compares on.
-    invoiceNumber: value.invoiceNumber,
+    // Two forms of one number, both from the service. `invoiceSeq` is the integer
+    // the counter allocated -- what to sort and compare on -- and `invoiceNumber`
+    // is that number written for a reader, zero-padded to three. Deriving one from
+    // the other here would be a second opinion about a fact the service already
+    // settled.
     invoiceSeq: value.invoiceSeq ?? null,
+    invoiceNumber: value.invoiceNumber,
     invoiceDate: value.invoiceDate,
     vendorName: value.vendorName,
     description: value.description,

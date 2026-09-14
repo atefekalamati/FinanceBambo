@@ -1,12 +1,10 @@
 import { normalizeDecimalInput, validatePositiveDecimal } from "../../shared/validation/decimal-validation.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 
-/**
- * The header a person fills in. No invoice number: the service allocates it per project
- * when the invoice is written, and a number typed here would be discarded by the Backend
- * -- which refuses the field outright rather than accepting and ignoring it.
- */
 export function validateInvoiceHeader(values) {
+  // No invoiceNumber. The project allocates it when the invoice is written, so
+  // there is nothing here to require, normalise or reject -- and carrying it in
+  // `values` would put it back in the payload the API refuses.
   const normalized = {
     invoiceDate: String(values.invoiceDate ?? ""),
     vendorName: String(values.vendorName ?? "").trim(),

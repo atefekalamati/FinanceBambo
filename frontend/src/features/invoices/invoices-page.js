@@ -8,13 +8,13 @@ import { createPersianDatePicker } from "../../shared/components/persian-date-pi
 import { getDialogOpener, showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
-import { actorLabel } from "../../shared/formatters/actor.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { createPermissionNotice } from "../../shared/components/permission-notice.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
+import { actorLabel } from "../../shared/formatters/actor.js";
 import { IDENTITY, PRIMARY, SECONDARY, createDataTable, createTablePagination, createTableToolbar, defaultVisibleColumns, repaintPreservingFocus, updateFilterChips }
   from "../../shared/components/data-table.js";
 
@@ -42,6 +42,36 @@ const INVOICE_VIEWS = Object.freeze([
   { key: "confirmed", label: "تأییدشده", tone: "positive", status: "confirmed" },
   { key: "corrected", label: "اصلاح‌شده", tone: "warning", status: "corrected" },
 ]);
+
+/**
+ * The one move a row is waiting for, named by what it does next rather than by
+ * the status it is in. «در انتظار تأیید» tells a reader where the document sits;
+ * «ثبت نهایی» tells them what pressing this will do.
+ *
+ * Only two statuses have a next move. A confirmed, voided or corrected invoice
+ * is not waiting on anybody, and its remaining operations -- ابطال and سند
+ * اصلاحی -- are deliberately not here: they create a second document and are
+ * worth the trip through جزئیات, where what they will do is written out.
+ */
+const NEXT_STEP = Object.freeze({
+  draft: Object.freeze({ label: "تایید اولیه", act: "submit", name: (number) => `ارسال فاکتور ${number} برای تأیید` }),
+  awaitingConfirmation: Object.freeze({ label: "ثبت نهایی", act: "confirm", name: (number) => `ثبت نهایی فاکتور ${number}` }),
+});
+
+/** The eye the host draws for a preview: 24-grid, stroked, no fill. */
+function previewIcon() {
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("focusable", "false");
+  ["M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z", "M12 9.2A2.8 2.8 0 1 0 12 14.8 2.8 2.8 0 0 0 12 9.2Z"].forEach((d) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    icon.append(path);
+  });
+  return icon;
+}
 
 /* The lines of one invoice, inside its dialog. The row number is the identity --
    it is how a line is referred to when someone asks about one. */
@@ -167,8 +197,10 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
 
   function renderHeaderStep() {
     const form = element("div", "invoice-wizard-grid");
-    // No number field. It is allocated by the service when the invoice is written, so
-    // there is nothing here for a person to decide and nothing to send.
+    // No number field. The project allocates it when the invoice is written, so
+    // there is nothing to collect and nothing yet to show: a box reading "assigned
+    // later" is a row of the form spent saying that this form has no say. The
+    // number appears where it is useful -- in the register, on the saved invoice.
     const vendor = inputField("فروشنده یا ارائه‌دهنده", "vendorName");
     vendor.input.value = headerData?.vendorName ?? (isCorrective ? originalInvoice.vendorName : "");
     const date = createPersianDatePicker({ id: "invoiceDate", label: "تاریخ فاکتور", value: headerData?.invoiceDate ?? getTehranTodayIso() });
@@ -254,10 +286,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
   function renderPreviewStep() {
     const section = element("div", "invoice-preview");
     const summary = element("dl", "invoice-detail-grid");
-    // The number is not in this summary because it does not exist yet: it is assigned when
-    // the draft is written, and it is shown from that moment on -- in the list, the detail
-    // panel and every dialog below.
-    [["شماره", "پس از ثبت پیش‌نویس تعیین می‌شود"], ["تاریخ", formatBusinessDate(headerData.invoiceDate)], ["فروشنده", headerData.vendorName], ["منبع", "ورود دستی"]].forEach(([label, value]) => { const item = element("div", "invoice-detail-grid__item"); item.append(element("dt", "", label), element("dd", "", value)); summary.append(item); });
+    [["تاریخ", formatBusinessDate(headerData.invoiceDate)], ["فروشنده", headerData.vendorName], ["منبع", "ورود دستی"]].forEach(([label, value]) => { const item = element("div", "invoice-detail-grid__item"); item.append(element("dt", "", label), element("dd", "", value)); summary.append(item); });
     const lineList = element("div", "invoice-draft-lines");
     preview.lines.forEach((line, index) => { const card = element("article", "invoice-draft-line"); card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", formatTomanFromIrr(line.lineAmountIRR))); lineList.append(card); });
     const totals = element("dl", "invoice-totals");
@@ -336,7 +365,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
 /* Exported for the tests that hold the refusal rules still. What a reader is
    shown when they may not act is as much a decision as what they are shown when
    they may, and it is not reachable from the page factory without a Backend. */
-export function renderDetail(invoice, { canEdit, currentUserId, project, onSubmit, onConfirm, onVoid, onCorrective }) {
+export function renderDetail(invoice, { canEdit, project, onSubmit, onConfirm, onVoid, onCorrective }) {
   const dialog = document.createElement("dialog");
   dialog.className = "confirm-dialog invoice-detail-dialog";
   dialog.setAttribute("aria-labelledby", "invoice-detail-title");
@@ -434,15 +463,22 @@ export function renderDetail(invoice, { canEdit, currentUserId, project, onSubmi
       () => onSubmit(invoice, dialog)));
   }
   if (invoice.invoiceStatus === "awaitingConfirmation") {
-    // Two different refusals, and the reader is owed the difference. Being
-    // unable to confirm your own submission is a rule about this invoice;
-    // holding no grant is a fact about this account. The label carries the
-    // first, the notice below carries the second.
-    const isSubmitter = invoice.submittedBy === currentUserId;
-    const label = !canEdit || isSubmitter ? "تأیید نهایی فاکتور" : "فقط ثبت‌کننده مجاز است";
-    const confirm = act(element("button", "button button--primary", label), () => onConfirm(invoice, dialog));
-    confirm.disabled = !canEdit || !isSubmitter;
-    actionsFor(confirm);
+    // Confirming is authorized, not personal: whoever holds «مدیریت فاکتورها»
+    // for this project may confirm any invoice awaiting it, and `confirmedBy`
+    // records which of them did.
+    //
+    // This used to also require that you be the submitter. Two things were
+    // wrong with it. The service dropped the rule -- in the guard AND in the
+    // UPDATE's WHERE clause, where it had been written a second time -- so the
+    // only thing still enforcing it was this line, and a request the button
+    // refused would have succeeded. And it inverted its own purpose: the whole
+    // draft → submit → confirm ceremony exists so that raising and approving
+    // are two people, and requiring the submitter made them one, which is the
+    // opposite of the separation it was named for. A رییس سازمان could not
+    // approve the invoice a کارشناس had sent them -- the one case the queue is
+    // for -- while everyone could approve their own.
+    actionsFor(act(element("button", "button button--primary", "تأیید نهایی فاکتور"),
+      () => onConfirm(invoice, dialog)));
   }
   if (invoice.invoiceStatus === "confirmed") {
     actionsFor(
@@ -580,7 +616,7 @@ const INVOICE_COLUMNS = Object.freeze([
   { key: "amount", label: "مبلغ نهایی", tier: PRIMARY, cellClass: "numeric" },
 ]);
 
-function renderTable(items, onDetail, visible) {
+function renderTable(items, onDetail, visible, { canEdit = false, onAdvance = () => {} } = {}) {
   return createDataTable({
     className: "invoices-table",
     caption: "فهرست فاکتورهای پروژه",
@@ -591,14 +627,37 @@ function renderTable(items, onDetail, visible) {
     cells: (invoice) => {
       const identity = element("div", "data-table-identity");
       identity.append(element("strong", "", invoice.invoiceNumber));
-      // The same control as before, in the cell that carries the number rather
-      // than in a column of its own: the two travel together, so the way into an
-      // invoice is still on screen when the table is scrolled sideways.
-      const action = element("button", "button button--small button--ghost invoice-detail-button", "جزئیات");
+      // Both controls in the cell that carries the number rather than in a
+      // column of their own: they travel with it, so the way into an invoice --
+      // and the move it is waiting for -- are still on screen when the table is
+      // scrolled sideways.
+      const actions = element("div", "invoice-row-actions");
+      // The move first, the way in second. A reviewer going down a filtered
+      // queue is pressing the same control on every row, and it should be in the
+      // same place each time without the number's width moving it.
+      const step = NEXT_STEP[invoice.invoiceStatus];
+      if (step && canEdit) {
+        // It opens the same dialog the detail view opens, never acting on the
+        // press: confirming writes cost into the project and cannot be undone by
+        // pressing again, so the sentence saying so is not something a shortcut
+        // gets to skip. What it saves is the trip through جزئیات, which for a
+        // queue of twenty is the difference between three clicks each and two.
+        const advance = element("button", "button button--small button--primary invoice-next-button", step.label);
+        advance.type = "button";
+        advance.setAttribute("aria-label", step.name(invoice.invoiceNumber));
+        advance.addEventListener("click", (event) => onAdvance(step.act, invoice, event.currentTarget));
+        actions.append(advance);
+      }
+      const action = element("button", "button button--small button--ghost invoice-detail-button");
       action.type = "button";
+      // The word is gone, the name is not: an icon-only control is anonymous to
+      // a screen reader without this, and the row already spends its width on
+      // the number and the move.
       action.setAttribute("aria-label", `جزئیات فاکتور ${invoice.invoiceNumber}`);
+      action.append(previewIcon());
       action.addEventListener("click", (event) => onDetail(invoice.invoiceId, event.currentTarget));
-      identity.append(action);
+      actions.append(action);
+      identity.append(actions);
       // The duplicate flag is the cell's, not the identity row's: a third thing
       // inside that row would share the width the number and the button need.
       const cell = document.createDocumentFragment();
@@ -706,18 +765,42 @@ export function createInvoicesPage({ context, adapter }) {
     load();
   }
 
+  /**
+   * The row's own button, taking the invoice to its next state.
+   *
+   * It opens the dialog `showDetail` would have opened two clicks later, with
+   * the row's copy of the invoice: `createSubmitDraftDialog` and
+   * `createConfirmInvoiceDialog` read the number, the version and the amount,
+   * and the list carries all three. Fetching the document again to show a
+   * sentence about it would put a wait in front of a control whose whole point
+   * is that it is already there -- and the version travelling with the row is
+   * the one the reader is looking at, so a document that moved underneath them
+   * is refused by the service as stale, which is the answer they need.
+   */
+  function advanceInvoice(act, invoice, trigger) {
+    const opener = trigger ?? null;
+    const dialog = act === "submit"
+      ? createSubmitDraftDialog({ invoice, adapter, onSaved: load })
+      : createConfirmInvoiceDialog({ invoice, adapter, onSaved: load });
+    root.append(dialog);
+    dialog.addEventListener("close", () => dialog.remove(), { once: true });
+    showAccessibleDialog(dialog, { opener });
+  }
+
   async function showDetail(invoiceId, trigger) {
     detailMessage.textContent = "";
     detailMessage.className = "form-message invoice-detail-message";
+    // Busy is a class, not a caption. The trigger is an icon now, and writing
+    // text into it would replace the drawing -- then restoring the "previous"
+    // text, which for an icon-only button is the empty string, would leave a
+    // blank square behind for the rest of the session.
     trigger.disabled = true;
-    const previous = trigger.textContent;
-    trigger.textContent = "در حال دریافت…";
+    trigger.classList.add("is-busy");
     try {
       const invoice = await adapter.getInvoice(invoiceId);
       const dialog = renderDetail(invoice, {
         canEdit: canCreate,
         project: { name: context.projectName, code: context.projectCode },
-        currentUserId: context.userId,
         onSubmit: (draft, detailDialog) => {
           const opener = getDialogOpener(detailDialog);
           detailDialog.close();
@@ -759,7 +842,7 @@ export function createInvoicesPage({ context, adapter }) {
       detailMessage.className = "form-message form-message--error invoice-detail-message";
     } finally {
       trigger.disabled = false;
-      trigger.textContent = previous;
+      trigger.classList.remove("is-busy");
     }
   }
 
@@ -794,7 +877,7 @@ export function createInvoicesPage({ context, adapter }) {
      because a filter that empties the list must not leave with it. */
   function renderListBody(data) {
     const body = element("div", "invoices-list-body");
-    const table = renderTable(data.items, showDetail, visibleColumns);
+    const table = renderTable(data.items, showDetail, visibleColumns, { canEdit: canCreate, onAdvance: advanceInvoice });
     /* The one table in this module the server pages. Every other table arrives
        whole and slices what it already has; here `totalItems` is the register's
        size and `data.items` is only the page asked for, so both controls send a
@@ -824,7 +907,7 @@ export function createInvoicesPage({ context, adapter }) {
     const section = element("section", "invoices-section");
     const heading = element("div", "invoice-list-heading");
     const title = element("div", "");
-    title.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `تمام مبالغ این صفحه برای کاربر به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند.`));
+    title.append(element("h2", "", "فهرست فاکتورها"), element("p", "", `پس از ایجاد و بازبینی فاکتور ، تایید و سپس ثبت نهایی را بزنید`));
     heading.append(title);
     // The toolbar is built once and moved, never rebuilt: a repaint that
     // replaced it would take the search box out from under whoever is typing

@@ -179,6 +179,64 @@
   justify-content: space-between;
 }
 
+/* --- the two controls in a row -------------------------------------------
+   They are one group so `space-between` above still has two things to push
+   apart: the number at the reading edge, the controls at the other. Three loose
+   children would have spread the move into the middle of the cell, where the
+   number's width would move it from row to row. */
+.invoices-table .invoice-row-actions {
+  display: flex;
+  align-items: center;
+  gap: .28rem;
+  flex-shrink: 0;
+}
+
+/* One width for both labels.
+   «تأیید» is four characters and «ثبت نهایی» is nine, and a control that
+   changed width with the row's status would make a filtered queue look ragged
+   and move the target between rows. The width is in `em`, so it is measured in
+   the button's own type -- which the shared table already steps down at 36rem
+   and again at 30rem -- and one declaration holds at every breakpoint instead
+   of three that can drift apart. */
+.invoices-table .invoice-next-button {
+  /* 5.3em is «ثبت نهایی» measured, not estimated: the longer label needs 48.7px
+     at the 9.3px type this cell uses on a phone, and 5.2em gave it 48.3. There
+     is no slack in this number -- it is the label's own width -- so trimming it
+     to buy the table room would cut the word instead. */
+  inline-size: 5.3em;
+  flex-shrink: 0;
+  padding-inline: 0;
+  white-space: nowrap;
+}
+
+/* The icon that replaced the word «جزئیات». Square on the button's own type for
+   the same reason the width above is, and it keeps the 2rem touch floor the
+   shared sheet sets for controls in this cell. */
+.invoices-table .invoice-detail-button {
+  /* Square on whatever floor the shared sheet is giving controls in this cell --
+     2rem, and 1.85rem under 30rem. A fixed width here would have kept the
+     phone's smallest step paying desktop's width for a drawing. */
+  inline-size: auto;
+  aspect-ratio: 1;
+  flex-shrink: 0;
+  padding-inline: 0;
+}
+
+.invoices-table .invoice-detail-button svg {
+  inline-size: 1.05em;
+  block-size: 1.05em;
+  stroke: currentcolor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Fetching the detail. The drawing stays; only its weight says something is
+   happening, so nothing is written into a button that has no text to restore. */
+.invoices-table .invoice-detail-button.is-busy svg {
+  opacity: .45;
+}
+
 .invoices-table :is(th, td)[data-col="date"] {
   inline-size: 9%;
 }

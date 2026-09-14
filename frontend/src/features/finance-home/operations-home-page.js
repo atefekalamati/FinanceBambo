@@ -125,19 +125,11 @@ export function createOperationsHomePage({ progressAdapter }) {
     const header = element("header", "finance-page-header");
     header.append(element("h1", "finance-page-title", "امور مالی"));
 
-    const intro = element("section", "section-heading");
-    const copy = element("div");
-    copy.append(
-      element("span", "", "کارهای این بخش"),
-      element("h2", "", "جایی که اعداد ساخته می‌شوند"),
-    );
-    intro.append(copy, element("small", "", "ارقام و نمودارها در سربرگ گزارش مالی نمایش داده می‌شوند"));
-
     const areas = element("section", "work-area-grid");
     areas.setAttribute("aria-label", "بخش‌های امور مالی");
     WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-    fragment.append(header, renderInputState(data.snapshots), intro, areas);
+    fragment.append(header, renderInputState(data.snapshots), areas);
     return fragment;
   }
 

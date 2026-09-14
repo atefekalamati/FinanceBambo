@@ -52,6 +52,18 @@ function reversalSourceIndex(index) {
   return STATUSES[(index - 1) % STATUSES.length] === "voided" ? index - 1 : index;
 }
 
+/**
+ * The number as the service writes it: an integer the counter allocated, and that
+ * integer zero-padded to three for a reader. Both travel on the invoice because
+ * both are in the API's response -- the preview must not be the one place where a
+ * number is composed differently from production.
+ */
+const INVOICE_NUMBER_WIDTH = 3;
+
+function formatInvoiceNumber(seq) {
+  return seq === null || seq === undefined ? null : String(seq).padStart(INVOICE_NUMBER_WIDTH, "0");
+}
+
 function makeInvoice(index, context) {
   const number = String(index).padStart(3, "0");
   const status = STATUSES[(index - 1) % STATUSES.length];
@@ -63,7 +75,8 @@ function makeInvoice(index, context) {
     invoiceId: `invoice-demo-${number}`,
     organizationId: context.organizationId,
     projectId: context.projectId,
-    invoiceNumber: `ف-${number}`,
+    invoiceSeq: index,
+    invoiceNumber: formatInvoiceNumber(index),
     invoiceDate,
     vendorName: index % 3 === 0 ? "تأمین تجهیزات سازه نمونه" : index % 2 === 0 ? "شرکت مصالح پایدار نمونه" : "فروشگاه ساختمانی بامبو نمونه",
     description: index % 4 === 0 ? "خرید و تأمین اقلام موردنیاز عملیات اجرایی طبق صورت‌جلسه کارگاه" : "فاکتور نمایشی برای توسعه رابط کاربری",
@@ -105,6 +118,16 @@ export function buildSeedInvoices(context) {
 
 export function createMockInvoicesAdapter(context, { initialState = "success" } = {}) {
   const invoices = initialState === "empty" ? [] : buildSeedInvoices(context);
+  /* The project's counter. One function for every path that writes an invoice, the
+     way the service keeps one statement for both of its writing transactions: a
+     second place to take the next number is a second place for the rule to drift.
+     Single-threaded here, so the row lock production needs has nothing to do. */
+  let nextInvoiceSeq = invoices.reduce((highest, invoice) => Math.max(highest, invoice.invoiceSeq ?? 0), 0) + 1;
+  const allocateInvoiceNumber = () => {
+    const seq = nextInvoiceSeq;
+    nextInvoiceSeq += 1;
+    return { invoiceSeq: seq, invoiceNumber: formatInvoiceNumber(seq) };
+  };
   const createRequests = new Map();
   const confirmationKeys = new Map();
   const linkedOperationKeys = new Map();
@@ -157,27 +180,10 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     return { lines: preparedLines, rawLinesTotalIRR, finalAmountIRR, ...adjustments };
   }
 
-  /**
-   * The project's next invoice number, the way the service allocates it: count up from 1,
-   * one sequence per project, and pad to three digits for display only. The demo data is
-   * numbered "ف-N", which is the older scheme and is left alone -- what matters is that a
-   * number created HERE looks like one the service would create.
-   */
-  function nextInvoiceSeq() {
-    const used = invoices.map((invoice) => Number(invoice.invoiceSeq) || 0);
-    return Math.max(0, ...used) + 1;
-  }
-
-  function paddedInvoiceNumber(sequence) {
-    return String(sequence).padStart(3, "0");
-  }
-
   function findSimilarInvoices(header, finalAmountIRR) {
     const vendor = String(header.vendorName).trim().toLocaleLowerCase("fa-IR");
-    // Vendor, date and amount. The number is deliberately not part of this: every invoice
-    // now has a different one, so including it would make the check match nothing -- which
-    // is the quietest way for a duplicate warning to stop working. The service's own
-    // predicate dropped it for the same reason.
+    // Not the number: every invoice has its own now, so matching on it would never
+    // find anything and the duplicate warning would go quiet instead of going away.
     return invoices.filter((invoice) => invoice.vendorName.trim().toLocaleLowerCase("fa-IR") === vendor
       && invoice.invoiceDate === header.invoiceDate
       && invoice.finalAmountIRR === finalAmountIRR);
@@ -203,8 +209,9 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
       return clone(repeated.invoice);
     }
     if (!header?.invoiceDate || !header.vendorName || !Array.isArray(lines) || !lines.length) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "اطلاعات فاکتور کامل نیست." });
-    // A client that still sends a number is told, exactly as the service tells it -- the
-    // demo surface must not accept what the real one refuses.
+    // A client that still sends a number is told, exactly as the service tells it: the
+    // endpoint answers 422 naming the field, and a demo surface that accepted what the
+    // real one refuses would hide the very defect this change exists to fix.
     if (header.invoiceNumber != null) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "شماره فاکتور را سرویس تعیین می‌کند و نباید ارسال شود." });
     const preview = buildPreview(lines, adjustments);
     if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ نهایی فاکتور نمی‌تواند منفی باشد." });
@@ -212,8 +219,7 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     const auditedReason = String(duplicateOverrideReason).trim();
     if (duplicateMatches.length && auditedReason.length < 3) throw new ApiError({ status: 422, code: "INVOICE_DUPLICATE_REASON_REQUIRED", message: "برای ادامه ثبت فاکتور مشابه، دلیل ممیزی الزامی است.", details: duplicateMatches.map((invoice) => ({ invoiceId: invoice.invoiceId })) });
     const preparedLines = preview.lines.map((line, index) => ({ ...line, invoiceLineId: `draft-line-${Date.now()}-${index + 1}` }));
-    const allocated = nextInvoiceSeq();
-    const invoice = { invoiceId: `invoice-draft-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, invoiceSeq: allocated, invoiceNumber: paddedInvoiceNumber(allocated), source: "manual", invoiceStatus: "draft", version: 1, idempotencyKey: requestKey, duplicateWarning: duplicateMatches.length > 0, duplicateOverrideReason: duplicateMatches.length ? auditedReason : null, duplicateOfInvoiceIds: duplicateMatches.map((item) => item.invoiceId), rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, createdAt: new Date().toISOString(), confirmedBy: null, confirmedAt: null, relatedInvoiceId: null, lines: preparedLines };
+    const invoice = { invoiceId: `invoice-draft-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, ...allocateInvoiceNumber(), source: "manual", invoiceStatus: "draft", version: 1, idempotencyKey: requestKey, duplicateWarning: duplicateMatches.length > 0, duplicateOverrideReason: duplicateMatches.length ? auditedReason : null, duplicateOfInvoiceIds: duplicateMatches.map((item) => item.invoiceId), rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, createdAt: new Date().toISOString(), confirmedBy: null, confirmedAt: null, relatedInvoiceId: null, lines: preparedLines };
     invoices.unshift(invoice);
     createRequests.set(requestKey, { fingerprint, invoice: clone(invoice) });
     return clone(invoice);
@@ -235,7 +241,10 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     if (!context.permissionCodes?.includes("finance.edit")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز تأیید فاکتور وجود ندارد.", requestId: "mock-invoice-confirm-403" });
     const invoice = invoices.find((item) => item.invoiceId === invoiceId);
     if (!invoice) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "فاکتور موردنظر پیدا نشد." });
-    if (invoice.submittedBy !== context.userId) throw new ApiError({ status: 403, code: "INVOICE_CONFIRMATION_FORBIDDEN", message: "در نسخه MVP فقط ثبت‌کننده فاکتور می‌تواند همان سند را تأیید کند." });
+    // No submitter check. The service dropped that rule -- confirming is settled by
+    // holding «مدیریت فاکتورها», and `confirmedBy` records who did it -- and a preview
+    // that refuses what the real API accepts teaches the wrong flow. The uploader rule
+    // on `createConfirmedExtractedInvoice` below is a different rule and is still live.
     const key = String(idempotencyKey ?? "").trim();
     if (!key) throw new ApiError({ status: 422, code: "IDEMPOTENCY_KEY_REQUIRED", message: "شناسه یکتای تأیید الزامی است." });
     if (invoice.invoiceStatus === "confirmed") {
@@ -262,7 +271,7 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     if (!original) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "فاکتور اصلی پیدا نشد." });
     if (original.invoiceStatus !== "confirmed" || original.version !== expectedVersion || reversedOriginals.has(invoiceId)) throw new ApiError({ status: 409, code: "INVOICE_OPERATION_CONFLICT", message: "فقط نسخه جاری یک فاکتور تأییدشده و بدون سند برگشت قابل ابطال است.", requestId: "mock-invoice-void-409" });
     const occurredAt = new Date().toISOString();
-    const reversal = { ...clone(original), invoiceId: `invoice-reversal-${Date.now()}`, source: "reversal", invoiceStatus: "voided", version: 1, idempotencyKey: key, description: auditedReason, financialEffectSign: -1, originalInvoiceId: original.invoiceId, relatedInvoiceId: original.invoiceId, submittedBy: context.userId, confirmedBy: context.userId, confirmedAt: occurredAt, createdAt: occurredAt };
+    const reversal = { ...clone(original), ...allocateInvoiceNumber(), invoiceId: `invoice-reversal-${Date.now()}`, source: "reversal", invoiceStatus: "voided", version: 1, idempotencyKey: key, description: auditedReason, financialEffectSign: -1, originalInvoiceId: original.invoiceId, relatedInvoiceId: original.invoiceId, submittedBy: context.userId, confirmedBy: context.userId, confirmedAt: occurredAt, createdAt: occurredAt };
     invoices.unshift(reversal);
     reversedOriginals.add(original.invoiceId);
     linkedOperationKeys.set(key, clone(reversal));
@@ -283,7 +292,7 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ سند اصلاحی نمی‌تواند منفی باشد." });
     const occurredAt = new Date().toISOString();
     const preparedLines = preview.lines.map((line, index) => ({ ...line, invoiceLineId: `corrective-line-${Date.now()}-${index + 1}` }));
-    const corrective = { invoiceId: `invoice-corrective-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, source: "corrective", invoiceStatus: "corrected", version: 1, idempotencyKey: key, correctionReason: auditedReason, financialEffectSign, originalInvoiceId, relatedInvoiceId: originalInvoiceId, duplicateWarning: false, duplicateOverrideReason: null, duplicateOfInvoiceIds: [], rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, confirmedBy: context.userId, confirmedAt: occurredAt, createdAt: occurredAt, lines: preparedLines };
+    const corrective = { invoiceId: `invoice-corrective-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, ...allocateInvoiceNumber(), source: "corrective", invoiceStatus: "corrected", version: 1, idempotencyKey: key, correctionReason: auditedReason, financialEffectSign, originalInvoiceId, relatedInvoiceId: originalInvoiceId, duplicateWarning: false, duplicateOverrideReason: null, duplicateOfInvoiceIds: [], rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, confirmedBy: context.userId, confirmedAt: occurredAt, createdAt: occurredAt, lines: preparedLines };
     invoices.unshift(corrective);
     linkedOperationKeys.set(key, clone(corrective));
     return clone(corrective);
@@ -304,7 +313,10 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
       invoiceId: `invoice-extracted-${Date.now()}`,
       organizationId: context.organizationId,
       projectId: context.projectId,
-      invoiceNumber: String(invoice.invoiceNumber ?? "").trim() || null,
+      // The fourth path, and it takes the next number like the other three. What the
+      // extractor read off the supplier's document is their number, not this
+      // project's, and the reviewed payload no longer carries it.
+      ...allocateInvoiceNumber(),
       invoiceDate: invoice.invoiceDate,
       vendorName: String(invoice.vendorName).trim(),
       description: "ثبت‌شده پس از بازبینی انسانی استخراج هوشمند",
