@@ -34,7 +34,16 @@
 21. `0021_material_price_sheet_ingestion`
 22. `0022_material_unit_labels`
 23. `0023_mpp_currency_decisions`
-24. `0024_finance_item_price_mappings` (head)
+24. `0024_finance_item_price_mappings`
+25. `0025_item_price_mapping_components` (head)
+
+**۰۰۲۵ دومین مهاجرتِ داده‌جابه‌جاکنِ این زنجیره است.** جدول اجزای مصالح را می‌سازد و
+سپس هر «اتصال تک‌محصولیِ زنده» را به‌عنوان نخستین جزءِ همان ردیف درج می‌کند، با
+`usage_mode = per_msp_unit` و مصرف ۱ — که دقیقاً همان معنای مدل تک‌محصولی است، پس
+هیچ ردیف موجودی عددِ گزارش‌شده‌اش تغییر نمی‌کند. جدول
+`finance_item_price_mappings` دست‌نخورده می‌ماند. به همین دلیل
+`scripts/reconcile_ledger.py` هر بازه‌ای شامل ۰۰۲۵ را نیز `refused-data-migration`
+اعلام می‌کند: مقایسهٔ اثرانگشت schema دربارهٔ یک backfill چیزی ثابت نمی‌کند.
 
 ### گراف نهایی · ۲۰۲۶-۰۹-۱۲
 

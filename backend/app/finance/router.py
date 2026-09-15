@@ -42,10 +42,14 @@ from .schemas.material_prices import (ImportRunListResponse,ImportRunResponse,
     UnresolvedItemListResponse,UnresolvedItemResponse)
 from .schemas.item_price_mappings import (CandidateListResponse,CandidateProductResponse,
     ConvertedPricePreviewResponse,ItemPriceMappingCreate,ItemPriceMappingResponse,
-    ItemPriceStatusListResponse,ItemPriceStatusResponse,MappingFiltersResponse)
+    MappingFiltersResponse)
+from .schemas.item_price_components import (ItemPriceRowStatusListResponse,ItemPriceRowStatusResponse,PriceComponentCreate,
+    PriceComponentDeactivate,PriceComponentListResponse,PriceComponentPreviewResponse,
+    PriceComponentResponse,PriceComponentRow,PricedLineHeaderResponse)
 from .domain.material_categories import category_columns,category_label,spec_columns,specs_of
 from .services.material_price_resolution import canonical_unit
 from datetime import date
+from decimal import Decimal
 
 router = APIRouter(prefix="/projects/{projectId}/finance", tags=["finance"])
 
@@ -800,19 +804,6 @@ async def material_unresolved_items(projectId:str,request:Request,
 # the two by name, by resemblance, or by price -- a mapping exists because a person made
 # one, and until then the item reports «محصول قیمت روز انتخاب نشده» rather than a number.
 
-@router.get("/item-price-mappings/status",response_model=ItemPriceStatusListResponse)
-async def item_price_status(projectId:str,request:Request):
-    """Every estimate line's pricing state, for the financial-items table.
-
-    One call for the whole table. A line nobody has mapped is PRESENT here with
-    `needs_product` -- leaving it out would be indistinguishable from a line the caller
-    forgot to ask about, and the table needs to show what is waiting.
-    """
-    scope=await _resource_scope(projectId,request,"finance.view")
-    answers=await request.app.state.item_price_mapping_service.table_status(scope)
-    return ItemPriceStatusListResponse(
-        items=[_declared(ItemPriceStatusResponse, row) for row in answers.values()])
-
 @router.get("/item-price-mappings/candidates",response_model=CandidateListResponse)
 async def item_price_candidates(projectId:str,request:Request,
     category:str|None=Query(None,max_length=64),
@@ -846,19 +837,27 @@ async def item_price_candidates(projectId:str,request:Request,
 
 @router.get("/item-price-mappings/filters",response_model=MappingFiltersResponse)
 async def item_price_filters(projectId:str,request:Request,
-    category:str|None=Query(None,max_length=64)):
-    """What the modal may filter by. Read from the data, never a hard-coded list."""
+    category:str|None=Query(None,max_length=64),providerId:UUID|None=Query(None)):
+    """What the modal may filter by at THIS point in its cascade.
+
+    Read from the data, never a hard-coded list -- and scoped as the cascade narrows:
+    providers by the chosen category, product types by category AND provider. Offering a
+    supplier who sells no brick under «آجر», or a type that exists only on somebody else's
+    products, yields an empty result list that reads as a broken page rather than as an
+    empty category.
+    """
     scope=await _resource_scope(projectId,request,"finance.view")
-    filters=await request.app.state.item_price_mapping_service.filters(scope,category=category)
+    filters=await request.app.state.item_price_component_service.filters(
+        scope,category=category,provider_id=providerId)
     categories=await request.app.state.material_price_service.categories(scope)
     return MappingFiltersResponse(
         providers=[{"id":str(p["id"]),"name":p["name"]} for p in filters["providers"]],
-        product_types=filters["productTypes"],
+        product_types=filters["product_types"],
+        usage_modes=filters["usage_modes"],
         categories=[{"category":c["category"],"label":category_label(c["category"]),
                      "itemCount":c["item_count"]} for c in categories],
-        units=[{"code":code,"label":unit.label_fa,"dimension":unit.dimension,
-                "dimensionLabel":unit.dimension_label_fa}
-               for code,unit in UNIT_REGISTRY.items() if unit.active])
+        units=[{"code":u["code"],"label":u["label"],"dimension":u["dimension"],
+                "dimensionLabel":u["dimension_label"]} for u in filters["units"]])
 
 @router.get("/estimate-lines/{lineId}/price-mapping",response_model=ItemPriceMappingResponse|None)
 async def read_item_price_mapping(projectId:str,lineId:UUID,request:Request):
@@ -902,3 +901,141 @@ async def save_item_price_mapping(projectId:str,lineId:UUID,payload:ItemPriceMap
     row=await request.app.state.item_price_mapping_service.save_mapping(
         scope,estimate_line_id=lineId,payload=payload,actor_id=scope.actor_user_id)
     return await _named(request, _declared(ItemPriceMappingResponse, row))
+
+# ------------------------------------------------- one item, many materials
+#
+# An activity is not a material. «کانال‌کنی» is 500 cubic metres of trenching, and it
+# consumes rebar and pipe and brick that the schedule never names -- a schedule describes
+# work, not a bill of materials. So a line is priced by a LIST of components, each naming a
+# real listing, an official unit, and how much of it this activity uses.
+#
+# Nothing here decides what an activity consumes. A component exists because a person said
+# so, with a reason, and the row reports «نیازمند افزودن مصالح» until they do.
+
+def _component_row(row):
+    """A stored component version for the wire: decimals as text.
+
+    Money and quantities are Decimals in the database and strings on the wire, because a
+    JSON number would pass them through a float and stop them being the figures the database
+    holds.
+    """
+    body=dict(row)
+    for field in ("usage_quantity_decimal","component_quantity_decimal",
+                  "converted_daily_unit_price_irr","component_daily_cost_irr"):
+        body[field]=_money_text(row.get(field))
+    return _declared(PriceComponentRow, body)
+
+@router.get("/item-price-mappings/status",response_model=ItemPriceRowStatusListResponse)
+async def item_price_row_status(projectId:str,request:Request):
+    """Every estimate line's pricing state and total, for the financial-items table.
+
+    One call for the whole table. A line nobody has priced is PRESENT here with
+    `needs_components` -- leaving it out would be indistinguishable from a line the caller
+    forgot to ask about, and the table needs to show what is waiting.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    answers=await request.app.state.item_price_component_service.table_status(scope)
+    return ItemPriceRowStatusListResponse(
+        items=[_declared(ItemPriceRowStatusResponse, row) for row in answers.values()])
+
+@router.get("/estimate-lines/{lineId}/price-mapping/components",
+            response_model=PriceComponentListResponse)
+async def read_price_components(projectId:str,lineId:UUID,request:Request):
+    """Every material of one line, priced at today's prices, with the row total.
+
+    Inactive components travel too: somebody who retired a material needs to see that they
+    did. Only the active ones enter the total.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    body=await request.app.state.item_price_component_service.components_for_line(scope,lineId)
+    return await _named(request, PriceComponentListResponse(
+        line=(_declared(PricedLineHeaderResponse, body["line"]) if body["line"] else None),
+        components=[_declared(PriceComponentResponse, c) for c in body["components"]],
+        total=_declared(ItemPriceRowStatusResponse,
+                        dict(body["total"], estimate_line_id=str(lineId)))))
+
+@router.get("/estimate-lines/{lineId}/price-mapping/components/history",
+            response_model=list[PriceComponentRow])
+async def price_component_history(projectId:str,lineId:UUID,request:Request):
+    """Every version of every component of this line. What a past report was priced on."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    rows=await request.app.state.item_price_component_service.history_for_line(scope,lineId)
+    return await _named(request, [_component_row(r) for r in rows])
+
+@router.get("/estimate-lines/{lineId}/price-component-preview",
+            response_model=PriceComponentPreviewResponse)
+async def price_component_preview(projectId:str,lineId:UUID,request:Request,
+    providerItemId:UUID=Query(...),selectedUnit:str=Query(...,min_length=1,max_length=32),
+    usageMode:str=Query(...,max_length=32),usageQuantity:Decimal|None=Query(None)):
+    """What one component would cost, before anything is saved.
+
+    Called on every change, so «ضریب تبدیل لازم است» is something a person sees while
+    choosing rather than discovers after committing.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    body=await request.app.state.item_price_component_service.preview_component(
+        scope,estimate_line_id=lineId,provider_item_id=providerItemId,
+        selected_unit=selectedUnit,usage_mode=usageMode,usage_quantity=usageQuantity)
+    return _declared(PriceComponentPreviewResponse, body)
+
+@router.get("/estimate-lines/{lineId}/price-total-preview",
+            response_model=ItemPriceRowStatusResponse)
+async def price_total_preview(projectId:str,lineId:UUID,request:Request,
+    providerItemId:UUID|None=Query(None),
+    selectedUnit:str|None=Query(None,min_length=1,max_length=32),
+    usageMode:str|None=Query(None,max_length=32),usageQuantity:Decimal|None=Query(None)):
+    """The line's total as it stands, optionally including one unsaved component.
+
+    The draft is what makes this different from reading the total back: a person sees what
+    the row WILL come to before they commit the material, not after.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    draft=None
+    if providerItemId is not None and selectedUnit is not None:
+        draft={"provider_item_id":providerItemId,"selected_unit":selectedUnit,
+               "usage_mode":usageMode,"usage_quantity":usageQuantity}
+    total=await request.app.state.item_price_component_service.preview_total(
+        scope,lineId,draft)
+    return _declared(ItemPriceRowStatusResponse,
+                     dict(total, estimate_line_id=str(lineId)))
+
+@router.post("/estimate-lines/{lineId}/price-mapping/components",
+             response_model=PriceComponentRow,status_code=201,
+             responses=FINANCE_ERROR_RESPONSES)
+async def add_price_component(projectId:str,lineId:UUID,payload:PriceComponentCreate,
+                              request:Request):
+    """Record that this activity uses this much of this material."""
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    row=await request.app.state.item_price_component_service.add_component(
+        scope,estimate_line_id=lineId,payload=payload,actor_id=scope.actor_user_id)
+    return await _named(request, _component_row(row))
+
+@router.patch("/estimate-lines/{lineId}/price-mapping/components/{componentId}",
+              response_model=PriceComponentRow,responses=FINANCE_ERROR_RESPONSES)
+async def update_price_component(projectId:str,lineId:UUID,componentId:UUID,
+                                 payload:PriceComponentCreate,request:Request):
+    """Correct one material. Appended as a new version, never edited in place.
+
+    The previous version is superseded and stays readable, because a report issued against
+    it has to keep meaning what it meant.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    row=await request.app.state.item_price_component_service.update_component(
+        scope,estimate_line_id=lineId,component_id=componentId,payload=payload,
+        actor_id=scope.actor_user_id)
+    return await _named(request, _component_row(row))
+
+@router.post("/estimate-lines/{lineId}/price-mapping/components/{componentId}/deactivate",
+             response_model=PriceComponentRow,responses=FINANCE_ERROR_RESPONSES)
+async def deactivate_price_component(projectId:str,lineId:UUID,componentId:UUID,
+                                     payload:PriceComponentDeactivate,request:Request):
+    """Retire one material from the line. Appended, never deleted.
+
+    The row stays because a report issued while it was active was calculated with it, and a
+    total whose components have vanished cannot be explained afterwards.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    row=await request.app.state.item_price_component_service.deactivate_component(
+        scope,estimate_line_id=lineId,component_id=componentId,reason=payload.reason,
+        actor_id=scope.actor_user_id)
+    return await _named(request, _component_row(row))

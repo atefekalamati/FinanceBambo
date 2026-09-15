@@ -30,6 +30,7 @@ from app.finance.repositories.audit import PsycopgFinanceAuditRepository
 from app.finance.repositories.conversions import PsycopgUnitConversionRepository
 from app.finance.repositories.material_prices import PsycopgMaterialPriceRepository
 from app.finance.repositories.item_price_mappings import PsycopgItemPriceMappingRepository
+from app.finance.repositories.item_price_components import PsycopgItemPriceComponentRepository
 from app.finance.repositories.extractions import PsycopgExtractionRepository
 from app.finance.repositories.imports import PsycopgFinanceImportRepository
 from app.finance.repositories.invoices import PsycopgInvoiceRepository
@@ -43,6 +44,7 @@ from app.finance.services.audit import FinanceAuditService
 from app.finance.services.conversions import UnitConversionService
 from app.finance.services.material_prices import MaterialPriceService
 from app.finance.services.item_price_mappings import ItemPriceMappingService
+from app.finance.services.item_price_components import ItemPriceComponentService
 from app.finance.services.extractions import FinanceExtractionService
 from app.finance.services.imports import FinanceImportService
 from app.finance.services.invoices import FinanceInvoiceService
@@ -338,6 +340,11 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     # material price or a schedule row.
     application.state.item_price_mapping_service = ItemPriceMappingService(
         PsycopgItemPriceMappingRepository(connection))
+    # An activity is not a material: «کانال‌کنی» consumes rebar and pipe and brick that the
+    # schedule never names. This prices one line from a LIST of materials somebody entered,
+    # and it too writes only its own table.
+    application.state.item_price_component_service = ItemPriceComponentService(
+        PsycopgItemPriceComponentRepository(connection))
     application.state.progress_service = ProgressService(
         PsycopgProgressRepository(connection), progress_provider)
     application.state.finance_import_service = FinanceImportService(

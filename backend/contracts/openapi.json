@@ -3813,12 +3813,12 @@
         "title": "ItemPriceMappingResponse",
         "type": "object"
       },
-      "ItemPriceStatusListResponse": {
+      "ItemPriceRowStatusListResponse": {
         "additionalProperties": false,
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/ItemPriceStatusResponse"
+              "$ref": "#/components/schemas/ItemPriceRowStatusResponse"
             },
             "title": "Items",
             "type": "array"
@@ -3827,56 +3827,17 @@
         "required": [
           "items"
         ],
-        "title": "ItemPriceStatusListResponse",
+        "title": "ItemPriceRowStatusListResponse",
         "type": "object"
       },
-      "ItemPriceStatusResponse": {
+      "ItemPriceRowStatusResponse": {
         "additionalProperties": false,
-        "description": "One estimate line's pricing state, as the financial-items table reads it.",
+        "description": "One estimate line's pricing state, as the financial-items table reads it.\n\nThe counts are not decoration: a reader looking at «۴۰٬۶۴۴٬۰۰۰٬۰۰۰» needs to know it\ncame from two of three materials before they treat it as the line's cost.",
         "properties": {
-          "category": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category"
-          },
-          "conversionFactor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Conversionfactor"
-          },
-          "conversionFactorId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Conversionfactorid"
-          },
-          "convertedDailyUnitPriceIrr": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Converteddailyunitpriceirr"
+          "componentCount": {
+            "default": 0,
+            "title": "Componentcount",
+            "type": "integer"
           },
           "dailyItemCostIrr": {
             "anyOf": [
@@ -3893,28 +3854,6 @@
             "title": "Estimatelineid",
             "type": "string"
           },
-          "mappingVersion": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mappingversion"
-          },
-          "productExternalId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Productexternalid"
-          },
           "productName": {
             "anyOf": [
               {
@@ -3925,17 +3864,6 @@
               }
             ],
             "title": "Productname"
-          },
-          "providerItemId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provideritemid"
           },
           "providerName": {
             "anyOf": [
@@ -3948,16 +3876,10 @@
             ],
             "title": "Providername"
           },
-          "quantity": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quantity"
+          "readyComponentCount": {
+            "default": 0,
+            "title": "Readycomponentcount",
+            "type": "integer"
           },
           "reason": {
             "anyOf": [
@@ -3970,7 +3892,7 @@
             ],
             "title": "Reason"
           },
-          "selectedUnit": {
+          "sourceSummary": {
             "anyOf": [
               {
                 "type": "string"
@@ -3979,24 +3901,18 @@
                 "type": "null"
               }
             ],
-            "title": "Selectedunit"
-          },
-          "sourceUnit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sourceunit"
+            "title": "Sourcesummary"
           },
           "status": {
             "enum": [
               "ready",
+              "needs_components",
+              "partially_unresolved",
               "needs_product",
+              "needs_product_type",
               "needs_unit",
+              "needs_usage_quantity",
+              "unknown_source_unit",
               "needs_factor",
               "incompatible",
               "no_price"
@@ -4008,27 +3924,10 @@
             "title": "Statuslabel",
             "type": "string"
           },
-          "workflowDateJalali": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workflowdatejalali"
-          },
-          "worksheet": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Worksheet"
+          "unresolvedComponentCount": {
+            "default": 0,
+            "title": "Unresolvedcomponentcount",
+            "type": "integer"
           }
         },
         "required": [
@@ -4036,7 +3935,7 @@
           "status",
           "statusLabel"
         ],
-        "title": "ItemPriceStatusResponse",
+        "title": "ItemPriceRowStatusResponse",
         "type": "object"
       },
       "LiveMetrics": {
@@ -4272,7 +4171,7 @@
       },
       "MappingFiltersResponse": {
         "additionalProperties": false,
-        "description": "What the modal may filter by, read from the data rather than hard-coded.",
+        "description": "What the modal may filter by at this point in its cascade.\n\nRead from the data rather than hard-coded, and scoped as the cascade narrows: providers\nby the chosen category, product types by category AND provider.",
         "properties": {
           "categories": {
             "items": {
@@ -4303,6 +4202,14 @@
               "type": "object"
             },
             "title": "Units",
+            "type": "array"
+          },
+          "usageModes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Usagemodes",
             "type": "array"
           }
         },
@@ -5519,6 +5426,981 @@
         "title": "OperationalOverviewResponse",
         "type": "object"
       },
+      "PriceComponentCreate": {
+        "additionalProperties": false,
+        "description": "A person saying this activity uses this much of this material.\n\n`usage_quantity` is required and has NO default. A default of 1 would be this schema\ninventing the one number nobody else may: how much of a material an activity consumes is\na judgement, and a silent 1 is that judgement made by the wrong party.",
+        "properties": {
+          "effectiveFrom": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effectivefrom"
+          },
+          "productType": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Producttype"
+          },
+          "providerItemId": {
+            "format": "uuid",
+            "title": "Provideritemid",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "selectedUnit": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Selectedunit",
+            "type": "string"
+          },
+          "usageMode": {
+            "enum": [
+              "per_msp_unit",
+              "total_quantity"
+            ],
+            "title": "Usagemode",
+            "type": "string"
+          },
+          "usageQuantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Usagequantity"
+          },
+          "usageUnit": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usageunit"
+          }
+        },
+        "required": [
+          "providerItemId",
+          "selectedUnit",
+          "usageMode",
+          "usageQuantity",
+          "reason"
+        ],
+        "title": "PriceComponentCreate",
+        "type": "object"
+      },
+      "PriceComponentDeactivate": {
+        "additionalProperties": false,
+        "description": "Retiring one material from a line. The reason is the whole record of why.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "PriceComponentDeactivate",
+        "type": "object"
+      },
+      "PriceComponentListResponse": {
+        "additionalProperties": false,
+        "description": "Every material of one line, with the row total beside them.",
+        "properties": {
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/PriceComponentResponse"
+            },
+            "title": "Components",
+            "type": "array"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PricedLineHeaderResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemPriceRowStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "PriceComponentListResponse",
+        "type": "object"
+      },
+      "PriceComponentPreviewResponse": {
+        "additionalProperties": false,
+        "description": "What one component would cost, before anything is saved.",
+        "properties": {
+          "componentDailyCostIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Componentdailycostirr"
+          },
+          "componentQuantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Componentquantity"
+          },
+          "conversionFactor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversionfactor"
+          },
+          "conversionFactorId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversionfactorid"
+          },
+          "convertedDailyUnitPriceIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converteddailyunitpriceirr"
+          },
+          "mspQuantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mspquantity"
+          },
+          "productName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productname"
+          },
+          "providerItemId": {
+            "title": "Provideritemid",
+            "type": "string"
+          },
+          "providerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providername"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "selectedUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedunit"
+          },
+          "sourcePriceIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepriceirr"
+          },
+          "sourceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceunit"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "needs_product",
+              "needs_product_type",
+              "needs_unit",
+              "needs_usage_quantity",
+              "unknown_source_unit",
+              "needs_factor",
+              "incompatible",
+              "no_price"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "statusLabel": {
+            "title": "Statuslabel",
+            "type": "string"
+          },
+          "usageMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "per_msp_unit",
+                  "total_quantity"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usagemode"
+          },
+          "usageQuantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usagequantity"
+          },
+          "workflowDateJalali": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowdatejalali"
+          }
+        },
+        "required": [
+          "providerItemId",
+          "status",
+          "statusLabel"
+        ],
+        "title": "PriceComponentPreviewResponse",
+        "type": "object"
+      },
+      "PriceComponentResponse": {
+        "additionalProperties": false,
+        "description": "One material of one line: what it costs today, or which answer is missing.\n\n`reason` is the pricing reason -- why there is no number. `reason_text` is the person's\nown stated reason for adding this material. Two different sentences, and conflating them\nwould lose the author's justification behind an automatic status message.",
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "categoryLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categorylabel"
+          },
+          "componentDailyCostIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Componentdailycostirr"
+          },
+          "componentId": {
+            "title": "Componentid",
+            "type": "string"
+          },
+          "componentQuantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Componentquantity"
+          },
+          "conversionFactor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversionfactor"
+          },
+          "conversionFactorId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversionfactorid"
+          },
+          "conversionStatus": {
+            "anyOf": [
+              {
+                "enum": [
+                  "automatic",
+                  "factor",
+                  "incompatible",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversionstatus"
+          },
+          "convertedDailyUnitPriceIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converteddailyunitpriceirr"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "createdBy": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdby"
+          },
+          "estimateLineId": {
+            "title": "Estimatelineid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "productExternalId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productexternalid"
+          },
+          "productName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productname"
+          },
+          "productType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Producttype"
+          },
+          "providerItemId": {
+            "title": "Provideritemid",
+            "type": "string"
+          },
+          "providerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providername"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reasonText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasontext"
+          },
+          "selectedUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedunit"
+          },
+          "sourcePriceIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepriceirr"
+          },
+          "sourceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceunit"
+          },
+          "specColumns": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Speccolumns",
+            "type": "array"
+          },
+          "specs": {
+            "additionalProperties": true,
+            "title": "Specs",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "needs_product",
+              "needs_product_type",
+              "needs_unit",
+              "needs_usage_quantity",
+              "unknown_source_unit",
+              "needs_factor",
+              "incompatible",
+              "no_price"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "statusLabel": {
+            "title": "Statuslabel",
+            "type": "string"
+          },
+          "usageMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "per_msp_unit",
+                  "total_quantity"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usagemode"
+          },
+          "usageQuantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usagequantity"
+          },
+          "usageUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usageunit"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "workflowDateJalali": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowdatejalali"
+          },
+          "worksheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worksheet"
+          }
+        },
+        "required": [
+          "componentId",
+          "id",
+          "estimateLineId",
+          "providerItemId",
+          "status",
+          "statusLabel",
+          "version"
+        ],
+        "title": "PriceComponentResponse",
+        "type": "object"
+      },
+      "PriceComponentRow": {
+        "additionalProperties": false,
+        "description": "A stored component version, as written. The write endpoints' answer.\n\nThis is the ROW, not the pricing: it reports what was approved and when, and the figures\nit carries are the ones that stood at approval time. What the material costs TODAY comes\nfrom the read endpoints, which recompute from the newest observation.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "componentDailyCostIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Componentdailycostirr"
+          },
+          "componentId": {
+            "format": "uuid",
+            "title": "Componentid",
+            "type": "string"
+          },
+          "componentQuantityDecimal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Componentquantitydecimal"
+          },
+          "conversionFactorId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversionfactorid"
+          },
+          "conversionStatus": {
+            "enum": [
+              "automatic",
+              "factor",
+              "incompatible",
+              "unknown"
+            ],
+            "title": "Conversionstatus",
+            "type": "string"
+          },
+          "convertedDailyUnitPriceIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converteddailyunitpriceirr"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "format": "uuid",
+            "title": "Createdby",
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "format": "date",
+            "title": "Effectivefrom",
+            "type": "string"
+          },
+          "estimateLineId": {
+            "format": "uuid",
+            "title": "Estimatelineid",
+            "type": "string"
+          },
+          "financeResourceId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financeresourceid"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "organizationId": {
+            "format": "uuid",
+            "title": "Organizationid",
+            "type": "string"
+          },
+          "productType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Producttype"
+          },
+          "projectId": {
+            "title": "Projectid",
+            "type": "string"
+          },
+          "providerId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providerid"
+          },
+          "providerItemId": {
+            "format": "uuid",
+            "title": "Provideritemid",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "selectedUnit": {
+            "title": "Selectedunit",
+            "type": "string"
+          },
+          "sourcePriceBasis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepricebasis"
+          },
+          "sourcePriceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepriceunit"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "supersededAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersededat"
+          },
+          "supersededBy": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersededby"
+          },
+          "usageMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "per_msp_unit",
+                  "total_quantity"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usagemode"
+          },
+          "usageQuantityDecimal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usagequantitydecimal"
+          },
+          "usageUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usageunit"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "componentId",
+          "organizationId",
+          "projectId",
+          "estimateLineId",
+          "providerItemId",
+          "selectedUnit",
+          "conversionStatus",
+          "reason",
+          "active",
+          "version",
+          "effectiveFrom",
+          "createdBy",
+          "createdAt"
+        ],
+        "title": "PriceComponentRow",
+        "type": "object"
+      },
       "PriceCreate": {
         "additionalProperties": false,
         "properties": {
@@ -5948,6 +6830,87 @@
           "varianceIrr"
         ],
         "title": "PriceVariance",
+        "type": "object"
+      },
+      "PricedLineHeaderResponse": {
+        "additionalProperties": false,
+        "description": "What the schedule says about the activity being priced. The panel's header.",
+        "properties": {
+          "activityExternalId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activityexternalid"
+          },
+          "estimateLineId": {
+            "title": "Estimatelineid",
+            "type": "string"
+          },
+          "mspCostIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mspcostirr"
+          },
+          "mspQuantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mspquantity"
+          },
+          "mspUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mspunit"
+          },
+          "originalUnitPriceIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Originalunitpriceirr"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "estimateLineId"
+        ],
+        "title": "PricedLineHeaderResponse",
         "type": "object"
       },
       "ProgressFeedResponse": {
@@ -8936,6 +9899,110 @@
         ]
       }
     },
+    "/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-component-preview": {
+      "get": {
+        "description": "What one component would cost, before anything is saved.\n\nCalled on every change, so «ضریب تبدیل لازم است» is something a person sees while\nchoosing rather than discovers after committing.",
+        "operationId": "price_component_preview_api_projects__projectId__finance_estimate_lines__lineId__price_component_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lineId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lineid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerItemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provideritemid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selectedUnit",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Selectedunit",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "usageMode",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "title": "Usagemode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "usageQuantity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usagequantity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceComponentPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Price Component Preview",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping": {
       "get": {
         "description": "The live mapping for one line, or null when nobody has made one.",
@@ -9153,6 +10220,608 @@
         ]
       }
     },
+    "/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping/components": {
+      "get": {
+        "description": "Every material of one line, priced at today's prices, with the row total.\n\nInactive components travel too: somebody who retired a material needs to see that they\ndid. Only the active ones enter the total.",
+        "operationId": "read_price_components_api_projects__projectId__finance_estimate_lines__lineId__price_mapping_components_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lineId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lineid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceComponentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Price Components",
+        "tags": [
+          "finance"
+        ]
+      },
+      "post": {
+        "description": "Record that this activity uses this much of this material.",
+        "operationId": "add_price_component_api_projects__projectId__finance_estimate_lines__lineId__price_mapping_components_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lineId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lineid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceComponentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceComponentRow"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
+          }
+        },
+        "summary": "Add Price Component",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping/components/history": {
+      "get": {
+        "description": "Every version of every component of this line. What a past report was priced on.",
+        "operationId": "price_component_history_api_projects__projectId__finance_estimate_lines__lineId__price_mapping_components_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lineId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lineid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PriceComponentRow"
+                  },
+                  "title": "Response Price Component History Api Projects  Projectid  Finance Estimate Lines  Lineid  Price Mapping Components History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Price Component History",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping/components/{componentId}": {
+      "patch": {
+        "description": "Correct one material. Appended as a new version, never edited in place.\n\nThe previous version is superseded and stays readable, because a report issued against\nit has to keep meaning what it meant.",
+        "operationId": "update_price_component_api_projects__projectId__finance_estimate_lines__lineId__price_mapping_components__componentId__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lineId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lineid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "componentId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Componentid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceComponentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceComponentRow"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
+          }
+        },
+        "summary": "Update Price Component",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping/components/{componentId}/deactivate": {
+      "post": {
+        "description": "Retire one material from the line. Appended, never deleted.\n\nThe row stays because a report issued while it was active was calculated with it, and a\ntotal whose components have vanished cannot be explained afterwards.",
+        "operationId": "deactivate_price_component_api_projects__projectId__finance_estimate_lines__lineId__price_mapping_components__componentId__deactivate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lineId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lineid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "componentId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Componentid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceComponentDeactivate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceComponentRow"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
+          }
+        },
+        "summary": "Deactivate Price Component",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping/history": {
       "get": {
         "description": "Every version. What a report issued last month was priced against is in here.",
@@ -9279,6 +10948,131 @@
           }
         },
         "summary": "Item Price Preview",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-total-preview": {
+      "get": {
+        "description": "The line's total as it stands, optionally including one unsaved component.\n\nThe draft is what makes this different from reading the total back: a person sees what\nthe row WILL come to before they commit the material, not after.",
+        "operationId": "price_total_preview_api_projects__projectId__finance_estimate_lines__lineId__price_total_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lineId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lineid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerItemId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provideritemid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selectedUnit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selectedunit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "usageMode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usagemode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "usageQuantity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usagequantity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemPriceRowStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Price Total Preview",
         "tags": [
           "finance"
         ]
@@ -12942,7 +14736,7 @@
     },
     "/api/projects/{projectId}/finance/item-price-mappings/filters": {
       "get": {
-        "description": "What the modal may filter by. Read from the data, never a hard-coded list.",
+        "description": "What the modal may filter by at THIS point in its cascade.\n\nRead from the data, never a hard-coded list -- and scoped as the cascade narrows:\nproviders by the chosen category, product types by category AND provider. Offering a\nsupplier who sells no brick under «آجر», or a type that exists only on somebody else's\nproducts, yields an empty result list that reads as a broken page rather than as an\nempty category.",
         "operationId": "item_price_filters_api_projects__projectId__finance_item_price_mappings_filters_get",
         "parameters": [
           {
@@ -12969,6 +14763,23 @@
                 }
               ],
               "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Providerid"
             }
           }
         ],
@@ -13002,8 +14813,8 @@
     },
     "/api/projects/{projectId}/finance/item-price-mappings/status": {
       "get": {
-        "description": "Every estimate line's pricing state, for the financial-items table.\n\nOne call for the whole table. A line nobody has mapped is PRESENT here with\n`needs_product` -- leaving it out would be indistinguishable from a line the caller\nforgot to ask about, and the table needs to show what is waiting.",
-        "operationId": "item_price_status_api_projects__projectId__finance_item_price_mappings_status_get",
+        "description": "Every estimate line's pricing state and total, for the financial-items table.\n\nOne call for the whole table. A line nobody has priced is PRESENT here with\n`needs_components` -- leaving it out would be indistinguishable from a line the caller\nforgot to ask about, and the table needs to show what is waiting.",
+        "operationId": "item_price_row_status_api_projects__projectId__finance_item_price_mappings_status_get",
         "parameters": [
           {
             "in": "path",
@@ -13020,7 +14831,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ItemPriceStatusListResponse"
+                  "$ref": "#/components/schemas/ItemPriceRowStatusListResponse"
                 }
               }
             },
@@ -13037,7 +14848,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Item Price Status",
+        "summary": "Item Price Row Status",
         "tags": [
           "finance"
         ]

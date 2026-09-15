@@ -94,12 +94,19 @@ class CandidateListResponse(ApiModel):
 
 
 class MappingFiltersResponse(ApiModel):
-    """What the modal may filter by, read from the data rather than hard-coded."""
+    """What the modal may filter by at this point in its cascade.
+
+    Read from the data rather than hard-coded, and scoped as the cascade narrows: providers
+    by the chosen category, product types by category AND provider.
+    """
 
     providers: list[dict] = Field(default_factory=list)
     product_types: list[str] = Field(default_factory=list)
     categories: list[dict] = Field(default_factory=list)
     units: list[dict] = Field(default_factory=list)
+    #: The two ways to state how much material an activity uses. Sent with their Persian
+    #: labels and hints so the form does not have to hold a second copy of the vocabulary.
+    usage_modes: list[dict] = Field(default_factory=list)
 
 
 class ItemPriceMappingCreate(ApiModel):

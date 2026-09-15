@@ -51,7 +51,10 @@ class DataMigrationTests(unittest.TestCase):
         """
         found = revisions()
         _tables, data = objects_touched(found, chain(found, "0013", head(found)[0]))
-        self.assertEqual(["0020"], [revision for revision, _name, _moved in data])
+        # 0025 joins it: the component table is created AND backfilled from the
+        # one-product mappings, so the tool must decline to vouch for it too.
+        self.assertEqual(["0020", "0025"],
+                         [revision for revision, _name, _moved in data])
         _revision, _name, moved = data[0]
         self.assertEqual(["INSERT INTO", "UPDATE INVOICES AS TARGET SET"], moved)
         self.assertIn("refused-data-migration", SOURCE)
@@ -108,11 +111,13 @@ class ObjectDiscoveryTests(unittest.TestCase):
         # `invoices` and `finance_invoice_counters` arrive with 0020. The six price names
         # arrive with 0021: four tables it alters and two it creates, and
         # `provider_item_labels` with 0022, `finance_mpp_currency_decisions` with 0023,
-        # and `finance_item_price_mappings` with 0024. That the discovery found them
+        # `finance_item_price_mappings` with 0024, and
+        # `finance_item_price_mapping_components` with 0025. That the discovery found them
         # without being told is the property this test is really about.
         self.assertEqual(
             ["estimate_line_source_completions", "estimate_lines",
-             "finance_invoice_counters", "finance_item_price_mappings",
+             "finance_invoice_counters", "finance_item_price_mapping_components",
+             "finance_item_price_mappings",
              "finance_mpp_currency_decisions",
              "finance_mpp_rows", "finance_mpp_source_versions", "finance_resources",
              "invoices", "material_unit_settings", "price_collection_runs",
