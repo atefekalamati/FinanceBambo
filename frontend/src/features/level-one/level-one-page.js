@@ -5,6 +5,7 @@ import { defaultSnapshot } from "../../shared/progress/project-snapshot.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { formatCompactMoneyFromIrr, formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { formatBusinessDate, formatDisplayNumber } from "../../shared/formatters/display.js";
+import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { buildWbsView } from "../../shared/reports/wbs-rollup.js";
 import { createLevelOneChart } from "./level-one-chart.js";
@@ -44,8 +45,15 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
         paint();
         return;
       }
+      /* TODAY, not the snapshot's own date -- the same choice the page that links here
+         makes, and for the same reason: the snapshot says which PROGRESS facts to use and
+         is not the financial cutoff. Reading at the snapshot's date asked what the
+         estimate was on 2025-10-02, before any of these lines existed, and the honest
+         answer to that question is nothing. So every phase showed «—» on a page reached
+         from one showing 3,607,438,967,777 rial, and the figures appeared to vanish on
+         the way in. Same project, same source version, two different questions. */
       const request = {
-        reportingDate: snapshot.reportingDate,
+        reportingDate: getTehranTodayIso(),
         progressSnapshotId: snapshot.progressSnapshotId,
       };
       // The phase list is always fetched: the detail view needs its parent's own
@@ -54,7 +62,8 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
         adapters.reports.getWbsRollup(request),
         wbsCode ? adapters.reports.getWbsRollup({ ...request, parentWbsCode: wbsCode }) : null,
       ]);
-      state = createRequestState(REQUEST_STATUS.SUCCESS, { snapshot, top, children });
+      state = createRequestState(REQUEST_STATUS.SUCCESS,
+                                 { snapshot, top, children, reportingDate: request.reportingDate });
     } catch (error) {
       state = createRequestState(error.status === 403 ? REQUEST_STATUS.DENIED : REQUEST_STATUS.ERROR, null, error);
     }
@@ -80,10 +89,16 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
    */
   function renderProvenance(data) {
     const snapshot = data?.snapshot;
-    if (!snapshot?.reportingDate) return null;
+    if (!data?.reportingDate) return null;
+    /* Two dates, and they are two different facts. The report date is the financial
+       cutoff these amounts are read at; the schedule date is when the source file said
+       the work stood. Printing the snapshot's date beside figures read at today would
+       name a day the numbers are not from. */
     return element("p", "level-one-provenance",
-      `تاریخ گزارش: ${formatBusinessDate(snapshot.reportingDate)}`
-      + (snapshot.sourceFileNameSafe ? ` · برنامه زمانی: ${snapshot.sourceFileNameSafe}` : ""));
+      `تاریخ گزارش: ${formatBusinessDate(data.reportingDate)}`
+      + (snapshot?.reportingDate
+        ? ` · وضعیت برنامه زمانی: ${formatBusinessDate(snapshot.reportingDate)}` : "")
+      + (snapshot?.sourceFileNameSafe ? ` · برنامه زمانی: ${snapshot.sourceFileNameSafe}` : ""));
   }
 
   function renderUnavailable() {
