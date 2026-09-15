@@ -713,31 +713,32 @@ function estimateLineColumns() {
 
 /* What «قیمت روز» shows once an item is linked to a market listing.
  *
- * Three things in one cell, because the column count is what makes this table navigable
- * and none of the three is worth a column of its own: the daily price converted into the
- * official unit, what that makes THIS line cost per day, and -- when it cannot be
- * computed -- which answer is missing.
+ * What this line costs per day at today's prices: the SUM of the materials somebody said
+ * it consumes. «کانال‌کنی» is 500 cubic metres of trenching and consumes rebar and pipe and
+ * brick; the cell shows what all of them come to, not one of them.
  *
  * An unresolved row shows the reason and NO number. That is the whole point: «نیازمند
- * ضریب تبدیل» and «۰» look nothing alike to a reader, and only one of them is true. */
+ * ضریب تبدیل» and «۰» look nothing alike to a reader, and only one of them is true.
+ *
+ * A PARTLY priced row shows both -- the total of what resolved AND how much of the list it
+ * came from. The total is real and incomplete, and a sum presented without that count
+ * looks finished, which is the more dangerous of the two mistakes. */
 function dailyPriceCell(line, priced, isGeneralCost) {
   const fallback = formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false });
   if (!priced || isGeneralCost) return fallback;
-  if (priced.status !== "ready") {
-    const cell = document.createDocumentFragment();
-    cell.append(statusChip(priced.status, priced.statusLabel));
+  const cell = document.createDocumentFragment();
+  if (priced.status !== "ready") cell.append(statusChip(priced.status, priced.statusLabel));
+  if (priced.dailyItemCostIRR !== null) {
+    cell.append(element("span", "",
+      formatTomanFromIrr(priced.dailyItemCostIRR, { withCurrency: false })));
+    if (priced.unresolvedComponentCount) {
+      cell.append(element("span", "cell-secondary",
+        `${formatDisplayNumber(priced.readyComponentCount)} از ${formatDisplayNumber(priced.componentCount)} قلم مصالح`));
+    }
+  } else if (line.currentUnitPriceIRR !== null && line.currentUnitPriceIRR !== undefined) {
     /* The line's own Finance price still shows when it has one: the daily-price link is
        unresolved, which says nothing about the price somebody entered by hand. */
-    if (line.currentUnitPriceIRR !== null && line.currentUnitPriceIRR !== undefined) {
-      cell.append(element("span", "cell-secondary", fallback));
-    }
-    return cell;
-  }
-  const cell = document.createDocumentFragment();
-  cell.append(element("span", "", formatTomanFromIrr(priced.convertedDailyUnitPriceIRR, { withCurrency: false })));
-  if (priced.dailyItemCostIRR !== null) {
-    cell.append(element("span", "cell-secondary",
-      `هزینه روز این قلم: ${formatTomanFromIrr(priced.dailyItemCostIRR, { withCurrency: false })}`));
+    cell.append(element("span", "cell-secondary", fallback));
   }
   return cell;
 }
@@ -822,7 +823,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
          action here. The table's shape is what people navigate by. */
       const priced = priceStatuses.get(line.lineId) ?? null;
       if (onMapPrice && !isGeneralCost) {
-        const label = priced?.providerItemId ? "ویرایش اتصال قیمت" : "اتصال قیمت روز";
+        const label = priced?.componentCount ? "ویرایش مصالح" : "افزودن مصالح";
         const map = element("button", "table-action table-action--map-price", label);
         map.type = "button";
         map.dataset.action = "map-price";
@@ -832,19 +833,23 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
 
       return {
         identity,
-        /* The OFFICIAL calculation unit once one is chosen: it is what the price was
-           converted into and what the quantity is read in, so it outranks the resource's
-           own base unit here. Without a mapping the column is exactly what it was. */
-        unit: isGeneralCost ? getDisplayCurrencyLabel()
-          : formatUnitLabel(priced?.selectedUnit ?? resource?.baseUnit),
+        /* The ACTIVITY's own unit -- the cubic metres of «کانال‌کنی», not the kilograms of
+           the rebar it uses. Each material carries its own calculation unit now, and there
+           is no single one for a row built from several; showing the first material's unit
+           beside the row's quantity would say the 500 was 500 kilograms. */
+        unit: isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit),
         originalQuantity: isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original),
         revisedQuantity: revisedCell,
         scheduleCost: formatTomanFromIrr(assignmentCostOf(line), { withCurrency: false }),
         originalPrice: formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false }),
         currentPrice: dailyPriceCell(line, priced, isGeneralCost),
-        source: priced?.productName
-          ? `${priced.providerName ?? "—"} · ${priced.productName}`
-          : sourceLabel(line),
+        /* One material names its product; several say how many there are. Listing three
+           product names in a table cell is unreadable, and naming only the first would be
+           a lie about what priced the row. */
+        source: priced?.sourceSummary
+          ?? (priced?.productName
+            ? `${priced.providerName ?? "—"} · ${priced.productName}`
+            : sourceLabel(line)),
         actions,
       };
     },
@@ -870,6 +875,13 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
      both to refresh either. Empty until it arrives, and a row with no entry simply shows
      what it showed before -- the table must render before this call returns. */
   let priceStatuses = new Map();
+  /* The price panel while it is open. Held because `paint()` replaces the page's children
+     and the panel is one of them: the daily-price statuses refresh after every material is
+     saved, so a repaint took the open panel out of the document halfway through a list.
+     The panel disappeared after the first material, and the next click landed on a row
+     action instead of on the panel -- which is how a material was entered against a line
+     nobody had opened. */
+  let openPricePanel = null;
   /* One page number per table. Held here rather than inside the component
      because `paint()` rebuilds the whole tree: a component that remembered its
      own page would lose it on every repaint. */
@@ -1056,9 +1068,13 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
       onMapPrice: priceMappingAdapter ? (line, resource) => {
         const panel = createPriceMappingPanel({
           line, resource, adapter: priceMappingAdapter, canEdit,
-          onSaved: () => { panel.close(); panel.remove(); loadPriceStatuses(); },
-          onClose: () => panel.remove(),
+          /* The panel STAYS OPEN after a material is saved. A line is priced from a list,
+             and closing after the first entry would make adding the second a fresh trip
+             through the table. The row behind it refreshes so the total stays honest. */
+          onSaved: () => loadPriceStatuses(),
+          onClose: () => { openPricePanel = null; panel.remove(); },
         });
+        openPricePanel = panel;
         root.append(panel);
         showAccessibleDialog(panel);
       } : null,
@@ -1070,6 +1086,14 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
 
   function paint() {
     root.replaceChildren(renderHeader(), renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    /* Re-SHOWN, not merely re-appended: a dialog removed from the document leaves the top
+       layer, and putting the node back gives a panel with no backdrop and no focus trap. */
+    if (openPricePanel) {
+      const wasOpen = openPricePanel.open;
+      if (wasOpen) openPricePanel.close();
+      root.append(openPricePanel);
+      if (wasOpen) showAccessibleDialog(openPricePanel);
+    }
     const target = root.querySelector(".deep-link-target");
     if (target) queueMicrotask(() => {
       target.scrollIntoView({ block: "center", behavior: "smooth" });

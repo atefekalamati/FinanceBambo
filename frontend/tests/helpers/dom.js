@@ -133,8 +133,26 @@ class FakeNode {
     this.listeners.get(type).push(handler);
   }
 
+  /* Fire one listener type directly. A form is driven by `change` and `input` as much as
+     by `click` -- a cascade of dropdowns has no clicks in it at all -- and a stub that
+     could only click would push every cascade test into calling the module's internals. */
+  dispatch(type) {
+    (this.listeners.get(type) ?? []).forEach((handler) => handler({ target: this }));
+  }
+
   click() {
-    (this.listeners.get("click") ?? []).forEach((handler) => handler({ target: this }));
+    this.dispatch("click");
+  }
+
+  /* `<dialog>` has these and a panel calls them on its own close button. No focus trap and
+     no backdrop here: this stub does not lay anything out, and pretending otherwise would
+     be a worse lie than an honest no-op. */
+  showModal() {
+    this.open = true;
+  }
+
+  close() {
+    this.open = false;
   }
 
   get firstElementChild() {

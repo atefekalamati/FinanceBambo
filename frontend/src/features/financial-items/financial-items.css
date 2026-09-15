@@ -796,10 +796,11 @@ html[data-theme="light"] .workspace-form select {
   }
 }
 
-/* ------------------------------------------------ اتصال قیمت روز به قلم هزینه
-   The daily-price link. It adds no column to ریز برآورد: the status chip and the
-   line's daily cost live inside «قیمت روز», which is what keeps the table the shape
-   people navigate by. */
+/* --------------------------------------- مصالح به‌کاررفته در قلم و قیمت روز آن
+   The materials one schedule item consumes. It adds no column to ریز برآورد: the
+   status chip and the line's daily total live inside «قیمت روز», which is what keeps
+   the table the shape people navigate by. An activity is priced from a LIST -- «کانال‌کنی»
+   consumes rebar and pipe and brick -- so the panel is a list, and the row shows the sum. */
 
 .price-status {
   display: inline-block;
@@ -816,6 +817,14 @@ html[data-theme="light"] .workspace-form select {
 .price-status--ready { background: var(--color-success-surface, #e6f4ea); color: var(--color-success-text, #14532d); }
 .price-status--pending { background: var(--color-warning-surface, #fff4e5); color: var(--color-warning-text, #7c4a03); }
 .price-status--blocked { background: var(--color-surface-muted, #eceff3); color: var(--color-text-muted, #4a5568); }
+/* A fourth reading, and it needs one: a partly-priced row shows a total that is REAL and
+   INCOMPLETE. Neither «آماده» nor «در انتظار» says that, and wearing either of their
+   colours is how a partial sum gets read as a finished one. */
+.price-status--partial {
+  background: var(--color-warning-surface, #fff4e5);
+  color: var(--color-warning-text, #7c4a03);
+  border: 1px dashed var(--color-warning-text, #7c4a03);
+}
 
 .cell-secondary {
   display: block;
@@ -839,8 +848,69 @@ html[data-theme="light"] .workspace-form select {
 }
 
 .price-mapping-panel__head { display: grid; gap: 0.25rem; }
-.price-mapping-panel__filters { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; }
-.price-mapping-panel__results { display: grid; gap: 0.5rem; max-height: 22rem; overflow-y: auto; }
+.price-mapping-panel__subtitle { margin: 0; font-size: 0.85rem; color: var(--color-text-muted, #4a5568); }
+
+/* What the SCHEDULE says, above everything a person enters. A usage of «۸۰ کیلوگرم به ازای
+   هر مترمکعب» means nothing until the reader can see that the activity is 500 cubic
+   metres. */
+.price-mapping-panel__schedule {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.5rem;
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+.price-mapping-panel__schedule dd { margin: 0; }
+
+/* -------------------------------------------------------- the materials already there */
+
+.price-components { display: grid; gap: 0.6rem; }
+.price-components__list { display: grid; gap: 0.5rem; max-height: 22rem; overflow-y: auto; }
+
+.price-components__total {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border, #d8dee6);
+  border-radius: 0.5rem;
+  padding: 0.6rem;
+  background: var(--color-surface-muted, #f5f7fa);
+}
+.price-components__figures { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.5rem; margin: 0; }
+.price-components__figures dd { margin: 0; font-weight: 600; }
+/* «۲ از ۳ قلم مصالح قیمت‌گذاری شده است» sits directly under the total, because it is the
+   sentence that stops the total above it from being read as complete. */
+.price-components__counts,
+.price-components__reason { margin: 0; font-size: 0.8rem; color: var(--color-text-muted, #4a5568); }
+
+.price-component {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border, #d8dee6);
+  border-radius: 0.5rem;
+  padding: 0.6rem;
+}
+/* Retired, not deleted: a report issued while this material was active was calculated
+   with it. Dimmed and dashed so it reads as history rather than as a current entry. */
+.price-component--retired {
+  border-style: dashed;
+  opacity: 0.7;
+}
+.price-component__meta { margin: 0; font-size: 0.82rem; color: var(--color-text-muted, #4a5568); }
+.price-component__figures { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.5rem; margin: 0.3rem 0 0; }
+.price-component__figures dd { margin: 0; }
+.price-component__reason { margin: 0.2rem 0 0; font-size: 0.85rem; }
+.price-component__actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.price-component__retire { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+
+/* ------------------------------------------------------------- adding one material */
+
+.price-component-form { display: grid; gap: 0.6rem; }
+.price-component-form__filters,
+.price-component-form__measures { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; }
+.price-component-form__results { display: grid; gap: 0.5rem; max-height: 22rem; overflow-y: auto; }
+.price-component-form__figures { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.5rem; margin: 0.4rem 0 0; }
+.price-component-form__figures dd { margin: 0; }
+.price-component-form__reason { margin: 0.3rem 0 0; font-size: 0.85rem; }
 
 .price-candidate {
   display: grid;
@@ -868,4 +938,7 @@ html[data-theme="light"] .workspace-form select {
 @media (max-width: 36rem) {
   .price-mapping-panel { width: 100vw; }
   .price-candidate__specs { grid-template-columns: auto 1fr; }
+  /* One control per line: three dropdowns wrapped onto a phone row leave each about
+     seven characters wide, which is narrower than «به ازای هر واحد فعالیت» needs. */
+  .price-component-form__measures { display: grid; }
 }
