@@ -45,6 +45,21 @@ EFFECTIVE_ORIGINAL_PRICE = """COALESCE({l}.original_unit_price_irr,
         AND c.project_id = {l}.project_id
         AND c.estimate_line_id = {l}.id))"""
 
+
+def _source_effective_cutoff(alias, cutoff_sql):
+    """A completion is historical when its immutable source says it was effective.
+
+    ``completed_at`` is only database recording time.  The MPP source version carries
+    the business reporting date and is the only evidence that permits a late-recorded
+    source value to participate in an earlier live calculation.
+    """
+    return (" AND EXISTS (SELECT 1 FROM finance_mpp_source_versions sv"
+            " WHERE sv.id=c.source_version_id"
+            " AND sv.organization_id=%s.organization_id" % alias
+            + " AND sv.project_id=%s.project_id" % alias
+            + " AND sv.reporting_date IS NOT NULL"
+            + " AND sv.reporting_date <= %s)" % cutoff_sql)
+
 #: Where the effective original came from, so a reader is never left guessing.
 #:
 #: `recorded` — the line's own columns, written when it was created.
@@ -65,7 +80,7 @@ def effective_original_quantity(alias="l", cutoff_sql=None):
     """The effective original quantity expression for a given table alias."""
     expression = EFFECTIVE_ORIGINAL_QUANTITY.format(l=alias)
     if cutoff_sql:
-        expression = expression[:-2] + " AND (c.completed_at AT TIME ZONE 'Asia/Tehran')::date <= " + cutoff_sql + "))"
+        expression = expression[:-2] + _source_effective_cutoff(alias, cutoff_sql) + "))"
     return expression
 
 
@@ -73,8 +88,22 @@ def effective_original_price(alias="l", cutoff_sql=None):
     """The effective original unit rate expression for a given table alias."""
     expression = EFFECTIVE_ORIGINAL_PRICE.format(l=alias)
     if cutoff_sql:
-        expression = expression[:-2] + " AND (c.completed_at AT TIME ZONE 'Asia/Tehran')::date <= " + cutoff_sql + "))"
+        expression = expression[:-2] + _source_effective_cutoff(alias, cutoff_sql) + "))"
     return expression
+
+
+def estimate_line_effective_on_or_before(alias, cutoff_sql):
+    """SQL predicate for a line whose historical eligibility is established."""
+    return ("((%s.created_at AT TIME ZONE 'Asia/Tehran')::date <= %s" % (alias, cutoff_sql)
+            + " OR EXISTS (SELECT 1 FROM estimate_line_source_completions c"
+            + " JOIN finance_mpp_source_versions sv ON sv.id=c.source_version_id"
+            + " AND sv.organization_id=c.organization_id"
+            + " AND sv.project_id=c.project_id"
+            + " WHERE c.organization_id=%s.organization_id" % alias
+            + " AND c.project_id=%s.project_id" % alias
+            + " AND c.estimate_line_id=%s.id" % alias
+            + " AND sv.reporting_date IS NOT NULL"
+            + " AND sv.reporting_date <= %s))" % cutoff_sql)
 
 
 def original_value_source(alias="l"):

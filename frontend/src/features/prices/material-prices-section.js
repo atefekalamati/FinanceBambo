@@ -62,16 +62,59 @@ const ALIGNMENT_LABELS = Object.freeze({
   unresolved: "—",
 });
 
-const COLUMNS = Object.freeze([
-  "نام محصول",
-  "دسته",
-  "منبع",
-  "قیمت روز",
-  "واحد",
-  "واحد قلم هزینه",
-  "تاریخ برگه",
-  "وضعیت",
+/* The columns when no single category is chosen.
+ *
+ * A mixed table cannot show per-category measurements -- an angle's «تعداد شاخه» over a
+ * brick row would be an empty cell pretending to be missing data -- so the all-categories
+ * view shows only what every worksheet supplies, plus which category each row came from.
+ * Choosing a category is what reveals that worksheet's own columns. */
+const ALL_CATEGORIES_COLUMNS = Object.freeze([
+  { key: "source", label: "منبع", kind: "base" },
+  { key: "product", label: "محصول", kind: "base" },
+  { key: "categoryLabel", label: "دسته", kind: "base" },
+  { key: "price", label: "قیمت", kind: "base", numeric: true },
+  { key: "workflowDate", label: "تاریخ آپدیت ورک فلو", kind: "base" },
+  { key: "productId", label: "productId", kind: "base" },
 ]);
+
+/**
+ * The table this view should show, declared by the Backend for the chosen category.
+ *
+ * The page holds no per-category column list of its own, and that is the whole point: a
+ * second copy would drift, and the first symptom would be a column from one worksheet
+ * rendered over another worksheet's rows. `/material-prices/categories` publishes each
+ * category's columns; this picks the one selected and falls back to the shared set only
+ * when no category is chosen.
+ */
+export function columnsFor(selectedCategory, categories) {
+  if (!selectedCategory) return [...ALL_CATEGORIES_COLUMNS];
+  const declared = (categories ?? []).find((c) => c.category === selectedCategory);
+  /* A category the Backend published no schema for shows the shared columns rather than
+     nothing: the prices are real and worth seeing even before somebody declares which of
+     that worksheet's columns are meaningful. */
+  return declared?.columns?.length ? declared.columns : [...ALL_CATEGORIES_COLUMNS];
+}
+
+/** One cell's text, by where the column says its value lives. */
+export function cellValue(column, row, categoryLabels = {}) {
+  if (column.kind === "spec") {
+    /* Verbatim from the worksheet. A blank cell is an em dash, never a zero: the sheet
+       said nothing, and nothing is not none. */
+    const value = (row.specs ?? {})[column.key];
+    return value === null || value === undefined || value === "" ? "—" : String(value);
+  }
+  switch (column.key) {
+    case "source": return row.providerName ?? "—";
+    /* The label a person wrote wins the name, because they wrote it precisely because the
+       supplier's own name was not usable. What the sheet said stays in the row's title. */
+    case "product": return row.labelDisplayName || row.label || row.name || "—";
+    case "categoryLabel": return categoryLabels[row.category] ?? row.category ?? "—";
+    case "price": return priceCell(row);
+    case "workflowDate": return sheetDateLabel(row);
+    case "productId": return row.externalId ?? "—";
+    default: return "—";
+  }
+}
 
 /** The date a reader recognises: the sheet's own Jalali text when it stated one. */
 export function sheetDateLabel(row) {
@@ -125,37 +168,40 @@ export function statusText(row) {
   return row.resolutionReason ? `${label} — ${row.resolutionReason}` : label;
 }
 
-function renderRow(row) {
+function renderRow(row, columns, categoryLabels) {
   const tr = element("tr", "material-price__row");
-  tr.append(
-    /* The label a person wrote wins the name, because they wrote it precisely because the
-       supplier's own name was not usable. What the sheet said is still in the row's title. */
-    element("td", "material-price__name", row.labelDisplayName || row.label || row.name),
-    element("td", "", row.category),
-    element("td", "", row.providerName),
-    element("td", "numeric", priceCell(row)),
-    element("td", "", unitCell(row)),
-    element("td", "", alignmentCell(row)),
-    element("td", "", sheetDateLabel(row)),
-  );
-
-  const status = element("td", "material-price__status");
-  const text = statusText(row);
-  if (text) {
-    const badge = element("span", `material-price__badge ${RESOLUTION_CLASS[row.resolutionStatus] ?? ""}`, text);
-    status.append(badge);
-  } else {
-    status.append(element("span", "material-price__badge material-price__status--ok", "به‌روز"));
-  }
-  tr.append(status);
+  columns.forEach((column) => {
+    const cell = element("td", column.numeric ? "numeric" : "", cellValue(column, row, categoryLabels));
+    if (column.key === "product") {
+      cell.className = "material-price__name";
+      /* Status and unit are NOT columns of this table -- the worksheet has no such
+         columns and adding them would be the generic shape returning by another door.
+         They travel as a small badge under the name, where a reader who wants to judge
+         the price can see them without the header row claiming the sheet states them. */
+      const text = statusText(row);
+      if (text) {
+        cell.append(element("span",
+          `material-price__badge ${RESOLUTION_CLASS[row.resolutionStatus] ?? ""}`, text));
+      }
+      /* The unit note, only when there IS a unit to state. Six of the seven worksheets
+         declare none, so «واحد اعلام نشده» would repeat under every one of hundreds of
+         rows and say nothing the status badge has not already said. */
+      if (row.targetUnit || row.sourceUnitCode || row.sourceUnit) {
+        cell.append(element("span", "material-price__unit-note", unitCell(row)));
+      }
+    }
+    tr.append(cell);
+  });
 
   /* Everything a reader might need to check this number, on the row itself: what was
-     converted and how, and what the supplier actually called the thing. A converted price
-     nobody can check is a number nobody should trust. */
+     converted and how, what the supplier actually called the thing, and how it lines up
+     with the Finance item. A converted price nobody can check is a number nobody should
+     trust -- and none of these is a worksheet column, so none of them is one here. */
   const notes = [];
   if (row.conversionNote) notes.push(row.conversionNote);
   if ((row.labelDisplayName || row.label) && row.name) notes.push(`نام در برگه: ${row.name}`);
   if (row.labelSourceBasis) notes.push(`مبنای قیمت: ${row.labelSourceBasis}`);
+  if (row.financeResourceUnit || row.unitAlignment) notes.push(`قلم هزینه: ${alignmentCell(row)}`);
   if (notes.length) tr.title = notes.join(" · ");
   return tr;
 }
@@ -184,9 +230,15 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
     filter.append(all);
     categories.forEach((category) => {
       const active = category.category === selectedCategory;
+      /* The Persian name the Backend publishes, not the raw importer key. These tabs read
+         «angle (12)» and «pipe_fitting (0)» to a Finance user who has no reason to know
+         what the importer calls its worksheets. The code stays on the element, where a
+         test and anyone inspecting the page can still find it. */
       const chip = element("button", "app-chip" + (active ? " app-chip--active" : ""),
-        `${category.category} (${category.activeCount})`);
+        `${category.label ?? category.category} (${category.activeCount})`);
       chip.type = "button";
+      chip.dataset.category = category.category;
+      chip.setAttribute("aria-pressed", String(active));
       chip.addEventListener("click", () => onSelectCategory(category.category));
       filter.append(chip);
     });
@@ -200,19 +252,32 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
     return section;
   }
 
+  /* Built for the chosen category, from the schema the Backend published for it. Switching
+     the category tab rebuilds this section, so the header row is rebuilt with it -- there
+     is no path that keeps one category's headers over another's rows. */
+  const columns = columnsFor(selectedCategory, categories);
+  const categoryLabels = Object.fromEntries(
+    (categories ?? []).map((c) => [c.category, c.label ?? c.category]));
+  const chosen = (categories ?? []).find((c) => c.category === selectedCategory);
+
   const wrapper = element("div", "app-table-scroll");
   const table = element("table", "app-table material-prices__table");
-  const caption = element("caption", "sr-only", "قیمت روز بازار به تفکیک محصول");
+  const caption = element("caption", "sr-only",
+    chosen ? `قیمت روز بازار — ${chosen.label ?? chosen.category}` : "قیمت روز بازار به تفکیک محصول");
   const thead = element("thead", "");
   const headRow = element("tr", "");
-  COLUMNS.forEach((label) => {
-    const th = element("th", "", label);
+  columns.forEach((column) => {
+    const th = element("th", "", column.label);
     th.scope = "col";
+    /* So a test -- and anyone inspecting the page -- can see which worksheet key a column
+       came from, and that a spec column is the sheet's own rather than this page's. */
+    th.dataset.columnKey = column.key;
+    th.dataset.columnKind = column.kind ?? "base";
     headRow.append(th);
   });
   thead.append(headRow);
   const tbody = element("tbody", "");
-  rows.forEach((row) => tbody.append(renderRow(row)));
+  rows.forEach((row) => tbody.append(renderRow(row, columns, categoryLabels)));
   table.append(caption, thead, tbody);
   wrapper.append(table);
   section.append(wrapper);

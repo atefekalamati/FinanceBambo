@@ -40,12 +40,37 @@ class TheSpecifiedExamplesTests(unittest.TestCase):
         self.assertEqual(Decimal("1"), priced.unit_price_irr.normalize())
 
     def test_a_branch_price_becomes_a_kilogram_price_through_the_measured_factor(self):
-        # 92,560 per branch, 22 kg in a branch -> 4,207.27 per kg.
+        """92,560 per branch, 22 kg in a branch -> 4,207.27 per kg, stored whole.
+
+        The specification states the example in TOMAN and this module works in rials, so
+        the same figure arrives here as 4,207.2727 and is stored as 4,207 -- money is whole
+        rials everywhere in Finance, and a whole rial is a tenth of a toman, so the toman
+        figure the specification names is preserved to 4,207.3.
+        """
         priced = price_item(mapping=mapping("kg"), price_irr="92560",
                             source_unit="branch", quantity=None, factor="22")
         self.assertEqual(READY, priced.status)
-        self.assertEqual(Decimal("4207.27272727"), priced.unit_price_irr)
+        self.assertEqual(Decimal("4207"), priced.unit_price_irr)
         self.assertEqual(Decimal("22"), priced.factor_applied)
+
+    def test_money_leaves_whole_so_the_page_can_render_it(self):
+        r"""A fractional string is not money to `irrToToman`, which matches ^-?\d+$.
+
+        This was found in acceptance: the API sent `913600.00000000`, the formatter
+        returned an em dash, and the row showed «آماده» beside a blank price -- claiming to
+        be priced and showing nothing.
+        """
+        for priced in (price_item(mapping=mapping("kg"), price_irr="913600",
+                                  source_unit="kg", quantity="2299"),
+                       price_item(mapping=mapping("g"), price_irr="1000",
+                                  source_unit="kg", quantity="5000"),
+                       price_item(mapping=mapping("kg"), price_irr="92560",
+                                  source_unit="branch", quantity="3", factor="22")):
+            with self.subTest(unit=priced.selected_unit):
+                for field in ("converted_daily_unit_price_irr", "daily_item_cost_irr"):
+                    text = priced.as_dict()[field]
+                    self.assertRegex(text, r"^-?\d+$",
+                                     "%s must be a whole number of rials" % field)
 
     def test_the_price_divides_where_a_quantity_would_multiply(self):
         # The direction test, stated on its own so it cannot be satisfied by accident.

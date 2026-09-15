@@ -26,11 +26,15 @@ zero standing in for an unknown. Every refusal returns a status and a Persian re
 what is missing, because the person who can fix it is reading the page, not the log.
 """
 
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from .unit_conversion import (ConversionRefused, PRICE_PRECISION, apply_product_factor,
                               can_convert, convert_unit_price)
 from .unit_registry import UNIT_REGISTRY
+
+#: Money leaves this module whole. See `_priced` for why -- both the system's own rule and
+#: the one the page can actually render.
+WHOLE_RIAL = Decimal(1)
 
 #: Ready: a price, a unit, and a crossing that worked.
 READY = "ready"
@@ -198,9 +202,34 @@ def _crossable(source, selected):
 
 
 def _priced(unit_price, quantity, selected, source, factor):
-    unit_price = unit_price.quantize(PRICE_PRECISION) if unit_price is not None else None
-    cost = None if (quantity is None or unit_price is None) else (
-        (quantity * unit_price).quantize(PRICE_PRECISION))
-    return ItemPrice(READY, unit_price_irr=unit_price, item_cost_irr=cost,
+    """Both figures as WHOLE RIALS, which is what money is everywhere else in Finance.
+
+    The conversion itself keeps full precision -- the cost is computed from the exact
+    converted price and only then rounded, so rounding the rate does not compound through
+    the multiplication. What leaves is whole, for two reasons.
+
+    It is the rule this system already holds. `_file_rate_rials` says "a per-unit rate in
+    whole rials. Money is whole here, and a rate is money", `price_versions` is checked for
+    it by a finance invariant, and `estimate_lines` by another.
+
+    And it is the only thing the page can render. `irrToToman` matches `^-?\\d+$` and
+    converts with BigInt, deliberately, so a decimal string is not money to it and comes
+    back as an em dash. Sending `913600.00000000` therefore printed «—» in the قیمت روز
+    column while the status beside it said «آماده» -- a row claiming to be priced and
+    showing nothing, which is worse than either alone.
+
+    Precision is not lost where it matters: a whole rial is a tenth of a toman, so the
+    specification's 4,207.27 toman/kg is 42,073 rials and still reads as 4,207.3 toman.
+    """
+    if unit_price is None:
+        return ItemPrice(READY, unit_price_irr=None, item_cost_irr=None,
+                         selected_unit=selected, source_unit=source, factor_applied=factor,
+                         quantity=quantity)
+    exact_cost = None if quantity is None else quantity * unit_price
+    return ItemPrice(READY,
+                     unit_price_irr=unit_price.quantize(WHOLE_RIAL, rounding=ROUND_HALF_UP),
+                     item_cost_irr=(None if exact_cost is None
+                                    else exact_cost.quantize(WHOLE_RIAL,
+                                                             rounding=ROUND_HALF_UP)),
                      selected_unit=selected, source_unit=source, factor_applied=factor,
                      quantity=quantity)

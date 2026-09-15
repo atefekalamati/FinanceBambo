@@ -64,7 +64,9 @@ export async function loadReportData({ adapters, selection, period, today }) {
     snapshot = defaultSnapshot(await adapters.progress.getSnapshots());
     if (!snapshot) return null;
   }
-  const reportingDate = snapshot?.reportingDate ?? today;
+  // A source snapshot fixes progress reality.  The live financial cutoff remains the
+  // requested as-of day, otherwise an old schedule date hides later estimates/invoices.
+  const reportingDate = today;
   const query = { reportingDate, progressSnapshotId: snapshot?.progressSnapshotId };
   const monthlyQuery = snapshot ? query : { reportingDate };
   const [overview, monthly, invoices, audit, prices, financialItems, wbs, periodOverview] = await Promise.all([

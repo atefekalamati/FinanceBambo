@@ -141,6 +141,10 @@ def api(permission_codes, organization_role="guest", project_id=PROJECT, organiz
     application.state.invoice_service = Recorder(calls)
     application.state.finance_attachment_service = Attachments(calls)
     application.state.finance_extraction_service = Recorder(calls)
+    # Production requires a host-owned durable executor before async work can return 202.
+    # This permission test only needs the submission seam to exist; the recorder raises
+    # before any work is enqueued.
+    application.state.finance_background_executor = SimpleNamespace(submit=lambda run: None)
     application.state.finance_settings_service = Recorder(calls)
     application.state.finance_resources_service = Recorder(calls)
     application.state.finance_live_report_service = Recorder(calls)

@@ -110,7 +110,10 @@ class FinanceAttachmentService:
         value = FinanceAttachment(file_id, scope.organization_id, scope.project_id, logical_type,
             safe_filename(original_name), f"{file_id}.{extension}", mime, len(content), digest,
             scope.actor_user_id, self.clock())
-        stored = await self.storage.put(value, content)
+        try:
+            stored = await self.storage.put(value, content)
+        except Exception as error:
+            raise AttachmentStorageUnavailable("file storage is unavailable") from error
         storage_key = stored if isinstance(stored, str) else stored.storage_key
         value = replace(value, storage_key=storage_key)
         return await self.repo.create(scope, value)
@@ -128,8 +131,13 @@ class FinanceAttachmentService:
 
     async def content(self, scope, file_id):
         value = await self.get(scope, file_id)
-        stored = await self.storage.get(str(scope.organization_id), scope.project_id,
-                                        storage_name(value))
+        try:
+            stored = await self.storage.get(str(scope.organization_id), scope.project_id,
+                                            storage_name(value))
+        except FileNotFoundError as error:
+            raise FinanceRecordNotFound("file content was not found") from error
+        except Exception as error:
+            raise AttachmentStorageUnavailable("file storage is unavailable") from error
         content = stored if isinstance(stored,(bytes,bytearray,memoryview)) else getattr(stored,"content",None)
         if not isinstance(content,(bytes,bytearray,memoryview)):
             raise AttachmentStorageUnavailable("file content is unavailable")

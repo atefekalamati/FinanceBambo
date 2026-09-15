@@ -4338,6 +4338,14 @@
             "title": "Category",
             "type": "string"
           },
+          "columns": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
           "inactiveCount": {
             "title": "Inactivecount",
             "type": "integer"
@@ -4345,6 +4353,17 @@
           "itemCount": {
             "title": "Itemcount",
             "type": "integer"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           }
         },
         "required": [
@@ -4910,6 +4929,11 @@
               }
             ],
             "title": "Sourceurl"
+          },
+          "specs": {
+            "additionalProperties": true,
+            "title": "Specs",
+            "type": "object"
           },
           "targetUnit": {
             "anyOf": [
@@ -8412,8 +8436,9 @@
     }
   },
   "info": {
+    "description": "Finance module for the BAMBO host. Authentication is performed by the host's trusted opaque session; Finance receives validated identity and effective scope through adapters. No bearer-token contract is defined here.",
     "title": "BAMBO Finance",
-    "version": "0.0.0"
+    "version": "1.0.0-rc2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -10834,11 +10859,50 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "audio/mp4": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "audio/mpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "audio/ogg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "audio/wav": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Immutable attachment bytes"
           },
           "403": {
             "content": {
@@ -14428,21 +14492,119 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "UTF-8 CSV with BOM"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
           },
           "422": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
           }
         },
         "summary": "Report Snapshot Csv",
@@ -14478,21 +14640,119 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Excel workbook"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
           },
           "422": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
           }
         },
         "summary": "Report Snapshot Xlsx",

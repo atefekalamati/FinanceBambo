@@ -767,3 +767,12 @@ html[data-theme="light"] .price-form select {
     display: none;
   }
 }
+
+/* Status and unit under the product name, not as columns of their own.
+   The worksheet has no such columns, and adding them would be the generic table shape
+   coming back by another door. */
+.material-price__unit-note {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--color-text-muted, #7c8798);
+}
