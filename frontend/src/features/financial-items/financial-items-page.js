@@ -1056,7 +1056,7 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
       onMapPrice: priceMappingAdapter ? (line, resource) => {
         const panel = createPriceMappingPanel({
           line, resource, adapter: priceMappingAdapter, canEdit,
-          onSaved: () => { panel.remove(); loadPriceStatuses(); },
+          onSaved: () => { panel.close(); panel.remove(); loadPriceStatuses(); },
           onClose: () => panel.remove(),
         });
         root.append(panel);

@@ -60,9 +60,11 @@ function specList(candidate) {
 }
 
 export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSaved, onClose }) {
-  const panel = element("section", "price-mapping-panel");
-  panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-modal", "true");
+  /* A real <dialog>, not a <section> with role="dialog". `showAccessibleDialog` requires
+     one and throws otherwise -- which it did, on every open, so the panel appeared with no
+     focus trap, no Escape and no backdrop while an uncaught TypeError went to the console.
+     The element is what provides those; the role attribute only describes them. */
+  const panel = element("dialog", "price-mapping-panel");
   panel.setAttribute("aria-label", "اتصال قیمت روز به قلم هزینه");
   panel.dataset.estimateLineId = line.lineId ?? line.estimateLineId ?? "";
 
@@ -74,7 +76,7 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
   const head = element("header", "price-mapping-panel__head");
   const close = element("button", "button button--ghost", "بستن");
   close.type = "button";
-  close.addEventListener("click", () => onClose?.());
+  close.addEventListener("click", () => { panel.close(); onClose?.(); });
   head.append(
     element("h2", "", "اتصال قیمت روز"),
     element("p", "", `${resource?.title ?? "قلم هزینه"} — فعالیت ${line.activityExternalId ?? "—"}`),
@@ -133,7 +135,11 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
     if (body.reason) preview.append(element("p", "price-mapping-panel__reason", body.reason));
     const figures = element("dl", "price-mapping-panel__figures");
     figures.append(
-      element("dt", "", "قیمت روز محصول"), element("dd", "numeric", priceText(body.sourcePriceIRR ?? body.convertedDailyUnitPriceIRR)),
+      /* The listing's own price in its own unit. NOT defaulted to the converted figure:
+         two rows showing one number under two labels is how a reader concludes that no
+         conversion took place. Unknown stays an em dash. */
+      element("dt", "", `قیمت روز محصول${body.sourceUnit ? ` (به ازای ${formatUnitLabel(body.sourceUnit)})` : ""}`),
+      element("dd", "numeric", priceText(body.sourcePriceIRR)),
       element("dt", "", "قیمت تبدیل‌شده در واحد انتخابی"), element("dd", "numeric", priceText(body.convertedDailyUnitPriceIRR)),
       element("dt", "", "مقدار قلم"), element("dd", "numeric", body.quantity === null ? "—" : formatDisplayNumber(body.quantity)),
       element("dt", "", "هزینه روز این قلم"), element("dd", "numeric", priceText(body.dailyItemCostIRR)));

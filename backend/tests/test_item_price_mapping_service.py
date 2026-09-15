@@ -257,8 +257,9 @@ class ReadingTheWholeTableTests(unittest.TestCase):
             quantities={LINE: Decimal("100")})
         row = answers[str(LINE)]
         self.assertEqual("ready", row["status"])
-        self.assertEqual(Decimal("4207.27272727"),
-                         Decimal(row["converted_daily_unit_price_irr"]))
+        # Whole rials: money is whole everywhere in Finance, and a decimal string is not
+        # money to the page's formatter.
+        self.assertEqual(Decimal("4207"), Decimal(row["converted_daily_unit_price_irr"]))
 
     def test_a_factor_stored_the_other_way_round_is_the_same_measurement(self):
         answers = self.status(

@@ -190,6 +190,10 @@ class MaterialPriceService:
             "active": row["active"],
             "inactive_reason": row["inactive_reason"],
             "worksheet": row.get("item_worksheet") or row.get("source_worksheet"),
+            # The worksheet's own columns for this product, carried through untouched. The
+            # router turns them into the category's published `specs`; nothing here reads
+            # them, parses them, or prices from them.
+            "metadata": row.get("metadata"),
             "current_price_irr": outcome.price,
             "raw_price": row["raw_price"],
             "source_currency": row["source_currency"],
