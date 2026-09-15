@@ -171,9 +171,13 @@ test("a row whose price is unusable still appears, with its reason", () => {
     resolutionStatus: "unresolved_price",
     resolutionReason: "price is blank",
   })]);
+  /* Six, not the eight this table used to have. «واحد» and «وضعیت» were never worksheet
+     columns -- they describe how this system READ the price, not what the sheet states --
+     so they moved under the product name as a badge and the header row now carries only
+     what a worksheet actually supplies. See material-prices-category-columns.test.js. */
   const cells = [...section.querySelectorAll("tbody tr td")].map((td) => td.textContent);
-  assert.equal(cells.length, 8);
-  assert.ok(cells.includes("—"), "the price cell is an em dash");
+  assert.equal(cells.length, 6);
+  assert.ok(cells.some((text) => text.includes("—")), "the price cell is an em dash");
   assert.match(section.textContent, /قیمت خوانا نیست/);
   assert.match(section.textContent, /price is blank/);
 });

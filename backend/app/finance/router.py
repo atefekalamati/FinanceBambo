@@ -43,7 +43,7 @@ from .schemas.material_prices import (ImportRunListResponse,ImportRunResponse,
 from .schemas.item_price_mappings import (CandidateListResponse,CandidateProductResponse,
     ConvertedPricePreviewResponse,ItemPriceMappingCreate,ItemPriceMappingResponse,
     ItemPriceStatusListResponse,ItemPriceStatusResponse,MappingFiltersResponse)
-from .domain.material_categories import category_label,spec_columns,specs_of
+from .domain.material_categories import category_columns,category_label,spec_columns,specs_of
 from .services.material_price_resolution import canonical_unit
 from datetime import date
 
@@ -576,7 +576,14 @@ async def material_categories(projectId:str,request:Request):
     """Every category present, counted from the database. No category is assumed to exist."""
     scope=await _resource_scope(projectId,request,"finance.view")
     items=await request.app.state.material_price_service.categories(scope)
-    return MaterialCategoryListResponse(items=[_declared(MaterialCategoryResponse, x) for x in items])
+    # Each category carries its own table schema. The page builds its header row from this
+    # rather than from a list of its own, so a worksheet column can never be shown for a
+    # category whose sheet does not state one.
+    return MaterialCategoryListResponse(items=[
+        _declared(MaterialCategoryResponse,
+                  dict(x, label=category_label(x["category"]),
+                       columns=category_columns(x["category"])))
+        for x in items])
 
 @router.get("/material-prices/current",response_model=MaterialPriceListResponse)
 async def material_prices_current(projectId:str,request:Request,
@@ -592,7 +599,17 @@ async def material_prices_current(projectId:str,request:Request,
     items,total=await request.app.state.material_price_service.current(
         scope,category=category,as_of=asOf,page=page,page_size=pageSize,
         only_active=not includeInactive)
-    return MaterialPriceListResponse(items=[MaterialPriceResponse(**x) for x in items],
+    # The worksheet's own values for each row, read from what the importer already stored
+    # on `provider_items.metadata`. Nothing is parsed or filled in here: a blank cell is
+    # null, and a category whose sheet states no measurements gets an empty object.
+    # `metadata` is the raw worksheet object and is NOT part of the response: `ApiModel`
+    # forbids unknown fields, and publishing every stored key would put columns on screen
+    # that nobody has decided are real. What travels is `specs` -- this category's declared
+    # columns, read from that object and nothing else.
+    return MaterialPriceListResponse(items=[
+        MaterialPriceResponse(**{**{k: v for k, v in x.items() if k != "metadata"},
+                                 "specs": specs_of(x.get("category"), x.get("metadata"))})
+        for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 
 @router.get("/material-prices/{providerItemId}/history",response_model=MaterialPriceHistoryListResponse)

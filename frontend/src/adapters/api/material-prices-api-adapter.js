@@ -63,6 +63,12 @@ function mapPrice(value) {
     sourceRowNumber: value.sourceRowNumber ?? null,
     sourceUrl: value.sourceUrl ?? null,
 
+    /* This product's own worksheet columns, keyed by the sheet's Persian header and
+       carrying the value verbatim. A cell the sheet left blank arrives as null and must
+       stay blank on screen: 8 of 210 bricks state no square-metre price, and a dash there
+       is the truth while a zero would be a claim. */
+    specs: value.specs ?? {},
+
     /* What a person decided about this listing. All null until somebody does. */
     label: value.label ?? null,
     labelDisplayName: value.labelDisplayName ?? null,
@@ -188,6 +194,11 @@ export function createMaterialPricesApiAdapter(context, { client }) {
       const payload = await client.request(`${base}/material-prices/categories`);
       return (payload.items ?? []).map((item) => ({
         category: item.category,
+        label: item.label ?? item.category,
+        /* THIS category's table, as the Backend declares it. The page builds its header
+           row from this and holds no list of its own -- which is what stops a column
+           from one worksheet appearing over another worksheet's rows. */
+        columns: item.columns ?? [],
         itemCount: item.itemCount,
         activeCount: item.activeCount,
         inactiveCount: item.inactiveCount,

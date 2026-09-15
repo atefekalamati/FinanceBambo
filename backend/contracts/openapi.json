@@ -4338,6 +4338,14 @@
             "title": "Category",
             "type": "string"
           },
+          "columns": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
           "inactiveCount": {
             "title": "Inactivecount",
             "type": "integer"
@@ -4345,6 +4353,17 @@
           "itemCount": {
             "title": "Itemcount",
             "type": "integer"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           }
         },
         "required": [
@@ -4910,6 +4929,11 @@
               }
             ],
             "title": "Sourceurl"
+          },
+          "specs": {
+            "additionalProperties": true,
+            "title": "Specs",
+            "type": "object"
           },
           "targetUnit": {
             "anyOf": [

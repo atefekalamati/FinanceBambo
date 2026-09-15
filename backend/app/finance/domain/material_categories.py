@@ -41,7 +41,10 @@ CATEGORY_SPECS: dict[str, tuple[dict, ...]] = {
     ),
     "ibeam": (
         {"key": "وزن - کیلوگرم", "label": "وزن (کیلوگرم)", "numeric": True},
-        {"key": "طول", "label": "طول", "numeric": False},
+        # No «طول». The I-beam worksheet does not carry one -- counted across all 89 rows,
+        # the only key present is the weight. It was listed here once from the shape of the
+        # neighbouring sheets, which is exactly the kind of guess this module forbids: a
+        # column nobody can fill would render as 89 empty cells and read as missing data.
     ),
     "angle": (
         {"key": "ضخامت", "label": "ضخامت", "numeric": True},
@@ -63,7 +66,10 @@ CATEGORY_SPECS: dict[str, tuple[dict, ...]] = {
         {"key": "کد", "label": "کد", "numeric": False},
         {"key": "ابعاد", "label": "ابعاد", "numeric": False},
         {"key": "وزن", "label": "وزن", "numeric": False},
-        {"key": "قیمت در هر مترمربع", "label": "قیمت هر مترمربع", "numeric": True},
+        # A price, so it sits beside the price rather than among the measurements. The
+        # sheet states it for 202 of 210 bricks; the other eight publish null.
+        {"key": "قیمت در هر مترمربع", "label": "قیمت در هر مترمربع", "numeric": True,
+         "after_price": True},
     ),
     "pipe": (),
     "pipe_fitting": (),
@@ -117,3 +123,45 @@ def unknown_spec_keys(category, metadata):
     stored = metadata if isinstance(metadata, dict) else {}
     known = {column["key"] for column in spec_columns(category)}
     return sorted(key for key in stored if key not in known)
+
+
+#: The columns EVERY worksheet supplies, in the order the sheet reads them.
+#:
+#: These are not "generic columns bolted onto every category" -- they are the four facts the
+#: sheet states for every product regardless of what it is: who quoted it, what it is called,
+#: what it costs, on which day, and under which id. A category's own columns are inserted
+#: between the name and the price, which is where the sheet itself puts them.
+#:
+#: `kind` says where each value comes from, so a renderer never has to guess: `base` reads a
+#: named field of the row, `spec` reads `specs[key]`.
+BASE_COLUMNS_BEFORE: tuple[dict, ...] = (
+    {"key": "source", "label": "منبع", "kind": "base", "numeric": False},
+    {"key": "product", "label": "محصول", "kind": "base", "numeric": False},
+)
+
+BASE_COLUMNS_AFTER: tuple[dict, ...] = (
+    {"key": "price", "label": "قیمت", "kind": "base", "numeric": True},
+    {"key": "workflowDate", "label": "تاریخ آپدیت ورک فلو", "kind": "base", "numeric": False},
+    {"key": "productId", "label": "productId", "kind": "base", "numeric": False},
+)
+
+
+def category_columns(category):
+    """Every column this category's table shows, in order, base and spec together.
+
+    Published by the API so the page does not hold a second copy of the schema. A category
+    with no spec columns -- pipe states none -- gets the five base ones and nothing else,
+    which is the honest table for a worksheet that says nothing more about its products.
+    """
+    specs = [dict(column, kind="spec") for column in spec_columns(category)]
+    # A spec that is itself a price sits beside the price; the rest are measurements and
+    # sit where the sheet puts them, between the product name and the price.
+    measurements = [dict(c) for c in specs if not c.get("after_price")]
+    priced = [dict(c) for c in specs if c.get("after_price")]
+    for column in measurements + priced:
+        column.pop("after_price", None)
+
+    after = [dict(c) for c in BASE_COLUMNS_AFTER]
+    price_at = next(i for i, c in enumerate(after) if c["key"] == "price")
+    after[price_at + 1:price_at + 1] = priced
+    return [dict(c) for c in BASE_COLUMNS_BEFORE] + measurements + after
