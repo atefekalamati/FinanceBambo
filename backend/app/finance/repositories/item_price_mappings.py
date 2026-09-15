@@ -84,10 +84,19 @@ class PsycopgItemPriceMappingRepository:
                           o.workflow_date_gregorian, o.workflow_date_jalali,
                           o.observed_at, o.validation_status,
                           i.external_name, i.external_id, i.category, i.active,
-                          i.source_worksheet, p.name AS provider_name
+                          i.source_worksheet, p.name AS provider_name,
+                          -- See the component repository: the worksheet states a unit for
+                          -- rebar and for nothing else, so a person's label is usually the
+                          -- only thing that can say what a price is per.
+                          l.source_unit AS label_source_unit
                      FROM price_observations o
                      JOIN provider_items i ON i.id = o.provider_item_id
                      LEFT JOIN price_providers p ON p.id = i.provider_id
+                     LEFT JOIN provider_item_labels l
+                            ON l.provider_item_id = i.id
+                           AND l.organization_id = o.organization_id
+                           AND l.project_id = o.project_id
+                           AND l.superseded_at IS NULL
                     WHERE o.organization_id=%s AND o.project_id=%s
                       AND o.provider_item_id = ANY(%s)
                       AND o.validation_status = 'valid'

@@ -25,7 +25,7 @@ from datetime import date
 from ..domain.item_price_mapping import (INCOMPATIBLE, NEEDS_FACTOR, price_item)
 from ..domain.unit_conversion import can_convert
 from ..domain.unit_registry import UNIT_REGISTRY
-from .material_price_resolution import canonical_unit
+from .material_price_resolution import stated_source_unit
 from ..domain.errors import FinanceDomainError
 
 
@@ -217,19 +217,15 @@ class ItemPriceMappingService:
 
 
 def _source_unit(observation):
-    """The unit the price is stated in, as a REGISTRY CODE.
+    """The unit this listing's price is stated in, or None.
 
-    The sheet writes «کیلو», «مترمکعب», «شاخه» -- Persian words, not codes -- and
-    `price_observations.normalized_unit` is null on rows the importer could not settle. So
-    the raw text goes through `canonical_unit`, which is the same spelling table the
-    material-prices page already uses; without it every mapping reported «واحد قیمت مبدأ
-    مشخص نیست» while the listing beside it plainly said کیلو.
-
-    A spelling the table does not know stays unresolved rather than being guessed at, which
-    is what the caller then reports.
+    One rule, shared with the prices page and with the component pricing: a label a person
+    recorded wins, then the observation's own normalized unit, then the raw sheet text --
+    all through the same spelling table. Without the label the mapping reported «واحد قیمت
+    مبدأ مشخص نیست» beside a prices page that had resolved the very same listing.
     """
-    stated = observation.get("normalized_unit") or observation.get("source_unit")
-    return canonical_unit(stated) or None
+    return stated_source_unit(observation,
+                              {"source_unit": observation.get("label_source_unit")})
 
 
 def _factor_for(factors, mapping, source_unit):

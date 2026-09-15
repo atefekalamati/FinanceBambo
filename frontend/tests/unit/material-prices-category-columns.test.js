@@ -35,10 +35,10 @@ const CATEGORIES = [
   { category: "angle", label: "نبشی", columns: [
     { key: "source", label: "منبع", kind: "base" },
     { key: "product", label: "محصول", kind: "base" },
-    { key: "ضخامت", label: "ضخامت", kind: "spec" },
-    { key: "وزن", label: "وزن", kind: "spec" },
-    { key: "طول", label: "طول", kind: "spec" },
-    { key: "تعداد شاخه", label: "تعداد شاخه", kind: "spec" },
+    { key: "ضخامت", label: "ضخامت", kind: "spec", numeric: true },
+    { key: "وزن", label: "وزن", kind: "spec", numeric: true },
+    { key: "طول", label: "طول", kind: "spec", numeric: false },
+    { key: "تعداد شاخه", label: "تعداد شاخه", kind: "spec", numeric: true },
     { key: "price", label: "قیمت", kind: "base", numeric: true },
     { key: "workflowDate", label: "تاریخ آپدیت ورک فلو", kind: "base" },
     { key: "productId", label: "productId", kind: "base" },
@@ -46,7 +46,7 @@ const CATEGORIES = [
   { category: "ibeam", label: "تیرآهن", columns: [
     { key: "source", label: "منبع", kind: "base" },
     { key: "product", label: "محصول", kind: "base" },
-    { key: "وزن - کیلوگرم", label: "وزن (کیلوگرم)", kind: "spec" },
+    { key: "وزن - کیلوگرم", label: "وزن (کیلوگرم)", kind: "spec", numeric: true },
     { key: "price", label: "قیمت", kind: "base", numeric: true },
     { key: "workflowDate", label: "تاریخ آپدیت ورک فلو", kind: "base" },
     { key: "productId", label: "productId", kind: "base" },
@@ -54,9 +54,9 @@ const CATEGORIES = [
   { category: "brick", label: "آجر", columns: [
     { key: "source", label: "منبع", kind: "base" },
     { key: "product", label: "محصول", kind: "base" },
-    { key: "کد", label: "کد", kind: "spec" },
-    { key: "ابعاد", label: "ابعاد", kind: "spec" },
-    { key: "وزن", label: "وزن", kind: "spec" },
+    { key: "کد", label: "کد", kind: "spec", numeric: false },
+    { key: "ابعاد", label: "ابعاد", kind: "spec", numeric: false },
+    { key: "وزن", label: "وزن", kind: "spec", numeric: true },
     { key: "price", label: "قیمت", kind: "base", numeric: true },
     { key: "قیمت در هر مترمربع", label: "قیمت در هر مترمربع", kind: "spec", numeric: true },
     { key: "workflowDate", label: "تاریخ آپدیت ورک فلو", kind: "base" },
@@ -153,12 +153,32 @@ test("with no category chosen, only what every worksheet supplies is shown", () 
 
 /* ------------------------------------------------------------------------ the values */
 
-test("a spec cell carries the worksheet value verbatim", () => {
+test("a numeric spec reads as a number, not as the sheet's float", () => {
+  // The sheet's own cell carries «10.0» and «22.0» in Latin digits. Beside a price
+  // written «۹۲٬۲۸۰» in the same row that reads as two different systems, and the
+  // trailing «.0» is an artefact of the spreadsheet, not a measurement to a tenth.
+  // `numeric` is the backend saying this cell may be treated as a number, and it is the
+  // only thing that licenses reformatting it.
   const columns = columnsFor("angle", CATEGORIES);
-  const thickness = columns.find((c) => c.key === "ضخامت");
-  assert.equal(cellValue(thickness, row()), "10.0");
-  const branches = columns.find((c) => c.key === "تعداد شاخه");
-  assert.equal(cellValue(branches, row()), "22.0");
+  assert.equal(cellValue(columns.find((c) => c.key === "ضخامت"), row()), "۱۰");
+  assert.equal(cellValue(columns.find((c) => c.key === "تعداد شاخه"), row()), "۲۲");
+});
+
+test("a spec the backend does not call numeric travels verbatim", () => {
+  // «۶ متر» is a sentence and «۲۰*۱۰*۷» is a size. Formatting either would be reading it
+  // as a quantity it is not, so only the flagged columns are touched.
+  const columns = columnsFor("angle", CATEGORIES);
+  assert.equal(cellValue(columns.find((c) => c.key === "طول"),
+                         row({ specs: { "طول": "6 متر" } })), "6 متر");
+  assert.equal(cellValue(columnsFor("brick", CATEGORIES).find((c) => c.key === "ابعاد"),
+                         row({ specs: { "ابعاد": "20*10*7" } })), "20*10*7");
+});
+
+test("a square-metre price is grouped like the price beside it", () => {
+  const columns = columnsFor("brick", CATEGORIES);
+  const perSquare = columns.find((c) => c.key === "قیمت در هر مترمربع");
+  assert.equal(cellValue(perSquare, row({ specs: { "قیمت در هر مترمربع": "364500.0" } })),
+               "۳۶۴٬۵۰۰");
 });
 
 test("a blank worksheet cell stays blank and never becomes zero", () => {
@@ -173,7 +193,8 @@ test("a blank worksheet cell stays blank and never becomes zero", () => {
 test("a real zero in the sheet is kept as a zero", () => {
   const columns = columnsFor("angle", CATEGORIES);
   const weight = columns.find((c) => c.key === "وزن");
-  assert.equal(cellValue(weight, row({ specs: { "وزن": "0" } })), "0");
+  // Still a zero after formatting: the sheet said zero, and «۰» says the same thing.
+  assert.equal(cellValue(weight, row({ specs: { "وزن": "0" } })), "۰");
 });
 
 test("the base cells read the row's own fields", () => {

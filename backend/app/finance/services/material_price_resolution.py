@@ -109,6 +109,35 @@ def canonical_unit(unit):
     return SHEET_UNIT_SPELLINGS.get(text) or SHEET_UNIT_SPELLINGS.get(lowered)
 
 
+
+def stated_source_unit(observation, label=None):
+    """The unit a daily price is stated in, as a REGISTRY CODE, or None.
+
+    Two things can say it and they are asked in the order of who looked hardest:
+
+      1. A LABEL a person recorded against this listing. It is the narrower statement and
+         the only one made by somebody who looked at this product -- and for most of the
+         catalogue it is the only one there is, because the worksheet states a unit for
+         rebar and for nothing else.
+      2. The observation itself: `normalized_unit` when the importer settled one, else the
+         raw `source_unit` text the sheet carried.
+
+    Everything goes through `canonical_unit`, so a spelling this system cannot name stays
+    unresolved rather than travelling on looking like a code.
+
+    WHY THIS IS SHARED
+
+    `material_prices` already asked the label first and the item-pricing services did not,
+    so a label recorded to make a listing usable changed the prices page and left the
+    financial-items row still saying «واحد قیمت مبدأ مشخص نیست». One listing, two answers,
+    on two pages of the same product -- which is the second vocabulary this area keeps
+    being warned about. One function now, called by both.
+    """
+    stated = ((label or {}).get("source_unit")
+              or observation.get("normalized_unit")
+              or observation.get("source_unit"))
+    return canonical_unit(stated) or None
+
 def unit_label(code):
     """The Persian name of a registry code, for a message a person will read."""
     definition = UNIT_REGISTRY.get(code or "")

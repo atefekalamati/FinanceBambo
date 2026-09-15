@@ -149,10 +149,23 @@ class PsycopgItemPriceComponentRepository:
                           o.source_unit, o.source_currency, o.workflow_date_jalali,
                           o.workflow_date_gregorian,
                           i.external_name, i.external_id, i.category, i.active,
-                          i.source_worksheet, i.metadata, p.name AS provider_name
+                          i.source_worksheet, i.metadata, p.name AS provider_name,
+                          -- What a person said about THIS listing. The worksheet states a
+                          -- unit for rebar and for nothing else, so for most of the
+                          -- catalogue the label is the only thing that can say what the
+                          -- price is per. Read here so the pricing agrees with the prices
+                          -- page, which has always asked the label first.
+                          l.source_unit AS label_source_unit,
+                          l.product_type AS label_product_type,
+                          l.display_name AS label_display_name
                      FROM price_observations o
                      JOIN provider_items i ON i.id = o.provider_item_id
                      LEFT JOIN price_providers p ON p.id = i.provider_id
+                     LEFT JOIN provider_item_labels l
+                            ON l.provider_item_id = i.id
+                           AND l.organization_id = o.organization_id
+                           AND l.project_id = o.project_id
+                           AND l.superseded_at IS NULL
                     WHERE o.organization_id=%s AND o.project_id=%s
                       AND o.provider_item_id = ANY(%s)
                       AND o.validation_status = 'valid'

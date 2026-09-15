@@ -32,7 +32,7 @@ from ..domain.item_price_components import (PER_MSP_UNIT, TOTAL_QUANTITY, USAGE_
 from ..domain.material_categories import category_label, spec_columns, specs_of
 from ..domain.unit_conversion import can_convert
 from ..domain.unit_registry import UNIT_REGISTRY
-from .material_price_resolution import canonical_unit
+from .material_price_resolution import stated_source_unit
 
 
 class ItemPriceComponentRefused(FinanceDomainError):
@@ -383,15 +383,14 @@ def _conversion_for(source_unit, selected_unit, factor):
 
 
 def _source_unit(observation):
-    """The unit the price is stated in, as a REGISTRY CODE.
+    """The unit this listing's price is stated in, or None.
 
-    The sheet writes «کیلو» and «شاخه» -- Persian words, not codes -- and
-    `price_observations.normalized_unit` is null on rows the importer could not settle. So
-    the raw text goes through the same spelling table the material-prices page uses. A
-    spelling it does not know stays unresolved rather than being guessed at.
+    One rule, shared with the prices page: a label a person recorded wins, then the
+    observation's own normalized unit, then the raw sheet text -- all through the same
+    spelling table, so a spelling nothing recognises stays unresolved.
     """
-    stated = observation.get("normalized_unit") or observation.get("source_unit")
-    return canonical_unit(stated) or None
+    return stated_source_unit(observation,
+                              {"source_unit": observation.get("label_source_unit")})
 
 
 def _factor_for(factors, provider_item_id, source_unit, target_unit):

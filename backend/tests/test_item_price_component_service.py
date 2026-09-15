@@ -290,6 +290,30 @@ class ThePanelTests(unittest.TestCase):
         self.assertFalse(body["components"][0]["active"])
         self.assertEqual("needs_components", body["total"]["status"])
 
+    def test_a_label_supplies_the_source_unit_the_worksheet_never_stated(self):
+        """The prices page has always asked the label first; this did not, and that was a
+        second vocabulary. On the audited project the worksheet states a unit for rebar
+        (311 of 311) and for NOTHING else -- 0 of 992 pipes, 0 of 210 bricks, 0 of 89
+        ibeams -- so for most of the catalogue a person's label is the only thing that can
+        say what a price is per. Without this the financial-items row reported «واحد قیمت
+        مبدأ مشخص نیست» beside a prices page that had resolved the very same listing.
+        """
+        service, _ = self.service(
+            components=[component(REBAR, "branch", "3", "total_quantity")],
+            prices={REBAR: observation("22000000", None, source_unit=None,
+                                       label_source_unit="branch")})
+        row = run(service.components_for_line(Scope(), LINE))["components"][0]
+        self.assertEqual("branch", row["source_unit"])
+        self.assertEqual("ready", row["status"])
+        self.assertEqual("66000000", row["component_daily_cost_irr"])
+
+    def test_a_label_outranks_the_sheet_because_somebody_looked_at_this_product(self):
+        service, _ = self.service(
+            components=[component(REBAR, "branch", "1", "total_quantity")],
+            prices={REBAR: observation("22000000", "kg", label_source_unit="branch")})
+        row = run(service.components_for_line(Scope(), LINE))["components"][0]
+        self.assertEqual("branch", row["source_unit"])
+
     def test_the_source_unit_is_read_through_the_sheet_s_own_spelling(self):
         # The sheet writes «کیلو», not `kg`, and a price stated in a spelling this system
         # cannot name would otherwise report «واحد قیمت مبدأ مشخص نیست» beside a listing

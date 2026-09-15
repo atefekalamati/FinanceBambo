@@ -1,5 +1,5 @@
 import { element } from "../../shared/dom/elements.js";
-import { formatBusinessDate, formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatBusinessDate, formatDisplayNumber, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 
 /* «قیمت روز بازار» — the market prices imported from the material sheet.
@@ -98,10 +98,20 @@ export function columnsFor(selectedCategory, categories) {
 /** One cell's text, by where the column says its value lives. */
 export function cellValue(column, row, categoryLabels = {}) {
   if (column.kind === "spec") {
-    /* Verbatim from the worksheet. A blank cell is an em dash, never a zero: the sheet
-       said nothing, and nothing is not none. */
+    /* From the worksheet. A blank cell is an em dash, never a zero: the sheet said
+       nothing, and nothing is not none. */
     const value = (row.specs ?? {})[column.key];
-    return value === null || value === undefined || value === "" ? "—" : String(value);
+    if (value === null || value === undefined || value === "") return "—";
+    /* `numeric` is the BACKEND saying a reader may treat this cell as a number, and it
+       is the only thing that licenses reformatting it. Grouped and in Persian digits it
+       reads as «۳۶۴٬۵۰۰» beside the price above it, instead of «364500.0» -- Latin
+       digits and a float tail the sheet's own cell carried, sitting in an RTL table
+       where every other figure is grouped.
+
+       A column the backend does NOT call numeric travels verbatim, because «۶ متر» is a
+       sentence and «۶۰*۶۰*۵» is a size, and formatting either would be reading them as
+       quantities they are not. */
+    return column.numeric ? formatDisplayNumber(value) : String(value);
   }
   switch (column.key) {
     case "source": return row.providerName ?? "—";
