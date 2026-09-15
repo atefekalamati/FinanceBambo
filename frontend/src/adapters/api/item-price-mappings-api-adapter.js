@@ -29,6 +29,11 @@ function mapStatus(value) {
 
     selectedUnit: value.selectedUnit ?? null,
     sourceUnit: value.sourceUnit ?? null,
+    /* What the listing costs in ITS OWN unit, before any conversion. Only the preview
+       carries it. Without it the panel fell back to the converted figure, so «قیمت روز
+       محصول» and «قیمت تبدیل‌شده» always showed the same number and the row moved when
+       the unit changed -- which reads as "no conversion happened". */
+    sourcePriceIRR: value.sourcePriceIrr ?? null,
     conversionFactor: value.conversionFactor ?? null,
     quantity: value.quantity ?? null,
 
