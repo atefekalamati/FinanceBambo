@@ -30,6 +30,13 @@ class MaterialCategoryResponse(ApiModel):
     item_count: int
     active_count: int
     inactive_count: int
+    #: What to call it on screen, so the page holds no second copy of the vocabulary.
+    label: str | None = None
+    #: THIS category's own table, in order: the base columns every worksheet supplies and
+    #: the ones only this worksheet does. Published here so a page can build the header row
+    #: before a single row arrives -- and so a category whose sheet states no measurements,
+    #: like pipe, gets a short honest table rather than empty columns borrowed from another.
+    columns: list[dict] = Field(default_factory=list)
 
 
 class MaterialCategoryListResponse(ApiModel):
@@ -100,6 +107,12 @@ class MaterialPriceResponse(ApiModel):
 
     source_row_number: int | None = None
     source_url: str | None = None
+
+    #: The worksheet's own columns for this product, keyed by the sheet's Persian header and
+    #: carrying the value verbatim. A cell the sheet left blank is null -- 8 of 210 bricks
+    #: state no square-metre price, and null is what says so. Empty for a category whose
+    #: worksheet states nothing beyond the basics.
+    specs: dict = Field(default_factory=dict)
 
     #: What a person wrote about this listing. All optional, all null until somebody does:
     #: an unlabelled row is a row nobody has looked at, and saying so is the point.
