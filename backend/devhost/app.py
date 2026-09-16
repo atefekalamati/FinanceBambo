@@ -28,6 +28,8 @@ from app.main import create_app
 from app.finance.repositories.attachments import PsycopgAttachmentRepository
 from app.finance.repositories.audit import PsycopgFinanceAuditRepository
 from app.finance.repositories.conversions import PsycopgUnitConversionRepository
+from app.finance.repositories.items_and_estimates import (
+    PsycopgItemsAndEstimatesRepository)
 from app.finance.repositories.material_prices import PsycopgMaterialPriceRepository
 from app.finance.repositories.item_price_mappings import PsycopgItemPriceMappingRepository
 from app.finance.repositories.item_price_components import PsycopgItemPriceComponentRepository
@@ -43,6 +45,7 @@ from app.finance.repositories.settings import PsycopgFinanceSettingsRepository
 from app.finance.services.attachments import FinanceAttachmentService
 from app.finance.services.audit import FinanceAuditService
 from app.finance.services.conversions import UnitConversionService
+from app.finance.services.items_and_estimates import ItemsAndEstimatesService
 from app.finance.services.material_prices import MaterialPriceService
 from app.finance.services.item_price_mappings import ItemPriceMappingService
 from app.finance.services.item_price_components import ItemPriceComponentService
@@ -334,6 +337,9 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     # is a server-side job; no request path here reaches Google Sheets, and the unit
     # conversion repository is handed over so one conversion boundary answers both
     # the existing unit registry and a converted material price.
+    # Items and Estimates reads the schedule that is authoritative for what exists.
+    application.state.items_and_estimates_service = ItemsAndEstimatesService(
+        PsycopgItemsAndEstimatesRepository(connection))
     application.state.material_price_service = MaterialPriceService(
         PsycopgMaterialPriceRepository(connection),
         conversion_repository=PsycopgUnitConversionRepository(connection))

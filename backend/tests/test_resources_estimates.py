@@ -78,13 +78,34 @@ class ActivityProvider:
 
 
 class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
+    def imported(self, resource_id=RESOURCE, kind="material", code="M1", title="سیمان",
+                 base_unit="kg", dimension="mass", uid=94):
+        """A resource as the MPP IMPORT would have written it, put straight in the repo.
+
+        The service can no longer make one -- that is the point of the mission -- and the
+        import writes through `coreint/finance_mpp_mapping.py`, not through here. So the
+        fixture stands in for the importer: a resource with a `source_resource_uid`, which
+        is the only field that says the schedule accounts for it.
+        """
+        # Consume the two ids the create path took -- the resource and its audit event --
+        # so everything allocated after this lands on the id it did when the resource was
+        # made through the service. The assertions about stable ids are about the factory,
+        # not about who happened to call it.
+        self.ids(); self.ids()
+        value = FinanceResource(resource_id, ORG, "sample_site_01", kind, code, title,
+                                base_unit, dimension, None, ACTOR, NOW,
+                                source_resource_uid=uid)
+        self.repo.resources.append(value)
+        return value
+
     def setUp(self):
         ids = iter((RESOURCE, UUID("44444444-4444-4444-8444-444444444444"), LINE,
                     UUID("55555555-5555-4555-8555-555555555555"),
                     UUID("66666666-6666-4666-8666-666666666666"),
                     UUID("77777777-7777-4777-8777-777777777777")))
         self.repo = Repo()
-        self.service = FinanceResourcesService(self.repo, lambda: next(ids), ActivityProvider(), lambda: NOW)
+        self.ids = lambda: next(ids)
+        self.service = FinanceResourcesService(self.repo, self.ids, ActivityProvider(), lambda: NOW)
         self.scope = FinanceScope(ORG, "sample_site_01", ACTOR)
 
     def test_four_types_and_general_cost_optional_unit(self):
@@ -96,9 +117,7 @@ class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
             ResourceCreate(type="material", code="M", title="مصالح")
 
     async def test_uuid_is_stable_and_original_quantity_is_not_rewritten(self):
-        resource = await self.service.create_resource(
-            self.scope, ResourceCreate(type="material", code="M1", title="سیمان", baseUnit="kg")
-        )
+        resource = self.imported()
         self.assertEqual("mass", resource.dimension)
         line = await self.service.create_estimate_line(
             self.scope, EstimateLineCreate(resourceId=resource.id, activityExternalId="A1", assignmentExternalId="AS1", originalQuantity="10.0000", originalUnitPriceIrr="12000", source="manual_entry")
@@ -114,9 +133,10 @@ class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, len(self.repo.revisions))
 
     async def test_general_cost_ui_amount_is_normalized_to_money_not_quantity(self):
-        resource = await self.service.create_resource(
-            self.scope, ResourceCreate(type="general_cost", code="GC", title="هزینه مجوز")
-        )
+        # An imported general cost: the one general_cost the model allows is one an
+        # authoritative record already represents, which is what the uid stands for here.
+        resource = self.imported(kind="general_cost", code="GC", title="هزینه مجوز",
+                                 base_unit=None, dimension=None)
         line = await self.service.create_estimate_line(
             self.scope, EstimateLineCreate(resourceId=resource.id, activityExternalId="A1", originalQuantity="2500000", source="manual_entry")
         )
@@ -151,9 +171,7 @@ class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("general cost revision requires an exact integer IRR amount", source)
 
     async def test_activity_provider_validates_active_activity_for_new_estimate_line(self):
-        resource = await self.service.create_resource(
-            self.scope, ResourceCreate(type="material", code="M2", title="میلگرد", baseUnit="kg")
-        )
+        resource = self.imported(code="M2", title="میلگرد")
         with self.assertRaises(ActivityNotFound):
             await self.service.create_estimate_line(
                 self.scope,
@@ -166,14 +184,20 @@ class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_unknown_unit_is_rejected_and_dimension_mismatch_is_rejected(self):
+        """The unit rules now guard the CLASSIFY path, which is the one that still writes.
+
+        They used to be reached through `create_resource`. That path is refused outright,
+        so the rules are pinned where they still apply: correcting an existing imported
+        resource, which is one of the few edits the approved model permits.
+        """
+        from app.finance.schemas.resources import ResourcePatch
+        self.imported(code="BAD", title="ناشناخته")
         with self.assertRaises(UnitNotFound):
-            await self.service.create_resource(
-                self.scope, ResourceCreate(type="material", code="BAD", title="ناشناخته", baseUnit="parsec")
-            )
+            await self.service.update_resource(self.scope, RESOURCE,
+                                               ResourcePatch(baseUnit="parsec"))
         with self.assertRaises(UnitMismatch):
-            await self.service.create_resource(
-                self.scope, ResourceCreate(type="material", code="BAD2", title="ناسازگار", baseUnit="kg", dimension="area")
-            )
+            await self.service.update_resource(self.scope, RESOURCE,
+                                               ResourcePatch(baseUnit="kg", dimension="area"))
 
     async def test_activity_creation_is_delegated_to_host_provider(self):
         from app.finance.schemas.activities import ActivityCreate

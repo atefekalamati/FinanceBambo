@@ -2,7 +2,8 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from ..domain.resources import EstimateLine, FinanceRecordNotFound, FinanceResource, UnitMismatch
+from ..domain.resources import (EstimateLine, FinanceRecordNotFound, FinanceResource,
+                                MppResourceRequired, UnitMismatch)
 from ..domain.resources import ActivityInactive, ActivityNotFound, ActivityProviderUnavailable, UnitInactive, UnitNotFound
 from ..domain.unit_registry import UNIT_REGISTRY
 from ..schemas.resources import EstimateLineCreate, EstimateRevisionCreate, ResourceCreate, ResourcePatch
@@ -27,12 +28,20 @@ class FinanceResourcesService:
         return value
 
     async def create_resource(self, scope, command: ResourceCreate):
-        now, actor = self._clock(), self._actor(scope)
-        base_unit, dimension = self._normalize_unit(command.type, command.base_unit, command.dimension)
-        value = FinanceResource(self._id_factory(), scope.organization_id, scope.project_id,
-            command.type, command.code.strip(), command.title.strip(), base_unit,
-            dimension, command.external_resource_id, actor, now)
-        return await self._repository.create_resource(scope, value, self._id_factory())
+        """REFUSED. A project resource is something the schedule states, not something
+        this endpoint makes.
+
+        Every row this method could write would carry `source_resource_uid = NULL` -- the
+        INSERT below never had a column for it -- and a resource with no MPP UID is one
+        no schedule can account for, which still appears in the project total and can
+        still be invoiced against.
+
+        The import path is untouched: `coreint/finance_mpp_mapping.py` writes resources
+        with their UIDs through its own statement and never calls this.
+        """
+        raise MppResourceRequired(
+            "a project resource must come from an imported MPP source version; "
+            "this endpoint cannot state which MPP resource it would be")
 
     async def update_resource(self, scope, resource_id, command: ResourcePatch):
         changes = command.model_dump(exclude_unset=True)
@@ -84,7 +93,24 @@ class FinanceResourcesService:
     async def list_task_resource_mappings(self, scope, page=1, page_size=100):
         return await self._repository.list_task_resource_mappings(scope, page, page_size)
     async def create_estimate_line(self, scope, command: EstimateLineCreate):
+        """REFUSED unless the resource it names is itself MPP-derived.
+
+        The gate is the RESOURCE's `source_resource_uid`, not a flag on the request: a
+        caller cannot assert provenance it does not have, and the only trustworthy
+        statement about whether something came from the schedule is the UID the importer
+        wrote. A line on an MPP resource is a line the file can account for; a line on a
+        resource with no UID is the source-less row this whole model exists to stop.
+
+        120 such rows already exist on the audited project, carrying 1,615,000,000 IRR of
+        the reported initial estimate. They are not deleted -- two of them are invoiced
+        against -- they are marked `legacy_unlinked` by 0030 and kept out of MPP-derived
+        totals. This is what stops the 121st.
+        """
         resource = await self.get_resource(scope, command.resource_id)
+        if getattr(resource, "source_resource_uid", None) is None:
+            raise MppResourceRequired(
+                "an estimate line must belong to a resource imported from an MPP source "
+                "version; this resource states no MPP resource UID")
         activity = await self._activity(scope, command.activity_external_id)
         if resource.type != "general_cost" and command.original_quantity is None:
             raise UnitMismatch("quantified estimate line requires quantity")

@@ -33,6 +33,9 @@ from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,Extra
 from .domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT
 from .schemas.reports import LiveReportResponse,MonthlyReportResponse,OperationalOverviewResponse,ReportSnapshotCreate,ReportSnapshotListResponse,ReportSnapshotReference,ReportVarianceListResponse,WbsReportResponse
 from .schemas.audit import AuditEventListResponse,AuditEventResponse
+from .schemas.items_and_estimates import (AssignmentResponse,
+    ItemsAndEstimatesResponse, LegacyLineResponse,
+    ResourceAggregateResponse, SourceVersionResponse)
 from .schemas.material_prices import (ImportRunListResponse,ImportRunResponse,
     MaterialCategoryListResponse,MaterialCategoryResponse,MaterialPriceHistoryListResponse,
     MaterialPriceHistoryResponse,MaterialPriceListResponse,MaterialPriceResponse,
@@ -252,6 +255,32 @@ async def list_project_activities(projectId: str, request: Request,
 async def create_project_activity(projectId: str, payload: ActivityCreate, request: Request):
     scope = await _resource_scope(projectId, request, "finance.edit")
     return ActivityResponse.model_validate(await request.app.state.finance_resources_service.create_activity(scope, payload))
+
+@router.get("/items-and-estimates", response_model=ItemsAndEstimatesResponse)
+async def items_and_estimates(projectId: str, request: Request):
+    """Every MPP resource of the live source version, its assignments, and what they cost.
+
+    A hierarchy rather than the flat list `GET /estimate-lines` returns, and a separate
+    endpoint rather than a reshaped one: the flat list is what invoices and the report
+    read, and changing its shape would change theirs. This is the Resource -> Assignment
+    view the approved model is stated in.
+
+    Read-only. Nothing here creates a resource, an assignment or an estimate line.
+    """
+    scope = await _resource_scope(projectId, request, "finance.view")
+    body = await request.app.state.items_and_estimates_service.listing(scope)
+    return ItemsAndEstimatesResponse(
+        source_version=(None if body["source_version"] is None
+                        else _declared(SourceVersionResponse, body["source_version"])),
+        resources=[_declared(ResourceAggregateResponse,
+                             dict(r, assignments=[_declared(AssignmentResponse, a)
+                                                  for a in r["assignments"]]))
+                   for r in body["resources"]],
+        legacy_lines=[_declared(LegacyLineResponse, x) for x in body["legacy_lines"]],
+        project_current_estimate_irr=body["project_current_estimate_irr"],
+        counted_assignments=body["counted_assignments"],
+        excluded_assignments=body["excluded_assignments"],
+        issue_counts=body["issue_counts"])
 
 @router.get("/estimate-lines", response_model=list[EstimateLineResponse])
 async def list_estimate_lines(projectId: str, request: Request):

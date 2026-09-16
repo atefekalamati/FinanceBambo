@@ -53,7 +53,14 @@ class DataMigrationTests(unittest.TestCase):
         _tables, data = objects_touched(found, chain(found, "0013", head(found)[0]))
         # 0025 joins it: the component table is created AND backfilled from the
         # one-product mappings, so the tool must decline to vouch for it too.
-        self.assertEqual(["0020", "0025"],
+        #
+        # 0030 joins them for the same reason and deliberately. It writes
+        # `legacy_status = 'legacy_unlinked'` onto the 120 rows whose own uid columns are
+        # already NULL -- a restatement, not an identity -- but the tool cannot know that
+        # by comparing schema fingerprints, and a backfill it did not read is one it must
+        # decline to vouch for. That is the tool being right, not the migration being
+        # wrong.
+        self.assertEqual(["0020", "0025", "0030"],
                          [revision for revision, _name, _moved in data])
         _revision, _name, moved = data[0]
         self.assertEqual(["INSERT INTO", "UPDATE INVOICES AS TARGET SET"], moved)

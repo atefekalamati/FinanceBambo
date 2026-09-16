@@ -49,6 +49,10 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/unit-registry", "get"),
                 ("/api/projects/{projectId}/finance/activities", "get"),
                 ("/api/projects/{projectId}/finance/activities", "post"),
+                # The Resource -> Assignment view of the section. Read-only, and a
+                # separate path from the flat `estimate-lines` list on purpose: invoices
+                # and the report read that one, and reshaping it would reshape theirs.
+                ("/api/projects/{projectId}/finance/items-and-estimates", "get"),
                 ("/api/projects/{projectId}/finance/estimate-lines", "get"),
                 ("/api/projects/{projectId}/finance/estimate-lines", "post"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/revisions", "post"),
