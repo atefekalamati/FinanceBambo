@@ -343,7 +343,10 @@ class AlembicChainTests(unittest.TestCase):
              "0023_mpp_currency_decisions",
              "0024_finance_item_price_mappings",
              "0025_item_price_mapping_components",
-             "0026_daily_quantity_and_conversion_rules"],
+             "0026_daily_quantity_and_conversion_rules",
+             "0027_typed_material_specs_and_strict_price_dates",
+             "0028_source_version_supersession",
+             "0029_identity_required_of_valid_rows_only"],
             sorted(path.stem for path in VERSIONS.glob("*.py")))
 
     def test_every_revision_runs_both_directions(self):

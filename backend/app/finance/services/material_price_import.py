@@ -29,6 +29,7 @@ from ..domain.material_price_rows import PIPE_FITTING_CATEGORY, RowStatus
 from ..repositories.material_prices import RunAlreadyRunning, row_fingerprint
 from .google_sheet import GoogleSheetError, export_url, fetch_sheet_as_xlsx, parse_sheet_link
 from .material_price_sheet import WORKSHEET_ALLOWLIST, read_workbook, workbook_from_xlsx
+from ..domain.material_specs import FROM_COLUMN, conflicts_with, extract_specs
 
 #: The one domain every sheet observation comes from. Providers are distinguished by name
 #: within it, because the sheet names a source but never a URL -- see the contract document.
@@ -138,6 +139,13 @@ class MaterialPriceImportService:
                         rejected += 1
                         continue
                     provider = providers[decided.source]
+                    # What this sheet's declared columns mean for this category, typed.
+                    # Anything not declared stays in `metadata` untouched -- the parser
+                    # hands both back and neither is invented.
+                    specs, _leftovers = extract_specs(decided.category, decided.attributes)
+                    stored = await self.repository.item_specs(
+                        scope, provider_id=provider["id"], external_id=decided.product_id)
+                    disagreements = conflicts_with(stored, specs)
                     item = await self.repository.ensure_item(
                         scope,
                         provider_id=provider["id"],
@@ -150,13 +158,22 @@ class MaterialPriceImportService:
                         active=decided.category != PIPE_FITTING_CATEGORY,
                         inactive_reason=(FITTING_REASON
                                          if decided.category == PIPE_FITTING_CATEGORY else None),
-                        metadata=decided.attributes)
+                        metadata=decided.attributes,
+                        specs=specs,
+                        spec_source=FROM_COLUMN if specs else None,
+                        spec_conflicts=disagreements or None)
                     accepted = decided.status == RowStatus.ACCEPTED
                     written = await self.repository.record_observation(
                         scope,
                         provider_id=provider["id"],
                         provider_item_id=item["id"],
                         run_id=run["id"],
+                        # What the product and supplier were CALLED on the day this price
+                        # was read. The foreign keys still say which rows they are; these
+                        # say what they said, so a later rename cannot rewrite the past.
+                        product_external_id=decided.product_id,
+                        product_name_snapshot=decided.product_name or decided.product_id,
+                        provider_name_snapshot=provider.get("name") or decided.source,
                         raw_price=decided.raw_price or "(blank)",
                         price_irr=decided.price_irr,
                         secondary_price_irr=decided.secondary_price_irr,

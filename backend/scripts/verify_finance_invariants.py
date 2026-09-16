@@ -39,14 +39,36 @@ TOMAN_TO_RIAL = 10
 #: are the evidence when it is not.
 CHECKS = (
     (
-        "source rows match the count their version states",
+        # Scoped to versions anybody may still read. A SUPERSEDED version's row set is the
+        # evidence of what was imported that day, and a gap in it is a historical fact
+        # rather than a live defect -- one such gap exists, is reported on its own line
+        # below, and cannot be repaired: the file those bytes came from is no longer on
+        # disk, and taking the row from a sibling version would assert that two files agree
+        # in a place nobody checked. Lowering `row_count` to match would be worse still:
+        # the count is the only evidence that a row is missing at all.
+        "source rows match the count their version states (live versions)",
         """
         SELECT v.id, v.row_count AS stated,
                (SELECT count(*) FROM finance_mpp_rows r
                  WHERE r.source_version_id = v.id) AS actual
           FROM finance_mpp_source_versions v
-         WHERE v.row_count <> (SELECT count(*) FROM finance_mpp_rows r
+         WHERE v.superseded_at IS NULL
+           AND v.row_count <> (SELECT count(*) FROM finance_mpp_rows r
                                 WHERE r.source_version_id = v.id)
+        """,
+    ),
+    (
+        # The invariant supersession exists for: a version nobody may read must not be the
+        # one a snapshot or a completion is built on.
+        "no superseded source version is still cited by live finance data",
+        """
+        SELECT v.id, v.source_sha256
+          FROM finance_mpp_source_versions v
+         WHERE v.superseded_at IS NOT NULL
+           AND (EXISTS (SELECT 1 FROM progress_snapshot_refs p
+                         WHERE p.source_file_version_id = v.id)
+             OR EXISTS (SELECT 1 FROM estimate_line_source_completions c
+                         WHERE c.source_version_id = v.id))
         """,
     ),
     (
@@ -239,6 +261,16 @@ CHECKS = (
 #: file states none, and alarming if the number changes without an import.
 COUNTS = (
     ("source versions", "SELECT count(*) FROM finance_mpp_source_versions"),
+    ("  of them superseded",
+     "SELECT count(*) FROM finance_mpp_source_versions WHERE superseded_at IS NOT NULL"),
+    # Reported, never hidden. The row-count invariant above is scoped to live versions, so
+    # without this line a historical gap would stop being visible the moment it stopped
+    # being a failure -- and a number nobody prints is a number nobody checks.
+    ("  superseded versions with a row gap",
+     """SELECT count(*) FROM finance_mpp_source_versions v
+         WHERE v.superseded_at IS NOT NULL
+           AND v.row_count <> (SELECT count(*) FROM finance_mpp_rows r
+                                WHERE r.source_version_id = v.id)"""),
     ("source rows", "SELECT count(*) FROM finance_mpp_rows"),
     ("rows stating a fixed cost",
      "SELECT count(*) FROM finance_mpp_rows WHERE source_fixed_cost <> 0"),

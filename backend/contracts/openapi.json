@@ -5571,8 +5571,42 @@
       },
       "MaterialPriceHistoryResponse": {
         "additionalProperties": false,
-        "description": "One observation in a listing's history. Append-only; nothing here is ever rewritten.",
+        "description": "One observation in a listing's history. Append-only; nothing here is ever rewritten.\n\nTHE SNAPSHOT FIELDS ARE THE POINT OF THIS ENDPOINT\n\nA history that showed today's product name against a year-old price would be claiming\nthe product was called that then. It may not have been: listings are renamed, and the\nobservation is the only record of what the sheet actually said on the day.\n\nSo the two identities travel in SEPARATE fields and are never merged:\n\n    productNameSnapshot / providerNameSnapshot   what the sheet said, as imported\n    currentProductName / currentProviderName     what the same listing is called now\n\nA null snapshot stays null. Every one of the 3,821 observations written before these\ncolumns existed has no snapshot, and filling those from today's names would fabricate\nevidence -- which is precisely what the append-only trigger and the NOT VALID identity\nconstraint exist to prevent. Null here means \"nobody recorded it\", and that is the\nhonest answer.",
         "properties": {
+          "collectionRunId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collectionrunid"
+          },
+          "currentProductName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentproductname"
+          },
+          "currentProviderName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentprovidername"
+          },
           "fetchedAt": {
             "format": "date-time",
             "title": "Fetchedat",
@@ -5604,6 +5638,51 @@
             "title": "Observedatsource",
             "type": "string"
           },
+          "productExternalId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productexternalid"
+          },
+          "productNameSnapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productnamesnapshot"
+          },
+          "providerItemId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provideritemid"
+          },
+          "providerNameSnapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providernamesnapshot"
+          },
           "rawPrice": {
             "anyOf": [
               {
@@ -5614,6 +5693,17 @@
               }
             ],
             "title": "Rawprice"
+          },
+          "rowFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rowfingerprint"
           },
           "sourceCurrency": {
             "enum": [
@@ -5747,9 +5837,32 @@
             "title": "Active",
             "type": "boolean"
           },
+          "branchCount": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchcount"
+          },
           "category": {
             "title": "Category",
             "type": "string"
+          },
+          "conversionEligible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversioneligible"
           },
           "conversionFactor": {
             "anyOf": [
@@ -5774,6 +5887,18 @@
             ],
             "title": "Conversionnote"
           },
+          "coverageM2": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coveragem2"
+          },
           "currentPriceIrr": {
             "anyOf": [
               {
@@ -5785,6 +5910,40 @@
               }
             ],
             "title": "Currentpriceirr"
+          },
+          "diameterUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diameterunit"
+          },
+          "diameterValue": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diametervalue"
+          },
+          "dimensionsText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimensionstext"
           },
           "displayUnit": {
             "anyOf": [
@@ -5854,6 +6013,40 @@
               }
             ],
             "title": "Financeresourceunit"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "heightUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightunit"
+          },
+          "heightValue": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightvalue"
           },
           "inactiveReason": {
             "anyOf": [
@@ -5956,6 +6149,52 @@
             ],
             "title": "Labelledbyname"
           },
+          "lengthM": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lengthm"
+          },
+          "lengthUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lengthunit"
+          },
+          "lengthValue": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lengthvalue"
+          },
+          "manufacturer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manufacturer"
+          },
           "mappingApproved": {
             "default": false,
             "title": "Mappingapproved",
@@ -5976,6 +6215,62 @@
             "title": "Observedatsource",
             "type": "string"
           },
+          "piecesPerPackage": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Piecesperpackage"
+          },
+          "productCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productcode"
+          },
+          "productIdSnapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productidsnapshot"
+          },
+          "productNameSnapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productnamesnapshot"
+          },
+          "productType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Producttype"
+          },
           "providerItemId": {
             "format": "uuid",
             "title": "Provideritemid",
@@ -5984,6 +6279,17 @@
           "providerName": {
             "title": "Providername",
             "type": "string"
+          },
+          "providerNameSnapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providernamesnapshot"
           },
           "rawPrice": {
             "anyOf": [
@@ -6087,6 +6393,29 @@
             ],
             "title": "Sourceurl"
           },
+          "specConflicts": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Specconflicts"
+          },
+          "specSource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Specsource"
+          },
           "specs": {
             "additionalProperties": true,
             "title": "Specs",
@@ -6102,6 +6431,29 @@
               }
             ],
             "title": "Targetunit"
+          },
+          "thicknessUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thicknessunit"
+          },
+          "thicknessValue": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thicknessvalue"
           },
           "unitAlignment": {
             "default": "not_mapped",
@@ -6124,6 +6476,75 @@
             ],
             "title": "Validationstatus",
             "type": "string"
+          },
+          "volumeM3": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volumem3"
+          },
+          "weightBasis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weightbasis"
+          },
+          "weightUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weightunit"
+          },
+          "weightValue": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weightvalue"
+          },
+          "widthUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Widthunit"
+          },
+          "widthValue": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Widthvalue"
           },
           "workflowDateGregorian": {
             "anyOf": [

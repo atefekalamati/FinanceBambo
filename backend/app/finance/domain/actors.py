@@ -37,6 +37,10 @@ ACTOR_FIELDS: tuple[tuple[str, str], ...] = (
     ("confirmed_by", "confirmed_by_name"),
     ("created_by", "created_by_name"),
     ("actor_user_id", "actor_user_name"),
+    # Who said what a market listing is. `labelledByName` was declared on the material
+    # price response and filled by nothing, so it was null on every row -- the id was
+    # there and the name it was supposed to travel with never arrived.
+    ("labelled_by", "labelled_by_name"),
 )
 
 #: The only dict keys traversal descends through. Everything else -- notably an audit

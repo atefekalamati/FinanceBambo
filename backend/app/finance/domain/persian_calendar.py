@@ -48,10 +48,48 @@ def gregorian_to_persian(value: date) -> tuple[int, int, int]:
     return persian_year, 7 + (days - 186) // 30, 1 + (days - 186) % 30
 
 
-def persian_to_gregorian(persian_year: int, persian_month: int, persian_day: int) -> date:
-    """Inverse of `gregorian_to_persian`. Raises ValueError on an impossible month."""
+def persian_month_length(persian_year: int, persian_month: int) -> int:
+    """How many days that Jalali month has: 31, 30, or 29/30 for Esfand.
+
+    The leap year is not decided by a rule retyped from a reference -- it is asked of this
+    module's own arithmetic, by measuring the distance from the first of Esfand to the
+    first of Farvardin next year. A separate leap rule could disagree with the conversion
+    beside it, and a calendar that disagrees with itself is worse than one that is wrong
+    in a knowable way.
+    """
     if not 1 <= persian_month <= 12:
         raise ValueError("persian month must be between 1 and 12")
+    if persian_month <= 6:
+        return 31
+    if persian_month <= 11:
+        return 30
+    return (_persian_to_gregorian_unchecked(persian_year + 1, 1, 1)
+            - _persian_to_gregorian_unchecked(persian_year, 12, 1)).days
+
+
+def persian_to_gregorian(persian_year: int, persian_month: int, persian_day: int) -> date:
+    """Inverse of `gregorian_to_persian`. Raises ValueError on an impossible date.
+
+    THE DAY IS CHECKED, NOT ONLY THE MONTH.
+
+    It used to check the month alone, so «۱۴۰۵/۰۶/۳۲» -- a day that does not exist, Shahrivar
+    having 31 -- became 2026-09-23 by rolling over into the next month. A price dated to an
+    impossible day was filed nine days after anything a reader of the source would call it,
+    and nothing anywhere said so.
+    """
+    if not 1 <= persian_month <= 12:
+        raise ValueError("persian month must be between 1 and 12")
+    length = persian_month_length(persian_year, persian_month)
+    if not 1 <= persian_day <= length:
+        raise ValueError("persian month %d of %d has %d days, not %d"
+                         % (persian_month, persian_year, length, persian_day))
+    return _persian_to_gregorian_unchecked(persian_year, persian_month, persian_day)
+
+
+def _persian_to_gregorian_unchecked(persian_year: int, persian_month: int,
+                                    persian_day: int) -> date:
+    """The arithmetic alone, with no validation. Used by the length measurement above,
+    which asks for the first of a month and so cannot itself be out of range."""
     if persian_year > 979:
         gregorian_year = 1600
         persian_year -= 979

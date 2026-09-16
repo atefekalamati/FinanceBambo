@@ -65,6 +65,50 @@ class MaterialPriceResponse(ApiModel):
     secondary_price_irr: Decimal | None = None
     secondary_price_basis: str | None = None
 
+    #: The typed specifications, from the listing's own dedicated columns.
+    #:
+    #: Every one is optional and NULL means the sheet said nothing. Never zero, never "-":
+    #: a brick with no stated weight and a brick weighing nothing are different bricks, and
+    #: only one of them told us anything. `weightBasis` is what the weight is PER, and an
+    #: 'unknown' basis is a value a conversion must refuse rather than one it may use.
+    product_code: str | None = None
+    manufacturer: str | None = None
+    grade: str | None = None
+    product_type: str | None = None
+    dimensions_text: str | None = None
+    length_value: Decimal | None = None
+    length_unit: str | None = None
+    length_m: Decimal | None = None
+    width_value: Decimal | None = None
+    width_unit: str | None = None
+    height_value: Decimal | None = None
+    height_unit: str | None = None
+    thickness_value: Decimal | None = None
+    thickness_unit: str | None = None
+    diameter_value: Decimal | None = None
+    diameter_unit: str | None = None
+    weight_value: Decimal | None = None
+    weight_unit: str | None = None
+    weight_basis: str | None = None
+    branch_count: Decimal | None = None
+    pieces_per_package: Decimal | None = None
+    coverage_m2: Decimal | None = None
+    volume_m3: Decimal | None = None
+    #: Which layer the specifications came from: dedicated_column, approved_label,
+    #: legacy_metadata or unresolved. A reader asking "where did this 27 come from" gets a
+    #: name instead of a guess.
+    spec_source: str | None = None
+    #: What an arriving sheet said that disagreed with what is stored. Recorded, never
+    #: applied: yesterday's 22 becoming today's 220 is a parser going wrong far more often
+    #: than a product changing weight tenfold.
+    spec_conflicts: dict | None = None
+
+    #: What the SNAPSHOT said on the day: the identity as imported, kept beside the live
+    #: names so a later rename cannot rewrite the evidence.
+    product_id_snapshot: str | None = None
+    product_name_snapshot: str | None = None
+    provider_name_snapshot: str | None = None
+
     #: What the sheet said the unit was, verbatim -- «کیلو», or nothing at all. Absent for
     #: six of the seven categories, because the sheet does not say.
     source_unit: str | None = None
@@ -86,6 +130,15 @@ class MaterialPriceResponse(ApiModel):
     conversion_factor: Decimal | None = None
     conversion_note: str | None = None
 
+    #: The business date this price applied to, in all three spellings the sheet and the
+    #: two calendars give it. NEVER the fetch time: a price is for a day the supplier
+    #: quoted, and the day we happened to read it is a different fact, carried separately
+    #: in `fetchedAt`.
+    #:
+    #: Declared once. These three used to appear twice in this class, the first copy
+    #: carrying the documentation and the second, silently, the definition -- Python keeps
+    #: the later one, so every comment above was attached to a declaration that no longer
+    #: existed by the time the model was built.
     workflow_date_raw: str | None = None
     workflow_date_jalali: str | None = None
     workflow_date_gregorian: date | None = None
@@ -137,6 +190,18 @@ class MaterialPriceResponse(ApiModel):
     #: not_mapped | missing_finance_unit | aligned | convertible | needs_factor | unresolved
     unit_alignment: str = "not_mapped"
 
+    #: Whether this listing's price may be crossed into the chosen display unit.
+    #:
+    #:     null   nothing to cross -- no display unit chosen, or the price is already in it
+    #:     true   the registry bridges the two units, or somebody measured this product
+    #:     false  the crossing would have to rest on a weight whose basis nobody stated
+    #:
+    #: Derived on every read and stored nowhere: it says what today's facts allow, and the
+    #: answer changes the moment somebody records a measurement. `false` is the reason a
+    #: price is shown unconverted rather than converted by a guess -- every weight in the
+    #: database carries basis 'unknown', so 27 could be per branch, per metre or per piece.
+    conversion_eligible: bool | None = None
+
 
 class MaterialPriceListResponse(ApiModel):
     items: list[MaterialPriceResponse]
@@ -147,9 +212,45 @@ class MaterialPriceListResponse(ApiModel):
 
 
 class MaterialPriceHistoryResponse(ApiModel):
-    """One observation in a listing's history. Append-only; nothing here is ever rewritten."""
+    """One observation in a listing's history. Append-only; nothing here is ever rewritten.
+
+    THE SNAPSHOT FIELDS ARE THE POINT OF THIS ENDPOINT
+
+    A history that showed today's product name against a year-old price would be claiming
+    the product was called that then. It may not have been: listings are renamed, and the
+    observation is the only record of what the sheet actually said on the day.
+
+    So the two identities travel in SEPARATE fields and are never merged:
+
+        productNameSnapshot / providerNameSnapshot   what the sheet said, as imported
+        currentProductName / currentProviderName     what the same listing is called now
+
+    A null snapshot stays null. Every one of the 3,821 observations written before these
+    columns existed has no snapshot, and filling those from today's names would fabricate
+    evidence -- which is precisely what the append-only trigger and the NOT VALID identity
+    constraint exist to prevent. Null here means "nobody recorded it", and that is the
+    honest answer.
+    """
 
     id: UUID
+    #: Which listing and which import this row belongs to, so one observation can be traced
+    #: back to the run that read it without a second query.
+    provider_item_id: UUID | None = None
+    collection_run_id: UUID | None = None
+    #: The identity as IMPORTED. Null on any row written before the columns existed, and it
+    #: stays null: see the class docstring.
+    product_external_id: str | None = None
+    product_name_snapshot: str | None = None
+    provider_name_snapshot: str | None = None
+    #: The identity the listing carries NOW. Distinct fields, never written into the
+    #: snapshot ones -- a reader comparing them can see a rename; a reader given one merged
+    #: name cannot.
+    current_product_name: str | None = None
+    current_provider_name: str | None = None
+    #: What makes two rows the same observation: (productId, workflow date, price), hashed.
+    #: Published so a caller can prove for itself that a re-import added nothing.
+    row_fingerprint: str | None = None
+
     normalized_price_irr: Decimal | None = None
     raw_price: str | None = None
     source_currency: Literal["IRR", "TOMAN"]

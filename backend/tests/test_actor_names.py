@@ -28,15 +28,59 @@ class Model:
             setattr(self, key, value)
 
 
+#: Pairs the rule below finds that are NOT actors. Each is an id and a name that belong to
+#: the same THING rather than to a person, so no directory lookup can fill them and they are
+#: filled by their own query instead. Listed explicitly: the point of the rule is that a new
+#: pair has to be classified by somebody, not that it has to be an actor.
+NOT_ACTOR_PAIRS = {
+    ("external_id", "external_name"),      # a supplier's own code for a product
+    ("provider_id", "provider_name"),      # the supplier
+    ("resource_id", "resource_name"),      # a Finance resource
+}
+
+
+def _declared_id_name_pairs():
+    """Every `X` + `X_name` pair any response model declares, found by reading the schemas.
+
+    The old version of this test pinned a hand-written list, which meant it could only fail
+    when somebody EDITED the list -- and the failure it was written to catch is somebody
+    adding a name field and not editing it. `labelledByName` was declared on the material
+    price response and filled by nothing, shipped to the frontend, read there, and rendered
+    empty on every row; this test passed throughout. So it now derives the pairs from the
+    schemas and the pin is the classification, not the list.
+    """
+    import ast
+    from pathlib import Path
+    pairs = set()
+    for path in sorted(Path("app/finance/schemas").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            fields = {n.target.id for n in node.body if isinstance(n, ast.AnnAssign)}
+            for field in fields:
+                if not field.endswith("_name"):
+                    continue
+                stem = field[: -len("_name")]
+                for candidate in (stem, stem + "_id"):
+                    if candidate in fields:
+                        pairs.add((candidate, field))
+    return pairs
+
+
 class CollectTests(unittest.TestCase):
     def test_every_actor_column_the_api_exposes_is_covered(self):
-        # The pairs are the contract. A new actor column added to a schema without a line
-        # here is a column whose name silently never resolves.
-        self.assertEqual(
-            [("imported_by", "imported_by_name"), ("submitted_by", "submitted_by_name"),
-             ("confirmed_by", "confirmed_by_name"), ("created_by", "created_by_name"),
-             ("actor_user_id", "actor_user_name")],
-            list(ACTOR_FIELDS))
+        # The pairs are the contract. A name field added to a schema and classified neither
+        # way is a field that silently never resolves -- which is exactly what happened.
+        declared = _declared_id_name_pairs()
+        unclassified = declared - set(ACTOR_FIELDS) - NOT_ACTOR_PAIRS
+        self.assertEqual(set(), unclassified,
+                         "a schema declares these id/name pairs and nothing says whether "
+                         "they are actors; an actor pair must be added to ACTOR_FIELDS or "
+                         "its name will always be null")
+        # And nothing is claimed as an actor that no schema actually declares.
+        self.assertEqual(set(), set(ACTOR_FIELDS) - declared,
+                         "ACTOR_FIELDS names a pair no response model declares")
 
     def test_ids_are_found_in_rows_models_and_nested_containers(self):
         payload = {"items": [{"actor_user_id": ADMIN},

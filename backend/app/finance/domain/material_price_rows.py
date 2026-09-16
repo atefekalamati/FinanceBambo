@@ -252,6 +252,25 @@ def decide_row(*, worksheet: str, row_number: int, cells: dict,
     raw_date, jalali, gregorian = parse_workflow_date(cells.get("تاریخ آپدیت ورک فلو"))
     if raw_date is None:
         reasons.append("workflow date is blank")
+    elif gregorian is None:
+        # THE CELL SAID SOMETHING AND IT WAS NOT A DATE.
+        #
+        # «1405/13/40», «فردا», «1405-07-31» (month 7 has 30 days) and «1405-12-30» (1405
+        # is not a leap year) all reach here: `parse_workflow_date` hands back the raw text
+        # so it survives as evidence, and no Gregorian date, because there is none to give.
+        #
+        # This used to be ACCEPTED, and the row was then written with `validation_status =
+        # 'valid'` and a null `workflow_date_gregorian`. Two things were wrong with that.
+        # A price that cannot say which day it is for is not a price anybody may use, and
+        # since 0027 the database agrees: `price_observations_valid_row_has_business_date`
+        # refuses exactly that row -- so a single unreadable cell in a sheet of two
+        # thousand would abort the whole import instead of costing one row.
+        #
+        # Rejecting is the honest answer and the working one. The raw text is kept, the
+        # reason names it, and the row is findable on `/invalid-rows`. What must NEVER
+        # happen is the alternative that makes the constraint pass: substituting
+        # `fetched_at` or today, which would state a business date nobody quoted.
+        reasons.append("workflow date is not a date: %s" % raw_date)
 
     attributes = {}
     for column in attribute_columns:
