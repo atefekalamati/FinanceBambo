@@ -18,6 +18,30 @@ class UnitMismatch(FinanceDomainError):
     status = 422
 
 
+class MppResourceRequired(FinanceDomainError):
+    """Somebody tried to invent a project item that the schedule does not contain.
+
+    The Microsoft Project file is the authority for WHAT EXISTS in a project: which
+    resources there are, what they are called, which activities use them and in what
+    amount. An estimate item created beside it is an item no schedule can account for --
+    it appears in the project total, it can be invoiced against, and nothing in the file
+    will ever agree that it is there.
+
+    So the creation paths that carry no MPP identity refuse. This is the CALLER's
+    conflict, not a server fault: 409 with a code they can branch on, never a 500 and
+    never a silent success that produces a row nobody can trace.
+
+    Note what this does NOT block. The import path writes resources and estimate lines
+    through `coreint/finance_mpp_mapping.py`, with the UIDs, and never touches the
+    service this error is raised from. Market-price catalogue maintenance, invoices,
+    invoice lines, unit-conversion rules, item-price mappings and the classification of
+    an existing resource are all untouched: none of them creates a project item.
+    """
+
+    code = "MPP_RESOURCE_REQUIRED"
+    status = 409
+
+
 class DuplicateExternalResourceId(FinanceDomainError):
     """Another live resource in this scope already claims this external id.
 

@@ -145,6 +145,218 @@
         "title": "ActivityResponse",
         "type": "object"
       },
+      "AssignmentResponse": {
+        "additionalProperties": false,
+        "description": "One use of one resource in one activity -- the grain the estimate is computed on.",
+        "properties": {
+          "assignmentAllocationPercent": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignmentallocationpercent"
+          },
+          "assignmentId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignmentid"
+          },
+          "assignmentQuantity": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignmentquantity"
+          },
+          "assignmentSourceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignmentsourceunit"
+          },
+          "assignmentUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignmentunit"
+          },
+          "assignmentValue": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignmentvalue"
+          },
+          "assignmentValueKind": {
+            "title": "Assignmentvaluekind",
+            "type": "string"
+          },
+          "calculationStatus": {
+            "title": "Calculationstatus",
+            "type": "string"
+          },
+          "convertedUnitPriceIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Convertedunitpriceirr"
+          },
+          "currentEstimateIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentestimateirr"
+          },
+          "currentUnitPriceIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentunitpriceirr"
+          },
+          "excludedFromTotal": {
+            "default": false,
+            "title": "Excludedfromtotal",
+            "type": "boolean"
+          },
+          "issueCodes": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Issuecodes",
+            "type": "array"
+          },
+          "originalAssignmentCostIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Originalassignmentcostirr"
+          },
+          "priceAsOf": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priceasof"
+          },
+          "priceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priceunit"
+          },
+          "sourceAssignmentUid": {
+            "title": "Sourceassignmentuid",
+            "type": "integer"
+          },
+          "sourceTaskUid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcetaskuid"
+          },
+          "taskName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taskname"
+          },
+          "wbsCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wbscode"
+          }
+        },
+        "required": [
+          "sourceAssignmentUid",
+          "assignmentValueKind",
+          "calculationStatus"
+        ],
+        "title": "AssignmentResponse",
+        "type": "object"
+      },
       "AttachmentListResponse": {
         "additionalProperties": false,
         "examples": [
@@ -5188,6 +5400,159 @@
         "title": "ItemPriceRowStatusResponse",
         "type": "object"
       },
+      "ItemsAndEstimatesResponse": {
+        "additionalProperties": false,
+        "description": "The section, from one source version.",
+        "properties": {
+          "countedAssignments": {
+            "default": 0,
+            "title": "Countedassignments",
+            "type": "integer"
+          },
+          "excludedAssignments": {
+            "default": 0,
+            "title": "Excludedassignments",
+            "type": "integer"
+          },
+          "issueCounts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Issuecounts",
+            "type": "object"
+          },
+          "legacyLines": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LegacyLineResponse"
+            },
+            "title": "Legacylines",
+            "type": "array"
+          },
+          "projectCurrentEstimateIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projectcurrentestimateirr"
+          },
+          "resources": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceAggregateResponse"
+            },
+            "title": "Resources",
+            "type": "array"
+          },
+          "sourceVersion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceVersionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ItemsAndEstimatesResponse",
+        "type": "object"
+      },
+      "LegacyLineResponse": {
+        "additionalProperties": false,
+        "description": "A row the schedule does not account for.\n\nReturned so it is visible and countable, never grafted into the tree: it has no\nassignment to be a child of, and inventing a resource to hang it under would be the\nfabricated identity the whole model exists to prevent. Excluded from every total here.",
+        "properties": {
+          "createdAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "estimateLineId": {
+            "format": "uuid",
+            "title": "Estimatelineid",
+            "type": "string"
+          },
+          "invoiceLinked": {
+            "default": false,
+            "title": "Invoicelinked",
+            "type": "boolean"
+          },
+          "legacyStatus": {
+            "title": "Legacystatus",
+            "type": "string"
+          },
+          "originalQuantity": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Originalquantity"
+          },
+          "originalUnitPriceIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Originalunitpriceirr"
+          },
+          "resourceTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcetitle"
+          },
+          "resourceType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcetype"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "estimateLineId",
+          "legacyStatus",
+          "source"
+        ],
+        "title": "LegacyLineResponse",
+        "type": "object"
+      },
       "LiveMetrics": {
         "additionalProperties": false,
         "properties": {
@@ -10157,6 +10522,250 @@
         "title": "ReportWarning",
         "type": "object"
       },
+      "ResourceAggregateResponse": {
+        "additionalProperties": false,
+        "description": "One MPP resource identity, and the sum of its assignments.",
+        "properties": {
+          "assignmentCount": {
+            "title": "Assignmentcount",
+            "type": "integer"
+          },
+          "assignments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AssignmentResponse"
+            },
+            "title": "Assignments",
+            "type": "array"
+          },
+          "calculationStatus": {
+            "title": "Calculationstatus",
+            "type": "string"
+          },
+          "conversionStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversionstatus"
+          },
+          "countedAssignments": {
+            "title": "Countedassignments",
+            "type": "integer"
+          },
+          "currentEstimateIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentestimateirr"
+          },
+          "currentUnitPriceIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentunitpriceirr"
+          },
+          "excludedAssignments": {
+            "title": "Excludedassignments",
+            "type": "integer"
+          },
+          "fileResourceType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fileresourcetype"
+          },
+          "financeResourceTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financeresourcetitle"
+          },
+          "issueCodes": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Issuecodes",
+            "type": "array"
+          },
+          "mappedProductName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mappedproductname"
+          },
+          "mappedProviderItemId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mappedprovideritemid"
+          },
+          "mappingStatus": {
+            "default": "not_mapped",
+            "title": "Mappingstatus",
+            "type": "string"
+          },
+          "mappingVersion": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mappingversion"
+          },
+          "normalizedUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalizedunit"
+          },
+          "originalMppCostIrr": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Originalmppcostirr"
+          },
+          "priceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priceunit"
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourceid"
+          },
+          "resourceName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcename"
+          },
+          "resourceType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcetype"
+          },
+          "sourceResourceUid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceresourceuid"
+          },
+          "sourceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceunit"
+          },
+          "totalAssignmentQuantity": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalassignmentquantity"
+          }
+        },
+        "required": [
+          "assignmentCount",
+          "calculationStatus",
+          "countedAssignments",
+          "excludedAssignments"
+        ],
+        "title": "ResourceAggregateResponse",
+        "type": "object"
+      },
       "ResourceCreate": {
         "additionalProperties": false,
         "properties": {
@@ -10515,6 +11124,79 @@
           "lines"
         ],
         "title": "ReviewedInvoiceCreate",
+        "type": "object"
+      },
+      "SourceVersionResponse": {
+        "additionalProperties": false,
+        "description": "Which file this listing is of. Part of the answer, not a fetch detail.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "importedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importedat"
+          },
+          "reportingDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reportingdate"
+          },
+          "rowCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rowcount"
+          },
+          "sourceFileNameSafe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcefilenamesafe"
+          },
+          "sourceSha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcesha256"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "SourceVersionResponse",
         "type": "object"
       },
       "TypeBreakdown": {
@@ -17448,6 +18130,49 @@
           }
         },
         "summary": "Item Price Row Status",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/items-and-estimates": {
+      "get": {
+        "description": "Every MPP resource of the live source version, its assignments, and what they cost.\n\nA hierarchy rather than the flat list `GET /estimate-lines` returns, and a separate\nendpoint rather than a reshaped one: the flat list is what invoices and the report\nread, and changing its shape would change theirs. This is the Resource -> Assignment\nview the approved model is stated in.\n\nRead-only. Nothing here creates a resource, an assignment or an estimate line.",
+        "operationId": "items_and_estimates_api_projects__projectId__finance_items_and_estimates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsAndEstimatesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Items And Estimates",
         "tags": [
           "finance"
         ]
