@@ -201,5 +201,53 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("r.status IN ('succeeded', 'partially_succeeded')", source)
 
 
+class EndpointScheduleTests(unittest.TestCase):
+    """`force` and `dueOnly` on the trigger: two names for one decision.
+
+    A person clicking a button says force; a scheduler calling the same endpoint says
+    dueOnly. Either one asking for the schedule to be respected is enough, which is why
+    the check is `dueOnly or not force` rather than a precedence rule nobody would recall.
+    """
+
+    def test_the_endpoint_accepts_both_and_no_sheet_parameter(self):
+        import inspect
+        from app.finance import router
+        params = list(inspect.signature(router.start_material_price_import).parameters)
+        self.assertEqual(["projectId", "request", "force", "dueOnly"], params)
+        self.assertFalse([p for p in params if "sheet" in p.lower() or "url" in p.lower()],
+                         "the sheet is configuration; a caller must not be able to name it")
+
+    def test_force_is_the_default_because_the_endpoint_is_the_manual_trigger(self):
+        import inspect
+        from app.finance import router
+        params = inspect.signature(router.start_material_price_import).parameters
+        self.assertIs(True, params["force"].default.default)
+        self.assertIs(False, params["dueOnly"].default.default)
+
+    def test_the_schedule_is_respected_when_either_flag_asks_for_it(self):
+        import inspect
+        from app.finance import router
+        source = inspect.getsource(router.start_material_price_import)
+        self.assertIn("if dueOnly or not force:", source)
+
+    def test_a_skipped_answer_carries_no_run(self):
+        """There is no run row when nothing was read, and the schema has to allow that."""
+        from app.finance.schemas.material_prices import ImportRunStartedResponse
+        answer = ImportRunStartedResponse(status="skipped", run=None, inserted=0,
+                                          already_present=0, rejected=0,
+                                          message="skipped: ... 1440 minutes")
+        self.assertIsNone(answer.run)
+        self.assertEqual("skipped", answer.status)
+
+    def test_the_interval_reaches_the_service_without_app_importing_devhost(self):
+        """`app/` is deployable on its own; reaching into `devhost` for a number ends that."""
+        from pathlib import Path
+        from app.finance.services.material_price_import import MaterialPriceImportService
+        self.assertEqual(1440, MaterialPriceImportService.DEFAULT_INTERVAL_MINUTES)
+        offenders = [path for path in (Path(__file__).resolve().parents[1] / "app").rglob("*.py")
+                     if "from devhost" in path.read_text(encoding="utf-8")]
+        self.assertEqual([], offenders, "app/ must not import from devhost/")
+
+
 if __name__ == "__main__":
     unittest.main()

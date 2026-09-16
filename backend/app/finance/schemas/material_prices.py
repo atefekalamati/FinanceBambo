@@ -315,9 +315,15 @@ class ImportRunStartedResponse(ApiModel):
     the second time and says so, rather than duplicating every price.
     """
 
-    #: succeeded | partially_succeeded | failed
+    #: succeeded | partially_succeeded | failed | skipped
+    #:
+    #: `skipped` is the scheduled answer: the caller asked for an import only if one was
+    #: due, and the newest successful run is still inside the interval. Nothing was read
+    #: and nothing was written.
     status: str
-    run: ImportRunResponse
+    #: Null on `skipped`, because no run was started. A run row exists only when the sheet
+    #: was actually read.
+    run: ImportRunResponse | None = None
     #: New observations written. A price that has not moved since the last import is not
     #: written again -- the fingerprint is the same, so it lands in `alreadyPresent`.
     inserted: int

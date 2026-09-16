@@ -4399,7 +4399,14 @@
             "type": "integer"
           },
           "run": {
-            "$ref": "#/components/schemas/ImportRunResponse"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportRunResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "title": "Status",
@@ -4413,7 +4420,6 @@
         },
         "required": [
           "status",
-          "run",
           "inserted",
           "alreadyPresent",
           "rejected"
@@ -18424,6 +18430,30 @@
             "schema": {
               "title": "Projectid",
               "type": "string"
+            }
+          },
+          {
+            "description": "import even if one ran recently",
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "import even if one ran recently",
+              "title": "Force",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "import only if the interval has passed",
+            "in": "query",
+            "name": "dueOnly",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "import only if the interval has passed",
+              "title": "Dueonly",
+              "type": "boolean"
             }
           }
         ],

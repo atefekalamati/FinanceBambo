@@ -101,9 +101,17 @@ class _Scope:
 class MaterialPriceImportService:
     """Reads one configured spreadsheet into the price-intelligence tables."""
 
-    def __init__(self, repository, *, sheet_link, fetch=fetch_sheet_as_xlsx, clock=None):
+    #: How long a successful import stays "recent enough" when nobody says otherwise.
+    #: A day, because that is what this sheet is refreshed on. Held here rather than read
+    #: from the environment inside the service: `app/` is deployable without the
+    #: development host, and reaching into `devhost` for a number would end that.
+    DEFAULT_INTERVAL_MINUTES = 1440
+
+    def __init__(self, repository, *, sheet_link, fetch=fetch_sheet_as_xlsx, clock=None,
+                 interval_minutes=None):
         self.repository = repository
         self.sheet_link = sheet_link
+        self.interval_minutes = interval_minutes or self.DEFAULT_INTERVAL_MINUTES
         self._fetch = fetch
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 

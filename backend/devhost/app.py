@@ -348,7 +348,8 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     sheet_link = material_price_sheet_url()
     if sheet_link:
         application.state.material_price_import_service = MaterialPriceImportService(
-            PsycopgMaterialPriceRepository(connection), sheet_link=sheet_link)
+            PsycopgMaterialPriceRepository(connection), sheet_link=sheet_link,
+            interval_minutes=material_price_import_interval_minutes())
         print("material price import ENABLED -- sheet configured")
     else:
         print("material price import DISABLED -- %s is not set"
