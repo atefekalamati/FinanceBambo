@@ -175,6 +175,35 @@ class PsycopgMaterialPriceRepository:
                 (s.organization_id, s.project_id))
             return await c.fetchall()
 
+    async def projects_with_active_providers(self):
+        """Every (organization, project) with an active spreadsheet provider, and how
+        long ago its newest SUCCESSFUL import started.
+
+        The project list a scheduled tick works from. It is derived from what is actually
+        configured rather than kept as a second list beside it -- a project with no active
+        provider has nothing to import, and one somebody sets up tomorrow is picked up
+        without an edit here.
+
+        `minutes_since_last_success` is NULL when a project has never had a successful
+        run. The caller treats that as due, which is what makes a freshly configured
+        project import on the next tick instead of waiting out an interval it was never
+        present for.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """SELECT p.organization_id, p.project_id,
+                          EXTRACT(EPOCH FROM (now() - max(r.started_at))) / 60
+                              AS minutes_since_last_success
+                     FROM price_providers p
+                     LEFT JOIN price_collection_runs r
+                            ON r.organization_id = p.organization_id
+                           AND r.project_id = p.project_id
+                           AND r.status IN ('succeeded', 'partially_succeeded')
+                    WHERE p.active AND p.crawl_method = 'google_sheet'
+                    GROUP BY p.organization_id, p.project_id
+                    ORDER BY p.project_id""")
+            return await c.fetchall()
+
     # ------------------------------------------------------------------------ runs
 
     async def start_run(self, s, *, provider_id, document_id, started_at):

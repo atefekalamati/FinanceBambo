@@ -78,6 +78,8 @@ from .environment import (SELF_HOSTED_EXTRACTION, SEED_OPT_IN, app_env,
                           dsn_target, extraction_provider, migration_url,
                           mpp_import_enabled, mpp_import_interval_minutes,
                           MATERIAL_PRICE_SHEET_SETTING, material_price_sheet_url,
+                          material_price_import_enabled,
+                          material_price_import_interval_minutes,
                           mpp_import_root, mpp_java_home, mpp_max_file_size_mb,
                           seed_refusal, seeding_allowed)
 from .ports import (ContextPermissionAuthorizer, LocalFileStorage, SeededActivityProvider,
@@ -460,6 +462,7 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
         # OWN connections: the request path serialises the shared handle behind a lock,
         # and an import transaction held there would stall the host for a whole parse.
         periodic = None
+        price_periodic = None
         root = mpp_import_root()
         if root:
             import psycopg as _psycopg
@@ -511,9 +514,48 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
 
                 periodic = asyncio.create_task(_periodic())
                 print(f"mpp periodic import ENABLED every {interval // 60} minutes")
+
+        # The daily price import, on its own loop. Separate from the MPP one because it
+        # has its own interval, its own gate and its own failure mode: a schedule file
+        # that will not parse must not stop the prices, and a sheet Google will not serve
+        # must not stop the schedules.
+        if material_price_import_enabled():
+            price_service = getattr(application.state, "material_price_import_service", None)
+            if price_service is None:
+                print("material price periodic import NOT STARTED -- %s is not set"
+                      % MATERIAL_PRICE_SHEET_SETTING)
+            else:
+                price_interval = material_price_import_interval_minutes()
+
+                async def _price_periodic():
+                    # One tick immediately, then every interval. A host restarted after a
+                    # day of downtime should not wait another full day before catching up,
+                    # and the due check is what keeps that from being an extra import: a
+                    # project that already ran today is reported skipped and read nothing.
+                    while True:
+                        try:
+                            outcomes = await price_service.periodic_tick(price_interval)
+                            for outcome in outcomes:
+                                print("material price import [%s] %s %s"
+                                      % (outcome.get("projectId"), outcome.get("status"),
+                                         {k: v for k, v in outcome.items()
+                                          if k not in ("projectId", "status")}))
+                        except Exception as error:  # noqa: BLE001 -- the loop must survive
+                            print("material price periodic import failed:", error)
+                        await asyncio.sleep(price_interval * 60)
+
+                price_periodic = asyncio.create_task(_price_periodic())
+                print("material price periodic import ENABLED every %d minutes"
+                      % price_interval)
         try:
             yield
         finally:
+            if price_periodic is not None:
+                price_periodic.cancel()
+                try:
+                    await price_periodic
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
             if periodic is not None:
                 periodic.cancel()
                 # Await the cancellation: an in-flight import gets to unwind its

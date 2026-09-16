@@ -721,7 +721,9 @@ async def start_material_price_import(projectId:str,request:Request):
         inserted=outcome.inserted,
         already_present=outcome.already_present,
         rejected=outcome.rejected,
-        worksheet_report=outcome.worksheet_report or {})
+        worksheet_report=outcome.worksheet_report or {},
+        message=("%d new price(s); %d already recorded; %d row(s) refused"
+                 % (outcome.inserted, outcome.already_present, outcome.rejected)))
 
 @router.get("/material-prices/runs",response_model=ImportRunListResponse)
 async def material_price_runs(projectId:str,request:Request,
