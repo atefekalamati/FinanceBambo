@@ -83,6 +83,21 @@ class ImportOutcome:
         self.error_message = error_message
 
 
+class _Scope:
+    """The (organization, project) pair the repository expects, for a tick's own use.
+
+    The HTTP path gets a real authorised scope from the router. A scheduled tick has no
+    request and no actor, so it carries only the two identifiers it read out of the
+    provider table -- it cannot widen what it touches, because there is nothing else on it.
+    """
+
+    __slots__ = ("organization_id", "project_id")
+
+    def __init__(self, organization_id, project_id):
+        self.organization_id = organization_id
+        self.project_id = project_id
+
+
 class MaterialPriceImportService:
     """Reads one configured spreadsheet into the price-intelligence tables."""
 
@@ -91,6 +106,78 @@ class MaterialPriceImportService:
         self.sheet_link = sheet_link
         self._fetch = fetch
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+
+    async def due_projects(self, interval_minutes, *, force=False):
+        """`(scope_row, minutes_since_last_success)` for every project that should import.
+
+        WHICH PROJECTS. Those with an active spreadsheet provider, read from
+        `price_providers` -- configuration by what is actually set up, not a second list
+        somebody has to keep in step with the first. A project nobody configured a
+        provider for is a project with nothing to import.
+
+        WHEN. A project is due when its newest SUCCESSFUL run started longer ago than the
+        interval. Successful, not newest: a run that failed leaves the prices exactly as
+        they were, and treating it as "we imported today" would mean a broken sheet
+        silences the importer for a day instead of being retried.
+
+        `force` skips the due check and nothing else. It is the operator's override and
+        the endpoint's behaviour -- somebody who asks for an import now is not asking
+        whether it is time.
+        """
+        rows = await self.repository.projects_with_active_providers()
+        due = []
+        for row in rows:
+            minutes = row.get("minutes_since_last_success")
+            if force or minutes is None or minutes >= interval_minutes:
+                due.append((row, minutes))
+        return due
+
+    async def periodic_tick(self, interval_minutes, *, force=False):
+        """Import every project that is due. NEVER raises.
+
+        Returns one outcome dict per project, in the shape the MPP importer's tick
+        already uses -- `{"projectId", "status", ...}` -- because the host prints them the
+        same way and two shapes would mean two ways to read a log.
+
+            imported   rows were read and the run finished
+            skipped    not due yet; `minutesSinceLastSuccess` says how long ago
+            failed     the sheet or the database refused; the reason travels with it
+
+        One project's failure never stops the next, and a failure is an OUTCOME rather
+        than an exception: a scheduler loop that dies on a bad sheet stops importing
+        every other project too, and the symptom is silence.
+        """
+        configured = await self.repository.projects_with_active_providers()
+        due = await self.due_projects(interval_minutes, force=force)
+        due_ids = {row["project_id"] for row, _ in due}
+
+        outcomes = []
+        for row, _minutes in due:
+            scope = _Scope(row["organization_id"], row["project_id"])
+            try:
+                outcome = await self.run(scope)
+                outcomes.append({
+                    "projectId": row["project_id"], "status": "imported",
+                    "runStatus": outcome.status, "inserted": outcome.inserted,
+                    "alreadyPresent": outcome.already_present,
+                    "rejected": outcome.rejected})
+            except MaterialPriceImportError as error:
+                # Including RunAlreadyRunning, translated by `run`: another import is in
+                # flight for this provider and this tick must not start a second one.
+                outcomes.append({"projectId": row["project_id"], "status": "failed",
+                                 "code": getattr(error, "code", None), "reason": str(error)})
+            except Exception as error:  # noqa: BLE001 -- the loop must survive
+                outcomes.append({"projectId": row["project_id"], "status": "failed",
+                                 "code": "UNEXPECTED", "reason": str(error)})
+        # Every project that was NOT due is reported as skipped, with how long ago it
+        # last succeeded. A tick that did nothing and a tick that never ran look the same
+        # in a log otherwise, and the difference is the whole question this mission asked.
+        for row in configured:
+            if row["project_id"] not in due_ids:
+                outcomes.append({
+                    "projectId": row["project_id"], "status": "skipped",
+                    "minutesSinceLastSuccess": row.get("minutes_since_last_success")})
+        return outcomes
 
     async def run(self, scope) -> ImportOutcome:
         if not self.sheet_link:

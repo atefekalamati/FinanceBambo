@@ -327,6 +327,10 @@ class ImportRunStartedResponse(ApiModel):
     rejected: int
     #: Per-worksheet detail: what was read, what was refused and why.
     worksheet_report: dict = Field(default_factory=dict)
+    #: One sentence a person can act on, assembled from the counts above. Present on a
+    #: success too: "nothing changed" is a result, and an operator who triggered an
+    #: import and saw an empty response cannot tell it from one that did not run.
+    message: str | None = None
 
 
 class ImportRunListResponse(ApiModel):

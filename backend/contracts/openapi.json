@@ -4383,6 +4383,17 @@
             "title": "Inserted",
             "type": "integer"
           },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
           "rejected": {
             "title": "Rejected",
             "type": "integer"

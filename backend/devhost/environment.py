@@ -493,6 +493,33 @@ def material_price_sheet_url() -> str | None:
     return value or None
 
 
+#: Off unless explicitly on, like every other importer here. A host that was never told
+#: to import daily does not start importing daily because it was restarted.
+MATERIAL_PRICE_IMPORT_ENABLED_SETTING = "FINANCE_MATERIAL_PRICE_IMPORT_ENABLED"
+MATERIAL_PRICE_IMPORT_INTERVAL_SETTING = "FINANCE_MATERIAL_PRICE_IMPORT_INTERVAL_MINUTES"
+
+
+def material_price_import_enabled() -> bool:
+    """Whether the daily material price import runs on its own. Off unless set."""
+    value = (setting(MATERIAL_PRICE_IMPORT_ENABLED_SETTING, "") or "").strip().lower()
+    return value in ("1", "true", "yes", "on")
+
+
+def material_price_import_interval_minutes() -> int:
+    """How often a project becomes due again. Defaults to a day.
+
+    An unparseable or non-positive value falls back to 1440 rather than to zero: zero
+    would mean "always due", which is a tight loop against Google's servers, and that is
+    the wrong way for a typo to fail.
+    """
+    raw_value = (setting(MATERIAL_PRICE_IMPORT_INTERVAL_SETTING, "") or "").strip()
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        parsed = 0
+    return parsed if parsed > 0 else 1440
+
+
 def redacted(dsn: str) -> str:
     """A form safe to print: the password is replaced, never echoed."""
     if "://" not in dsn or "@" not in dsn:
