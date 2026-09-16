@@ -235,7 +235,29 @@ class PsycopgItemPriceMappingRepository:
                 """SELECT l.id, l.resource_id, l.activity_external_id,
                           l.source_assignment_uid, l.source_task_uid,
                           r.source_resource_uid, r.title AS resource_title,
-                          r.base_unit, r.resource_type
+                          r.base_unit, r.resource_type,
+                          -- What the estimate is built on, and what the schedule says
+                          -- TODAY. Two different statements; the daily one is NULL where
+                          -- the file makes none, and the domain decides which to use.
+                          coalesce(l.original_quantity,
+                                   (SELECT x.quantity FROM estimate_line_source_completions x
+                                     WHERE x.estimate_line_id = l.id)) AS quantity,
+                          l.original_unit_price_irr,
+                          (SELECT m.source_daily_quantity FROM finance_mpp_rows m
+                            WHERE m.organization_id=l.organization_id
+                              AND m.project_id=l.project_id
+                              AND m.source_assignment_uid=l.source_assignment_uid
+                            ORDER BY m.id LIMIT 1) AS daily_quantity,
+                          (SELECT m.source_daily_quantity_field FROM finance_mpp_rows m
+                            WHERE m.organization_id=l.organization_id
+                              AND m.project_id=l.project_id
+                              AND m.source_assignment_uid=l.source_assignment_uid
+                            ORDER BY m.id LIMIT 1) AS daily_quantity_source_field,
+                          (SELECT m.source_assignment_cost_irr FROM finance_mpp_rows m
+                            WHERE m.organization_id=l.organization_id
+                              AND m.project_id=l.project_id
+                              AND m.source_assignment_uid=l.source_assignment_uid
+                            ORDER BY m.id LIMIT 1) AS msp_cost_irr
                      FROM estimate_lines l
                      LEFT JOIN finance_resources r ON r.id = l.resource_id
                     WHERE l.organization_id=%s AND l.project_id=%s AND l.id=%s

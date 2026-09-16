@@ -31,6 +31,7 @@ from app.finance.repositories.conversions import PsycopgUnitConversionRepository
 from app.finance.repositories.material_prices import PsycopgMaterialPriceRepository
 from app.finance.repositories.item_price_mappings import PsycopgItemPriceMappingRepository
 from app.finance.repositories.item_price_components import PsycopgItemPriceComponentRepository
+from app.finance.repositories.unit_conversion_rules import PsycopgUnitConversionRuleRepository
 from app.finance.repositories.extractions import PsycopgExtractionRepository
 from app.finance.repositories.imports import PsycopgFinanceImportRepository
 from app.finance.repositories.invoices import PsycopgInvoiceRepository
@@ -45,6 +46,7 @@ from app.finance.services.conversions import UnitConversionService
 from app.finance.services.material_prices import MaterialPriceService
 from app.finance.services.item_price_mappings import ItemPriceMappingService
 from app.finance.services.item_price_components import ItemPriceComponentService
+from app.finance.services.unit_conversion_rules import UnitConversionRuleService
 from app.finance.services.extractions import FinanceExtractionService
 from app.finance.services.imports import FinanceImportService
 from app.finance.services.invoices import FinanceInvoiceService
@@ -338,13 +340,19 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     # The bridge between the two modules: which market listing prices which schedule item.
     # It reads both sides and writes only its own table -- nothing here can change a
     # material price or a schedule row.
+    _conversion_rules = UnitConversionRuleService(
+        PsycopgUnitConversionRuleRepository(connection))
     application.state.item_price_mapping_service = ItemPriceMappingService(
-        PsycopgItemPriceMappingRepository(connection))
+        PsycopgItemPriceMappingRepository(connection),
+        conversion_rules=_conversion_rules)
     # An activity is not a material: «کانال‌کنی» consumes rebar and pipe and brick that the
     # schedule never names. This prices one line from a LIST of materials somebody entered,
     # and it too writes only its own table.
     application.state.item_price_component_service = ItemPriceComponentService(
         PsycopgItemPriceComponentRepository(connection))
+    # What a price per branch means on a line measured in kilograms -- and, when nobody
+    # has said, the record of the question. Writes only its own two tables.
+    application.state.unit_conversion_rule_service = _conversion_rules
     application.state.progress_service = ProgressService(
         PsycopgProgressRepository(connection), progress_provider)
     application.state.finance_import_service = FinanceImportService(

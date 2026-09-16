@@ -26,6 +26,51 @@ APPROVED_QUANTITY_ALIASES = ("quantity", "مقدار",
 APPROVED_QUANTITY_UNIT_ALIASES = ("quantity unit",
                                   "واحد مقدار")
 
+#: Column aliases that mean "this is the quantity as it stands TODAY". Same rule as above
+#: and for the same reason: a name on this list is a decision somebody made, never a column
+#: that happened to hold a number.
+#:
+#: WHY THE FILE IN FRONT OF US POPULATES NONE OF THESE
+#:
+#: Measured on this project's schedule, every candidate whose NAME promises a current or
+#: completed volume is stated on all 328 tasks and is ZERO on all 328:
+#:
+#:     «حجم اولیه»       initial volume    328 stated, 0 non-zero
+#:     «احجام کاری»       working volumes   328 stated, 0 non-zero
+#:     «حجم انجام شده»    completed volume  328 stated, 0 non-zero
+#:
+#: MS Project writes 0.0 into every Number column nobody filled, and MPXJ returns that
+#: indistinguishably from a deliberate zero. So a zero read from one of these columns is
+#: recorded as "the file states none", not as "this line uses none today" -- the second
+#: reading would take every daily estimate on the project to zero on the strength of an
+#: empty column. A zero a PERSON enters is a different fact and is kept as the zero it is.
+APPROVED_DAILY_QUANTITY_ALIASES = ("daily quantity", "مقدار روز",
+                                   "حجم انجام شده")
+
+
+def approved_daily_quantity(task):
+    """``(quantity, alias)`` when the schedule states a daily quantity, else ``(None, None)``.
+
+    Returns the ALIAS beside the value, because which column it came from is part of the
+    answer: the same meaning lands on a different ``NumberN`` in the next file, so the name
+    the planner gave it is the only stable provenance there is.
+
+    A zero is treated as "not stated" -- see the note on the alias list above. This is the
+    one place that judgement is made, so a reader looking for it has one place to look.
+    """
+    raw = (task.get("raw_fields") or {})
+    lowered = {str(name).strip().lower(): (name, value) for name, value in raw.items()}
+    for alias in APPROVED_DAILY_QUANTITY_ALIASES:
+        if alias not in lowered:
+            continue
+        name, value = lowered[alias]
+        quantity = _decimal(value)
+        if quantity is None or quantity == 0:
+            # Stated as zero by MS Project's own default, which is not a statement.
+            return None, None
+        return quantity, name
+    return None, None
+
 
 def _decimal(value):
     if value is None or value == "":

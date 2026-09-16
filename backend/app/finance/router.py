@@ -46,6 +46,11 @@ from .schemas.item_price_mappings import (CandidateListResponse,CandidateProduct
 from .schemas.item_price_components import (ItemPriceRowStatusListResponse,ItemPriceRowStatusResponse,PriceComponentCreate,
     PriceComponentDeactivate,PriceComponentListResponse,PriceComponentPreviewResponse,
     PriceComponentResponse,PriceComponentRow,PricedLineHeaderResponse)
+from .schemas.unit_conversion_rules import (ConversionIssueListResponse,
+    ConversionIssueResponse,ConversionRuleApprove,ConversionRuleCreate,
+    ConversionRuleListResponse,ConversionRulePreviewResponse,ConversionRuleResponse,
+    ConversionRuleSupersede,DailyEstimateResponse)
+from .services.unit_conversion_rules import registry_units
 from .domain.material_categories import category_columns,category_label,spec_columns,specs_of
 from .services.material_price_resolution import canonical_unit
 from datetime import date
@@ -886,7 +891,12 @@ async def item_price_preview(projectId:str,lineId:UUID,request:Request,
     body=await request.app.state.item_price_mapping_service.preview(
         scope,provider_item_id=providerItemId,selected_unit=selectedUnit,
         estimate_line_id=lineId)
-    return _declared(ConvertedPricePreviewResponse, body)
+    calculation=body.pop("daily_estimate",None)
+    answer=_declared(ConvertedPricePreviewResponse, body)
+    if calculation is not None:
+        answer.daily_estimate=_declared(
+            DailyEstimateResponse, dict(calculation, estimate_line_id=str(lineId)))
+    return answer
 
 @router.post("/estimate-lines/{lineId}/price-mapping",response_model=ItemPriceMappingResponse,
              status_code=201,responses=FINANCE_ERROR_RESPONSES)
@@ -1039,3 +1049,131 @@ async def deactivate_price_component(projectId:str,lineId:UUID,componentId:UUID,
         scope,estimate_line_id=lineId,component_id=componentId,reason=payload.reason,
         actor_id=scope.actor_user_id)
     return await _named(request, _component_row(row))
+
+# ---------------------------------------------- unit conversion rules and mismatches
+#
+# A price per branch and a line measured in kilograms is an ordinary state of a
+# half-configured project, not an error. It is answered -- never calculated around, and
+# never with a factor of one, which on the reference product is wrong by 22.
+#
+# A rule is a statement about QUANTITY: `1 from_unit = factor to_unit`. The price
+# arithmetic is derived from it in `domain/daily_estimate.py` and stored nowhere, so no
+# call site can get the direction backwards.
+
+def _rule_body(row):
+    """A stored rule for the wire: exact numbers as text."""
+    body=dict(row)
+    body["factor_value"]=_money_text(row.get("factor_value"))
+    return _declared(ConversionRuleResponse, body)
+
+def _issue_body(row):
+    return _declared(ConversionIssueResponse, row)
+
+@router.get("/finance-settings/unit-conversions",response_model=ConversionRuleListResponse)
+async def list_unit_conversion_rules(projectId:str,request:Request,
+    scopeType:str|None=Query(None,max_length=32),
+    status:str|None=Query(None,max_length=16),
+    fromUnit:str|None=Query(None,max_length=32),
+    toUnit:str|None=Query(None,max_length=32)):
+    """Every rule this project may be affected by, including tenant-wide ones.
+
+    A site-wide rule is listed here on purpose: somebody about to write a narrower one
+    needs to see that a broader one already answers the question, or they will write a
+    second answer that shadows the first.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    rows=await request.app.state.unit_conversion_rule_service.list_rules(
+        scope,scope_type=scopeType,status=status,from_unit=fromUnit,to_unit=toUnit)
+    return ConversionRuleListResponse(
+        items=[_rule_body(r) for r in rows],
+        units=[{"code":u["code"],"label":u["label"],"dimension":u["dimension"],
+                "dimensionLabel":u["dimension_label"],
+                "productDependentFrom":u["product_dependent_from"]}
+               for u in registry_units()])
+
+@router.post("/finance-settings/unit-conversions",response_model=ConversionRuleResponse,
+             status_code=201,responses=FINANCE_ERROR_RESPONSES)
+async def create_unit_conversion_rule(projectId:str,payload:ConversionRuleCreate,
+                                      request:Request):
+    """Write a conversion down. It arrives as a DRAFT and changes no calculation.
+
+    A rule broader than one product is refused for a crossing that depends on the product:
+    `1 branch = 22 kg` is a weighing of one listing and is wrong for the next size, while
+    `1 ton = 1000 kg` is arithmetic and may be stated once for everything.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    row=await request.app.state.unit_conversion_rule_service.create_rule(
+        scope,payload=payload,actor_id=scope.actor_user_id,
+        permissions=scope.permission_codes)
+    return await _named(request, _rule_body(row))
+
+@router.get("/finance-settings/unit-conversions/{ruleId}",response_model=ConversionRuleResponse)
+async def read_unit_conversion_rule(projectId:str,ruleId:UUID,request:Request):
+    scope=await _resource_scope(projectId,request,"finance.view")
+    row=await request.app.state.unit_conversion_rule_service.rule(scope,ruleId)
+    if row is None:raise HTTPException(status_code=404,detail="conversion rule not found")
+    return await _named(request, _rule_body(row))
+
+@router.get("/finance-settings/unit-conversions/{ruleId}/history",
+            response_model=list[ConversionRuleResponse])
+async def unit_conversion_rule_history(projectId:str,ruleId:UUID,request:Request):
+    """Every version of this rule. What a report issued last month was converted by."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    rows=await request.app.state.unit_conversion_rule_service.history(scope,ruleId)
+    return await _named(request, [_rule_body(r) for r in rows])
+
+@router.get("/finance-settings/unit-conversions/{ruleId}/preview",
+            response_model=ConversionRulePreviewResponse,responses=FINANCE_ERROR_RESPONSES)
+async def preview_unit_conversion_rule(projectId:str,ruleId:UUID,request:Request,
+    priceIrr:Decimal|None=Query(None)):
+    """What this rule would do to a price, without letting it near a calculation.
+
+    A draft may be previewed -- that is what a draft is for -- and the answer says plainly
+    whether it is in use.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    body=await request.app.state.unit_conversion_rule_service.preview_rule(
+        scope,ruleId,price_irr=priceIrr)
+    return _declared(ConversionRulePreviewResponse, body)
+
+@router.post("/finance-settings/unit-conversions/{ruleId}/approve",
+             response_model=ConversionRuleResponse,responses=FINANCE_ERROR_RESPONSES)
+async def approve_unit_conversion_rule(projectId:str,ruleId:UUID,
+                                       payload:ConversionRuleApprove,request:Request):
+    """Let a rule into calculations, and close the mismatches it answers.
+
+    A rule that outlives this project needs `finance.manage_settings`: approving one is a
+    statement about every project this tenant will ever run, and editing THIS project is
+    not consent to that.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    row,_resolved=await request.app.state.unit_conversion_rule_service.approve_rule(
+        scope,ruleId,actor_id=scope.actor_user_id,permissions=scope.permission_codes)
+    return await _named(request, _rule_body(row))
+
+@router.post("/finance-settings/unit-conversions/{ruleId}/supersede",
+             response_model=ConversionRuleResponse,responses=FINANCE_ERROR_RESPONSES)
+async def supersede_unit_conversion_rule(projectId:str,ruleId:UUID,
+                                         payload:ConversionRuleSupersede,request:Request):
+    """Close a rule's window. The row stays, because a calculation made under it has to
+    remain explainable and a deleted rule explains nothing."""
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    row=await request.app.state.unit_conversion_rule_service.supersede_rule(
+        scope,ruleId,effective_to=payload.effective_to,
+        permissions=scope.permission_codes)
+    return await _named(request, _rule_body(row))
+
+@router.get("/finance-settings/unit-conversion-issues",
+            response_model=ConversionIssueListResponse)
+async def list_unit_conversion_issues(projectId:str,request:Request,
+    status:str|None=Query("open",max_length=16),
+    lineId:UUID|None=Query(None)):
+    """The mismatches still blocking a daily estimate, oldest question first by last sighting.
+
+    One row per line, product and unit pair: a preview refreshed two hundred times counts
+    to two hundred rather than filling this list with the same question.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    rows=await request.app.state.unit_conversion_rule_service.list_issues(
+        scope,status=status,estimate_line_id=lineId)
+    return ConversionIssueListResponse(items=[_issue_body(r) for r in rows])

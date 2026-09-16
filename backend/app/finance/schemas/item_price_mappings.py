@@ -18,6 +18,7 @@ from uuid import UUID
 from pydantic import Field
 
 from .base import ApiModel
+from .unit_conversion_rules import DailyEstimateResponse
 
 
 class ItemPriceStatusResponse(ApiModel):
@@ -163,6 +164,16 @@ class ConvertedPricePreviewResponse(ApiModel):
     conversion_factor_id: str | None = None
     quantity: str | None = None
     workflow_date_jalali: str | None = None
+
+    #: The whole daily-estimate calculation, including the reason it is blocked. Added
+    #: beside the existing fields rather than replacing them: a blocked calculation is an
+    #: ordinary state and must arrive as a 200 carrying its reason, not as an error.
+    #:
+    #: A declared model rather than a bare dict, so its keys are camel-cased like the rest
+    #: of the payload. A plain `dict` travelled verbatim and put snake_case names inside a
+    #: camelCase response -- one object, two conventions, which is how a reader ends up
+    #: guessing which one a field uses.
+    daily_estimate: DailyEstimateResponse | None = None
 
 
 class ItemPriceStatusListResponse(ApiModel):

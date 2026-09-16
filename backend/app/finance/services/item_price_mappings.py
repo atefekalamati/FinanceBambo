@@ -22,6 +22,8 @@ because a number typed into a mapping request is not a measurement anybody appro
 
 from datetime import date
 
+from ..domain.daily_estimate import (CONVERSION_RULE_REQUIRED, DAILY_PRICE_UNIT_MISSING,
+                                     calculate_daily_estimate)
 from ..domain.item_price_mapping import (INCOMPATIBLE, NEEDS_FACTOR, price_item)
 from ..domain.unit_conversion import can_convert
 from ..domain.unit_registry import UNIT_REGISTRY
@@ -35,9 +37,13 @@ class ItemPriceMappingRefused(FinanceDomainError):
 
 
 class ItemPriceMappingService:
-    def __init__(self, repository, clock=date.today):
+    def __init__(self, repository, clock=date.today, conversion_rules=None):
         self.repository = repository
         self.clock = clock
+        # Optional so every existing caller and test keeps working unchanged. Without it
+        # the preview answers exactly what it always did; with it, it also explains what
+        # the line costs today and why it sometimes cannot say.
+        self.conversion_rules = conversion_rules
 
     # --------------------------------------------------------------------------- read
 
@@ -124,19 +130,73 @@ class ItemPriceMappingService:
         trial = {"provider_item_id": provider_item_id, "selected_unit": selected_unit}
         factor = _factor_for(factors, trial, source_unit)
         quantity = None
+        # The line's own facts, read once: the estimate's quantity and rate, what the
+        # schedule says today, and the file's own assignment cost. The daily estimate needs
+        # all of them and the existing preview needs only the quantity.
+        context = None
         if estimate_line_id is not None:
-            quantity = (await self.repository.line_quantities(scope)).get(estimate_line_id)
+            context = await self.repository.line_context(scope, estimate_line_id)
+            quantity = (context or {}).get("quantity")
+            if quantity is None:
+                quantity = (await self.repository.line_quantities(scope)).get(estimate_line_id)
         priced = price_item(mapping=trial,
                             price_irr=observation.get("normalized_price_irr"),
                             source_unit=source_unit, quantity=quantity,
                             factor=(factor or {}).get("factor"))
-        return dict(priced.as_dict(),
+        body = dict(priced.as_dict(),
                     provider_item_id=str(provider_item_id),
                     product_name=observation.get("external_name"),
                     provider_name=observation.get("provider_name"),
                     source_price_irr=_text(observation.get("normalized_price_irr")),
                     workflow_date_jalali=observation.get("workflow_date_jalali"),
                     conversion_factor_id=(str(factor["id"]) if factor else None))
+        body["daily_estimate"] = await self._daily_estimate(
+            scope, context=context, observation=observation, source_unit=source_unit,
+            selected_unit=selected_unit, provider_item_id=provider_item_id,
+            estimate_line_id=estimate_line_id)
+        return body
+
+    async def _daily_estimate(self, scope, *, context, observation, source_unit,
+                              selected_unit, provider_item_id, estimate_line_id):
+        """What this line costs today in its own unit, or the reason it cannot be said.
+
+        The unit the LINE is measured in is the official unit somebody selected; the unit
+        the PRICE is stated in comes from the sheet or from a label. When they differ and
+        the registry cannot bridge them, an approved rule is looked for -- and when none
+        exists the mismatch is written down, because a question that exists only in an HTTP
+        response is one nobody can be assigned.
+        """
+        if self.conversion_rules is None:
+            return None
+        context = context or {}
+        rule = None
+        if source_unit and selected_unit and source_unit != selected_unit:
+            rule = await self.conversion_rules.resolve_for(
+                scope, from_unit=source_unit, to_unit=selected_unit,
+                provider_item_id=provider_item_id,
+                provider_id=observation.get("provider_id"),
+                category=observation.get("category"))
+        answer = calculate_daily_estimate(
+            quantity=context.get("quantity"),
+            daily_quantity=context.get("daily_quantity"),
+            initial_unit_price_irr=context.get("original_unit_price_irr"),
+            authoritative_initial_cost_irr=context.get("msp_cost_irr"),
+            daily_unit_price_irr=observation.get("normalized_price_irr"),
+            resource_unit=selected_unit, daily_price_unit=source_unit,
+            conversion_rule=rule)
+        body = answer.as_dict()
+        if answer.calculation_status in (CONVERSION_RULE_REQUIRED, DAILY_PRICE_UNIT_MISSING):
+            issue = await self.conversion_rules.record_mismatch(
+                scope, estimate_line_id=estimate_line_id,
+                finance_resource_id=context.get("resource_id"),
+                provider_item_id=provider_item_id,
+                source_task_uid=context.get("source_task_uid"),
+                source_assignment_uid=context.get("source_assignment_uid"),
+                source_resource_uid=context.get("source_resource_uid"),
+                resource_unit=selected_unit, daily_price_unit=source_unit,
+                error_code="FINANCE_" + answer.calculation_status.upper())
+            body["conversion_issue_id"] = str(issue["id"]) if issue else None
+        return body
 
     # -------------------------------------------------------------------------- write
 

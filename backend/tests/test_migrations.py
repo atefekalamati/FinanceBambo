@@ -342,7 +342,8 @@ class AlembicChainTests(unittest.TestCase):
              "0022_material_unit_labels",
              "0023_mpp_currency_decisions",
              "0024_finance_item_price_mappings",
-             "0025_item_price_mapping_components"],
+             "0025_item_price_mapping_components",
+             "0026_daily_quantity_and_conversion_rules"],
             sorted(path.stem for path in VERSIONS.glob("*.py")))
 
     def test_every_revision_runs_both_directions(self):

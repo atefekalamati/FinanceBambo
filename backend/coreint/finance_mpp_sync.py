@@ -27,7 +27,8 @@ from uuid import uuid4
 
 from psycopg.rows import dict_row
 
-from .finance_quantity import _decimal, approved_quantity
+from .finance_quantity import (_decimal, approved_daily_quantity,
+                               approved_quantity)
 from .mpp_units import normalize_unit
 from .mpp_files import MppFileError, resolve_import_file
 
@@ -65,6 +66,10 @@ def finance_rows(parsed, *, source_sha256=None, recorded_decision=None):
     def base(task):
         metrics = task.get("metrics") or {}
         quantity, unit = approved_quantity(task)
+        # What the schedule says TODAY, which is a different statement from what it
+        # planned. NULL where the file states none -- and a zero in an MS Project Number
+        # column is "states none", because that is what an untouched column contains.
+        daily_quantity, daily_quantity_field = approved_daily_quantity(task)
         return {
             "source_task_uid": task["uid"],
             "task_name": task["name"],
@@ -74,6 +79,10 @@ def finance_rows(parsed, *, source_sha256=None, recorded_decision=None):
             "task_finish": task.get("finish"),
             "quantity": quantity,
             "quantity_unit": unit,
+            "source_daily_quantity": daily_quantity,
+            # The planner's own column NAME, never the NumberN index: the same meaning
+            # lands elsewhere in the next file, so the alias is the only stable provenance.
+            "source_daily_quantity_field": daily_quantity_field,
             "progress_variance": _decimal(metrics.get("progress_variance")),
             "weight_rial": _decimal(metrics.get("weight_rial")),
             "weight_time": _decimal(metrics.get("weight_time")),
@@ -337,6 +346,7 @@ _COLUMNS = ("source_task_uid", "source_assignment_uid", "source_resource_uid",
             "task_name", "task_wbs", "task_start", "task_finish",
             "resource_name", "resource_type", "resource_unit",
             "quantity", "quantity_unit",
+            "source_daily_quantity", "source_daily_quantity_field",
             "weight_rial", "weight_time", "weight_base", "actual_progress",
             "actual_progress_percent", "physical_progress", "planned_progress",
             "progress_variance",
