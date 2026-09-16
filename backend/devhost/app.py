@@ -46,6 +46,7 @@ from app.finance.services.attachments import FinanceAttachmentService
 from app.finance.services.audit import FinanceAuditService
 from app.finance.services.conversions import UnitConversionService
 from app.finance.services.items_and_estimates import ItemsAndEstimatesService
+from app.finance.services.material_price_import import MaterialPriceImportService
 from app.finance.services.material_prices import MaterialPriceService
 from app.finance.services.item_price_mappings import ItemPriceMappingService
 from app.finance.services.item_price_components import ItemPriceComponentService
@@ -76,6 +77,7 @@ from .environment import (SELF_HOSTED_EXTRACTION, SEED_OPT_IN, app_env,
                           core_identity_settings, core_progress_enabled, core_url,
                           dsn_target, extraction_provider, migration_url,
                           mpp_import_enabled, mpp_import_interval_minutes,
+                          MATERIAL_PRICE_SHEET_SETTING, material_price_sheet_url,
                           mpp_import_root, mpp_java_home, mpp_max_file_size_mb,
                           seed_refusal, seeding_allowed)
 from .ports import (ContextPermissionAuthorizer, LocalFileStorage, SeededActivityProvider,
@@ -337,6 +339,19 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     # is a server-side job; no request path here reaches Google Sheets, and the unit
     # conversion repository is handed over so one conversion boundary answers both
     # the existing unit registry and a converted material price.
+    # The one production writer of `price_observations`, now reachable over HTTP as well
+    # as from the CLI. Wired ONLY when a sheet is configured: an endpoint that exists but
+    # has nothing to read from would answer 409 forever, and a host that cannot import
+    # should say so at startup rather than once per request.
+    sheet_link = material_price_sheet_url()
+    if sheet_link:
+        application.state.material_price_import_service = MaterialPriceImportService(
+            PsycopgMaterialPriceRepository(connection), sheet_link=sheet_link)
+        print("material price import ENABLED -- sheet configured")
+    else:
+        print("material price import DISABLED -- %s is not set"
+              % MATERIAL_PRICE_SHEET_SETTING)
+
     # Items and Estimates reads the schedule that is authoritative for what exists.
     application.state.items_and_estimates_service = ItemsAndEstimatesService(
         PsycopgItemsAndEstimatesRepository(connection))

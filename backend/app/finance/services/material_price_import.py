@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 
 from ..domain.material_price_rows import PIPE_FITTING_CATEGORY, RowStatus
 from ..repositories.material_prices import RunAlreadyRunning, row_fingerprint
+from ..domain.errors import FinanceDomainError
 from .google_sheet import GoogleSheetError, export_url, fetch_sheet_as_xlsx, parse_sheet_link
 from .material_price_sheet import WORKSHEET_ALLOWLIST, read_workbook, workbook_from_xlsx
 from ..domain.material_specs import FROM_COLUMN, conflicts_with, extract_specs
@@ -42,8 +43,30 @@ FITTING_REASON = ("this row is in the pipe worksheet but is not a pipe (fitting,
                   "the active pipe list")
 
 
-class MaterialPriceImportError(Exception):
-    """The import did not happen. Nothing was published."""
+class MaterialPriceImportError(FinanceDomainError):
+    """The import did not happen. Nothing was published.
+
+    A `FinanceDomainError` so that the HTTP trigger answers 409 with a code a caller can
+    branch on. Every reason this is raised is the CALLER's situation to resolve -- the
+    sheet is missing a worksheet, another import is already in flight, the workbook named
+    no source -- and none of them is a server fault. Raised as a bare Exception it became
+    a 500, which says "we broke" about a sheet that simply is not ready.
+
+    The CLI scripts catch this class by name and are unaffected by the new base.
+    """
+
+    status = 409
+    code = "MATERIAL_PRICE_IMPORT_REFUSED"
+
+
+class MaterialPriceSheetNotConfigured(MaterialPriceImportError):
+    """No sheet is configured, so there is nothing to import from.
+
+    A distinct code because the fix is distinct: this one is an operator setting an
+    environment variable, not a person correcting a spreadsheet.
+    """
+
+    code = "MATERIAL_PRICE_SHEET_NOT_CONFIGURED"
 
 
 class ImportOutcome:
@@ -71,7 +94,7 @@ class MaterialPriceImportService:
 
     async def run(self, scope) -> ImportOutcome:
         if not self.sheet_link:
-            raise MaterialPriceImportError(
+            raise MaterialPriceSheetNotConfigured(
                 "no material price sheet is configured; set FINANCE_MATERIAL_PRICE_SHEET_URL")
 
         document_id, _ = parse_sheet_link(self.sheet_link)

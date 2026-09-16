@@ -247,6 +247,13 @@ class MaterialPriceService:
             # observation, and writing it down would freeze a judgement that changes the
             # moment somebody measures the product.
             "conversion_eligible": eligible,
+            # A LATER row exists for this listing and could not be believed. The price
+            # above is therefore older than the sheet's newest word on the product, and a
+            # reader has to be told: without this they see a three-day-old number and no
+            # reason it did not move.
+            "rejected_after_date": row.get("rejected_after_date"),
+            "rejected_after_raw_price": row.get("rejected_after_raw_price"),
+            "rejected_after_reasons": list(row.get("rejected_after_reasons") or []),
         }
         # The identity as the sheet stated it, on the day. These come off the OBSERVATION,
         # which is append-only, and they are what stops a later rename from rewriting the

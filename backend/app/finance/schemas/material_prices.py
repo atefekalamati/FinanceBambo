@@ -202,6 +202,19 @@ class MaterialPriceResponse(ApiModel):
     #: database carries basis 'unknown', so 27 could be per branch, per metre or per piece.
     conversion_eligible: bool | None = None
 
+    #: A NEWER observation of this listing exists and was rejected, so the price above is
+    #: not the sheet's latest word on the product.
+    #:
+    #: Null when the chosen row IS the newest. When it is not, these three say so: the
+    #: business date of the rejected row, what the cell actually contained, and why it was
+    #: refused. A supplier writing «تماس بگیرید» must not blank a product's price -- the
+    #: last believable price keeps being reported -- but the reader has to be able to see
+    #: that today's sheet said something unusable, rather than wondering why a number has
+    #: not moved for three days.
+    rejected_after_date: date | None = None
+    rejected_after_raw_price: str | None = None
+    rejected_after_reasons: list[str] = Field(default_factory=list)
+
 
 class MaterialPriceListResponse(ApiModel):
     items: list[MaterialPriceResponse]
@@ -288,6 +301,31 @@ class ImportRunResponse(ApiModel):
     rejected_items: int
     error_message: str | None = None
     source_document_id: str | None = None
+    worksheet_report: dict = Field(default_factory=dict)
+
+
+class ImportRunStartedResponse(ApiModel):
+    """What one triggered import did.
+
+    The same counts `/material-prices/runs` reports afterwards, returned immediately so a
+    caller that triggered the import does not have to poll to learn whether it worked.
+
+    `inserted + alreadyPresent + rejected` is what the sheet contained. `alreadyPresent`
+    is the re-import case and is a SUCCESS: running the same sheet twice writes nothing
+    the second time and says so, rather than duplicating every price.
+    """
+
+    #: succeeded | partially_succeeded | failed
+    status: str
+    run: ImportRunResponse
+    #: New observations written. A price that has not moved since the last import is not
+    #: written again -- the fingerprint is the same, so it lands in `alreadyPresent`.
+    inserted: int
+    already_present: int
+    #: Rows that could not be believed. Stored as evidence with their reasons, never
+    #: silently dropped and never turned into a price.
+    rejected: int
+    #: Per-worksheet detail: what was read, what was refused and why.
     worksheet_report: dict = Field(default_factory=dict)
 
 

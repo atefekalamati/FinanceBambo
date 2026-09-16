@@ -36,7 +36,8 @@ from .schemas.audit import AuditEventListResponse,AuditEventResponse
 from .schemas.items_and_estimates import (AssignmentResponse,
     ItemsAndEstimatesResponse, LegacyLineResponse,
     ResourceAggregateResponse, SourceVersionResponse)
-from .schemas.material_prices import (ImportRunListResponse,ImportRunResponse,
+from .services.material_price_import import MaterialPriceSheetNotConfigured
+from .schemas.material_prices import (ImportRunStartedResponse,ImportRunListResponse,ImportRunResponse,
     MaterialCategoryListResponse,MaterialCategoryResponse,MaterialPriceHistoryListResponse,
     MaterialPriceHistoryResponse,MaterialPriceListResponse,MaterialPriceResponse,
     MaterialUnitSettingCreate,MaterialUnitSettingListResponse,MaterialUnitSettingResponse,
@@ -682,6 +683,45 @@ async def material_price_history(projectId:str,providerItemId:UUID,request:Reque
     return MaterialPriceHistoryListResponse(
         items=[_declared(MaterialPriceHistoryResponse, x) for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
+
+@router.post("/material-prices/import-runs",response_model=ImportRunStartedResponse,
+             status_code=201,responses=FINANCE_ERROR_RESPONSES)
+async def start_material_price_import(projectId:str,request:Request):
+    """Read the configured sheet now, and say what that did.
+
+    THE TRIGGER THIS SYSTEM DID NOT HAVE.
+
+    `price_observations` has exactly one production writer, and until now it was reachable
+    only by running `scripts/import_material_prices.py` by hand on a machine with the repo
+    checked out. `price_providers.default_interval_minutes` says 1440 on every provider and
+    nothing reads it: there is no scheduler, no worker and no webhook. Updating the Google
+    Sheet therefore did NOT reach the database, and the newest prices in it were whatever
+    date somebody last ran the script.
+
+    WHAT IT ACCEPTS: nothing. The sheet is `FINANCE_MATERIAL_PRICE_SHEET_URL`, deliberately
+    -- a caller who could name the sheet could point this host at any sheet at all, and a
+    caller who could post rows could write a price nobody published. The body is empty and
+    the answer comes from the one configured source.
+
+    IDEMPOTENT. Re-running against an unchanged sheet inserts nothing and reports every row
+    as `alreadyPresent`: the fingerprint is (product id, workflow date, price), and a
+    partial unique index refuses the second copy. Two simultaneous runs are refused by the
+    database, not by a flag.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    service=getattr(request.app.state,"material_price_import_service",None)
+    if service is None:
+        raise MaterialPriceSheetNotConfigured(
+            "this host has no material price import configured; "
+            "set FINANCE_MATERIAL_PRICE_SHEET_URL and restart")
+    outcome=await service.run(scope)
+    return ImportRunStartedResponse(
+        status=outcome.status,
+        run=_declared(ImportRunResponse, outcome.run),
+        inserted=outcome.inserted,
+        already_present=outcome.already_present,
+        rejected=outcome.rejected,
+        worksheet_report=outcome.worksheet_report or {})
 
 @router.get("/material-prices/runs",response_model=ImportRunListResponse)
 async def material_price_runs(projectId:str,request:Request,

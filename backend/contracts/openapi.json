@@ -4371,6 +4371,45 @@
         "title": "ImportRunResponse",
         "type": "object"
       },
+      "ImportRunStartedResponse": {
+        "additionalProperties": false,
+        "description": "What one triggered import did.\n\nThe same counts `/material-prices/runs` reports afterwards, returned immediately so a\ncaller that triggered the import does not have to poll to learn whether it worked.\n\n`inserted + alreadyPresent + rejected` is what the sheet contained. `alreadyPresent`\nis the re-import case and is a SUCCESS: running the same sheet twice writes nothing\nthe second time and says so, rather than duplicating every price.",
+        "properties": {
+          "alreadyPresent": {
+            "title": "Alreadypresent",
+            "type": "integer"
+          },
+          "inserted": {
+            "title": "Inserted",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "run": {
+            "$ref": "#/components/schemas/ImportRunResponse"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "worksheetReport": {
+            "additionalProperties": true,
+            "title": "Worksheetreport",
+            "type": "object"
+          }
+        },
+        "required": [
+          "status",
+          "run",
+          "inserted",
+          "alreadyPresent",
+          "rejected"
+        ],
+        "title": "ImportRunStartedResponse",
+        "type": "object"
+      },
       "InvoiceConfirm": {
         "additionalProperties": false,
         "properties": {
@@ -6666,6 +6705,36 @@
               }
             ],
             "title": "Rawprice"
+          },
+          "rejectedAfterDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejectedafterdate"
+          },
+          "rejectedAfterRawPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejectedafterrawprice"
+          },
+          "rejectedAfterReasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rejectedafterreasons",
+            "type": "array"
           },
           "resolutionReason": {
             "anyOf": [
@@ -18327,6 +18396,144 @@
           }
         },
         "summary": "Material Prices Current",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/import-runs": {
+      "post": {
+        "description": "Read the configured sheet now, and say what that did.\n\nTHE TRIGGER THIS SYSTEM DID NOT HAVE.\n\n`price_observations` has exactly one production writer, and until now it was reachable\nonly by running `scripts/import_material_prices.py` by hand on a machine with the repo\nchecked out. `price_providers.default_interval_minutes` says 1440 on every provider and\nnothing reads it: there is no scheduler, no worker and no webhook. Updating the Google\nSheet therefore did NOT reach the database, and the newest prices in it were whatever\ndate somebody last ran the script.\n\nWHAT IT ACCEPTS: nothing. The sheet is `FINANCE_MATERIAL_PRICE_SHEET_URL`, deliberately\n-- a caller who could name the sheet could point this host at any sheet at all, and a\ncaller who could post rows could write a price nobody published. The body is empty and\nthe answer comes from the one configured source.\n\nIDEMPOTENT. Re-running against an unchanged sheet inserts nothing and reports every row\nas `alreadyPresent`: the fingerprint is (product id, workflow date, price), and a\npartial unique index refuses the second copy. Two simultaneous runs are refused by the\ndatabase, not by a flag.",
+        "operationId": "start_material_price_import_api_projects__projectId__finance_material_prices_import_runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRunStartedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
+          }
+        },
+        "summary": "Start Material Price Import",
         "tags": [
           "finance"
         ]
