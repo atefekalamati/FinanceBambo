@@ -109,6 +109,9 @@ class WiringTests(unittest.TestCase):
                 # No endpoint here reaches Google Sheets -- the import is a job.
                 ("/api/projects/{projectId}/finance/material-prices/categories", "get"),
                 ("/api/projects/{projectId}/finance/material-prices/current", "get"),
+                # The trigger the chain did not have: `price_observations` had exactly
+                # one production writer and it was reachable only from a CLI script.
+                ("/api/projects/{projectId}/finance/material-prices/import-runs", "post"),
                 ("/api/projects/{projectId}/finance/material-prices/runs", "get"),
                 ("/api/projects/{projectId}/finance/material-prices/invalid-rows", "get"),
                 ("/api/projects/{projectId}/finance/material-prices/unit-settings", "get"),

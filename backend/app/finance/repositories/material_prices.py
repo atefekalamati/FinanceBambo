@@ -303,12 +303,34 @@ class PsycopgMaterialPriceRepository:
             return await c.fetchone() or {}
 
     async def latest_observations(self, s, *, category=None, only_active=True):
-        """The newest observation for each listing, with everything a reader needs to judge it.
+        """The newest VALID observation for each listing, and why that word matters.
 
-        `DISTINCT ON` over (item) ordered by workflow date then fetch time: the newest the
-        SHEET says, with the newest thing we read as the tiebreak. A listing whose only
-        observations are invalid still appears -- with a null price and its reasons -- so a
-        reader sees "we have this product and cannot price it" rather than nothing at all.
+        The ordering has three keys and the first one is the fix:
+
+            1. a valid row that states a business date, before anything else
+            2. newest business date -- what the SHEET says, not when we read it
+            3. newest fetch, then id, so the answer never depends on scan order
+
+        WHAT KEY 1 REPAIRS
+
+        It used to order by date alone. So the day a supplier typed «تماس بگیرید» into the
+        sheet, that row arrived with a NEWER business date than the last real price, won
+        the `DISTINCT ON`, and the product's current price became null -- `invalid_source`,
+        no number, in every estimate that read it. A perfectly good price from three days
+        earlier was sitting in the same table, and nothing would return it until somebody
+        typed a number into the sheet again.
+
+        That is the opposite of what a rejected row is for. A row is rejected because it
+        could not be believed; it should not thereby become the thing everyone believes.
+
+        WHAT IT DELIBERATELY KEEPS
+
+        A listing whose observations are ALL invalid still appears, with a null price and
+        its reasons, because key 1 only sorts -- it does not filter. "We have this product
+        and cannot price it" is an answer a reader needs; silence is not. And the newest
+        rejected row is reported beside the chosen one (see `rejected_after`), so a reader
+        can see that today's sheet said something unusable rather than being quietly shown
+        a three-day-old number with no explanation.
         """
         where = [" WHERE o.organization_id=%s AND o.project_id=%s"]
         args = [s.organization_id, s.project_id]
@@ -332,15 +354,36 @@ class PsycopgMaterialPriceRepository:
                           i.thickness_value, i.thickness_unit, i.diameter_value,
                           i.diameter_unit, i.weight_value, i.weight_unit, i.weight_basis,
                           i.branch_count, i.pieces_per_package, i.coverage_m2,
-                          i.volume_m3, i.spec_source, i.spec_conflicts
+                          i.volume_m3, i.spec_source, i.spec_conflicts,
+                          later.workflow_date_gregorian AS rejected_after_date,
+                          later.raw_price AS rejected_after_raw_price,
+                          later.validation_reasons AS rejected_after_reasons
                      FROM price_observations o
                      JOIN provider_items i
                        ON i.organization_id=o.organization_id AND i.project_id=o.project_id
                       AND i.id=o.provider_item_id
                      JOIN price_providers p
                        ON p.organization_id=o.organization_id AND p.project_id=o.project_id
-                      AND p.id=o.provider_id""" + "".join(where) +
+                      AND p.id=o.provider_id
+                     -- The newest row that could NOT be believed, when it is newer than
+                     -- the one chosen. Reported, never selected: the exclusion has to be
+                     -- visible or the reader is looking at an old price and cannot tell.
+                     LEFT JOIN LATERAL (
+                          SELECT r.workflow_date_gregorian, r.raw_price,
+                                 r.validation_reasons
+                            FROM price_observations r
+                           WHERE r.organization_id=o.organization_id
+                             AND r.project_id=o.project_id
+                             AND r.provider_item_id=o.provider_item_id
+                             AND r.validation_status <> 'valid'
+                             AND r.workflow_date_gregorian IS NOT NULL
+                             AND (o.workflow_date_gregorian IS NULL
+                                  OR r.workflow_date_gregorian > o.workflow_date_gregorian)
+                           ORDER BY r.workflow_date_gregorian DESC, r.fetched_at DESC, r.id
+                           LIMIT 1) later ON TRUE""" + "".join(where) +
                 """ ORDER BY o.provider_item_id,
+                             (o.validation_status = 'valid'
+                              AND o.workflow_date_gregorian IS NOT NULL) DESC,
                              o.workflow_date_gregorian DESC NULLS LAST,
                              o.fetched_at DESC, o.id""",
                 tuple(args))
