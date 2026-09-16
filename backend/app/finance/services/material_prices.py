@@ -14,6 +14,7 @@ not be told that everything in it is stale.
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from ..domain.material_specs import SPEC_COLUMNS, WEIGHT_BASES_USABLE_FOR_CONVERSION
 from ..domain.unit_conversion import can_convert
 from .material_price_resolution import Resolution, canonical_unit, resolve
 
@@ -153,8 +154,13 @@ class MaterialPriceService:
                 mapping_required=mapping_required,
                 mapping_approved=bool((label or {}).get("mapping_approved")),
                 active=row.get("active", True) and (label or {}).get("active", True))
-            resolved.append(self._shape(row, outcome, display_unit, label,
-                                        finance_units.get(row["provider_item_id"])))
+            resolved.append(self._shape(
+                row, outcome, display_unit, label,
+                finance_units.get(row["provider_item_id"]),
+                # Judged here rather than in `_shape` because only this loop knows what was
+                # ASKED for: `outcome.target_unit` is null when the crossing failed, and a
+                # failed crossing and a crossing nobody requested are different answers.
+                eligible=_conversion_eligible(row, source, target, factor)))
 
         total = len(resolved)
         start = (page - 1) * page_size
@@ -179,9 +185,9 @@ class MaterialPriceService:
 
 
     @staticmethod
-    def _shape(row, outcome, display_unit, label=None, finance_resource=None):
+    def _shape(row, outcome, display_unit, label=None, finance_resource=None, eligible=None):
         """One row of the API's answer. Every provenance field travels with the price."""
-        return {
+        shaped = {
             "provider_item_id": row["provider_item_id"],
             "external_id": row["external_id"],
             "external_name": row["external_name"],
@@ -235,7 +241,30 @@ class MaterialPriceService:
             "finance_resource_title": (finance_resource or {}).get("title"),
             "finance_resource_unit": (finance_resource or {}).get("base_unit"),
             "unit_alignment": _alignment(outcome, finance_resource),
+            # Whether this listing's own attributes may be used to cross its price into
+            # another unit. Derived on read and stored nowhere: it is a statement about
+            # what the registry and the recorded facts allow today, not a fact about the
+            # observation, and writing it down would freeze a judgement that changes the
+            # moment somebody measures the product.
+            "conversion_eligible": eligible,
         }
+        # The identity as the sheet stated it, on the day. These come off the OBSERVATION,
+        # which is append-only, and they are what stops a later rename from rewriting the
+        # evidence -- so they travel beside `externalName`/`providerName`, which are the
+        # names the same listing carries NOW. They were declared in the response model and
+        # dropped here, which made every one of them permanently null.
+        shaped["product_id_snapshot"] = row.get("product_external_id")
+        shaped["product_name_snapshot"] = row.get("product_name_snapshot")
+        shaped["provider_name_snapshot"] = row.get("provider_name_snapshot")
+        # The listing's typed specification columns, carried through exactly as stored. A
+        # column the sheet said nothing about stays None: null means "not stated", and it
+        # must never arrive as 0, "" or "-". Same reason as above -- 0027 added these, the
+        # query selects them, the schema publishes them, and this dict left them behind.
+        for column in SPEC_COLUMNS:
+            shaped[column] = row.get(column)
+        shaped["spec_source"] = row.get("spec_source")
+        shaped["spec_conflicts"] = row.get("spec_conflicts")
+        return shaped
 
 
 def _clean(value):
@@ -244,6 +273,41 @@ def _clean(value):
         return None
     text = str(value).strip()
     return text or None
+
+
+def _conversion_eligible(row, source, target, factor):
+    """Whether this listing's price may be crossed into the requested unit.
+
+    Three ways to be eligible, and one way not to be:
+
+        nothing to cross      no target was chosen, or it is the unit the price is
+                              already in -- there is no crossing to be eligible FOR
+        the registry bridges  kg -> ton is arithmetic over units. It is true of every
+                              product and needs no property of this one
+        somebody measured it  a factor recorded against THIS listing, by a person, with
+                              a reason. That is evidence, and evidence is eligible
+
+        NOT eligible          the crossing needs a property of the product, and the only
+                              one stated is a WEIGHT WHOSE BASIS NOBODY GAVE
+
+    The last case is the whole point. 415 listings state a weight and every one of them
+    says 'unknown' for what it is per, because no worksheet read so far states it. 27 is
+    then 27 per branch, per metre or per piece, and those differ by more than an order of
+    magnitude -- the gram-versus-kilogram error, with a longer fuse. So an unknown basis
+    is reported as ineligible rather than being quietly used, and `null` is returned when
+    there is nothing to cross, because "no" and "not asked" are different answers.
+    """
+    if source is None or target is None or source == target:
+        return None
+    if can_convert(source, target):
+        return True
+    if factor is not None:
+        return True
+    # Only a product property can bridge it now, and a weight is the property these sheets
+    # state. One with no basis is not a measurement anybody may convert with.
+    if row.get("weight_value") is not None:
+        return row.get("weight_basis") in WEIGHT_BASES_USABLE_FOR_CONVERSION
+    return False
 
 
 def _alignment(outcome, finance_resource):

@@ -631,14 +631,18 @@ async def material_prices_current(projectId:str,request:Request,
     # observation's own columns and the join's extras, and the response declares a subset.
     # Spreading everything was fine while the two matched and becomes a 500 the moment they
     # do not, which is exactly what adding columns to provider_items does.
-    return MaterialPriceListResponse(items=[
+    # `productIdSnapshot` used to be assembled here from a key the service does not put in
+    # the row, so it was null on every response. The snapshots now come off the observation
+    # in the service, beside the price they belong to, and this layer only adds `specs`.
+    # `_named` for the same reason every other listing endpoint calls it: the rows carry
+    # `labelledBy` as an id, the response declares `labelledByName`, and without this the
+    # name was never looked up. One lookup for the page, not one per row.
+    return await _named(request, MaterialPriceListResponse(items=[
         _declared(MaterialPriceResponse,
                   {**{k: v for k, v in x.items() if k != "metadata"},
-                   "specs": specs_of(x.get("category"), x.get("metadata")),
-                   # The identity as it was imported, beside the identity as it is now.
-                   "product_id_snapshot": x.get("product_external_id")})
+                   "specs": specs_of(x.get("category"), x.get("metadata"))})
         for x in items],
-        page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
+        page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize))
 
 @router.get("/material-prices/{providerItemId}/history",response_model=MaterialPriceHistoryListResponse)
 async def material_price_history(projectId:str,providerItemId:UUID,request:Request,

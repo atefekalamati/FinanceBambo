@@ -37,7 +37,9 @@
 24. `0024_finance_item_price_mappings`
 25. `0025_item_price_mapping_components`
 26. `0026_daily_quantity_and_conversion_rules`
-27. `0027_typed_material_specs_and_strict_price_dates` (head)
+27. `0027_typed_material_specs_and_strict_price_dates`
+28. `0028_source_version_supersession`
+29. `0029_identity_required_of_valid_rows_only` (head)
 
 **۰۰۲۷ فقط شکل می‌سازد و هیچ داده‌ای نمی‌نویسد.** ستون‌های تایپ‌شدهٔ مشخصات روی
 `provider_items`، سه ستون Snapshot و یک تاریخ اجباری روی `price_observations`.
@@ -49,6 +51,32 @@
 هر UPDATE روی آن جدول را رد می‌کند و همین چیزی است که آن را «شاهد» می‌کند. پس قید
 `NOT VALID` گذاشته شد تا از این پس روی هر ردیف تازه اجرا شود و ۳٬۸۲۱ ردیف موجود
 دست‌نخورده بمانند.
+
+**۰۰۲۸ فقط شکل می‌سازد و هیچ نسخه‌ای را superseded اعلام نمی‌کند.** سه ستون nullable روی
+`finance_mpp_source_versions` (`superseded_at`، `superseded_by`، `superseded_reason`)، یک
+CHECK برای شکل آن‌ها و یک ایندکس جزئی روی نسخه‌های زنده. اینکه کدام نسخه superseded است
+یک حکم دربارهٔ تاریخچهٔ پروژه است، نه چیزی که یک مهاجرت بتواند بدهد؛ آن حکم را
+`scripts/ops/mark_superseded_source_versions.py` با دو شرطِ لازم می‌دهد: نسخهٔ جدیدتری از
+همان فایل وجود داشته باشد، و هیچ داده‌ٔ زنده‌ای (نه `progress_snapshot_refs` و نه
+`estimate_line_source_completions`) به آن ارجاع ندهد. روی پایگاه دادهٔ ممیزی‌شده تنها یک
+نسخه واجد شرایط شد؛ قدیمی‌ترین نسخه با وجود دو نسخهٔ جدیدتر **زنده ماند**، چون ۲۸۹
+completion به آن ارجاع می‌دهد.
+
+**۰۰۲۹ یک نقص ۰۰۲۷ را اصلاح می‌کند.** ۰۰۲۷ هویت (`product_external_id` و دو نام Snapshot)
+را از **هر** ردیف `price_observations` می‌خواست، ولی همان جدول ردیف‌های **رد‌شده** را هم
+به‌عنوان شاهدِ محتوای واقعی شیت نگه می‌دارد و ردیفی که به‌دلیل `missing_product_id` رد شده
+هیچ شناسه‌ای برای اعلام ندارد. قید حالا به وضعیت مقید است — دقیقاً مثل قیمت و تاریخ:
+
+```
+validation_status = 'valid'  →  قیمت، تاریخ کسب‌وکار و هویت را اعلام می‌کند
+غیر از آن                    →  هرچه شیت داده، از جمله هیچ
+```
+
+۰۰۲۹ همچنین یک **انحراف schema** را اصلاح می‌کند: پیش‌نویس اولیهٔ ۰۰۲۷
+`workflow_date_gregorian` را NOT NULL کرده بود و پیش از merge به یک CHECK مقید به وضعیت
+اصلاح شد، اما DOWNGRADE آن NOT NULL را برنداشت. هر پایگاه داده‌ای که پیش‌نویس اول را اجرا
+کرده بود NOT NULL‌ای داشت که زنجیرهٔ مهاجرت دیگر اعلامش نمی‌کند. `DROP NOT NULL` در ۰۰۲۹
+هر دو را هم‌تراز می‌کند و روی پایگاه دادهٔ تازه بی‌اثر است.
 
 **۰۰۲۶ هیچ داده‌ای جابه‌جا نمی‌کند.** سه چیز افزودنی است: دو ستون nullable روی
 `finance_mpp_rows` برای «مقدار روز» و نام ستونی که از آن آمده، جدول قوانین تبدیل واحد

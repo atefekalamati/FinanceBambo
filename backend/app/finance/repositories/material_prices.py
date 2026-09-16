@@ -24,6 +24,8 @@ from uuid import uuid4
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from ..domain.material_specs import SPEC_COLUMNS
+
 
 class RunAlreadyRunning(RuntimeError):
     """Another import is in flight for this provider. Two would interleave one price set."""
@@ -79,13 +81,9 @@ class PsycopgMaterialPriceRepository:
     # -------------------------------------------------------------- provider items
 
     #: The typed specification columns an import may fill, and the order they are written
-    #: in. Named once so a new column cannot be half-wired.
-    SPEC_COLUMNS = (
-        "product_code", "manufacturer", "grade", "product_type", "dimensions_text",
-        "length_value", "length_unit", "length_m", "width_value", "width_unit",
-        "height_value", "height_unit", "thickness_value", "thickness_unit",
-        "diameter_value", "diameter_unit", "weight_value", "weight_unit", "weight_basis",
-        "branch_count", "pieces_per_package", "coverage_m2", "volume_m3")
+    #: in. The list itself lives in the domain, so selecting, writing, publishing and
+    #: backfilling a column are four uses of one statement rather than four copies of it.
+    SPEC_COLUMNS = SPEC_COLUMNS
 
     async def ensure_item(self, s, *, provider_id, external_id, external_name, category,
                           url, source_unit, worksheet, active, inactive_reason, metadata,
@@ -349,28 +347,63 @@ class PsycopgMaterialPriceRepository:
             return await c.fetchall()
 
     async def observation_history(self, s, provider_item_id, *, page=1, page_size=50):
-        clause = (" FROM price_observations WHERE organization_id=%s AND project_id=%s"
-                  " AND provider_item_id=%s")
+        """Every observation for one listing, with BOTH identities on each row.
+
+        The join supplies what the listing is called NOW; `o.*` carries what the sheet
+        said on the day. They are returned under different names and never merged: a
+        reader has to be able to see that a product was renamed, and a history that
+        silently showed today's name against a year-old price would be asserting the
+        product was called that then.
+
+        `LEFT JOIN`, not `JOIN`: a deleted provider must not make the evidence of what it
+        once quoted disappear from the history.
+        """
+        clause = (" FROM price_observations o"
+                  " LEFT JOIN provider_items i"
+                  "        ON i.organization_id=o.organization_id"
+                  "       AND i.project_id=o.project_id AND i.id=o.provider_item_id"
+                  " LEFT JOIN price_providers p"
+                  "        ON p.organization_id=o.organization_id"
+                  "       AND p.project_id=o.project_id AND p.id=o.provider_id"
+                  " WHERE o.organization_id=%s AND o.project_id=%s"
+                  " AND o.provider_item_id=%s")
         args = (s.organization_id, s.project_id, provider_item_id)
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute("SELECT count(*) AS total" + clause, args)
             total = (await c.fetchone())["total"]
             await c.execute(
-                "SELECT *" + clause +
-                " ORDER BY workflow_date_gregorian DESC NULLS LAST, fetched_at DESC, id"
+                "SELECT o.*, i.external_name AS current_product_name,"
+                "       p.name AS current_provider_name" + clause +
+                " ORDER BY o.workflow_date_gregorian DESC NULLS LAST, o.fetched_at DESC, o.id"
                 " LIMIT %s OFFSET %s", args + (page_size, (page - 1) * page_size))
             return await c.fetchall(), total
 
     async def invalid_observations_page(self, s, *, page=1, page_size=50):
-        """Rows that were stored and could not be believed. They are findable, not hidden."""
-        clause = (" FROM price_observations WHERE organization_id=%s AND project_id=%s"
-                  " AND validation_status IN ('rejected', 'needs_review')")
+        """Rows that were stored and could not be believed. They are findable, not hidden.
+
+        Same shape as the history, joins included. A rejected row is the one case where
+        the snapshot columns are most likely to be NULL -- a row rejected for a missing
+        product id has no id to state -- and the listing's current name is often the only
+        handle a reader has for finding out which product it was.
+        """
+        clause = (" FROM price_observations o"
+                  " LEFT JOIN provider_items i"
+                  "        ON i.organization_id=o.organization_id"
+                  "       AND i.project_id=o.project_id AND i.id=o.provider_item_id"
+                  " LEFT JOIN price_providers p"
+                  "        ON p.organization_id=o.organization_id"
+                  "       AND p.project_id=o.project_id AND p.id=o.provider_id"
+                  " WHERE o.organization_id=%s AND o.project_id=%s"
+                  " AND o.validation_status IN ('rejected', 'needs_review')")
         args = (s.organization_id, s.project_id)
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute("SELECT count(*) AS total" + clause, args)
             total = (await c.fetchone())["total"]
-            await c.execute("SELECT *" + clause + " ORDER BY fetched_at DESC, id LIMIT %s OFFSET %s",
-                            args + (page_size, (page - 1) * page_size))
+            await c.execute(
+                "SELECT o.*, i.external_name AS current_product_name,"
+                "       p.name AS current_provider_name" + clause +
+                " ORDER BY o.fetched_at DESC, o.id LIMIT %s OFFSET %s",
+                args + (page_size, (page - 1) * page_size))
             return await c.fetchall(), total
 
     # ------------------------------------------------------------- unit settings

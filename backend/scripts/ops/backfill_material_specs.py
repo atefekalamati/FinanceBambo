@@ -44,16 +44,10 @@ if str(BACKEND_ROOT) not in sys.path:
 import psycopg
 from psycopg.rows import dict_row
 
-from app.finance.domain.material_specs import FROM_METADATA, conflicts_with, extract_specs
+from app.finance.domain.material_specs import (FROM_METADATA, SPEC_COLUMNS,
+                                               conflicts_with, extract_specs)
 
-#: Every column the parser may write. Named here so a typo becomes an error rather than a
-#: silently skipped column.
-SPEC_COLUMNS = (
-    "product_code", "manufacturer", "grade", "product_type", "dimensions_text",
-    "length_value", "length_unit", "length_m", "width_value", "width_unit",
-    "height_value", "height_unit", "thickness_value", "thickness_unit",
-    "diameter_value", "diameter_unit", "weight_value", "weight_unit", "weight_basis",
-    "branch_count", "pieces_per_package", "coverage_m2", "volume_m3")
+
 
 
 def local_only(dsn):

@@ -5571,8 +5571,42 @@
       },
       "MaterialPriceHistoryResponse": {
         "additionalProperties": false,
-        "description": "One observation in a listing's history. Append-only; nothing here is ever rewritten.",
+        "description": "One observation in a listing's history. Append-only; nothing here is ever rewritten.\n\nTHE SNAPSHOT FIELDS ARE THE POINT OF THIS ENDPOINT\n\nA history that showed today's product name against a year-old price would be claiming\nthe product was called that then. It may not have been: listings are renamed, and the\nobservation is the only record of what the sheet actually said on the day.\n\nSo the two identities travel in SEPARATE fields and are never merged:\n\n    productNameSnapshot / providerNameSnapshot   what the sheet said, as imported\n    currentProductName / currentProviderName     what the same listing is called now\n\nA null snapshot stays null. Every one of the 3,821 observations written before these\ncolumns existed has no snapshot, and filling those from today's names would fabricate\nevidence -- which is precisely what the append-only trigger and the NOT VALID identity\nconstraint exist to prevent. Null here means \"nobody recorded it\", and that is the\nhonest answer.",
         "properties": {
+          "collectionRunId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collectionrunid"
+          },
+          "currentProductName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentproductname"
+          },
+          "currentProviderName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentprovidername"
+          },
           "fetchedAt": {
             "format": "date-time",
             "title": "Fetchedat",
@@ -5604,6 +5638,51 @@
             "title": "Observedatsource",
             "type": "string"
           },
+          "productExternalId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productexternalid"
+          },
+          "productNameSnapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productnamesnapshot"
+          },
+          "providerItemId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provideritemid"
+          },
+          "providerNameSnapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providernamesnapshot"
+          },
           "rawPrice": {
             "anyOf": [
               {
@@ -5614,6 +5693,17 @@
               }
             ],
             "title": "Rawprice"
+          },
+          "rowFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rowfingerprint"
           },
           "sourceCurrency": {
             "enum": [
@@ -5762,6 +5852,17 @@
           "category": {
             "title": "Category",
             "type": "string"
+          },
+          "conversionEligible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversioneligible"
           },
           "conversionFactor": {
             "anyOf": [

@@ -125,6 +125,24 @@ UNIT_COLUMN_OF = {
 #: is a value a conversion must refuse rather than a value a conversion may use.
 WEIGHT_BASES = ("branch", "meter", "piece", "package", "bag", "total", "unknown")
 
+#: The bases that say what a weight is PER. An 'unknown' basis is NOT one of them: it is
+#: the absence of the statement, and a crossing that rests on it would be asserting a
+#: number nobody wrote down. Named here so "may this weight be used" is answered in one
+#: place rather than re-decided per caller.
+WEIGHT_BASES_USABLE_FOR_CONVERSION = ("branch", "meter", "piece", "package", "bag", "total")
+
+#: Every typed specification column, in the order they are written. This is the ONE list:
+#: the repository selects it, the importer writes it, the read API publishes it and the
+#: backfill fills it. It used to be spelled out in three files under a comment claiming it
+#: was "named once", and the drift that invites is exactly how a column gets added to the
+#: database, declared in the schema, and never actually returned.
+SPEC_COLUMNS = (
+    "product_code", "manufacturer", "grade", "product_type", "dimensions_text",
+    "length_value", "length_unit", "length_m", "width_value", "width_unit",
+    "height_value", "height_unit", "thickness_value", "thickness_unit",
+    "diameter_value", "diameter_unit", "weight_value", "weight_unit", "weight_basis",
+    "branch_count", "pieces_per_package", "coverage_m2", "volume_m3")
+
 #: Where a stored value came from, so a reader is never left guessing which layer answered.
 FROM_COLUMN = "dedicated_column"
 FROM_LABEL = "approved_label"

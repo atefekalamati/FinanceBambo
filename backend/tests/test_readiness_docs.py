@@ -68,7 +68,11 @@ class DeclaredDependencyTests(unittest.TestCase):
         # importable package sitting in backend/ is ours by construction.
         first_party = {path.name for path in ROOT.iterdir()
                        if (path / "__init__.py").is_file()}
-        first_party.add("persian_calendar_golden")   # a test helper module, not a package
+        # Every module in tests/ is ours too, by exactly the same construction. This used
+        # to be one hand-added name, which meant the second shared test helper failed the
+        # guard for being a helper -- a listed exception that has to be edited is the thing
+        # the comment above says this test is avoiding.
+        first_party |= {path.stem for path in (ROOT / "tests").glob("*.py")}
         self.assertLessEqual({"app", "devhost", "coreint", "scripts"}, first_party)
         undeclared = set()
         for path in sorted((ROOT / "tests").glob("*.py")):

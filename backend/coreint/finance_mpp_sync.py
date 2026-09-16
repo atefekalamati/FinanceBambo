@@ -123,7 +123,23 @@ def finance_rows(parsed, *, source_sha256=None, recorded_decision=None):
         for assignment in parsed.assignments:
             task = tasks.get(assignment["task_uid"])
             if task is None:
-                continue
+                # An assignment naming a task the file did not hand over. REFUSED, not
+                # skipped: a row dropped here takes its cost with it, and because
+                # `row_count` is `len(rows)` it would still agree with the rows that DID
+                # land -- so nothing downstream could ever tell that money went missing.
+                #
+                # The audited database holds one version at 788 rows against a declared
+                # 789, and no code path, migration or commit in the history explains which
+                # row went or when. That is what an invisible drop costs: not the row, but
+                # the ability to answer the question afterwards.
+                #
+                # Empty on every file read so far, so refusing costs nothing today and
+                # makes an incomplete import impossible tomorrow.
+                raise FinanceMppSyncRefused(
+                    "MPP_ORPHANED_ASSIGNMENT",
+                    "assignment %s names task %s, which the file does not state; importing "
+                    "would silently drop it" % (assignment.get("assignment_uid"),
+                                                assignment["task_uid"]))
             resource = resources.get(assignment["resource_uid"]) or {}
             row = base(task)
             unit_code, unit_source, unit_confidence = normalize_unit(
