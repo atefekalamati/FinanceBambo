@@ -4,7 +4,7 @@ import {
 } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { defaultSnapshot, reportableSnapshots } from "../../shared/progress/project-snapshot.js";
-import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
+import { getTehranTodayIso, gregorianIsoToPersian } from "../../shared/dates/persian-date.js";
 import {
   formatBusinessDate,
   formatDisplayNumber,
@@ -28,6 +28,11 @@ import {
   buildMonthlyTrend,
   TREND_MODES,
 } from "../../shared/reports/monthly-trend.js";
+import {
+  SCHEDULE_ESTIMATE_SOURCE,
+  scheduleWindow,
+  withScheduleEstimate,
+} from "../../shared/reports/schedule-estimate.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
 import { buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
 import { createBreakdownChart } from "../../shared/components/breakdown-chart.js";
@@ -678,6 +683,67 @@ function trendTable(view) {
   return wrapper;
 }
 
+/**
+ * Says what the estimate line is, whenever it was derived here rather than
+ * reported by the service.
+ *
+ * A baseline drawn from a schedule and a baseline reported by Finance are not
+ * the same claim, and the chart that shows one must not look like the chart that
+ * shows the other. The second sentence appears only when part of the plan falls
+ * outside the window on screen — otherwise the line IS the whole plan and saying
+ * so at length would just be noise.
+ */
+function scheduleEstimateNotice(trend) {
+  if (trend?.estimateSource !== SCHEDULE_ESTIMATE_SOURCE) return null;
+  const outside = trend.scheduleEstimate?.outsideIrr ?? "0";
+  const sentences = [
+    "خط برآورد از زمان‌بندی پروژه ساخته شده است: هزینهٔ هر فعالیت در ماه شروع همان فعالیت منظور شده و این رقم برنامهٔ فایل زمان‌بندی است، نه هزینهٔ ثبت‌شده.",
+  ];
+  if (/^[1-9]\d*$/.test(outside)) {
+    sentences.push(
+      `${formatCompactMoneyFromIrr(outside)} از برنامه خارج از بازهٔ نمایش‌داده‌شده شروع می‌شود و در این نمودار نیامده است.`,
+    );
+  }
+  const notice = element("p", "inline-notice", sentences.join(" "));
+  notice.dataset.estimateSource = SCHEDULE_ESTIMATE_SOURCE;
+  return notice;
+}
+
+/**
+ * Says when the project outran the service's five-year window.
+ *
+ * The window counts back from its anchor, so a clamp drops the OLDEST months —
+ * the start of the project. Silently showing a chart that begins part-way into
+ * the plan is the failure this whole change exists to end, so the one case that
+ * still cannot be drawn in full says so on the chart itself.
+ */
+/**
+ * Which column is the month the reader is in, or -1 when none of them is.
+ *
+ * The chart opens on this one. Now that the window follows the project's own
+ * schedule it can reach months ahead of today, and the newest column is then a
+ * month nobody has spent anything in yet — the wrong place to open a report on
+ * what has been spent.
+ */
+function currentMonthColumn(points) {
+  const today = gregorianIsoToPersian(getTehranTodayIso());
+  if (!today) return -1;
+  return points.findIndex(
+    (point) => point.persianYear === today.year && point.persianMonth === today.month,
+  );
+}
+
+function trimmedWindowNotice(trendWindow) {
+  if (!trendWindow?.trimmedMonths) return null;
+  const notice = element(
+    "p",
+    "inline-notice",
+    `زمان‌بندی این پروژه ${formatDisplayNumber(String(trendWindow.requestedMonthCount))} ماه است و نمودار حداکثر ${formatDisplayNumber(String(trendWindow.monthCount))} ماه را نشان می‌دهد؛ ${formatDisplayNumber(String(trendWindow.trimmedMonths))} ماه ابتدایی پروژه در این نمودار نیامده است.`,
+  );
+  notice.setAttribute("role", "status");
+  return notice;
+}
+
 function trendLegend() {
   const legend = element("ul", "breakdown-legend monthly-trend-legend");
   [
@@ -699,7 +765,7 @@ function trendLegend() {
  * periodic files carry; until those arrive the panel draws the actual alone and
  * says why rather than quietly showing one curve as if it were the comparison.
  */
-function createCostCurvePanel({ trend, trendError }) {
+function createCostCurvePanel({ trend, trendError, trendWindow }) {
   const panel = element("div", "analysis-chart-panel finance-cost-curve");
   panel.dataset.chart = "cumulative";
 
@@ -747,6 +813,11 @@ function createCostCurvePanel({ trend, trendError }) {
   chart.setData(view);
   panel.append(chart.element);
 
+  const curveBasis = scheduleEstimateNotice(trend);
+  if (curveBasis) panel.append(curveBasis);
+  const curveTrimmed = trimmedWindowNotice(trendWindow);
+  if (curveTrimmed) panel.append(curveTrimmed);
+
   if (!view.hasPlan) {
     panel.append(
       element(
@@ -791,7 +862,7 @@ function curveLegend(hasPlan) {
  * Each month stands alone here; the card's switch is what contrasts this with
  * the cumulative managerial picture, so the panel carries no mode control.
  */
-function createMonthlyTrendPanel({ trend, trendError }) {
+function createMonthlyTrendPanel({ trend, trendError, trendWindow }) {
   const panel = element("div", "analysis-chart-panel finance-monthly-trend");
   panel.dataset.chart = "monthly";
   const description = ANALYSIS_CHARTS.monthly.description;
@@ -834,8 +905,13 @@ function createMonthlyTrendPanel({ trend, trendError }) {
     renderTooltip: trendTooltip,
     ariaLabel: "نمودار ستونی هزینه واقعی و خط برآورد ماهانه",
   });
-  chart.setData({ points: view.points, ticks: view.axisTicks });
+  chart.setData({ points: view.points, ticks: view.axisTicks, focusColumn: currentMonthColumn(view.points) });
   panel.append(chart.element);
+
+  const basis = scheduleEstimateNotice(trend);
+  if (basis) panel.append(basis);
+  const trimmed = trimmedWindowNotice(trendWindow);
+  if (trimmed) panel.append(trimmed);
 
   if (!view.hasEstimate) {
     panel.append(
@@ -884,6 +960,9 @@ export function createFinanceHomePage({
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let trend = null;
   let trendError = null;
+  // The span the chart asked the service for, kept so the panel can say when the
+  // project is longer than the service's own ceiling and months were left out.
+  let trendWindow = null;
   let wbsRollup = null;
   let wbsError = null;
   let priceWorkspace = null;
@@ -904,6 +983,7 @@ export function createFinanceHomePage({
 
   async function load() {
     state = createRequestState(REQUEST_STATUS.LOADING);
+    trendWindow = null;
     paint();
     try {
       snapshots = await progressAdapter.getSnapshots();
@@ -922,17 +1002,48 @@ export function createFinanceHomePage({
         // A live board includes estimates and confirmed documents effective by today while
         // keeping progress pinned to the selected (possibly older) source snapshot.
         const reportingDate = getTehranTodayIso();
+
+        // The feed is addressed BY snapshot, so it cannot be asked unpinned. Only
+        // a snapshot carrying a Finance source file version has schedule rows
+        // behind it; a host-ingested reference has none, whatever its date.
+        const scheduleSnapshot =
+          reportableSnapshots(snapshots).find((snapshot) => snapshot.sourceFileVersionId)
+          ?? latest;
+
+        // The schedule behind the estimate line, and behind the chart's own span.
+        // Its failure is silent by design: a deployment that does not serve this
+        // feed gets exactly the chart it had before any of this existed, and an
+        // error notice here would report a missing baseline as a broken page.
+        const scheduleFeedPromise = progressAdapter
+          .getFeed(scheduleSnapshot.progressSnapshotId)
+          .then((value) => value, () => null);
         // The trend is independent of the overview: a failure there must not
         // take the eight headline metrics down with it.
-        const [report, monthly, rollup, priceData, itemData] = await Promise.all([
+        const [report, monthly, rollup, priceData, itemData, scheduleFeed] = await Promise.all([
           reportsAdapter.getOverview({
             reportingDate,
             progressSnapshotId: latest.progressSnapshotId,
           }),
-          reportsAdapter
-            .getMonthlyTrend({
-              reportingDate,
-              progressSnapshotId: latest.progressSnapshotId,
+          // The only request that waits on the feed, because the feed is what says
+          // how long this project is. Everything else starts immediately.
+          scheduleFeedPromise
+            .then((feed) => {
+              const window = scheduleWindow(feed, reportingDate);
+              trendWindow = window;
+              // Pinning a snapshot makes the service replace the anchor with that
+              // snapshot's own reporting date, which would pull the window back to
+              // the day the schedule was imported and cut off everything after it.
+              // The pin buys nothing here: this series is built from confirmed
+              // invoices and reads no progress fact at all.
+              return window
+                ? reportsAdapter.getMonthlyTrend({
+                    reportingDate: window.anchorDate,
+                    monthCount: window.monthCount,
+                  })
+                : reportsAdapter.getMonthlyTrend({
+                    reportingDate,
+                    progressSnapshotId: latest.progressSnapshotId,
+                  });
             })
             .then(
               (value) => {
@@ -947,10 +1058,7 @@ export function createFinanceHomePage({
           // Independent too: the phase report is not built on the service yet,
           // and its absence must not take the headline metrics down with it.
           reportsAdapter
-            .getWbsRollup({
-              reportingDate,
-              progressSnapshotId: latest.progressSnapshotId,
-            })
+            .getWbsRollup({ reportingDate, progressSnapshotId: latest.progressSnapshotId })
             .then(
               (value) => {
                 wbsError = null;
@@ -986,8 +1094,9 @@ export function createFinanceHomePage({
               return null;
             },
           ),
+          scheduleFeedPromise,
         ]);
-        trend = monthly;
+        trend = withScheduleEstimate(monthly, scheduleFeed);
         wbsRollup = rollup;
         priceWorkspace = priceData;
         itemsWorkspace = itemData;
@@ -1024,8 +1133,8 @@ export function createFinanceHomePage({
   function paint() {
     disposeChart();
     const renderContent = (data) => {
-      const built = createMonthlyTrendPanel({ trend, trendError });
-      const curve = createCostCurvePanel({ trend, trendError });
+      const built = createMonthlyTrendPanel({ trend, trendError, trendWindow });
+      const curve = createCostCurvePanel({ trend, trendError, trendWindow });
       const levelOne = { rollup: wbsRollup, error: wbsError };
       const prices = { workspace: priceWorkspace, error: priceError };
       const items = { workspace: itemsWorkspace, error: itemsError };

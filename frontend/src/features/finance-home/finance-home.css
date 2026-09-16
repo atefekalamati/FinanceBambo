@@ -1467,10 +1467,41 @@ a.finance-variance-card__link:hover {
   min-block-size: 0;
 }
 
+/* The lane the columns scroll through. It carries the plot alone: the value axis
+   is a sibling, pinned beside it, so a scrolled column never slides under the
+   numbers. `direction: ltr` is not a reading order — the drawing places its own
+   months right-to-left in coordinates of its own — it is what keeps scrollLeft 0
+   meaning the newest month, which is where the chart opens. */
+.combo-chart__scroll {
+  position: relative;
+  block-size: 100%;
+  min-inline-size: 0;
+  /* Never let the drawing inside decide how tall the lane is: the chart measures
+     itself from this box, so a content-driven height feeds straight back in. */
+  min-block-size: 0;
+  direction: ltr;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
 .combo-chart__svg {
   display: block;
-  inline-size: 100%;
+  /* Width comes from the drawing — as wide as its columns need, which is wider
+     than the lane whenever the series is long — and is set on the element.
+     Height stays tied to the lane, so the drawing can never decide how tall the
+     box it is measured from is. */
   block-size: 100%;
+  /* base.css caps every img and svg in the module at the width of its box, so
+     nothing painted can widen the page. This drawing is the one that must be
+     allowed past it: being wider than its box is the whole mechanism by which
+     the months scroll. The page is still safe, because the lane around it clips
+     and scrolls — the cap is lifted here, not the guarantee it was there for.
+     Without this the drawing was silently squeezed back to the lane's width and
+     scrollWidth equalled clientWidth: a scroll container with nothing to scroll,
+     and a first month cut off at the edge with no way to reach it. */
+  max-inline-size: none;
   /* Hard guarantee: nothing painted inside the chart can widen the document. */
   overflow: hidden;
 }
@@ -2367,6 +2398,22 @@ a.breakdown-donut:focus-visible {
      cell by exactly the height of the host's chrome. Measured at 1920x1080 in
      a 988px cell, the board was 1080 and the last row was cut by 92px. */
   block-size: 100%;
+  /* And a ceiling, for the host that provides no height at all.
+     `100%` of a cell nobody sized resolves to `auto`, and then every percentage
+     below this line resolves against a box that is waiting on its own contents.
+     The board's own children are charts that stretch to whatever box they are
+     given, so "waiting on its contents" has no answer: the pair agree on any
+     number. Measured on the dev host, which mounts as a host and states no
+     height: a 390,480px page built from four summary cards, a phase chart and a
+     curve — each card 65,505px tall, carrying three lines of text.
+     A viewport of 920px or less never showed it, because the media query below
+     releases these rows and states real heights instead.
+     `dvh` is wrong as a HEIGHT here, for the reason above — it measures the
+     host's window rather than this module's cell. As a CEILING it is right: when
+     the host sizes the cell, 100% is already within the window and this never
+     binds; when the host sizes nothing, the dashboard stops at one screen
+     instead of at a hundred. */
+  max-block-size: 100dvh;
   min-block-size: 34rem;
   padding: var(--board-gap, .55rem);
   overflow: hidden;

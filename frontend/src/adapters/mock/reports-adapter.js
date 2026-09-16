@@ -1,5 +1,6 @@
 import { ApiError } from "../../core/api/api-error.js";
 import { aggregateConfirmedInvoicesByMonth } from "../../shared/reports/monthly-trend.js";
+import { gregorianIsoToPersian } from "../../shared/dates/persian-date.js";
 import { buildSeedInvoices } from "./invoices-adapter.js";
 import { buildWbsNodes, unattributedActualIrr } from "./wbs-fixture.js";
 
@@ -198,17 +199,44 @@ export function createMockReportsAdapter(context, { initialState = "success" } =
     return Object.freeze({ blob: new Blob([`\uFEFF${rows.join("\r\n")}`], { type: "text/csv;charset=utf-8" }), fileName: `finance-report-${reportId}.csv` });
   }
 
-  async function getMonthlyTrend() {
+  /**
+   * The service answers a WINDOW — `monthCount` contiguous Persian months ending
+   * on the anchor — not merely the months that happen to carry an invoice. A
+   * month inside the window with nothing recorded comes back as a zero, and that
+   * includes months still ahead of the reader: a project's remaining plan is
+   * drawn against months whose actual cost has not been spent yet.
+   *
+   * Answering only the months with invoices would let the caller's window
+   * arithmetic be wrong without a single test noticing.
+   */
+  async function getMonthlyTrend({ reportingDate, monthCount = 12 } = {}) {
     await wait(280);
     if (initialState === "error") throw new ApiError({ status: 503, code: "MONTHLY_TREND_UNAVAILABLE", message: "دریافت روند ماهانه هزینه انجام نشد.", requestId: "mock-monthly-trend-001" });
     if (initialState === "empty") return { months: [], estimateSource: "unavailable" };
     const actualMonths = aggregateConfirmedInvoicesByMonth(buildSeedInvoices(context));
+    const anchor = gregorianIsoToPersian(reportingDate)
+      ?? (actualMonths.length ? { year: actualMonths.at(-1).persianYear, month: actualMonths.at(-1).persianMonth } : null);
+    const recorded = new Map(actualMonths.map((month) => [`${month.persianYear}-${month.persianMonth}`, month]));
+
+    let months = actualMonths;
+    if (anchor) {
+      // Walk back from the anchor so the run ends there, then read it forwards.
+      const window = [];
+      let { year, month } = anchor;
+      for (let step = 0; step < monthCount; step += 1) {
+        window.unshift(recorded.get(`${year}-${month}`) ?? { persianYear: year, persianMonth: month, actualCostIrr: "0", invoiceCount: 0 });
+        month -= 1;
+        if (month < 1) { month = 12; year -= 1; }
+      }
+      months = window;
+    }
+
     return {
       // Match the production contract: until a true time-phased baseline arrives,
       // absence remains null and the chart must not draw a fabricated plan line.
       estimateSource: "unavailable",
       actualSource: "confirmed_financial_documents",
-      months: actualMonths.map((month) => ({
+      months: months.map((month) => ({
         ...month,
         estimateIrr: null,
       })),
