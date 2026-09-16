@@ -78,21 +78,47 @@ class PsycopgMaterialPriceRepository:
 
     # -------------------------------------------------------------- provider items
 
+    #: The typed specification columns an import may fill, and the order they are written
+    #: in. Named once so a new column cannot be half-wired.
+    SPEC_COLUMNS = (
+        "product_code", "manufacturer", "grade", "product_type", "dimensions_text",
+        "length_value", "length_unit", "length_m", "width_value", "width_unit",
+        "height_value", "height_unit", "thickness_value", "thickness_unit",
+        "diameter_value", "diameter_unit", "weight_value", "weight_unit", "weight_basis",
+        "branch_count", "pieces_per_package", "coverage_m2", "volume_m3")
+
     async def ensure_item(self, s, *, provider_id, external_id, external_name, category,
-                          url, source_unit, worksheet, active, inactive_reason, metadata):
+                          url, source_unit, worksheet, active, inactive_reason, metadata,
+                          specs=None, spec_source=None, spec_conflicts=None):
         """One listing. Re-imported rows update the display fields and nothing else.
 
         `active` is updated because it is derived from the row itself -- a pipe worksheet
         row that is a fitting today was a fitting yesterday -- but the row is never deleted
         and its observations are never touched.
+
+        A SPECIFICATION IS NOT A PRICE, AND IS NOT OVERWRITTEN LIKE ONE.
+
+        Each typed column is filled only where it is currently NULL -- `COALESCE(stored,
+        incoming)`, not `EXCLUDED`. A price is append-only and today's replaces nothing;
+        a measured weight is a fact somebody established, and an arriving sheet that
+        disagrees is far more often a parser or a source having gone wrong than a product
+        having changed. The disagreement is recorded in `spec_conflicts` for a person, and
+        the stored value stands.
         """
+        columns = list(self.SPEC_COLUMNS)
+        values = [(specs or {}).get(column) for column in columns]
+        # COALESCE keeps whatever is already there; a NULL column takes the new value.
+        keep_existing = ", ".join(
+            "%s = COALESCE(provider_items.%s, EXCLUDED.%s)" % (c, c, c) for c in columns)
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute(
                 """INSERT INTO provider_items
                        (id, organization_id, project_id, provider_id, external_id,
                         external_name, category, url, source_unit, source_worksheet,
-                        active, inactive_reason, metadata)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        active, inactive_reason, metadata, spec_source, spec_conflicts, """
+                + ", ".join(columns) + """)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, """
+                + ", ".join(["%s"] * len(columns)) + """)
                    ON CONFLICT (organization_id, project_id, provider_id, external_id)
                    DO UPDATE SET external_name = EXCLUDED.external_name,
                                  category      = EXCLUDED.category,
@@ -100,11 +126,16 @@ class PsycopgMaterialPriceRepository:
                                  source_worksheet = EXCLUDED.source_worksheet,
                                  active        = EXCLUDED.active,
                                  inactive_reason = EXCLUDED.inactive_reason,
-                                 metadata      = EXCLUDED.metadata
+                                 metadata      = EXCLUDED.metadata,
+                                 spec_source   = COALESCE(provider_items.spec_source,
+                                                          EXCLUDED.spec_source),
+                                 spec_conflicts = EXCLUDED.spec_conflicts,
+                                 """ + keep_existing + """
                    RETURNING *""",
-                (uuid4(), s.organization_id, s.project_id, provider_id, external_id,
+                [uuid4(), s.organization_id, s.project_id, provider_id, external_id,
                  external_name, category, url, source_unit, worksheet, active,
-                 inactive_reason, Jsonb(metadata or {})))
+                 inactive_reason, Jsonb(metadata or {}), spec_source,
+                 Jsonb(spec_conflicts) if spec_conflicts else None] + values)
             return await c.fetchone()
 
     async def items_page(self, s, *, category=None, provider_id=None, active=None,
@@ -217,7 +248,9 @@ class PsycopgMaterialPriceRepository:
                                  observed_at, fetched_at, validation_status,
                                  validation_reasons, raw_data, document_id, worksheet,
                                  row_number, workflow_date_raw, workflow_date_jalali,
-                                 workflow_date_gregorian, fingerprint):
+                                 workflow_date_gregorian, fingerprint,
+                                 product_external_id=None, product_name_snapshot=None,
+                                 provider_name_snapshot=None):
         """Insert one observation, or do nothing because it is already there.
 
         `ON CONFLICT DO NOTHING` against the fingerprint index is what makes a re-import
@@ -234,10 +267,11 @@ class PsycopgMaterialPriceRepository:
                         source_document_id, source_worksheet, source_row_number,
                         workflow_date_raw, workflow_date_jalali, workflow_date_gregorian,
                         observed_at_source, secondary_price_irr, secondary_price_basis,
-                        row_fingerprint)
+                        row_fingerprint,
+                        product_external_id, product_name_snapshot, provider_name_snapshot)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'TOMAN', %s, %s, %s, %s,
                            'unknown', %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s, %s, %s)
+                           %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (organization_id, project_id, provider_item_id, row_fingerprint)
                    WHERE row_fingerprint IS NOT NULL
                    DO NOTHING
@@ -251,8 +285,24 @@ class PsycopgMaterialPriceRepository:
                  # one, and the fetch time otherwise. Saying which is the whole point of
                  # the column: the sheet supplies no provider observation time at all.
                  "workflow_date" if workflow_date_gregorian is not None else "fetch_time",
-                 secondary_price_irr, secondary_price_basis, fingerprint))
+                 secondary_price_irr, secondary_price_basis, fingerprint,
+                 product_external_id, product_name_snapshot, provider_name_snapshot))
             return await c.fetchone()
+
+    async def item_specs(self, s, *, provider_id, external_id):
+        """The typed specifications already stored for one listing, or {} when it is new.
+
+        Read before writing so the importer can tell an empty column from one that
+        disagrees. Without it, "do not overwrite" and "record the conflict" would both be
+        guesses about what was there.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                "SELECT " + ", ".join(self.SPEC_COLUMNS) + " FROM provider_items"
+                " WHERE organization_id=%s AND project_id=%s AND provider_id=%s"
+                "   AND external_id=%s",
+                (s.organization_id, s.project_id, provider_id, external_id))
+            return await c.fetchone() or {}
 
     async def latest_observations(self, s, *, category=None, only_active=True):
         """The newest observation for each listing, with everything a reader needs to judge it.
@@ -274,7 +324,17 @@ class PsycopgMaterialPriceRepository:
                 """SELECT DISTINCT ON (o.provider_item_id)
                           o.*, i.external_id, i.external_name, i.category, i.active,
                           i.inactive_reason, i.source_worksheet AS item_worksheet,
-                          i.metadata, p.name AS provider_name
+                          i.metadata, p.name AS provider_name,
+                          -- The listing's own typed specifications. Named rather than
+                          -- `i.*`: the response forbids unknown fields, so a column added
+                          -- to provider_items tomorrow must not become a 500 today.
+                          i.product_code, i.manufacturer, i.grade, i.product_type,
+                          i.dimensions_text, i.length_value, i.length_unit, i.length_m,
+                          i.width_value, i.width_unit, i.height_value, i.height_unit,
+                          i.thickness_value, i.thickness_unit, i.diameter_value,
+                          i.diameter_unit, i.weight_value, i.weight_unit, i.weight_basis,
+                          i.branch_count, i.pieces_per_package, i.coverage_m2,
+                          i.volume_m3, i.spec_source, i.spec_conflicts
                      FROM price_observations o
                      JOIN provider_items i
                        ON i.organization_id=o.organization_id AND i.project_id=o.project_id

@@ -65,6 +65,54 @@ class MaterialPriceResponse(ApiModel):
     secondary_price_irr: Decimal | None = None
     secondary_price_basis: str | None = None
 
+    #: The typed specifications, from the listing's own dedicated columns.
+    #:
+    #: Every one is optional and NULL means the sheet said nothing. Never zero, never "-":
+    #: a brick with no stated weight and a brick weighing nothing are different bricks, and
+    #: only one of them told us anything. `weightBasis` is what the weight is PER, and an
+    #: 'unknown' basis is a value a conversion must refuse rather than one it may use.
+    product_code: str | None = None
+    manufacturer: str | None = None
+    grade: str | None = None
+    product_type: str | None = None
+    dimensions_text: str | None = None
+    length_value: Decimal | None = None
+    length_unit: str | None = None
+    length_m: Decimal | None = None
+    width_value: Decimal | None = None
+    width_unit: str | None = None
+    height_value: Decimal | None = None
+    height_unit: str | None = None
+    thickness_value: Decimal | None = None
+    thickness_unit: str | None = None
+    diameter_value: Decimal | None = None
+    diameter_unit: str | None = None
+    weight_value: Decimal | None = None
+    weight_unit: str | None = None
+    weight_basis: str | None = None
+    branch_count: Decimal | None = None
+    pieces_per_package: Decimal | None = None
+    coverage_m2: Decimal | None = None
+    volume_m3: Decimal | None = None
+    #: Which layer the specifications came from: dedicated_column, approved_label,
+    #: legacy_metadata or unresolved. A reader asking "where did this 27 come from" gets a
+    #: name instead of a guess.
+    spec_source: str | None = None
+    #: What an arriving sheet said that disagreed with what is stored. Recorded, never
+    #: applied: yesterday's 22 becoming today's 220 is a parser going wrong far more often
+    #: than a product changing weight tenfold.
+    spec_conflicts: dict | None = None
+
+    #: The business date this price applied to, in both calendars. Never the fetch time.
+    workflow_date_jalali: str | None = None
+    workflow_date_gregorian: date | None = None
+
+    #: What the SNAPSHOT said on the day: the identity as imported, kept beside the live
+    #: names so a later rename cannot rewrite the evidence.
+    product_id_snapshot: str | None = None
+    product_name_snapshot: str | None = None
+    provider_name_snapshot: str | None = None
+
     #: What the sheet said the unit was, verbatim -- «کیلو», or nothing at all. Absent for
     #: six of the seven categories, because the sheet does not say.
     source_unit: str | None = None

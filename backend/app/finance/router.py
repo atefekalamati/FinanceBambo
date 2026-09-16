@@ -627,9 +627,16 @@ async def material_prices_current(projectId:str,request:Request,
     # forbids unknown fields, and publishing every stored key would put columns on screen
     # that nobody has decided are real. What travels is `specs` -- this category's declared
     # columns, read from that object and nothing else.
+    # `_declared` rather than `**`: the row now carries the listing's typed columns, the
+    # observation's own columns and the join's extras, and the response declares a subset.
+    # Spreading everything was fine while the two matched and becomes a 500 the moment they
+    # do not, which is exactly what adding columns to provider_items does.
     return MaterialPriceListResponse(items=[
-        MaterialPriceResponse(**{**{k: v for k, v in x.items() if k != "metadata"},
-                                 "specs": specs_of(x.get("category"), x.get("metadata"))})
+        _declared(MaterialPriceResponse,
+                  {**{k: v for k, v in x.items() if k != "metadata"},
+                   "specs": specs_of(x.get("category"), x.get("metadata")),
+                   # The identity as it was imported, beside the identity as it is now.
+                   "product_id_snapshot": x.get("product_external_id")})
         for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 

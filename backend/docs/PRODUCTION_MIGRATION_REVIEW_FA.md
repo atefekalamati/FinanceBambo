@@ -36,7 +36,19 @@
 23. `0023_mpp_currency_decisions`
 24. `0024_finance_item_price_mappings`
 25. `0025_item_price_mapping_components`
-26. `0026_daily_quantity_and_conversion_rules` (head)
+26. `0026_daily_quantity_and_conversion_rules`
+27. `0027_typed_material_specs_and_strict_price_dates` (head)
+
+**۰۰۲۷ فقط شکل می‌سازد و هیچ داده‌ای نمی‌نویسد.** ستون‌های تایپ‌شدهٔ مشخصات روی
+`provider_items`، سه ستون Snapshot و یک تاریخ اجباری روی `price_observations`.
+پرکردن مشخصات از `metadata` با اسکریپت بازبینی‌شده و idempotent
+`scripts/ops/backfill_material_specs.py` انجام می‌شود، چون Parser اعلام‌شده تستِ Python
+دارد و بازنویسی‌اش به‌صورت regex در مهاجرت یک نسخهٔ دوم می‌ساخت که واگرا می‌شود.
+
+**Snapshotهای تاریخی پر نمی‌شوند و این عمدی است**: تریگر `price_observations_immutable`
+هر UPDATE روی آن جدول را رد می‌کند و همین چیزی است که آن را «شاهد» می‌کند. پس قید
+`NOT VALID` گذاشته شد تا از این پس روی هر ردیف تازه اجرا شود و ۳٬۸۲۱ ردیف موجود
+دست‌نخورده بمانند.
 
 **۰۰۲۶ هیچ داده‌ای جابه‌جا نمی‌کند.** سه چیز افزودنی است: دو ستون nullable روی
 `finance_mpp_rows` برای «مقدار روز» و نام ستونی که از آن آمده، جدول قوانین تبدیل واحد
