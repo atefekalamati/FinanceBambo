@@ -217,6 +217,10 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
       // and the table renders exactly as it did before the feature existed rather than
       // showing sample links.
       priceMappingAdapter: adapters.itemPriceMappings ?? null,
+      /* Writing a price by hand goes through the prices module, because what it writes is
+         a price version on the cost item -- the same record the prices page manages. Null
+         in the preview, and the button is then simply not offered. */
+      pricesAdapter: adapters.prices ?? null,
       surface: route.surface,
       focusResourceId: routeQuery.get("resourceId") ?? "",
       focusEstimateLineId: routeQuery.get("estimateLineId") ?? "",

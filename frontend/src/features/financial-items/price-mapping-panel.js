@@ -1,6 +1,7 @@
 import { element } from "../../shared/dom/elements.js";
 import { formatDisplayNumber, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
+import { createConversionRuleDialog } from "./conversion-rule-dialog.js";
 
 /* The materials one schedule item consumes, and what they cost at today's prices.
  *
@@ -85,9 +86,12 @@ function fillOptions(select, placeholder, items) {
   return select.value;
 }
 
+/* `form-field` stacks the label over its control and `form-label` gives the label the
+   module's own type. `.field` is defined in no stylesheet here, so the two sat on one line
+   and ran into each other. */
 function labelled(text, field) {
-  const wrapper = element("label", "field");
-  wrapper.append(element("span", "", text), field);
+  const wrapper = element("label", "form-field");
+  wrapper.append(element("span", "form-label", text), field);
   return wrapper;
 }
 
@@ -112,81 +116,92 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
   const lineId = line.lineId ?? line.estimateLineId ?? "";
   panel.dataset.estimateLineId = lineId;
 
-  let usageModes = [];
   let header = null;
-  /* The material being entered right now, and the stored one being corrected. Both reset
-     after each save, so the next «افزودن مصالح» starts blank rather than inheriting the
-     last answer -- an inherited usage quantity is a number nobody typed. */
+  /* The listing being chosen right now, and the stored link being corrected. Both reset
+     after each save, so reopening the form starts from what is stored rather than from
+     the last answer somebody abandoned. */
   let chosen = null;
   let editing = null;
+  /* The last answer the server gave about the chosen listing. Kept because the conversion
+     dialog is built from it: the two units it must reconcile are the ones the server just
+     said do not meet. */
+  let lastPreview = null;
 
   // --------------------------------------------------------------------------- the head
 
+  /* WHICH ROW, before anything else.
+     Choosing between 311 rebar listings is meaningless until a person can see that the
+     row in front of them is «آرماتور، ۴۰٬۰۰۰ کیلوگرم، در کانال‌کنی». This used to sit
+     under a heading about materials, in a definition list beside the activity's own MSP
+     cost -- two figures that are not the decision, above the one thing that identifies
+     it. The identity is the heading now. */
   const head = element("header", "price-mapping-panel__head");
-  const close = element("button", "button button--ghost", "بستن");
+  /* Small and out of the way. A full-width «بستن» directly under the item's name read as
+     the panel's main action, which is the opposite of what it is. */
+  const close = element("button", "button button--ghost price-mapping-panel__close", "بستن");
   close.type = "button";
   close.addEventListener("click", () => { panel.close(); onClose?.(); });
-  /* What the SCHEDULE says, shown before anything is entered. A usage of «۸۰ کیلوگرم به
-     ازای هر مترمکعب» means nothing until a reader can see that the activity is 500 cubic
-     metres. */
-  const scheduleFacts = element("dl", "price-mapping-panel__schedule");
-  head.append(
-    element("h2", "", "مصالح و قیمت روز این قلم"),
+
+  const identity = element("div", "price-mapping-panel__identity");
+  const quantityLine = element("p", "price-mapping-panel__quantity", "");
+  identity.append(
+    element("h2", "", resource?.title ?? "قلم هزینه"),
     element("p", "price-mapping-panel__subtitle",
-      `${resource?.title ?? "قلم هزینه"} — فعالیت ${line.activityExternalId ?? "—"}`),
-    scheduleFacts, close);
+      [resource?.activityTitle ?? line.activityTitle, line.activityExternalId]
+        .filter(Boolean).join(" · ") || "—"),
+    quantityLine);
+  head.append(identity, close);
 
   function renderSchedule() {
-    scheduleFacts.replaceChildren();
-    if (!header) return;
-    scheduleFacts.append(
-      element("dt", "", "مقدار فعالیت"),
-      element("dd", "numeric",
-        `${quantityText(header.mspQuantity)} ${formatUnitLabel(header.mspUnit) ?? ""}`.trim()),
-      element("dt", "", "هزینه MSP فعالیت"),
-      element("dd", "numeric", priceText(header.mspCostIRR)));
+    /* The quantity this row IS. Shown as a sentence rather than a labelled row: it is the
+       subject of the whole panel, not one fact among several. */
+    quantityLine.textContent = header
+      ? `${quantityText(header.mspQuantity)} ${formatUnitLabel(header.mspUnit) ?? ""}`.trim()
+      : "";
   }
 
-  // -------------------------------------------------------- the materials already there
+  /* ------------------------------------------------- what this line is priced from
+     One line, one listing. An estimate line here is already a single resource on a
+     single activity -- it arrives that way from the MPP assignment rows, naming its own
+     material and its own quantity. Materials entered underneath it would be a level this
+     data does not have, so there is no list and nothing to add to. */
 
   const componentsSection = element("section", "price-components");
   const totalBox = element("div", "price-components__total");
   const componentList = element("div", "price-components__list");
-  const add = element("button", "button button--primary", "افزودن مصالح");
+  const add = element("button", "button button--primary", "اتصال به قیمت روز");
   add.type = "button";
   add.disabled = !canEdit;
-  componentsSection.append(element("h3", "", "مصالح به‌کاررفته در این قلم"),
+  componentsSection.append(element("h3", "", "قیمت روز این قلم"),
                            totalBox, componentList, add);
+
+  /* The server's own labels still say «مصالح», from the days when a line held several.
+     Translated here rather than shown as they arrive: a panel whose heading says «اتصال»
+     and whose status chip says «افزودن مصالح» is describing two different features. Only
+     the statuses this page can produce are listed; anything else is passed through, so a
+     new server status appears verbatim instead of disappearing. */
+  const STATUS_WORDING = Object.freeze({
+    needs_components: "هنوز به قیمت روز وصل نشده",
+    partially_unresolved: "قیمت روز این قلم کامل نیست",
+  });
 
   function renderTotal(total) {
     totalBox.replaceChildren();
     if (!total) return;
-    totalBox.append(statusChip(total.status, total.statusLabel));
+    totalBox.append(statusChip(total.status,
+      STATUS_WORDING[total.status] ?? total.statusLabel));
     const figures = element("dl", "price-components__figures");
     figures.append(element("dt", "", "هزینه روز این قلم"),
                    element("dd", "numeric", priceText(total.dailyItemCostIRR)));
     totalBox.append(figures);
-    if (total.componentCount) {
-      /* The counts, always -- not only when something is missing. «۲ از ۳» beside a total
-         is what stops a partial sum from being read as a finished one. */
-      totalBox.append(element("p", "price-components__counts",
-        `${formatDisplayNumber(total.readyComponentCount)} از ${formatDisplayNumber(total.componentCount)} قلم مصالح قیمت‌گذاری شده است`));
-    }
     if (total.reason) totalBox.append(element("p", "price-components__reason", total.reason));
   }
 
-  function usageText(component) {
-    const mode = usageModes.find((entry) => entry.value === component.usageMode);
-    const unit = formatUnitLabel(component.usageUnit ?? component.selectedUnit) ?? "";
-    return `${quantityText(component.usageQuantity)} ${unit} ${mode?.label ? `(${mode.label})` : ""}`
-      .replace(/\s+/g, " ").trim();
-  }
-
-  function renderComponents(components) {
+  function renderConnection(components) {
     componentList.replaceChildren();
     if (!components.some((component) => component.active)) {
       componentList.append(element("p", "empty-state",
-        "برای این قلم هنوز مصالحی ثبت نشده است. با «افزودن مصالح» شروع کنید."));
+        "این قلم هنوز به قیمت روز وصل نشده است. با «اتصال به قیمت روز» محصول بازار آن را انتخاب کنید."));
     }
     components.forEach((component) => {
       const card = element("article",
@@ -202,14 +217,15 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
 
       const figures = element("dl", "price-component__figures");
       figures.append(
-        element("dt", "", "مصرف"),
-        element("dd", "numeric", usageText(component)),
         element("dt", "", `قیمت روز در ${formatUnitLabel(component.selectedUnit) ?? "واحد انتخابی"}`),
         element("dd", "numeric", priceText(component.convertedDailyUnitPriceIRR)),
-        element("dt", "", "مقدار مصالح این قلم"),
+        /* The line's own quantity, restated here rather than asked for. It is what the
+           schedule says this item is, and the cost below is that quantity at today's
+           price -- showing one without the other invites the reader to multiply. */
+        element("dt", "", "مقدار این قلم"),
         element("dd", "numeric",
           `${quantityText(component.componentQuantity)} ${formatUnitLabel(component.selectedUnit) ?? ""}`.trim()),
-        element("dt", "", "هزینه روز این مصالح"),
+        element("dt", "", "هزینه روز این قلم"),
         element("dd", "numeric", priceText(component.componentDailyCostIRR)));
       card.append(figures);
 
@@ -220,11 +236,11 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
 
       if (component.active && canEdit) {
         const actions = element("div", "price-component__actions");
-        const edit = element("button", "button button--ghost", "ویرایش");
+        const edit = element("button", "button button--ghost", "تغییر محصول");
         edit.type = "button";
         edit.dataset.action = "edit-component";
         edit.addEventListener("click", () => openForm(component));
-        const retire = element("button", "button button--ghost", "حذف از این قلم");
+        const retire = element("button", "button button--ghost", "برداشتن اتصال");
         retire.type = "button";
         retire.dataset.action = "deactivate-component";
         retire.addEventListener("click", () => askToRetire(component, card));
@@ -232,26 +248,26 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
         card.append(actions);
       }
       if (!component.active) {
-        card.append(element("p", "table-note", "این مصالح از قلم کنار گذاشته شده است"));
+        card.append(element("p", "table-note", "این اتصال برداشته شده است"));
       }
       componentList.append(card);
     });
   }
 
-  // ---------------------------------------------------------------- adding one material
+  // ------------------------------------------------------------- choosing the listing
 
   const form = element("form", "price-component-form");
   form.hidden = true;
   form.addEventListener("submit", (event) => event.preventDefault());
-  const formHeading = element("h3", "", "افزودن مصالح");
+  const formHeading = element("h3", "", "انتخاب محصول قیمت روز");
 
-  const categorySelect = element("select", "");
+  const categorySelect = element("select", "app-select");
   categorySelect.name = "category";
-  const providerSelect = element("select", "");
+  const providerSelect = element("select", "app-select");
   providerSelect.name = "providerId";
-  const typeSelect = element("select", "");
+  const typeSelect = element("select", "app-select");
   typeSelect.name = "productType";
-  const search = element("input", "");
+  const search = element("input", "app-input");
   search.type = "search";
   search.name = "query";
   search.placeholder = "نام یا شناسه محصول";
@@ -262,113 +278,160 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
   filters.append(labelled("دسته", categorySelect), labelled("تأمین‌کننده", providerSelect),
                  labelled("نوع محصول", typeSelect), labelled("جست‌وجو", search), apply);
 
+  /* Numbered, because the two questions are answered in order and the second is
+     meaningless before the first: a unit is chosen for a product. */
+  function step(number, title) {
+    const heading = element("h4", "price-component-form__step");
+    heading.append(element("span", "price-component-form__step-number", number),
+                   element("span", "", title));
+    return heading;
+  }
+
   const results = element("div", "price-component-form__results");
 
-  const unitSelect = element("select", "");
+  const unitSelect = element("select", "app-select");
   unitSelect.name = "selectedUnit";
   unitSelect.disabled = true;
-  const modeSelect = element("select", "");
-  modeSelect.name = "usageMode";
-  modeSelect.disabled = true;
-  const modeHint = element("p", "table-note", "");
-  const usageInput = element("input", "");
-  usageInput.type = "text";
-  usageInput.name = "usageQuantity";
-  usageInput.inputMode = "decimal";
-  usageInput.disabled = true;
-
-  const reason = element("textarea", "");
+  const reason = element("textarea", "app-textarea");
   reason.name = "reason";
   reason.rows = 2;
-  reason.placeholder = "چرا این مصالح برای این قلم لازم است؟";
+  reason.placeholder = "چرا این محصول قیمت این قلم را می‌دهد؟";
 
   const measures = element("div", "price-component-form__measures");
-  measures.append(labelled("واحد رسمی محاسبه", unitSelect),
-                  labelled("نحوهٔ مصرف مصالح", modeSelect),
-                  labelled("مقدار مصرف", usageInput));
+  measures.append(labelled("", unitSelect));
 
   const preview = element("div", "price-component-form__preview");
-  const save = element("button", "button button--primary", "ثبت مصالح");
+  /* Where «نیازمند ضریب تبدیل» stops being a dead end. Empty for every other status. */
+  const conversionPrompt = element("div", "price-component-form__conversion");
+
+  /* The button is offered only for the one status a conversion rule answers. A missing
+     price or an unchosen unit are different problems and this dialog would not fix them,
+     so offering it there would send somebody to write a rule nobody needed. */
+  function renderConversionPrompt(component) {
+    conversionPrompt.replaceChildren();
+    if (!canEdit || component?.status !== "needs_factor") return;
+    const open = element("button", "button button--ghost", "تعریف قانون تبدیل واحد");
+    open.type = "button";
+    open.dataset.action = "define-conversion-rule";
+    open.addEventListener("click", () => {
+      const dialog = createConversionRuleDialog({
+        adapter,
+        context: {
+          fromUnit: component.sourceUnit,
+          toUnit: component.selectedUnit,
+          providerItemId: component.providerItemId ?? chosen?.providerItemId ?? null,
+          providerId: chosen?.providerId ?? null,
+          category: component.category ?? chosen?.category ?? null,
+          productName: component.productName ?? chosen?.name ?? null,
+          providerName: component.providerName ?? chosen?.providerName ?? null,
+          categoryLabel: component.categoryLabel ?? chosen?.categoryLabel ?? null,
+        },
+        /* Recalculated rather than assumed: whether the new rule actually resolves THIS
+           crossing is the server's answer, and asking again is how the person sees it. */
+        onSaved: () => { refreshPreview(); },
+      });
+      dialog.open();
+    });
+    conversionPrompt.append(open);
+  }
+  const save = element("button", "button button--primary", "ثبت اتصال");
   save.type = "button";
   save.disabled = true;
   const cancel = element("button", "button button--ghost", "انصراف");
   cancel.type = "button";
   const feedback = element("p", "form-feedback", "");
 
-  form.append(formHeading, filters, results, measures, modeHint,
-              labelled("دلیل", reason), preview, save, cancel, feedback);
+  const actions = element("div", "price-component-form__actions");
+  actions.append(save, cancel);
 
+  form.append(formHeading,
+              step("۱", "محصول قیمت روز را انتخاب کنید"), filters, results,
+              step("۲", "واحد رسمی محاسبه"), measures,
+              preview, conversionPrompt,
+              labelled("دلیل", reason), actions, feedback);
+
+  /* Two answers, not four. How much of this material the line uses is not asked, because
+     the line already states it: the item IS «۱۲۰۰ کیلوگرم آرماتور», and asking again
+     would invite a second, different number for the same fact. */
   function draft() {
-    const usage = usageInput.value.trim();
     return {
       providerItemId: chosen?.providerItemId,
       selectedUnit: unitSelect.value || undefined,
-      usageMode: modeSelect.value || undefined,
-      usageQuantity: usage === "" ? undefined : usage,
     };
   }
 
-  function renderPreview(component, total) {
+  /* «۴۰٬۰۰۰ کیلوگرم × ۱۰۱٬۴۶۰ تومان = ۴٬۰۵۸ میلیون تومان», written out.
+     The same three numbers were already in the table below, one per row, and a reader had
+     to assemble the multiplication themselves. This is the answer the panel exists to
+     produce, so it is a sentence and it comes first. Absent entirely when any part of it
+     is unknown -- a half-written equation reads as a figure. */
+  function renderOutcome(component) {
+    if (!component || component.convertedDailyUnitPriceIRR === null
+        || component.componentQuantity === null
+        || component.componentDailyCostIRR === null) return null;
+    const outcome = element("p", "price-component-form__outcome");
+    const unit = formatUnitLabel(component.selectedUnit) ?? "";
+    outcome.append(
+      element("span", "", `${quantityText(component.componentQuantity)} ${unit}`.trim()),
+      element("span", "price-component-form__times", "×"),
+      element("span", "", priceText(component.convertedDailyUnitPriceIRR)),
+      element("span", "price-component-form__equals", "="),
+      element("strong", "", priceText(component.componentDailyCostIRR)));
+    return outcome;
+  }
+
+  function renderPreview(component) {
     preview.replaceChildren();
     if (!component) return;
     preview.append(statusChip(component.status, component.statusLabel));
+    const outcome = renderOutcome(component);
+    if (outcome) preview.append(outcome);
     if (component.reason) {
       preview.append(element("p", "price-component-form__reason", component.reason));
     }
     const figures = element("dl", "price-component-form__figures");
+    /* Only what the sentence above does NOT say. It already carries the quantity, the
+       price per chosen unit and the product. What it cannot carry is the listing's own
+       price in the listing's own unit, which is the number a person recognises from the
+       sheet -- and the only way to see that a conversion happened at all. */
     figures.append(
-      /* The listing's own price in its own unit. NOT defaulted to the converted figure:
-         two rows showing one number under two labels is how a reader concludes that no
-         conversion took place. Unknown stays an em dash. */
       element("dt", "", `قیمت روز محصول${component.sourceUnit ? ` (به ازای ${formatUnitLabel(component.sourceUnit)})` : ""}`),
       element("dd", "numeric", priceText(component.sourcePriceIRR)),
-      element("dt", "", "قیمت تبدیل‌شده در واحد انتخابی"),
-      element("dd", "numeric", priceText(component.convertedDailyUnitPriceIRR)),
-      element("dt", "", "مقدار مصالح این قلم"),
-      element("dd", "numeric", quantityText(component.componentQuantity)),
-      element("dt", "", "هزینه روز این مصالح"),
-      element("dd", "numeric", priceText(component.componentDailyCostIRR)));
-    if (total) {
-      /* What the ROW will come to once this is saved. The row total is the figure a reader
-         acts on, and seeing it move is the difference between choosing deliberately and
-         choosing then checking. */
-      figures.append(element("dt", "", "هزینه روز این قلم پس از ثبت"),
-                     element("dd", "numeric", priceText(total.dailyItemCostIRR)));
-    }
+      element("dt", "", "تاریخ قیمت"),
+      element("dd", "", component.workflowDateJalali ?? "—"));
     preview.append(figures);
   }
 
   async function refreshPreview() {
     const body = draft();
-    if (!body.providerItemId || !body.selectedUnit || !body.usageMode
-        || body.usageQuantity === undefined) {
+    if (!body.providerItemId || !body.selectedUnit) {
       renderPreview(null);
       save.disabled = true;
       return;
     }
     try {
-      const [component, total] = await Promise.all([
-        adapter.previewComponent(lineId, body),
-        adapter.previewTotal(lineId, body),
-      ]);
-      renderPreview(component, total);
-      /* Saving stays possible when the conversion is unresolved: which material this is
-         and whether somebody has measured the crossing are different facts, and recording
-         the first is progress. The component then shows «نیازمند ضریب تبدیل» until the
-         second exists. */
+      const component = await adapter.preview(lineId, body);
+      renderPreview(component);
+      lastPreview = component;
+      /* Saving stays possible when the conversion is unresolved: which listing prices
+         this line and whether somebody has measured the crossing between its unit and
+         this line's are different facts, and recording the first is progress. The link
+         then shows «نیازمند ضریب تبدیل» until the second exists -- and the button beside
+         that message is how it gets answered. */
       save.disabled = !canEdit;
+      renderConversionPrompt(component);
     } catch (error) {
-      feedback.textContent = error?.message ?? "محاسبهٔ قیمت این مصالح انجام نشد.";
+      feedback.textContent = error?.message ?? "محاسبهٔ قیمت روز این قلم انجام نشد.";
     }
   }
 
   function clearChoice() {
     chosen = null;
+    lastPreview = null;
     unitSelect.value = "";
     unitSelect.disabled = true;
-    modeSelect.disabled = true;
-    usageInput.disabled = true;
     renderPreview(null);
+    renderConversionPrompt(null);
     save.disabled = true;
   }
 
@@ -377,8 +440,6 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
     results.querySelectorAll(".price-candidate").forEach((node) =>
       node.classList.toggle("price-candidate--chosen", node === card));
     unitSelect.disabled = !canEdit;
-    modeSelect.disabled = !canEdit;
-    usageInput.disabled = !canEdit;
     /* Default to the unit the sheet states this price in, when it is one the registry
        knows. It is a starting point a person can change -- never a decision made for
        them, which is why it is only a preselection and the control stays open. */
@@ -468,37 +529,26 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
   typeSelect.addEventListener("change", async () => { clearChoice(); await loadCandidates(); });
   apply.addEventListener("click", loadCandidates);
   unitSelect.addEventListener("change", refreshPreview);
-  modeSelect.addEventListener("change", () => {
-    /* The hint is the whole difference between the two modes, and it is the sentence that
-       stops «۵۰۰» from being entered as a total when it was meant per cubic metre. */
-    modeHint.textContent = usageModes.find((entry) => entry.value === modeSelect.value)?.hint ?? "";
-    refreshPreview();
-  });
-  usageInput.addEventListener("input", refreshPreview);
-  usageInput.addEventListener("change", refreshPreview);
 
   function openForm(component = null) {
     editing = component;
-    formHeading.textContent = component ? "ویرایش مصالح" : "افزودن مصالح";
-    save.textContent = component ? "ثبت ویرایش" : "ثبت مصالح";
+    formHeading.textContent = component ? "تغییر محصول قیمت روز" : "انتخاب محصول قیمت روز";
+    save.textContent = component ? "ثبت تغییر" : "ثبت اتصال";
     form.hidden = false;
     add.hidden = true;
     feedback.textContent = "";
     if (component) {
-      /* Editing starts from what was stored, so somebody changing only the usage does not
-         have to find the product again. */
+      /* Changing starts from what was stored, so somebody correcting only the unit does
+         not have to find the product again. */
       chosen = { providerItemId: component.providerItemId,
                  sourceUnitCode: component.sourceUnit };
       unitSelect.value = component.selectedUnit ?? "";
-      modeSelect.value = component.usageMode ?? "";
-      usageInput.value = component.usageQuantity ?? "";
       reason.value = component.reasonText ?? "";
-      [unitSelect, modeSelect, usageInput].forEach((node) => { node.disabled = !canEdit; });
+      unitSelect.disabled = !canEdit;
       refreshPreview();
     } else {
-      [categorySelect, providerSelect, typeSelect, search, modeSelect, usageInput, reason]
+      [categorySelect, providerSelect, typeSelect, search, reason]
         .forEach((node) => { node.value = ""; });
-      modeHint.textContent = "";
       clearChoice();
     }
     loadCandidates();
@@ -520,24 +570,18 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
     if (!body.providerItemId || !body.selectedUnit) {
       feedback.textContent = "محصول و واحد رسمی را انتخاب کنید."; return;
     }
-    if (!body.usageMode) { feedback.textContent = "نحوهٔ مصرف مصالح را انتخاب کنید."; return; }
-    if (body.usageQuantity === undefined) {
-      feedback.textContent = "مقدار مصرف مصالح الزامی است."; return;
-    }
-    if (!reason.value.trim()) { feedback.textContent = "دلیل ثبت این مصالح الزامی است."; return; }
+    if (!reason.value.trim()) { feedback.textContent = "دلیل ثبت این اتصال الزامی است."; return; }
     save.disabled = true;
     const payload = {
       providerItemId: body.providerItemId,
       selectedUnit: body.selectedUnit,
-      usageMode: body.usageMode,
-      usageQuantity: body.usageQuantity,
       reason: reason.value.trim(),
     };
     try {
-      if (editing) await adapter.updateComponent(lineId, editing.componentId, payload);
-      else await adapter.addComponent(lineId, payload);
+      if (editing) await adapter.reconnect(lineId, editing.componentId, payload);
+      else await adapter.connect(lineId, payload);
       closeForm();
-      await loadComponents();
+      await loadConnection();
       onSaved?.();
     } catch (error) {
       feedback.textContent = error?.message ?? "ثبت این مصالح انجام نشد.";
@@ -551,7 +595,7 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
   function askToRetire(component, card) {
     if (card.querySelector(".price-component__retire")) return;
     const why = element("div", "price-component__retire");
-    const text = element("input", "");
+    const text = element("input", "app-input");
     text.type = "text";
     text.name = "deactivateReason";
     text.placeholder = "دلیل حذف این مصالح";
@@ -561,8 +605,8 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
     confirm.addEventListener("click", async () => {
       if (!text.value.trim()) { feedback.textContent = "دلیل حذف این مصالح الزامی است."; return; }
       try {
-        await adapter.deactivateComponent(lineId, component.componentId, text.value.trim());
-        await loadComponents();
+        await adapter.disconnect(lineId, component.componentId, text.value.trim());
+        await loadConnection();
         onSaved?.();
       } catch (error) {
         feedback.textContent = error?.message ?? "حذف این مصالح انجام نشد.";
@@ -574,23 +618,26 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
 
   // ---------------------------------------------------------------------------- loading
 
-  async function loadComponents() {
+  async function loadConnection() {
     try {
-      const body = await adapter.componentsFor(lineId);
+      const body = await adapter.connectionFor(lineId);
       header = body.line;
       renderSchedule();
-      renderComponents(body.components);
+      renderConnection(body.connection ? [body.connection] : []);
       renderTotal(body.total);
+      /* Hidden once the line is linked: there is one listing per line, and a second
+         «اتصال» button would offer a state this page cannot produce. Changing the product
+         is on the card, where the current one is. */
+      add.hidden = Boolean(body.connection) || !canEdit;
     } catch (error) {
       componentList.replaceChildren(
-        element("p", "form-feedback", error?.message ?? "فهرست مصالح این قلم خوانده نشد."));
+        element("p", "form-feedback", error?.message ?? "اتصال قیمت روز این قلم خوانده نشد."));
     }
   }
 
   (async () => {
     try {
       const body = await adapter.filters();
-      usageModes = body.usageModes ?? [];
       fillOptions(categorySelect, "همه دسته‌ها",
         (body.categories ?? []).map((category) => ({
           value: category.category, label: `${category.label} (${category.itemCount})` })));
@@ -601,23 +648,19 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
       fillOptions(unitSelect, "انتخاب واحد",
         (body.units ?? []).map((unit) => ({
           value: unit.code, label: `${unit.label} (${unit.dimensionLabel})` })));
-      /* No default mode. «۵۰۰ به ازای هر مترمکعب» and «۵۰۰ در کل» differ by a factor of
-         the activity quantity, and picking one for the person is picking their answer. */
-      fillOptions(modeSelect, "انتخاب کنید",
-        usageModes.map((mode) => ({ value: mode.value, label: mode.label })));
     } catch (error) {
       feedback.textContent = error?.message ?? "فهرست فیلترها خوانده نشد.";
     }
-    await loadComponents();
+    await loadConnection();
   })();
 
   if (!canEdit) {
     /* A viewer sees everything and changes nothing. The controls are disabled rather than
        hidden so it is clear the workflow exists and who may use it. */
-    [search, apply, unitSelect, modeSelect, usageInput, reason, save, add]
+    [search, apply, unitSelect, reason, save, add]
       .forEach((node) => { node.disabled = true; });
     componentsSection.append(
-      element("p", "table-note", "برای ویرایش مصالح این قلم، دسترسی finance.edit لازم است."));
+      element("p", "table-note", "برای تغییر اتصال قیمت روز این قلم، دسترسی finance.edit لازم است."));
   }
 
   panel.append(head, componentsSection, form);

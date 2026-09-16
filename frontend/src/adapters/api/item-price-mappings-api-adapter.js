@@ -1,12 +1,19 @@
 import { financeBase, jsonOptions } from "./api-utils.js";
 
-/* The materials a schedule item consumes, read from the Finance backend and from nowhere
- * else.
+/* Which market listing prices one schedule item, read from the Finance backend and from
+ * nowhere else.
  *
- * An activity is not a material. «کانال‌کنی» is 500 cubic metres of trenching, and it
- * consumes rebar and pipe and brick that the schedule never names -- a schedule describes
- * work, not a bill of materials. So a line is priced by a LIST of components, each naming
- * a real listing, an official unit, and how much of it this activity uses.
+ * ONE LINE IS ONE MATERIAL, NOT AN ACTIVITY
+ * An estimate line here is one resource on one activity -- it arrives that way from the
+ * MPP assignment rows, already naming «آرماتور» with its own quantity in kilograms. So it
+ * is priced by ONE listing, not by a list of materials entered underneath it: a material
+ * inside a material is a level this data does not have.
+ *
+ * The server still stores that link in the component table, and it is written as a single
+ * component with `usage_mode: per_msp_unit` and `usage_quantity: 1` -- "one unit of this
+ * product per unit of this line", which IS the line's own quantity. Written as a ratio
+ * rather than a copy, so a later revision of the line's quantity carries through instead
+ * of leaving a stale number behind.
  *
  * There is deliberately no Google Sheets call in this file and there must never be one.
  * The sheet is read by a server-side import; a page that fetched a spreadsheet would leak
@@ -43,6 +50,13 @@ function mapRowStatus(value) {
     providerName: value.providerName ?? null,
     productName: value.productName ?? null,
     sourceSummary: value.sourceSummary ?? null,
+
+    /* The unit the sheet quotes this listing in, and the unit this line is priced in.
+       Read here so «واحد شیت قیمت» is a column of the table rather than something a
+       person has to open a panel to see. The service does not send them yet: they are
+       null until it does, and the cell says the status instead of inventing a unit. */
+    sourcePriceUnit: value.sourcePriceUnit ?? null,
+    selectedUnit: value.selectedUnit ?? null,
   };
 }
 
@@ -178,6 +192,73 @@ function mapComponentRow(value) {
   };
 }
 
+/* One conversion rule, as stored.
+ *
+ * `1 fromUnit = factor toUnit`, and that direction is the whole meaning: read the other
+ * way round, «۱ شاخه = ۲۲ کیلوگرم» becomes a claim that a kilogram weighs twenty-two
+ * branches. The server states it once, in one direction, and nothing here reverses it. */
+function mapConversionRule(value) {
+  if (!value) return null;
+  return {
+    id: value.id,
+    scopeType: value.scopeType,
+    projectId: value.projectId ?? null,
+    providerId: value.providerId ?? null,
+    providerItemId: value.providerItemId ?? null,
+    category: value.category ?? null,
+
+    fromUnit: value.fromUnit,
+    toUnit: value.toUnit,
+    conversionMethod: value.conversionMethod ?? "factor",
+    /* A decimal STRING, like every other exact number here. A factor parsed into a float
+       and multiplied by a price is how a rial becomes almost-a-rial. */
+    factorValue: value.factorValue ?? null,
+    formulaDefinition: value.formulaDefinition ?? null,
+    directionDefinition: value.directionDefinition ?? null,
+
+    status: value.status,
+    version: value.version ?? null,
+    effectiveFrom: value.effectiveFrom ?? null,
+    effectiveTo: value.effectiveTo ?? null,
+    supersedesRuleId: value.supersedesRuleId ?? null,
+
+    /* Present only once the backend ships it. Until then it is null everywhere and the
+       panel simply has nothing to mark -- which is the truth, because until then a rule
+       this broad cannot be saved at all. */
+    productDependentAcknowledged: value.productDependentAcknowledged ?? null,
+
+    evidenceSource: value.evidenceSource ?? null,
+    reason: value.reason ?? null,
+    createdBy: value.createdBy ?? null,
+    createdByName: value.createdByName ?? null,
+    createdAt: value.createdAt ?? null,
+    approvedBy: value.approvedBy ?? null,
+    approvedByName: value.approvedByName ?? null,
+    approvedAt: value.approvedAt ?? null,
+  };
+}
+
+/* One place a conversion was needed and was not there. Recorded by the server as it
+   calculates, so the worklist is what actually blocked a figure rather than a guess at
+   what might. */
+function mapConversionIssue(value) {
+  return {
+    id: value.id ?? null,
+    estimateLineId: value.estimateLineId ?? null,
+    providerItemId: value.providerItemId ?? null,
+    fromUnit: value.fromUnit ?? null,
+    toUnit: value.toUnit ?? null,
+    status: value.status ?? null,
+    statusLabel: value.statusLabel ?? null,
+    reason: value.reason ?? null,
+    productName: value.productName ?? null,
+    providerName: value.providerName ?? null,
+    category: value.category ?? null,
+    occurrences: value.occurrences ?? null,
+    lastSeenAt: value.lastSeenAt ?? null,
+  };
+}
+
 function query(params) {
   const search = new URLSearchParams();
   Object.entries(params ?? {}).forEach(([key, value]) => {
@@ -187,13 +268,22 @@ function query(params) {
   return text ? `?${text}` : "";
 }
 
+/* How the single link is written into the component row.
+ *
+ * `per_msp_unit` with a usage of 1 says "one unit of this product for each unit of this
+ * line", which is the line's own quantity and nothing else. A `total_quantity` of the
+ * line's quantity would compute the same number TODAY and then stop being true the moment
+ * somebody revised the line. */
+const WHOLE_LINE = Object.freeze({ usageMode: "per_msp_unit", usageQuantity: "1" });
+
 export function createItemPriceMappingsApiAdapter(context, { client }) {
   const base = financeBase(context);
   const line = (id) => `${base}/estimate-lines/${encodeURIComponent(id)}`;
+
   return {
-    /* One call for the whole table. A line nobody has priced is PRESENT in the answer
-       with `needs_components` -- the table has to show what is waiting, and an absent row
-       would be indistinguishable from one the page forgot to ask about. */
+    /* One call for the whole table. A line nobody has priced is PRESENT in the answer with
+       its waiting status -- an absent row would be indistinguishable from one the page
+       forgot to ask about. */
     async statuses() {
       const body = await client.request(`${base}/item-price-mappings/status`);
       return (body.items ?? []).map(mapRowStatus);
@@ -222,75 +312,112 @@ export function createItemPriceMappingsApiAdapter(context, { client }) {
         productTypes: body.productTypes ?? [],
         categories: body.categories ?? [],
         units: body.units ?? [],
-        usageModes: body.usageModes ?? [],
       };
     },
 
-    /* Every material of one line, priced, with the row total beside them. Inactive ones
-       travel too: somebody who retired a material needs to see that they did. */
-    async componentsFor(estimateLineId) {
+    /* What this line is linked to, or null when nothing yet. The server answers with a
+       list because that is the shape of its table; exactly one of those rows is this
+       line's link, and a second would be a state this page cannot produce. */
+    async connectionFor(estimateLineId) {
       const body = await client.request(`${line(estimateLineId)}/price-mapping/components`);
+      const active = (body.components ?? []).map(mapComponent).filter((row) => row.active);
       return {
         line: mapLineHeader(body.line),
-        components: (body.components ?? []).map(mapComponent),
+        connection: active[0] ?? null,
         total: body.total ? mapRowStatus(body.total) : null,
       };
     },
 
-    async componentHistory(estimateLineId) {
+    async history(estimateLineId) {
       const body = await client.request(
         `${line(estimateLineId)}/price-mapping/components/history`);
       return (body ?? []).map(mapComponentRow);
     },
 
-    /* What one material would cost, asked BEFORE anything is saved -- so «نیازمند ضریب
-       تبدیل» is something a person sees while choosing rather than discovers after
-       committing. */
-    async previewComponent(estimateLineId, draft) {
+    /* What this listing would cost this line, asked BEFORE anything is saved -- so
+       «نیازمند ضریب تبدیل» is something a person sees while choosing rather than
+       discovers after committing. */
+    async preview(estimateLineId, draft) {
       const body = await client.request(
         `${line(estimateLineId)}/price-component-preview`
-        + query({
-          providerItemId: draft?.providerItemId,
-          selectedUnit: draft?.selectedUnit,
-          usageMode: draft?.usageMode,
-          usageQuantity: draft?.usageQuantity,
-        }));
+        + query({ providerItemId: draft?.providerItemId, selectedUnit: draft?.selectedUnit,
+                  usageMode: WHOLE_LINE.usageMode, usageQuantity: WHOLE_LINE.usageQuantity }));
       return mapComponent(body);
     },
 
-    /* What the ROW will come to, including one unsaved material. The draft is what makes
-       this different from reading the total back: a person sees the effect before they
-       commit it, not after. */
-    async previewTotal(estimateLineId, draft = null) {
-      const body = await client.request(
-        `${line(estimateLineId)}/price-total-preview`
-        + query({
-          providerItemId: draft?.providerItemId,
-          selectedUnit: draft?.selectedUnit,
-          usageMode: draft?.usageMode,
-          usageQuantity: draft?.usageQuantity,
-        }));
-      return mapRowStatus(body);
-    },
-
-    async addComponent(estimateLineId, payload) {
+    async connect(estimateLineId, { providerItemId, selectedUnit, reason }) {
       return mapComponentRow(await client.request(
         `${line(estimateLineId)}/price-mapping/components`,
-        jsonOptions("POST", payload)));
+        jsonOptions("POST", { providerItemId, selectedUnit, reason, ...WHOLE_LINE })));
     },
 
-    async updateComponent(estimateLineId, componentId, payload) {
+    async reconnect(estimateLineId, componentId, { providerItemId, selectedUnit, reason }) {
       return mapComponentRow(await client.request(
         `${line(estimateLineId)}/price-mapping/components/${encodeURIComponent(componentId)}`,
-        jsonOptions("PATCH", payload)));
+        jsonOptions("PATCH", { providerItemId, selectedUnit, reason, ...WHOLE_LINE })));
     },
 
-    /* Retiring a material appends an inactive version; it never deletes one. A report
-       issued while it was active was calculated with it. */
-    async deactivateComponent(estimateLineId, componentId, reason) {
+    /* Removing a link appends an inactive version; it never deletes one. A report issued
+       while it was in force was calculated with it. */
+    async disconnect(estimateLineId, componentId, reason) {
       return mapComponentRow(await client.request(
         `${line(estimateLineId)}/price-mapping/components/${encodeURIComponent(componentId)}/deactivate`,
         jsonOptions("POST", { reason })));
+    },
+
+    // ------------------------------------------------------ unit conversion rules
+    /* Read and written from the panel as well as from the settings page. A person who
+       hits «نیازمند ضریب تبدیل» while pricing an item should be able to answer it there,
+       rather than be sent to another page to find their way back. */
+    async conversionRules(filters = {}) {
+      const body = await client.request(`${base}/finance-settings/unit-conversions${query(filters)}`);
+      return {
+        items: (body.items ?? []).map(mapConversionRule),
+        units: body.units ?? [],
+      };
+    },
+
+    /* A project-scoped rule needs to name its project, and the panel that raises one is
+       already inside that project. Filled here rather than asked for: a form that made
+       somebody retype the project they are looking at would be asking them to get it
+       wrong. Every other scope's identifier IS a choice and stays with the caller. */
+    async createConversionRule(payload) {
+      const body = payload?.scopeType === "project" && !payload.projectId
+        ? { ...payload, projectId: context.projectId }
+        : payload;
+      return mapConversionRule(await client.request(
+        `${base}/finance-settings/unit-conversions`, jsonOptions("POST", body)));
+    },
+
+    async conversionRuleHistory(ruleId) {
+      const body = await client.request(`${base}/finance-settings/unit-conversions/${encodeURIComponent(ruleId)}/history`);
+      return (body.items ?? body ?? []).map(mapConversionRule);
+    },
+
+    async previewConversionRule(ruleId, priceIrr = null) {
+      return client.request(
+        `${base}/finance-settings/unit-conversions/${encodeURIComponent(ruleId)}/preview`
+        + query({ priceIrr }));
+    },
+
+    async approveConversionRule(ruleId, payload = {}) {
+      return mapConversionRule(await client.request(
+        `${base}/finance-settings/unit-conversions/${encodeURIComponent(ruleId)}/approve`,
+        jsonOptions("POST", payload)));
+    },
+
+    async supersedeConversionRule(ruleId, payload = {}) {
+      return mapConversionRule(await client.request(
+        `${base}/finance-settings/unit-conversions/${encodeURIComponent(ruleId)}/supersede`,
+        jsonOptions("POST", payload)));
+    },
+
+    /* Everywhere a conversion was needed and missing. The admin's worklist: better than
+       reading 835 rows looking for the ones that are stuck. */
+    async conversionIssues(filters = {}) {
+      const body = await client.request(
+        `${base}/finance-settings/unit-conversion-issues${query(filters)}`);
+      return (body.items ?? []).map(mapConversionIssue);
     },
   };
 }

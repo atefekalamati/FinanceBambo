@@ -27,6 +27,16 @@ function mapLine(value, resources, activities = [], currentPrices = new Map()) {
     // activity's is the sum of its items' and repeating it down them would count
     // it once per item.
     mppAssignmentCostIrr: value.mppCostIrr ?? null,
+    /* The unit the SCHEDULE states for this line, which is not the Finance resource's
+       base unit and not the unit the price sheet quotes in. Three different statements
+       about the same item, and the table shows the first two side by side because a
+       mismatch between them is the thing that stops a daily price being computed.
+       Null on two rows in three: MS Project keeps the resource's initials in the field
+       this comes from, and the importer records a unit only where the text is one --
+       `mppUnitConfidence` says which of those happened. */
+    mppUnit: value.mppUnit ?? null,
+    mppUnitConfidence: value.mppUnitConfidence ?? null,
+    mppQuantity: value.mppQuantity ?? null,
     // The price a person entered for this item today, if anyone has. Separate
     // from the schedule's cost above and from the frozen original below; the
     // three are different numbers and are never derived from one another.
