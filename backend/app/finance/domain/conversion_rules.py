@@ -91,7 +91,8 @@ def crosses_dimensions(from_unit, to_unit):
 
 
 def validate_scope(*, scope_type, from_unit, to_unit, project_id=None, provider_id=None,
-                   provider_item_id=None, category=None):
+                   provider_item_id=None, category=None,
+                   product_dependent_acknowledged=False):
     """Refuse a rule whose breadth its evidence cannot carry.
 
     Checked here rather than as a database constraint because the database cannot know
@@ -111,7 +112,23 @@ def validate_scope(*, scope_type, from_unit, to_unit, project_id=None, provider_
             "a rule must cross two different units", "FINANCE_CONVERSION_UNITS_EQUAL",
             "واحد مبدأ و مقصد یکی است.")
 
-    if crosses_dimensions(from_unit, to_unit) and scope_type not in NARROW_SCOPES:
+    # WHY AN ADMISSION IS ALLOWED TO PASS WHERE A REFUSAL STOOD
+    #
+    # Everything the refusal says is still true: «1 branch = 22 kg» is a weighing of one
+    # product, and stating it for a whole category asserts every product in that category
+    # weighs the same. What changed is the discovery that the narrow scope it points at --
+    # `provider_item` -- cannot be written until a listing is attached to the line, and on
+    # the audited project 832 of 835 lines have no component at all. The rule sent people
+    # to a door that was locked.
+    #
+    # So the claim may be made, and it carries a name. `product_dependent_acknowledged`
+    # is set only by a caller that said so in the request, the actor and the moment are
+    # stored beside it, and `factorSource` tells every reader of a price that the number
+    # came from a rule rather than from a weighing of the product in front of them.
+    #
+    # The default is False, so nothing that was refused before is quietly allowed now.
+    if (crosses_dimensions(from_unit, to_unit) and scope_type not in NARROW_SCOPES
+            and not product_dependent_acknowledged):
         raise ConversionRuleRefused(
             "%s to %s depends on the product and cannot be stated at %s scope"
             % (from_unit, to_unit, scope_type),
@@ -214,3 +231,37 @@ def _in_effect(rule, on_date):
     if end is not None and end <= on_date:
         return False
     return True
+
+
+#: Named here rather than in either service, because the whole point is that both use the
+#: same order. Two screens deciding a row's price differently is worse than either answer.
+PROVIDER_ITEM_FACTOR = "provider_item"
+CONVERSION_RULE_FACTOR = "conversion_rule"
+
+
+def choose_conversion(listing_factor, rule):
+    """`(factor, source)` for one crossing: the listing's own measurement, then a rule.
+
+    THE ORDER, AND WHY IT IS THIS WAY ROUND
+
+    A measurement recorded against THIS listing is a weighing of the thing being priced.
+    A rule is a statement about a category, a supplier or a project -- broader by
+    construction, and broader means it was made without looking at this product. So the
+    narrow evidence wins and the rule fills the gap behind it.
+
+    That ordering has a consequence worth stating plainly: no row that prices today
+    changes its number. A rule is consulted only where a listing factor is absent, which
+    is exactly where the row reports `needs_factor` now.
+
+    Both callers -- the components table and the single-mapping preview -- go through
+    here, so a row cannot be priced one way on one screen and another way on the next.
+
+    `rule` is whatever `resolve_rule` returned: a row with a `factor`, or None. A rule
+    that resolved but states no usable factor is treated as absent rather than as zero,
+    because zero is a price of nothing and no rule means that.
+    """
+    if listing_factor is not None and listing_factor.get("factor"):
+        return listing_factor["factor"], PROVIDER_ITEM_FACTOR
+    if rule is not None and rule.get("factor"):
+        return rule["factor"], CONVERSION_RULE_FACTOR
+    return None, None

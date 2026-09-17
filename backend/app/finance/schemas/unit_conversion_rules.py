@@ -50,6 +50,13 @@ class ConversionRuleResponse(ApiModel):
     category: str | None = None
     scope_type: ScopeType
 
+    #: Whether somebody admitted this rule is product-dependent, and who. All three are
+    #: null/false on the ordinary rule; together they are what lets a reader of a price
+    #: see that a broad claim stands behind it and whose claim it is.
+    product_dependent_acknowledged: bool = False
+    product_dependent_acknowledged_by: UUID | None = None
+    product_dependent_acknowledged_at: datetime | None = None
+
     from_unit: str
     to_unit: str
     conversion_method: ConversionMethod
@@ -102,6 +109,18 @@ class ConversionRuleCreate(ApiModel):
     supersedes_rule_id: UUID | None = None
     evidence_source: str | None = Field(default=None, max_length=500)
     reason: str = Field(min_length=1, max_length=500)
+
+    #: "I know this crossing depends on the product, and I am stating it anyway."
+    #:
+    #: Required only for a rule that crosses dimensions at a scope wider than one listing
+    #: -- «شاخه» to «کیلوگرم» for a whole project, say. Without it such a rule is refused
+    #: exactly as before. `registryUnits()` already tells the client which crossings are
+    #: product-dependent, so the checkbox appears on precisely those and nowhere else.
+    #:
+    #: Sending it for a crossing that does NOT depend on the product is not an error; it
+    #: is stored as false, because an admission about nothing would later read as a
+    #: warning about a rule that never needed one.
+    product_dependent_acknowledged: bool = False
 
 
 class ConversionRuleApprove(ApiModel):
@@ -201,6 +220,9 @@ class DailyEstimateResponse(ApiModel):
     conversion_rule_required: bool = False
     applied_conversion_rule_id: str | None = None
     applied_conversion_rule_version: int | None = None
+    #: True when the rule behind this number is one somebody admitted depends on the
+    #: product -- a broad claim rather than a weighing of the item being priced.
+    applied_conversion_rule_is_product_dependent: bool = False
     conversion_method: str | None = None
     conversion_multiplier: str | None = None
 

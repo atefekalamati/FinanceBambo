@@ -22,6 +22,7 @@ because a number typed into a mapping request is not a measurement anybody appro
 
 from datetime import date
 
+from ..domain.conversion_rules import choose_conversion
 from ..domain.daily_estimate import (CONVERSION_RULE_REQUIRED, DAILY_PRICE_UNIT_MISSING,
                                      calculate_daily_estimate)
 from ..domain.item_price_mapping import (INCOMPATIBLE, NEEDS_FACTOR, price_item)
@@ -153,11 +154,16 @@ class ItemPriceMappingService:
         body["daily_estimate"] = await self._daily_estimate(
             scope, context=context, observation=observation, source_unit=source_unit,
             selected_unit=selected_unit, provider_item_id=provider_item_id,
-            estimate_line_id=estimate_line_id)
+            estimate_line_id=estimate_line_id,
+            # The measurement this method already looked up for the converted price it
+            # shows above. Passing it on is what stops the panel quoting one number and
+            # the daily estimate beneath it quoting another for the same row.
+            listing_factor=factor)
         return body
 
     async def _daily_estimate(self, scope, *, context, observation, source_unit,
-                              selected_unit, provider_item_id, estimate_line_id):
+                              selected_unit, provider_item_id, estimate_line_id,
+                              listing_factor=None):
         """What this line costs today in its own unit, or the reason it cannot be said.
 
         The unit the LINE is measured in is the official unit somebody selected; the unit
@@ -170,7 +176,12 @@ class ItemPriceMappingService:
             return None
         context = context or {}
         rule = None
-        if source_unit and selected_unit and source_unit != selected_unit:
+        # The rule is fetched only where no measurement of this listing answers the
+        # crossing -- the same order `choose_conversion` applies on the components table,
+        # and the reason this path and that one cannot disagree about a row.
+        factor, factor_source = choose_conversion(listing_factor, None)
+        if (factor is None and source_unit and selected_unit
+                and source_unit != selected_unit):
             rule = await self.conversion_rules.resolve_for(
                 scope, from_unit=source_unit, to_unit=selected_unit,
                 provider_item_id=provider_item_id,
@@ -183,7 +194,7 @@ class ItemPriceMappingService:
             authoritative_initial_cost_irr=context.get("msp_cost_irr"),
             daily_unit_price_irr=observation.get("normalized_price_irr"),
             resource_unit=selected_unit, daily_price_unit=source_unit,
-            conversion_rule=rule)
+            conversion_rule=rule, provider_item_factor=factor)
         body = answer.as_dict()
         if answer.calculation_status in (CONVERSION_RULE_REQUIRED, DAILY_PRICE_UNIT_MISSING):
             issue = await self.conversion_rules.record_mismatch(

@@ -303,3 +303,31 @@ class WiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DevPermissionTests(unittest.TestCase):
+    """The development operator must be able to reach every route the router gates.
+
+    `finance.manage_invoice` was absent from `ALL_FINANCE_PERMISSIONS` while the router
+    required it for uploading an invoice file, starting an extraction, retrying it,
+    rejecting it and confirming it. The dev host therefore answered 403 to the FIRST step
+    of the invoice pipeline, and a 403 on upload is indistinguishable in a browser from
+    the extraction being broken -- which is where "the AI review screen errors" came from.
+
+    Derived from the router's own source rather than pinned as a second list, so the next
+    permission somebody introduces fails here instead of in a browser.
+    """
+
+    def test_dev_permissions_cover_the_router(self):
+        import inspect
+        import re
+
+        from devhost.ports import ALL_FINANCE_PERMISSIONS
+        from app.finance import router as router_module
+
+        required = set(re.findall(r'"(finance[a-z_]*\.[a-z_]+)"',
+                                  inspect.getsource(router_module)))
+        self.assertTrue(required, "no permission strings found; the pattern has drifted")
+        missing = sorted(required - set(ALL_FINANCE_PERMISSIONS))
+        self.assertEqual([], missing,
+                         "the development operator cannot reach routes gated on these")

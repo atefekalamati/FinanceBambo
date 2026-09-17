@@ -11,12 +11,24 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { renderPageState } from "../../shared/components/page-state.js";
 import { element } from "../../shared/dom/elements.js";
 
+// The keys the BACKEND emits. `vendorName` and `totalIRR` were this page's names for
+// them and the backend has never sent either: they came from the mock adapter this
+// screen was built against, so every real extraction rendered "اطلاعات خوانده‌شده" for
+// the supplier and the total, and the currency-aware total label never appeared at all.
+// `resourceId` stays -- it is chosen by the reviewer here, not extracted.
 const FIELD_LABELS = Object.freeze({
   invoiceNumber: "شماره فاکتور",
   invoiceDate: "تاریخ فاکتور",
-  vendorName: "فروشنده یا ارائه‌دهنده",
+  supplierName: "فروشنده یا ارائه‌دهنده",
+  buyerName: "خریدار",
+  currency: "واحد پول",
+  totalAmount: "مبلغ نهایی",
+  taxAmount: "مالیات",
+  items: "اقلام فاکتور",
+  rawText: "متن خوانده‌شده",
+  validationStatus: "وضعیت بررسی خودکار",
+  parserWarnings: "هشدارهای خواندن",
   resourceId: "تخصیص به قلم هزینه",
-  totalIRR: "مبلغ نهایی",
 });
 
 const REVIEW_LABELS = Object.freeze({
@@ -113,7 +125,7 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
   draft.fields.forEach((field) => {
     const wrapper = element("label", `ai-field${field.confidence < 0.8 ? " ai-field--low" : ""}`);
     const labelRow = element("span", "ai-field__label");
-    const fieldLabel = field.key === "totalIRR" ? `${FIELD_LABELS[field.key]} به ${getDisplayCurrencyLabel()}` : FIELD_LABELS[field.key];
+    const fieldLabel = field.key === "totalAmount" ? `${FIELD_LABELS[field.key]} به ${getDisplayCurrencyLabel()}` : FIELD_LABELS[field.key];
     labelRow.append(element("strong", "", fieldLabel ?? "اطلاعات خوانده‌شده"), element("small", "", confidenceLabel(field.confidence)));
     let input;
     if (field.key === "invoiceDate") {

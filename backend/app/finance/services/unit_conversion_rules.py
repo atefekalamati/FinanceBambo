@@ -21,12 +21,17 @@ Approving a rule and leaving the mismatch it answers open would be two facts dis
 They happen together.
 """
 
-from datetime import date
+import logging
+from datetime import date, datetime, timezone
 
-from ..domain.conversion_rules import (ConversionRuleRefused, crosses_dimensions,
-                                       resolve_rule, validate_scope)
+from ..domain.conversion_rules import (NARROW_SCOPES, ConversionRuleRefused,
+                                       crosses_dimensions, resolve_rule,
+                                       validate_scope)
 from ..domain.errors import FinanceDomainError
 from ..domain.unit_registry import UNIT_REGISTRY
+
+#: An audit line that fails must not cost the rule it describes.
+LOG = logging.getLogger("finance.conversion_rules")
 
 #: Scopes that outlive one project. Writing one is a statement about every project this
 #: tenant will ever run, so it is gated harder than editing the project in front of you.
@@ -80,6 +85,28 @@ class UnitConversionRuleService:
                             provider_id=provider_id, provider_item_id=provider_item_id,
                             category=category, on_date=on_date)
 
+    async def candidates_by_pair(self, scope, pairs):
+        """Approved rules for many crossings at once, for a caller pricing a whole table.
+
+        Returns the raw candidates rather than resolved rules, because precedence depends
+        on the ROW -- its listing, its supplier, its category -- and resolving here would
+        mean one answer for every row that shares a unit pair. The caller keeps this and
+        calls `resolve_rule` per row against it, which is arithmetic in memory rather than
+        a query.
+        """
+        return await self.repository.candidates_for_pairs(scope, pairs)
+
+    @staticmethod
+    def rule_from(candidates, *, from_unit, to_unit, provider_id=None,
+                  provider_item_id=None, category=None, on_date=None):
+        """`resolve_for`'s decision, against candidates already in hand. No IO."""
+        if not from_unit or not to_unit or from_unit == to_unit:
+            return None
+        return resolve_rule(candidates.get((from_unit, to_unit)) or [],
+                            from_unit=from_unit, to_unit=to_unit,
+                            provider_id=provider_id, provider_item_id=provider_item_id,
+                            category=category, on_date=on_date)
+
     async def preview_rule(self, scope, rule_id, *, price_irr=None):
         """What a rule would do to a price, without letting it near a calculation.
 
@@ -120,12 +147,20 @@ class UnitConversionRuleService:
         if scope_type in TENANT_WIDE_SCOPES:
             self._require_tenant_permission(permissions, "write")
 
+        # An admission only has a subject when the crossing really does depend on the
+        # product AND the scope is wider than one listing. Anywhere else it is stored as
+        # false: a flag set on «تن» to «کیلوگرم» would later be read as "somebody had
+        # doubts about this rule", and nobody did.
+        acknowledged = bool(getattr(payload, "product_dependent_acknowledged", False)
+                            and crosses_dimensions(from_unit, to_unit)
+                            and scope_type not in NARROW_SCOPES)
         try:
             validate_scope(scope_type=scope_type, from_unit=from_unit, to_unit=to_unit,
                            project_id=payload.project_id or scope.project_id,
                            provider_id=payload.provider_id,
                            provider_item_id=payload.provider_item_id,
-                           category=payload.category)
+                           category=payload.category,
+                           product_dependent_acknowledged=acknowledged)
         except ConversionRuleRefused as refused:
             raise UnitConversionRuleRefused(refused.message_fa or str(refused)) from refused
 
@@ -158,8 +193,39 @@ class UnitConversionRuleService:
             "supersedes_rule_id": payload.supersedes_rule_id,
             "evidence_source": payload.evidence_source,
             "reason": reason,
+            # Stamped here rather than accepted from the request: a caller that could
+            # supply the actor could make the admission in somebody else's name, which is
+            # the one thing the three columns exist to prevent.
+            "product_dependent_acknowledged": acknowledged,
+            "product_dependent_acknowledged_by": actor_id if acknowledged else None,
+            "product_dependent_acknowledged_at": (datetime.now(timezone.utc)
+                                                  if acknowledged else None),
         }
-        return await self.repository.create_rule(scope, values=values, created_by=actor_id)
+        rule = await self.repository.create_rule(scope, values=values, created_by=actor_id)
+        if acknowledged:
+            # Its own audit line. The rule's creation is already recorded; this says a
+            # person made a product-dependent claim at a scope that normally refuses one,
+            # and it is findable without reading every rule's row.
+            await self._record_acknowledgement(scope, rule, actor_id=actor_id,
+                                               from_unit=from_unit, to_unit=to_unit,
+                                               scope_type=scope_type)
+        return rule
+
+    async def _record_acknowledgement(self, scope, rule, *, actor_id, from_unit, to_unit,
+                                      scope_type):
+        """Audit the admission, and never fail the rule because auditing failed."""
+        recorder = getattr(self.repository, "record_audit_event", None)
+        if recorder is None:
+            return
+        try:
+            await recorder(
+                scope, action="finance.conversion_rule.product_dependent_acknowledged",
+                entity_type="finance_unit_conversion_rules",
+                entity_id=(rule or {}).get("id"), actor_id=actor_id,
+                after_values={"fromUnit": from_unit, "toUnit": to_unit,
+                              "scopeType": scope_type})
+        except Exception:                                      # noqa: BLE001
+            LOG.exception("conversion rule acknowledgement audit failed")
 
     async def approve_rule(self, scope, rule_id, *, actor_id, permissions=()):
         """Let a rule into calculations, and close the questions it answers."""

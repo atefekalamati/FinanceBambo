@@ -163,12 +163,76 @@ def _label_value(line, labels):
     return None
 
 
+#: A line that is nothing but a number -- the shape a table cell has once OCR has put it
+#: on a line of its own. Deliberately strict: a line with any other word on it is not a
+#: bare value and must not be read as one.
+_BARE_NUMBER_LINE = re.compile(r"^[\d][\d,٬.‏ ]*$")
+
+
 def _labelled(lines, labels):
-    for line in lines:
+    """The value a label introduces, from its own line or from the line below it.
+
+    WHY THE LINE BELOW COUNTS
+
+    OCR flattens a ruled table into reading order, so a label and its amount sitting in
+    two cells of one visual row arrive as two lines:
+
+        مبلغ کل قابل پرداخت      <- the label, alone
+        566,500,000              <- its value, on the next line
+
+    Reading only the label's own line loses that field entirely. On the audited
+    letterhead invoice it lost the payable total -- the one number the whole document is
+    about -- and reported INVOICE_TOTAL_MISSING while 566,500,000 sat one line away.
+
+    WHY IT IS STILL NARROW
+
+    The next line is read ONLY when the label's own line offers nothing after the label,
+    and ONLY when that next line is nothing but a number. Both halves matter: a label
+    followed by more prose is a sentence, not a table row, and a next line carrying words
+    belongs to something else on the page. Anything looser starts attaching whatever
+    happens to follow a label, which is how a parser that never invented a value begins
+    inventing them.
+
+    The evidence returned names BOTH lines, so a reviewer sees why the two were joined.
+    """
+    for index, line in enumerate(lines):
+        # The label-only test comes FIRST, and it has to. `_label_value` returns whatever
+        # follows the first label it finds, and on «مبلغ کل قابل پرداخت» that is
+        # «قابل پرداخت» -- the rest of the heading, handed back as though it were a value.
+        # Checking the same line first would therefore "succeed" with label text and never
+        # look at the number underneath.
+        if _line_is_only_a_label(line, labels):
+            following = lines[index + 1].strip() if index + 1 < len(lines) else ""
+            if following and _BARE_NUMBER_LINE.match(normalize(following)):
+                return following, "%s | %s" % (line.strip(), following)
+            continue
         value = _label_value(line, labels)
         if value:
             return value, line
     return None, None
+
+
+def _line_is_only_a_label(line, labels):
+    """Whether this line is label text and nothing else.
+
+    EVERY matching label is removed, not just the first. Real headings stack them:
+    «مبلغ کل قابل پرداخت» is «مبلغ کل» AND «قابل پرداخت» end to end, and taking one away
+    leaves the other -- so a check that stops at the first match decides the line still
+    holds a value and declines to look at the row below it. That is what kept the payable
+    total unread on the audited invoice.
+
+    At least one label must match, so a line of ordinary prose is never mistaken for a
+    heading waiting on a value.
+    """
+    text = normalize(line).strip()
+    matched = False
+    for label in sorted(labels, key=len, reverse=True):
+        needle = label.lower()
+        while needle in text.lower():
+            position = text.lower().find(needle)
+            text = text[:position] + text[position + len(label):]
+            matched = True
+    return matched and not text.strip(" :：-–—	")
 
 
 # ----------------------------------------------------------------------------- table
@@ -336,14 +400,29 @@ def _find_total(lines, result):
     labelled. It is recorded so a reviewer sees that the document disagreed with itself.
     """
     candidates = []
-    for line in lines:
+    for index, line in enumerate(lines):
         if not any(label in normalize(line).lower() for label in _LABELS["total"]):
             continue
         token = _first_number_token(line)
+        evidence = line.strip()
         if token is None:
-            continue
+            # The label is in a cell of its own and its amount is in the next one, which
+            # OCR delivers as the following line. Same narrow rule as `_labelled`: the
+            # label line must hold nothing but label text, and the next line nothing but
+            # a number. On the audited letterhead invoice this is the difference between
+            # reading the payable total and reporting INVOICE_TOTAL_MISSING with
+            # 566,500,000 one line away.
+            if not _line_is_only_a_label(line, _LABELS["total"]):
+                continue
+            following = lines[index + 1].strip() if index + 1 < len(lines) else ""
+            if not (following and _BARE_NUMBER_LINE.match(normalize(following))):
+                continue
+            token = _first_number_token(following)
+            if token is None:
+                continue
+            evidence = "%s | %s" % (line.strip(), following)
         value, problem = strict_amount(token)
-        candidates.append((value, problem, line.strip()))
+        candidates.append((value, problem, evidence))
     clean = [(value, line) for value, problem, line in candidates if value is not None]
     for value, problem, line in candidates:
         if value is None:

@@ -348,7 +348,8 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     sheet_link = material_price_sheet_url()
     if sheet_link:
         application.state.material_price_import_service = MaterialPriceImportService(
-            PsycopgMaterialPriceRepository(connection), sheet_link=sheet_link)
+            PsycopgMaterialPriceRepository(connection), sheet_link=sheet_link,
+            interval_minutes=material_price_import_interval_minutes())
         print("material price import ENABLED -- sheet configured")
     else:
         print("material price import DISABLED -- %s is not set"
@@ -372,7 +373,11 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     # schedule never names. This prices one line from a LIST of materials somebody entered,
     # and it too writes only its own table.
     application.state.item_price_component_service = ItemPriceComponentService(
-        PsycopgItemPriceComponentRepository(connection))
+        PsycopgItemPriceComponentRepository(connection),
+        # The rule ladder, behind each listing's own measurement. Without it a crossing
+        # nobody measured for THIS product ends at «ضریب تبدیل لازم است» even where an
+        # approved project rule says exactly how to cross the two units.
+        conversion_rules=_conversion_rules)
     # What a price per branch means on a line measured in kilograms -- and, when nobody
     # has said, the record of the question. Writes only its own two tables.
     application.state.unit_conversion_rule_service = _conversion_rules

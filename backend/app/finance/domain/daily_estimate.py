@@ -77,6 +77,9 @@ FROM_QUANTITY = "quantity"
 SOURCE_IDENTITY = "identity"
 SOURCE_UNIT_REGISTRY = "unit_registry"
 SOURCE_CONVERSION_RULE = "conversion_rule"
+#: A measurement recorded against THIS listing. Narrower than a rule and therefore ahead
+#: of it: a weighing of the product being priced beats a statement about its category.
+SOURCE_PROVIDER_ITEM = "provider_item"
 
 FACTOR = "factor"
 FORMULA = "formula"
@@ -119,6 +122,7 @@ class DailyEstimate:
                  "initial_estimated_cost_irr", "initial_estimated_cost_source",
                  "daily_unit_price_irr", "daily_price_unit", "resource_unit",
                  "unit_match_status", "applied_conversion_rule_id",
+                 "applied_conversion_rule_is_product_dependent",
                  "applied_conversion_rule_version", "conversion_method",
                  "conversion_multiplier", "converted_daily_unit_price_irr",
                  "daily_estimated_cost_irr", "calculation_status", "calculation_reason",
@@ -166,6 +170,12 @@ class DailyEstimate:
             "conversion_rule_required": self.conversion_rule_required,
             "applied_conversion_rule_id": (None if self.applied_conversion_rule_id is None
                                            else str(self.applied_conversion_rule_id)),
+            # True when the rule behind this number crosses dimensions at a scope wider
+            # than one listing -- somebody admitted it depends on the product. A reader
+            # comparing two lines needs to see which of them rests on a claim about a
+            # category rather than on a weighing of the thing being priced.
+            "applied_conversion_rule_is_product_dependent":
+                self.applied_conversion_rule_is_product_dependent,
             "applied_conversion_rule_version": self.applied_conversion_rule_version,
             "conversion_method": self.conversion_method,
             "conversion_multiplier": _text(self.conversion_multiplier),
@@ -248,7 +258,7 @@ def match_units(resource_unit, daily_price_unit, conversion_rule=None):
 
 
 def convert_daily_unit_price(daily_unit_price_irr, daily_price_unit, resource_unit,
-                             conversion_rule=None):
+                             conversion_rule=None, provider_item_factor=None):
     """Today's price expressed per the line's own unit.
 
     Returns (converted_price, multiplier, method, source) or (None, ...) when no trusted
@@ -272,6 +282,17 @@ def convert_daily_unit_price(daily_unit_price_irr, daily_price_unit, resource_un
         factor = quantity_factor(daily_price_unit, resource_unit)
         return (convert_unit_price(price, daily_price_unit, resource_unit),
                 factor, FACTOR, SOURCE_UNIT_REGISTRY)
+
+    # The listing's own measurement, ahead of any rule. Same order as
+    # `domain.conversion_rules.choose_conversion`, which the components table uses -- the
+    # two pricing paths have to agree about a row or one screen contradicts the other.
+    measured = _decimal(provider_item_factor)
+    if measured is not None and measured > 0:
+        try:
+            converted = (price / measured).quantize(Decimal("0.00000001"))
+        except (ArithmeticError, ConversionRefused):
+            return None, None, FACTOR, None
+        return converted, measured, FACTOR, SOURCE_PROVIDER_ITEM
 
     if conversion_rule is None:
         return None, None, None, None
@@ -297,7 +318,8 @@ def calculate_daily_estimate(*, quantity=None, daily_quantity=None,
                              initial_unit_price_irr=None,
                              authoritative_initial_cost_irr=None,
                              daily_unit_price_irr=None, resource_unit=None,
-                             daily_price_unit=None, conversion_rule=None):
+                             daily_price_unit=None, conversion_rule=None,
+                             provider_item_factor=None):
     """Both answers for one line, and the reason for whichever is missing.
 
     Pure: no database, no clock, no request. Everything it needs is an argument, which is
@@ -319,6 +341,8 @@ def calculate_daily_estimate(*, quantity=None, daily_quantity=None,
         daily_price_unit=_code(daily_price_unit),
         resource_unit=_code(resource_unit),
         applied_conversion_rule_id=(conversion_rule or {}).get("id"),
+        applied_conversion_rule_is_product_dependent=bool(
+            (conversion_rule or {}).get("product_dependent_acknowledged")),
         applied_conversion_rule_version=(conversion_rule or {}).get("version"),
     )
 
@@ -346,14 +370,21 @@ def calculate_daily_estimate(*, quantity=None, daily_quantity=None,
                         "%s and %s measure different things; no factor can bridge them."
                         % (_code(daily_price_unit), _code(resource_unit)),
                         None, None)
-    if match == CONVERSION_RULE_REQUIRED:
+    # A measurement of THIS listing answers the crossing as well as a rule does, so the
+    # refusal has to ask about both. `match` is computed from the rule alone; without this
+    # the line would be told "no approved conversion rule exists" while a weighing of the
+    # very product sat in `provider_item_unit_factors`.
+    measured_factor = _decimal(provider_item_factor)
+    has_measurement = measured_factor is not None and measured_factor > 0
+    if match == CONVERSION_RULE_REQUIRED and not has_measurement:
         return _blocked(answer, CONVERSION_RULE_REQUIRED,
                         "No approved conversion rule exists for %s to %s."
                         % (_code(daily_price_unit), _code(resource_unit)),
                         ACTION_DEFINE_CONVERSION_RULE, ACTION_TARGET_SETTINGS)
 
     converted, multiplier, method, source = convert_daily_unit_price(
-        daily_unit_price_irr, daily_price_unit, resource_unit, conversion_rule)
+        daily_unit_price_irr, daily_price_unit, resource_unit, conversion_rule,
+        provider_item_factor=provider_item_factor)
     answer["converted_daily_unit_price_irr"] = converted
     answer["conversion_multiplier"] = multiplier
     answer["conversion_method"] = method

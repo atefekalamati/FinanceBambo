@@ -29,6 +29,7 @@ from ..domain.errors import FinanceDomainError
 from ..domain.item_price_components import (PER_MSP_UNIT, TOTAL_QUANTITY, USAGE_MODES,
                                             PricedComponent, aggregate_row,
                                             price_component)
+from ..domain.conversion_rules import choose_conversion
 from ..domain.material_categories import category_label, spec_columns, specs_of
 from ..domain.unit_conversion import can_convert
 from ..domain.unit_registry import UNIT_REGISTRY
@@ -41,9 +42,27 @@ class ItemPriceComponentRefused(FinanceDomainError):
 
 
 class ItemPriceComponentService:
-    def __init__(self, repository, clock=date.today):
+    """Pricing for the «ریز برآورد» table.
+
+    THE FALLBACK THIS SERVICE GAINED
+
+    A crossing that no listing measurement answers used to end the row at
+    `needs_factor`, even where an approved project-level rule said exactly how to cross
+    those two units. `finance_unit_conversion_rules` -- seven scopes, approval, history
+    and precedence -- was never read on this path at all, so recording a rule had no
+    effect on the number anybody saw. On the audited project that is 832 of 835 lines
+    with no component measurement of their own.
+
+    The rule is consulted ONLY where a listing measurement is absent, so no row that
+    prices today changes its number.
+    """
+
+    def __init__(self, repository, clock=date.today, conversion_rules=None):
         self.repository = repository
         self.clock = clock
+        #: Optional so every existing construction keeps working unchanged; when it is
+        #: absent the service behaves exactly as it did before the fallback existed.
+        self.conversion_rules = conversion_rules
 
     # --------------------------------------------------------------------------- read
 
@@ -60,6 +79,9 @@ class ItemPriceComponentService:
         prices = await self.repository.latest_prices_for_items(scope, item_ids)
         factors = await self.repository.approved_factors_for_items(scope, item_ids)
         quantities = await self.repository.line_quantities(scope)
+        # ONE query for every unit pair the table needs, not one per component. A page of
+        # 835 rows asks about a handful of distinct crossings.
+        rules = await self._rule_candidates(scope, active, prices)
 
         by_line = {}
         for component in active:
@@ -67,47 +89,95 @@ class ItemPriceComponentService:
 
         answers = {}
         for line_id, quantity in quantities.items():
-            priced = [self._price(c, prices, factors, quantity)
+            priced = [self._price(c, prices, factors, quantity, rules)
                       for c in by_line.get(line_id, [])]
             row = aggregate_row(priced)
             answers[str(line_id)] = dict(row, estimate_line_id=str(line_id),
                                          **self._source_summary(by_line.get(line_id, []),
-                                                                prices))
+                                                                prices, priced))
         # A component on a line the quantity query did not return -- a deleted line, or one
         # outside this project's estimate. Reported rather than dropped: a silently missing
         # row is how a cost disappears from a total nobody is checking.
         for line_id, items in by_line.items():
+            orphaned = [self._price(c, prices, factors, None, rules) for c in items]
             answers.setdefault(str(line_id), dict(
-                aggregate_row([self._price(c, prices, factors, None) for c in items]),
+                aggregate_row(orphaned),
                 estimate_line_id=str(line_id),
-                **self._source_summary(items, prices)))
+                **self._source_summary(items, prices, orphaned)))
         return answers
 
     @staticmethod
-    def _source_summary(components, prices):
-        """What the «منبع» column says: one product by name, or that there are several."""
+    def _source_summary(components, prices, priced=()):
+        """The «منبع» column, and the two units the conversion dialog is opened with.
+
+        A line with ONE component can state its product, the unit its price is quoted in
+        and the unit the line consumes it in -- which is exactly what somebody about to
+        write a conversion factor needs, and what the table could not show before.
+
+        A line with SEVERAL states none of them, the same way it already declines to name
+        one product out of three. Two components can be priced per kilogram and per
+        square metre, and putting either in a column headed «واحد شیت قیمت» would be
+        picking one arbitrarily.
+
+        No query is added: both values are already in hand.
+        """
+        empty = {"provider_name": None, "product_name": None, "source_summary": None,
+                 "source_price_unit": None, "selected_unit": None, "factor_source": None}
         if not components:
-            return {"provider_name": None, "product_name": None, "source_summary": None}
+            return empty
         if len(components) == 1:
-            observation = prices.get(components[0]["provider_item_id"]) or {}
+            component = components[0]
+            observation = prices.get(component["provider_item_id"]) or {}
             return {
                 "provider_name": observation.get("provider_name"),
                 "product_name": observation.get("external_name"),
                 "source_summary": None,
+                "source_price_unit": _source_unit(observation),
+                "selected_unit": component.get("selected_unit"),
+                "factor_source": (priced[0].factor_source if priced else None),
             }
-        return {"provider_name": None, "product_name": None,
-                "source_summary": "چند مصالح (%d قلم)" % len(components)}
+        return dict(empty, source_summary="چند مصالح (%d قلم)" % len(components))
 
-    def _price(self, component, prices, factors, msp_quantity):
+    async def _rule_candidates(self, scope, components, prices):
+        """Approved rules for every crossing this table needs, fetched once.
+
+        Only pairs that a listing measurement does not already answer are asked for --
+        the rule is a fallback, so a crossing already covered costs nothing to look up.
+        """
+        if self.conversion_rules is None:
+            return {}
+        pairs = set()
+        for component in components:
+            observation = prices.get(component["provider_item_id"]) or {}
+            source_unit = _source_unit(observation)
+            selected = component.get("selected_unit")
+            if source_unit and selected and source_unit != selected:
+                pairs.add((source_unit, selected))
+        if not pairs:
+            return {}
+        return await self.conversion_rules.candidates_by_pair(scope, pairs)
+
+    def _price(self, component, prices, factors, msp_quantity, rules=None):
         observation = prices.get(component["provider_item_id"]) or {}
         source_unit = _source_unit(observation)
-        factor = _factor_for(factors, component["provider_item_id"],
-                             source_unit, component.get("selected_unit"))
+        selected = component.get("selected_unit")
+        listing_factor = _factor_for(factors, component["provider_item_id"],
+                                     source_unit, selected)
+        # The rule ladder, behind the listing's own measurement. `choose_conversion` owns
+        # the order and both pricing paths call it, so one row cannot be priced two ways.
+        rule = None
+        if listing_factor is None and rules and self.conversion_rules is not None:
+            rule = self.conversion_rules.rule_from(
+                rules, from_unit=source_unit, to_unit=selected,
+                provider_item_id=component.get("provider_item_id"),
+                provider_id=observation.get("provider_id"),
+                category=component.get("category") or observation.get("category"))
+        factor, factor_source = choose_conversion(listing_factor, rule)
         return price_component(
             component=dict(component, usage_quantity=component.get("usage_quantity_decimal")),
             price_irr=observation.get("normalized_price_irr"),
             source_unit=source_unit, msp_quantity=msp_quantity,
-            factor=(factor or {}).get("factor"))
+            factor=factor, factor_source=factor_source)
 
     async def components_for_line(self, scope, estimate_line_id):
         """Every live component of one line, priced, with the row total beside them.
@@ -122,10 +192,14 @@ class ItemPriceComponentService:
         item_ids = {c["provider_item_id"] for c in components}
         prices = await self.repository.latest_prices_for_items(scope, item_ids)
         factors = await self.repository.approved_factors_for_items(scope, item_ids)
+        # The same fallback the table uses. If the panel and the table consulted different
+        # sources, one row would show two different prices depending on which screen
+        # opened it, which is worse than either answer alone.
+        rules = await self._rule_candidates(scope, components, prices)
 
         rows, priced_active = [], []
         for component in components:
-            priced = self._price(component, prices, factors, quantity)
+            priced = self._price(component, prices, factors, quantity, rules)
             observation = prices.get(component["provider_item_id"]) or {}
             rows.append(dict(
                 priced.as_dict(),

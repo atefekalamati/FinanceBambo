@@ -118,7 +118,60 @@ def _as_contract(result):
     fields = [{"key": RAW_TEXT_KEY, "extractedValue": text,
                "confidence": confidence, "editedByUser": False}]
     fields.extend(_structured_fields(text, confidence))
+    fields.extend(_ai_fields(text, {field["key"] for field in fields},
+                             transcript=result.get("transcript"),
+                             metadata=result.get("metadata")))
     return {"fields": fields}
+
+
+#: How much of the model's stated confidence survives into the draft. A model's own number
+#: is about its fluency as much as about the document, and these candidates have had no
+#: rule applied to them -- so they arrive visibly less certain than a parser field, which
+#: is what puts them below the review UI's 0.8 "look at this" threshold by default.
+AI_CONFIDENCE_WEIGHT = 0.9
+
+
+def _ai_fields(text, already_emitted, transcript=None, metadata=None):
+    """AvalAI's candidates for the fields the deterministic parser could not find.
+
+    THE ORDER IS THE POINT. `_structured_fields` runs first and its keys are passed in
+    here as `already_emitted`; anything it produced is never asked of the model and never
+    overwritten by it. A rule that can be read beats a model that cannot, so the model
+    fills gaps and does not arbitrate.
+
+    Switched off entirely when `AVALAI_API_KEY` is unset, which is the default. Every
+    failure -- no key, gateway down, a reply that is not the agreed JSON -- returns no
+    fields and lets the extraction continue: the OCR text and the parser's candidates are
+    already in `fields`, and losing them because a second opinion was unavailable would
+    make the pipeline less reliable for having gained a provider.
+    """
+    try:
+        from extraction.providers.avalai import (AvalAIProvider, ProviderResponseInvalid,
+                                                 ProviderUnavailable)
+    except ImportError:                                        # noqa: BLE001
+        return []
+    provider = AvalAIProvider()
+    if not provider.configured:
+        return []
+    try:
+        candidates = provider.extract(text, transcript=transcript, metadata=metadata)
+    except (ProviderUnavailable, ProviderResponseInvalid) as error:
+        # Named, not swallowed: "the AI was unavailable" and "the AI answered nonsense"
+        # send a reader to different places.
+        LOG.warning("avalai extraction skipped: %s", error)
+        return []
+    except Exception:                                          # noqa: BLE001
+        LOG.exception("avalai extraction failed; the rest of the extraction stands")
+        return []
+
+    emitted = []
+    for key, (value, confidence) in sorted(candidates.items()):
+        if key in already_emitted:
+            continue
+        emitted.append({"key": key, "extractedValue": value,
+                        "confidence": min(1.0, max(0.0, confidence * AI_CONFIDENCE_WEIGHT)),
+                        "editedByUser": False})
+    return emitted
 
 
 def _decimal_text(value):

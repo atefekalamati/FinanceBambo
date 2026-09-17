@@ -686,7 +686,9 @@ async def material_price_history(projectId:str,providerItemId:UUID,request:Reque
 
 @router.post("/material-prices/import-runs",response_model=ImportRunStartedResponse,
              status_code=201,responses=FINANCE_ERROR_RESPONSES)
-async def start_material_price_import(projectId:str,request:Request):
+async def start_material_price_import(projectId:str,request:Request,
+    force:bool=Query(True,description="import even if one ran recently"),
+    dueOnly:bool=Query(False,description="import only if the interval has passed")):
     """Read the configured sheet now, and say what that did.
 
     THE TRIGGER THIS SYSTEM DID NOT HAVE.
@@ -714,6 +716,22 @@ async def start_material_price_import(projectId:str,request:Request):
         raise MaterialPriceSheetNotConfigured(
             "this host has no material price import configured; "
             "set FINANCE_MATERIAL_PRICE_SHEET_URL and restart")
+    # `force` and `dueOnly` are inverses of one decision: whether to respect the schedule.
+    # Both names are accepted because both are how callers ask -- a person clicking a
+    # button says force, a scheduler says dueOnly -- and either one asking for the
+    # schedule to be respected is enough.
+    if dueOnly or not force:
+        interval=service.interval_minutes
+        due=await service.due_projects(interval)
+        if not any(row["project_id"]==scope.project_id for row,_ in due):
+            # Nothing read, nothing written, and the reason is a number rather than a
+            # shrug: a caller that gets "skipped" with no interval cannot tell a working
+            # schedule from a broken one.
+            return ImportRunStartedResponse(
+                status="skipped",run=None,inserted=0,already_present=0,rejected=0,
+                worksheet_report={},
+                message=("skipped: an import for this project succeeded within the last "
+                         "%d minutes" % interval))
     outcome=await service.run(scope)
     return ImportRunStartedResponse(
         status=outcome.status,

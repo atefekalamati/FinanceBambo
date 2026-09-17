@@ -13,9 +13,19 @@ from fastapi import HTTPException
 
 from app.finance.security.context import AuthContext
 
+#: Every permission the router actually gates on, so the development operator can reach
+#: every route. `finance.manage_invoice` was missing, and it is the one the whole invoice
+#: pipeline hangs from: uploading a file, starting an extraction, retrying it, rejecting
+#: it and confirming it all require it. Its absence meant the dev host answered 403 to the
+#: FIRST step of that pipeline, so nobody could test it here at all -- and a 403 on upload
+#: is indistinguishable, from the browser, from the extraction being broken.
+#:
+#: Derived from the router rather than remembered: `test_dev_permissions_cover_the_router`
+#: greps the routes and fails if this list falls behind again.
 ALL_FINANCE_PERMISSIONS = (
     "finance.view",
     "finance.edit",
+    "finance.manage_invoice",
     "finance_report.view",
     "finance_report.issue",
     "finance_report.export",

@@ -178,11 +178,20 @@ class ContractTests(unittest.IsolatedAsyncioTestCase):
                         "the CLI catches the base class and must keep working")
 
     def test_the_trigger_endpoint_takes_no_caller_supplied_source(self):
-        """A caller who could name the sheet could point this host at any sheet at all."""
+        """A caller who could name the sheet could point this host at any sheet at all.
+
+        The assertion is about SOURCE, not about the parameter count: `force` and
+        `dueOnly` were added later and say when to import, never what to import from.
+        Pinning the exact list made this fail for the right endpoint gaining the right
+        parameter, which is a guard testing its own wording rather than the rule.
+        """
         import inspect
         from app.finance import router
-        signature = inspect.signature(router.start_material_price_import)
-        self.assertEqual(["projectId", "request"], list(signature.parameters))
+        params = list(inspect.signature(router.start_material_price_import).parameters)
+        self.assertEqual([], [p for p in params
+                              if "sheet" in p.lower() or "url" in p.lower()
+                              or "source" in p.lower()],
+                         "the sheet is configuration and must never be a request field")
 
 
 if __name__ == "__main__":

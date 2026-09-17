@@ -64,6 +64,23 @@ class ItemPriceRowStatusResponse(ApiModel):
     product_name: str | None = None
     source_summary: str | None = None
 
+    #: The two units the «ریز برآورد» table shows side by side, and the gap between them
+    #: is the only thing stopping a daily price. Somebody about to write a conversion
+    #: factor has to know FROM what TO what -- the two values the conversion dialog is
+    #: filled with. Null on a line with no component, and null on a line with several,
+    #: exactly as `providerName` and `productName` are: one row cannot state two units.
+    source_price_unit: str | None = None
+    selected_unit: str | None = None
+
+    #: Where the number that crossed those units came from:
+    #: provider_item | conversion_rule | registry | null.
+    #:
+    #: Without it two figures of very different standing share one column -- a weighing of
+    #: this exact product and a rule written for a whole category look identical, and a
+    #: reader cannot tell which they are being asked to trust. Null when nothing was
+    #: converted, and null on a multi-component row for the same reason as the units.
+    factor_source: str | None = None
+
 
 class ItemPriceRowStatusListResponse(ApiModel):
     items: list[ItemPriceRowStatusResponse]
@@ -96,6 +113,8 @@ class PriceComponentResponse(ApiModel):
     selected_unit: str | None = None
     source_unit: str | None = None
     conversion_factor: str | None = None
+    #: provider_item | conversion_rule | registry | null -- see the row status above.
+    factor_source: str | None = None
     conversion_status: Literal["automatic", "factor", "incompatible", "unknown"] | None = None
     conversion_factor_id: str | None = None
 
