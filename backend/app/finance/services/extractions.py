@@ -86,10 +86,27 @@ class FinanceExtractionService:
             parsed = ProviderExtractionResult.model_validate(raw)
         except ValueError as error:
             if changes_file_status: await self.attachments.transition(scope, attachment, "failed")
+            LOG.exception("extraction %s: provider output is off-contract", attachment_id)
             raise AIExtractionContentError("provider output does not match the extraction contract") from error
         except Exception as error:
             if changes_file_status: await self.attachments.transition(scope, attachment, "failed")
-            raise AIExtractionFailed("extraction provider is unavailable") from error
+            # WHICH LAYER FAILED, IN THE LOG AND IN THE MESSAGE.
+            #
+            # This used to raise "extraction provider is unavailable" for everything, and
+            # logged nothing at all. A file that was missing from storage, a model that
+            # would not load, an image the decoder refused and a bug in the parser were
+            # one indistinguishable 503 -- and the service's own comment above records
+            # that a FileNotFoundError once wore that message for long enough to convince
+            # people the OCR was broken when the path was.
+            #
+            # The exception type reaches the caller; the traceback reaches the log. The
+            # message stays deliberately free of file names and paths, because it is
+            # returned over HTTP.
+            LOG.exception("extraction %s failed in %s: %s", attachment_id,
+                          extractor.adapter_name, type(error).__name__)
+            raise AIExtractionFailed(
+                "extraction failed in %s (%s); see the server log for the trace"
+                % (extractor.adapter_name, type(error).__name__)) from error
         if changes_file_status: attachment = await self.attachments.transition(scope, attachment, "ready")
         fields = [ExtractionField(**field.model_dump()) for field in parsed.fields]
         draft = ExtractionDraft(self.ids(), scope.organization_id, scope.project_id, attachment, 0,
