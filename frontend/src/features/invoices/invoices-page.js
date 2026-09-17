@@ -13,6 +13,7 @@ import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { createPermissionNotice } from "../../shared/components/permission-notice.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
 import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
+import { GENERAL_COST_STAGE, UNSTAGED, buildStageIndex, targetsInStage } from "./invoice-stages.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { actorLabel } from "../../shared/formatters/actor.js";
 import { IDENTITY, PRIMARY, SECONDARY, createDataTable, createTablePagination, createTableToolbar, defaultVisibleColumns, repaintPreservingFocus, updateFilterChips }
@@ -119,6 +120,21 @@ function option(value, label) {
   return node;
 }
 
+/**
+ * How one stage reads in the picker.
+ *
+ * The count is part of the label because it is what makes the menu navigable: somebody
+ * looking for a delivery of rebar wants to know which stage holds forty rows and which
+ * holds two before they open either one.
+ */
+function stageOptionLabel(stage) {
+  const count = `${formatDisplayNumber(String(stage.count))} ردیف`;
+  if (stage.value === GENERAL_COST_STAGE) return `هزینه‌های عمومی پروژه · ${count}`;
+  if (stage.value === UNSTAGED) return `بدون مرحله در فایل زمان‌بندی · ${count}`;
+  const number = formatDisplayNumber(stage.value);
+  return `${stage.title ? `${number} · ${stage.title}` : `مرحله ${number}`} · ${count}`;
+}
+
 function inputField(label, name, { type = "text", inputMode = "text", placeholder = "" } = {}) {
   const field = element("label", "form-field");
   field.append(element("span", "form-label", label));
@@ -157,6 +173,10 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
   message.setAttribute("aria-live", "assertive");
   let currentStep = 1;
   let targets = [];
+  /* Kept on the wizard, not inside the step, because adding a line repaints the whole step.
+     Somebody entering six lines of one delivery note picks the stage once instead of six
+     times, and the filter they set does not silently undo itself between lines. */
+  let selectedStage = "";
   let headerData = null;
   let lines = [];
   let adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
@@ -224,22 +244,69 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
 
   function renderLinesStep() {
     const section = element("div", "invoice-lines-editor");
+    /* THE STAGE IS A FILTER, NOT A FIELD.
+       Nothing chosen here is sent anywhere. The line still points at an estimate line and
+       the stage is still derived from that line's activity, exactly as the reports compute
+       it -- see `invoice-stages.js` for why storing it twice would be worse than useless.
+       What this buys is the only thing that was actually wrong: 835 estimate lines in one
+       flat menu, which is a list nobody reads to the end. Somebody then picks «هزینه عمومی»
+       because it is the option they can find, and that money leaves the level-one report
+       for good. The fix is a shorter list, not a new column. */
+    const stages = buildStageIndex(targets);
+    const stageField = element("label", "form-field");
+    stageField.append(element("span", "form-label", "مرحله پروژه"));
+    const stageSelect = element("select", "app-select");
+    stageSelect.append(option("", "انتخاب کنید"), ...stages.map((stage) => option(stage.value, stageOptionLabel(stage))));
+    stageField.append(stageSelect);
+
     const targetField = element("label", "form-field");
     targetField.append(element("span", "form-label", "اتصال به ردیف برآورد یا هزینه‌های عمومی پروژه"));
     const targetSelect = element("select", "app-select");
-    targetSelect.append(option("", "انتخاب کنید"), ...targets.map((target) => option(target.targetId, `${target.label} · ${target.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : formatUnitLabel(target.unit)}`)));
     targetField.append(targetSelect);
     const quantity = inputField("مقدار", "quantity", { inputMode: "decimal" });
     const unitPrice = inputField(`قیمت واحد به ${getDisplayCurrencyLabel()}`, "unitPriceIRR", { inputMode: "decimal" });
     const amount = inputField(`مبلغ هزینه عمومی پروژه به ${getDisplayCurrencyLabel()}`, "amountIRR", { inputMode: "decimal" });
-    amount.field.hidden = true;
+    /* Said before the amount is typed, not discovered after the invoice is confirmed.
+       WHAT IS AND IS NOT TRUE OF A GENERAL COST
+       It carries no estimate line, so no activity and therefore no WBS stage can be derived
+       for it, and `by_wbs` places it in no node -- the level-one chart cannot draw it. That
+       is the whole of the loss. It is NOT money that goes missing: it counts in the project's
+       actual cost, in the monthly trend, in the breakdown by resource type, and against the
+       general-cost item's own baseline, which pools unattached lines up to its revised
+       amount and warns when they pass it. Saying only the first half would send somebody
+       hunting for a stage that does not apply to a building permit. */
+    const generalWarning = element("p", "invoice-warning",
+      "هزینه عمومی به هیچ مرحله‌ای وصل نمی‌شود، پس در نمودار «گزارش مالی سطح ۱» دیده نمی‌شود. در هزینه واقعی پروژه، روند ماهانه و تفکیک هزینه‌ها کامل حساب می‌شود. اگر این خرید برای مرحله مشخصی است، همان مرحله را انتخاب کنید.");
+
+    function paintTargets() {
+      const inStage = targetsInStage(targets, selectedStage);
+      targetSelect.replaceChildren(
+        option("", selectedStage ? "انتخاب کنید" : "ابتدا مرحله را انتخاب کنید"),
+        ...inStage.map((target) => option(target.targetId, `${target.label} · ${target.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : formatUnitLabel(target.unit)}`)));
+      targetSelect.disabled = inStage.length === 0;
+      generalWarning.hidden = selectedStage !== GENERAL_COST_STAGE;
+      // Nothing is selected yet, so neither amount shape applies. Both stay hidden rather
+      // than one of them guessing: the quantity boxes belong to an estimate line and the
+      // single amount box to a general cost, and which it is has not been said.
+      quantity.field.hidden = true;
+      unitPrice.field.hidden = true;
+      amount.field.hidden = true;
+    }
+
+    stageSelect.value = selectedStage;
+    stageSelect.addEventListener("change", () => {
+      selectedStage = stageSelect.value;
+      paintTargets();
+    });
     targetSelect.addEventListener("change", () => {
       const target = targets.find((item) => item.targetId === targetSelect.value);
+      const chosen = Boolean(target);
       const general = target?.targetType === "general_cost";
-      quantity.field.hidden = general;
-      unitPrice.field.hidden = general;
-      amount.field.hidden = !general;
+      quantity.field.hidden = !chosen || general;
+      unitPrice.field.hidden = !chosen || general;
+      amount.field.hidden = !chosen || !general;
     });
+    paintTargets();
     const lineDescription = inputField("توضیح خط", "lineDescription");
     const add = element("button", "button button--ghost", "افزودن خط");
     add.type = "button";
@@ -252,7 +319,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
       paintStep();
     });
     const editor = element("div", "invoice-line-entry");
-    editor.append(targetField, quantity.field, unitPrice.field, amount.field, lineDescription.field, add);
+    editor.append(stageField, targetField, generalWarning, quantity.field, unitPrice.field, amount.field, lineDescription.field, add);
     const list = element("div", "invoice-draft-lines");
     lines.forEach((line, index) => {
       const card = element("article", "invoice-draft-line");
