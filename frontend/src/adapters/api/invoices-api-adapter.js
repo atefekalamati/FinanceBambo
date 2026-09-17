@@ -50,6 +50,13 @@ function mapInvoice(value, targets = []) {
         unit: line.unit,
         unitPriceIRR: line.unitPriceIrr,
         lineAmountIRR: line.finalLineAmountIrr,
+        /* The line BEFORE the header's discount, tax, shipping and other costs were
+           distributed across it. `finalLineAmountIrr` is what the line came to and is what
+           a reader should see; `rawAmountIrr` is what somebody TYPED, and it is the only
+           one an edit form may put back in the box. Prefilling a general-cost line with its
+           final amount would fold that invoice's tax into the figure and fold it in again
+           on the next save. */
+        rawAmountIRR: line.rawAmountIrr,
         description: line.description,
       };
     }),
@@ -180,5 +187,41 @@ export function createApiInvoicesAdapter(context, client) {
     const payload = { invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "corrective", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: null, directAdjustmentAllocations: [], lines: await linePayload(lines), financialEffectSign, reason };
     return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(originalInvoiceId)}/corrective`, jsonOptions("POST", payload)), targetCache);
   }
-  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective });
+  /* Rewriting an invoice that has not been confirmed.
+   *
+   * WHY IT SENDS EVERYTHING
+   * The whole document is the unit of an edit: change a quantity and the header's discount
+   * redistributes across every line, so a patch of one field would leave the other lines
+   * holding shares of a total that no longer exists. The service recomputes the
+   * distribution from what it is given, exactly as it does on create.
+   *
+   * `expectedVersion` is the version the person was LOOKING AT. If somebody else moved the
+   * invoice on — submitted it, or edited it — the service refuses with STALE_VERSION rather
+   * than overwriting a change nobody in this dialog saw.
+   *
+   * WHAT THE SERVICE ACCEPTS TODAY
+   * `InvoicePatch` takes `description`, `status` and `expectedVersion` and forbids extra
+   * fields, so everything below the description is refused until the service is widened —
+   * with the service's own 422, not a silent partial write. That is the honest failure:
+   * nothing is saved, and nothing the person typed is quietly dropped. When the endpoint
+   * grows the fields, this call starts working with no change here.
+   */
+  async function updateInvoice({ invoiceId, expectedVersion, header, lines, adjustments }) {
+    const payload = {
+      expectedVersion,
+      invoiceDate: header.invoiceDate,
+      vendorName: header.vendorName,
+      description: header.description || null,
+      discountIrr: adjustments.discountIRR,
+      taxIrr: adjustments.taxIRR,
+      shippingIrr: adjustments.shippingIRR,
+      otherCostsIrr: adjustments.otherCostsIRR,
+      directAdjustmentAllocations: [],
+      lines: await linePayload(lines),
+    };
+    return mapInvoice(await client.request(
+      `${base}/invoices/${encodeURIComponent(invoiceId)}`, jsonOptions("PATCH", payload)), targetCache);
+  }
+
+  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective, updateInvoice });
 }

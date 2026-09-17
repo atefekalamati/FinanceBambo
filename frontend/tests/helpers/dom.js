@@ -231,6 +231,13 @@ export function installDom() {
     createDocumentFragment() {
       return new FakeDocumentFragment();
     },
+    /* SVG. The shared report header draws the company mark, and a module that renders a
+       letterhead cannot be rendered here at all without this. The namespace is accepted and
+       discarded: nothing in these tests asks what namespace a node is in, and a stub that
+       tracked one would be pretending to know more about SVG than it does. */
+    createElementNS(_namespace, tag) {
+      return new FakeNode(tag);
+    },
     body: new FakeNode("body"),
   };
   globalThis.document = document;
