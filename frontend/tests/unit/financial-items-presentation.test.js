@@ -108,12 +108,18 @@ test("withholds legacy rows without removing them from the data it was given", (
   assert.ok(resources.includes(legacyResource));
 });
 
-test("tells the reader what the table is not showing", () => {
-  assert.equal(withheldRowsNotice({ hiddenLegacyCount: 0, orphanCount: 0 }), null);
-  const notice = withheldRowsNotice({ hiddenLegacyCount: 120, orphanCount: 3 });
-  assert.match(notice, /MSP-T/);
-  assert.match(notice, /حذف هم نشده/, "a reader must not think the rows were deleted");
+test("tells the reader only about rows that are worth acting on", () => {
+  assert.equal(withheldRowsNotice({ orphanCount: 0 }), null);
+  const notice = withheldRowsNotice({ orphanCount: 3 });
   assert.match(notice, /بدون قلم هزینه معتبر/);
+});
+
+test("the legacy rows are withheld without a paragraph about it", () => {
+  /* They are an artefact of an older import rather than a state a reader can act on, and
+     a notice on every visit was the page apologising for its own data. Still counted --
+     `selectEstimateRows` reports the number -- so anything that needs it can have it. */
+  assert.equal(withheldRowsNotice({ hiddenLegacyCount: 120, orphanCount: 0 }), null);
+  assert.ok(!/MSP-T/.test(withheldRowsNotice({ hiddenLegacyCount: 120, orphanCount: 3 }) ?? ""));
 });
 
 test("exports the one WBS value the table shows", () => {

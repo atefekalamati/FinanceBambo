@@ -21,7 +21,7 @@ import { installDom } from "../helpers/dom.js";
 
 installDom();
 
-const { columnsFor, cellValue, renderMaterialPrices } =
+const { columnsFor, presentedColumns, cellValue, renderMaterialPrices } =
   await import("../../src/features/prices/material-prices-section.js");
 
 const SECTION_SOURCE = readFileSync(
@@ -40,7 +40,7 @@ const CATEGORIES = [
     { key: "طول", label: "طول", kind: "spec", numeric: false },
     { key: "تعداد شاخه", label: "تعداد شاخه", kind: "spec", numeric: true },
     { key: "price", label: "قیمت", kind: "base", numeric: true },
-    { key: "workflowDate", label: "تاریخ آپدیت ورک فلو", kind: "base" },
+    { key: "workflowDate", label: "آخرین آپدیت", kind: "base" },
     { key: "productId", label: "productId", kind: "base" },
   ] },
   { category: "ibeam", label: "تیرآهن", columns: [
@@ -48,7 +48,7 @@ const CATEGORIES = [
     { key: "product", label: "محصول", kind: "base" },
     { key: "وزن - کیلوگرم", label: "وزن (کیلوگرم)", kind: "spec", numeric: true },
     { key: "price", label: "قیمت", kind: "base", numeric: true },
-    { key: "workflowDate", label: "تاریخ آپدیت ورک فلو", kind: "base" },
+    { key: "workflowDate", label: "آخرین آپدیت", kind: "base" },
     { key: "productId", label: "productId", kind: "base" },
   ] },
   { category: "brick", label: "آجر", columns: [
@@ -59,14 +59,14 @@ const CATEGORIES = [
     { key: "وزن", label: "وزن", kind: "spec", numeric: true },
     { key: "price", label: "قیمت", kind: "base", numeric: true },
     { key: "قیمت در هر مترمربع", label: "قیمت در هر مترمربع", kind: "spec", numeric: true },
-    { key: "workflowDate", label: "تاریخ آپدیت ورک فلو", kind: "base" },
+    { key: "workflowDate", label: "آخرین آپدیت", kind: "base" },
     { key: "productId", label: "productId", kind: "base" },
   ] },
   { category: "pipe", label: "لوله", columns: [
     { key: "source", label: "منبع", kind: "base" },
     { key: "product", label: "محصول", kind: "base" },
     { key: "price", label: "قیمت", kind: "base", numeric: true },
-    { key: "workflowDate", label: "تاریخ آپدیت ورک فلو", kind: "base" },
+    { key: "workflowDate", label: "آخرین آپدیت", kind: "base" },
     { key: "productId", label: "productId", kind: "base" },
   ] },
 ];
@@ -94,14 +94,14 @@ function row(over = {}) {
 test("angle shows exactly its worksheet's columns", () => {
   assert.deepEqual(labels("angle"), [
     "منبع", "محصول", "ضخامت", "وزن", "طول", "تعداد شاخه",
-    "قیمت", "تاریخ آپدیت ورک فلو", "productId",
+    "قیمت", "آخرین آپدیت", "productId",
   ]);
 });
 
 test("brick shows its own, including the square-metre price beside the price", () => {
   assert.deepEqual(labels("brick"), [
     "منبع", "محصول", "کد", "ابعاد", "وزن",
-    "قیمت", "قیمت در هر مترمربع", "تاریخ آپدیت ورک فلو", "productId",
+    "قیمت", "قیمت در هر مترمربع", "آخرین آپدیت", "productId",
   ]);
 });
 
@@ -118,7 +118,7 @@ test("ibeam does not borrow angle's columns", () => {
 test("a worksheet that states no measurements gets a short honest table", () => {
   // Pipe. Five columns, none invented.
   assert.deepEqual(labels("pipe"),
-    ["منبع", "محصول", "قیمت", "تاریخ آپدیت ورک فلو", "productId"]);
+    ["منبع", "محصول", "قیمت", "آخرین آپدیت", "productId"]);
 });
 
 test("no category renders the old generic column set", () => {
@@ -221,7 +221,7 @@ test("the rendered header row is the chosen category's", () => {
   const headers = [...section.querySelectorAll("th")].map((th) => th.textContent);
   assert.deepEqual(headers, [
     "منبع", "محصول", "ضخامت", "وزن", "طول", "تعداد شاخه",
-    "قیمت", "تاریخ آپدیت ورک فلو", "productId",
+    "قیمت", "آخرین آپدیت", "productId",
   ]);
 });
 
@@ -259,4 +259,44 @@ test("status and unit are not columns", () => {
   assert.ok(!headers.includes("واحد"));
   assert.ok(section.querySelectorAll(".material-price__badge").length >= 1,
             "the status still reaches the reader, as a badge");
+});
+
+/* ------------------------------------------------------- what each surface presents */
+
+test("the report surface drops the columns only a maintainer needs", () => {
+  /* «منبع» and «productId» are how a row is found in the worksheet. Somebody reading the
+     financial report is asking what things cost, not which sheet row a quote came from. */
+  const shown = presentedColumns(columnsFor("angle", CATEGORIES), { readOnly: true })
+    .map((column) => column.key);
+  assert.ok(!shown.includes("source"));
+  assert.ok(!shown.includes("productId"));
+  assert.ok(shown.includes("ضخامت"), "the worksheet's own measurements stay");
+  assert.ok(shown.includes("price"));
+});
+
+test("امور مالی keeps them, because that is where the sheet is maintained", () => {
+  const shown = presentedColumns(columnsFor("angle", CATEGORIES), { readOnly: false })
+    .map((column) => column.key);
+  assert.ok(shown.includes("source"));
+  assert.ok(shown.includes("productId"));
+});
+
+test("the filter reaches every category, not only the all-categories set", () => {
+  /* The per-category schema comes from the Backend and carries these same two columns, so
+     a filter applied only to the shared list would leave them in every category's own. */
+  for (const category of [null, "angle", "brick", "channel"]) {
+    const shown = presentedColumns(columnsFor(category, CATEGORIES), { readOnly: true })
+      .map((column) => column.key);
+    assert.ok(!shown.includes("source"), `${category} still shows منبع`);
+    assert.ok(!shown.includes("productId"), `${category} still shows productId`);
+  }
+});
+
+test("the date column is relabelled on both surfaces, and only its label moves", () => {
+  for (const readOnly of [true, false]) {
+    const column = presentedColumns(columnsFor("angle", CATEGORIES), { readOnly })
+      .find((c) => c.key === "workflowDate");
+    assert.equal(column.label, "آخرین آپدیت");
+    assert.equal(column.key, "workflowDate", "the key is what every value lookup matches on");
+  }
 });

@@ -4,6 +4,9 @@ import { SURFACES } from "../../core/config/routes.js";
 import { downloadCsvFile } from "../../shared/exports/csv.js";
 import { buildPricesCsv, pricesFileName } from "./prices-csv.js";
 import { renderMaterialPrices } from "./material-prices-section.js";
+/* One rule for what a legacy task row is, shared with ریز برآورد. Two copies of a
+   three-part test are two chances for the pages to disagree about which rows exist. */
+import { isLegacyTaskResource } from "../financial-items/financial-items-presentation.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -776,7 +779,15 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
       toolbarActions.append(conversions, importPrices, add);
     }
     const normalizedQuery = listFilters.query.toLocaleLowerCase("fa-IR");
+    /* The rows an older seed made out of schedule TASKS are left out, exactly as ریز
+       برآورد leaves them out and by the same three-part test. Their titles are activity
+       names -- «اجرای رابیتس بندی نما», «بتن ریزی سقف» -- so offering them here invites
+       somebody to set a unit price for an activity, which is not a thing that has one.
+       Withheld without a paragraph about it. They are an artefact of an import nobody
+       on this page ran and cannot act on, and 189 items becoming 69 is the page finally
+       listing what it is for, not a loss that has to be explained. */
     const filteredPrices = workspace.currentPrices.filter((item) => {
+      if (isLegacyTaskResource(item.resource)) return false;
       const matchesQuery = !normalizedQuery || `${item.resource.title} ${item.resource.code}`.toLocaleLowerCase("fa-IR").includes(normalizedQuery);
       const currentScope = item.currentPrice?.scope ?? "missing";
       return matchesQuery && (listFilters.scope === "all" || currentScope === listFilters.scope);
@@ -806,6 +817,10 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
        nothing on this page reads it -- the current price and its sparkline both
        come from `/prices/current`. A reader who opened this page to check one
        item's price today should not wait for every price it ever had. */
+    /* Not on the report surface. «گزارش مالی» answers what things cost now; every price
+       an item ever had is a maintenance question, and the page that maintains prices is
+       where it belongs. Nothing loads it there either -- the section is what carries the
+       button that asks for it. */
     const history = element("section", "prices-section");
     history.append(
       element("h2", "", "تاریخچه قیمت‌ها"),
@@ -846,7 +861,7 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
     if (!materialPricesAdapter) {
       market.append(marketTitle,
         element("p", "inline-notice", "این بخش در این نسخه از میزبان در دسترس نیست."));
-      fragment.append(toolbar, current, history, market);
+      fragment.append(toolbar, current, ...(readOnly ? [] : [history]), market);
       return fragment;
     }
     if (marketError) {
@@ -869,14 +884,30 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
       ask.append(show);
       market.append(ask);
     } else {
-      fragment.append(toolbar, current, history, renderMaterialPrices(marketPrices.items, {
+      fragment.append(toolbar, current, ...(readOnly ? [] : [history]),
+                      renderMaterialPrices(marketPrices.items, {
         categories: marketCategories,
         selectedCategory: marketCategory,
-        onSelectCategory: (value) => { marketCategory = value; loadMarketPrices(); },
+        readOnly,
+        /* Back to the first page whenever the category changes. Staying on page four of
+           «لوله» while switching to «نبشی» -- which has twelve products -- would ask the
+           server for a page that does not exist and show an empty table for a category
+           that is not empty. */
+        onSelectCategory: (value) => {
+          marketCategory = value;
+          marketPaging = { ...marketPaging, page: 1 };
+          loadMarketPrices();
+        },
+        paging: {
+          page: marketPrices.page ?? marketPaging.page,
+          pageSize: marketPrices.pageSize ?? marketPaging.pageSize,
+          totalItems: marketPrices.totalItems ?? marketPrices.items.length,
+          onChange: (next) => { marketPaging = next; loadMarketPrices(); },
+        },
       }));
       return fragment;
     }
-    fragment.append(toolbar, current, history, market);
+    fragment.append(toolbar, current, ...(readOnly ? [] : [history]), market);
     return fragment;
   }
 
@@ -887,6 +918,10 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
   let marketCategory = null;
   let marketLoading = false;
   let marketError = null;
+  /* SERVER paging, not a slice of something already fetched. The sheet holds 992 pipes in
+     one category alone; asking for all of them to show fifty is the request this avoids,
+     and it is the whole reason the page state carries a page number at all. */
+  let marketPaging = { page: 1, pageSize: 50 };
 
   async function loadMarketPrices() {
     if (!materialPricesAdapter) return;
@@ -899,7 +934,8 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
          means cannot say a price is old. */
       const [page, categories] = await Promise.all([
         materialPricesAdapter.listCurrentPrices({
-          category: marketCategory, asOf: getTehranTodayIso(), pageSize: 200,
+          category: marketCategory, asOf: getTehranTodayIso(),
+          page: marketPaging.page, pageSize: marketPaging.pageSize,
         }),
         materialPricesAdapter.listCategories(),
       ]);
