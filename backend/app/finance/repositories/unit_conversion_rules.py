@@ -59,6 +59,34 @@ class PsycopgUnitConversionRuleRepository:
                 (s.organization_id, from_unit, to_unit, s.project_id))
             return await c.fetchall()
 
+    async def candidates_for_pairs(self, s, pairs):
+        """`{(from_unit, to_unit): [rule, ...]}` for many crossings in ONE query.
+
+        The components table prices hundreds of rows in a request and asks about a handful
+        of distinct unit pairs. `candidates_for` per row would be a query per component --
+        the N+1 that makes a table page slow in a way nobody notices until the project is
+        big. This reads every rule that crosses any of the wanted pairs at once and the
+        caller resolves precedence in memory, exactly as `candidates_for` intends.
+
+        Empty in, empty out: a project with nothing to cross costs no query at all.
+        """
+        wanted = [(a, b) for a, b in {tuple(pair) for pair in pairs} if a and b and a != b]
+        if not wanted:
+            return {}
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                "SELECT " + _RULE_COLUMNS + " FROM finance_unit_conversion_rules"
+                " WHERE organization_id=%s AND status='approved'"
+                "   AND (project_id IS NULL OR project_id=%s)"
+                "   AND (from_unit, to_unit) IN (SELECT * FROM unnest(%s::text[], %s::text[]))",
+                (s.organization_id, s.project_id,
+                 [a for a, _b in wanted], [b for _a, b in wanted]))
+            rows = await c.fetchall()
+        grouped = {pair: [] for pair in wanted}
+        for row in rows:
+            grouped.setdefault((row["from_unit"], row["to_unit"]), []).append(row)
+        return grouped
+
     async def list_rules(self, s, *, scope_type=None, status=None, from_unit=None,
                          to_unit=None, include_other_projects=True):
         """What a person browsing Project Financial Settings sees.

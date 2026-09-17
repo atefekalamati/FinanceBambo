@@ -1498,6 +1498,11 @@
             "title": "Fromunit",
             "type": "string"
           },
+          "productDependentAcknowledged": {
+            "default": false,
+            "title": "Productdependentacknowledged",
+            "type": "boolean"
+          },
           "projectId": {
             "anyOf": [
               {
@@ -1838,6 +1843,35 @@
             "format": "uuid",
             "title": "Organizationid",
             "type": "string"
+          },
+          "productDependentAcknowledged": {
+            "default": false,
+            "title": "Productdependentacknowledged",
+            "type": "boolean"
+          },
+          "productDependentAcknowledgedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productdependentacknowledgedat"
+          },
+          "productDependentAcknowledgedBy": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productdependentacknowledgedby"
           },
           "projectId": {
             "anyOf": [
@@ -2472,6 +2506,11 @@
               }
             ],
             "title": "Appliedconversionruleid"
+          },
+          "appliedConversionRuleIsProductDependent": {
+            "default": false,
+            "title": "Appliedconversionruleisproductdependent",
+            "type": "boolean"
           },
           "appliedConversionRuleVersion": {
             "anyOf": [
@@ -5372,6 +5411,17 @@
             "title": "Estimatelineid",
             "type": "string"
           },
+          "factorSource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factorsource"
+          },
           "productName": {
             "anyOf": [
               {
@@ -5409,6 +5459,28 @@
               }
             ],
             "title": "Reason"
+          },
+          "selectedUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedunit"
+          },
+          "sourcePriceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepriceunit"
           },
           "sourceSummary": {
             "anyOf": [
@@ -8028,6 +8100,17 @@
           "estimateLineId": {
             "title": "Estimatelineid",
             "type": "string"
+          },
+          "factorSource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factorsource"
           },
           "id": {
             "title": "Id",

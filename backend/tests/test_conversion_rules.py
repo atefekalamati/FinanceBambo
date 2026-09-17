@@ -7,6 +7,7 @@ only implied by a query's ORDER BY is a decision nobody can find.
 
 import sys
 import unittest
+from uuid import UUID
 from datetime import date
 from pathlib import Path
 
@@ -150,6 +151,79 @@ class PrecedenceTests(unittest.TestCase):
     def test_nothing_approved_means_no_rule_rather_than_a_default(self):
         self.assertIsNone(resolve_rule([], from_unit="branch", to_unit="kg"))
         self.assertIsNone(resolve_rule(None, from_unit="branch", to_unit="kg"))
+
+
+class ProductDependentAcknowledgementTests(unittest.TestCase):
+    """A broad rule about a product-dependent crossing, admitted rather than refused.
+
+    The refusal was right and stays: «1 branch = 22 kg» is a weighing of one product, and
+    stating it for a whole category asserts every product in that category weighs the
+    same. What it could not account for is that the narrow scope it points people at --
+    `provider_item` -- cannot be written until a listing is attached to the line, and 832
+    of 835 estimate lines on the audited project have no component at all. The rule sent
+    people to a locked door.
+
+    So the claim may now be made WITH A NAME ON IT. What must not change is everything
+    else: the same error code, the same message, and a default that refuses exactly as
+    before for every caller that says nothing.
+    """
+
+    def test_a_broad_cross_dimension_rule_is_still_refused_by_default(self):
+        for scope in ("project", "category", "provider", "organization", "global"):
+            with self.subTest(scope):
+                with self.assertRaises(ConversionRuleRefused) as caught:
+                    validate_scope(scope_type=scope, from_unit="branch", to_unit="kg",
+                                   project_id="p1", category="rebar",
+                                   provider_id=UUID(int=3))
+                self.assertEqual("FINANCE_CONVERSION_SCOPE_TOO_BROAD",
+                                 caught.exception.code)
+
+    def test_the_same_rule_passes_once_it_is_acknowledged(self):
+        self.assertTrue(validate_scope(
+            scope_type="project", from_unit="branch", to_unit="kg", project_id="p1",
+            product_dependent_acknowledged=True))
+
+    def test_acknowledging_does_not_excuse_anything_else(self):
+        """It answers ONE objection. An unknown unit is still an unknown unit."""
+        with self.assertRaises(ConversionRuleRefused) as caught:
+            validate_scope(scope_type="project", from_unit="گونی", to_unit="kg",
+                           project_id="p1", product_dependent_acknowledged=True)
+        self.assertEqual("FINANCE_CONVERSION_UNIT_UNKNOWN", caught.exception.code)
+        with self.assertRaises(ConversionRuleRefused):
+            validate_scope(scope_type="project", from_unit="kg", to_unit="kg",
+                           project_id="p1", product_dependent_acknowledged=True)
+
+    def test_a_narrow_rule_never_needed_the_admission(self):
+        """Regression: `provider_item` was always allowed and still is."""
+        self.assertTrue(validate_scope(scope_type="provider_item", from_unit="branch",
+                                       to_unit="kg", provider_item_id=UUID(int=4)))
+
+    def test_a_same_dimension_rule_is_unaffected_either_way(self):
+        for acknowledged in (False, True):
+            with self.subTest(acknowledged=acknowledged):
+                self.assertTrue(validate_scope(
+                    scope_type="global", from_unit="ton", to_unit="kg",
+                    product_dependent_acknowledged=acknowledged))
+
+    def test_the_stored_flag_is_only_set_where_it_has_a_subject(self):
+        """The service's rule, stated here so it cannot drift from the domain's.
+
+        A flag on «تن» to «کیلوگرم» would later read as "somebody had doubts about this
+        rule", and nobody did. It is stored only where the crossing really is
+        product-dependent AND the scope really is broad.
+        """
+        from app.finance.domain.conversion_rules import NARROW_SCOPES, crosses_dimensions
+
+        def stored(from_unit, to_unit, scope_type, requested):
+            return bool(requested and crosses_dimensions(from_unit, to_unit)
+                        and scope_type not in NARROW_SCOPES)
+
+        self.assertTrue(stored("branch", "kg", "project", True))
+        self.assertFalse(stored("ton", "kg", "project", True),
+                         "same dimension: the admission has no subject")
+        self.assertFalse(stored("branch", "kg", "provider_item", True),
+                         "narrow scope never needed one")
+        self.assertFalse(stored("branch", "kg", "project", False))
 
 
 if __name__ == "__main__":

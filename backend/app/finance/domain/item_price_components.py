@@ -120,11 +120,12 @@ class PricedComponent:
 
     __slots__ = ("component_id", "status", "reason", "unit_price_irr", "quantity",
                  "cost_irr", "selected_unit", "source_unit", "factor_applied",
-                 "usage_mode", "usage_quantity")
+                 "factor_source", "usage_mode", "usage_quantity")
 
     def __init__(self, status, *, component_id=None, reason=None, unit_price_irr=None,
                  quantity=None, cost_irr=None, selected_unit=None, source_unit=None,
-                 factor_applied=None, usage_mode=None, usage_quantity=None):
+                 factor_applied=None, factor_source=None, usage_mode=None,
+                 usage_quantity=None):
         self.component_id = component_id
         self.status = status
         self.reason = STATUS_REASONS[status] if reason is None else reason
@@ -134,6 +135,16 @@ class PricedComponent:
         self.selected_unit = selected_unit
         self.source_unit = source_unit
         self.factor_applied = factor_applied
+        #: Where the number that crossed the units came from. Without it two figures of
+        #: very different standing share one column: a weighing of THIS product and a
+        #: general rule somebody wrote for a whole category look identical, and a reviewer
+        #: cannot tell which they are being asked to trust.
+        #:
+        #:     provider_item     a measurement recorded against this listing
+        #:     conversion_rule   a rule from the scope ladder
+        #:     registry          same dimension; arithmetic, true of every product
+        #:     None              nothing was converted
+        self.factor_source = factor_source
         self.usage_mode = usage_mode
         self.usage_quantity = usage_quantity
 
@@ -154,12 +165,27 @@ class PricedComponent:
             "selected_unit": self.selected_unit,
             "source_unit": self.source_unit,
             "conversion_factor": _text(self.factor_applied),
+            "factor_source": self.factor_source,
             "usage_mode": self.usage_mode,
             "usage_quantity": _text(self.usage_quantity),
         }
 
 
-def price_component(*, component, price_irr, source_unit, msp_quantity, factor=None):
+#: Where a conversion number came from. Three sources of very different standing, and a
+#: reader has to be able to tell them apart:
+#:
+#:     PROVIDER_ITEM_FACTOR   somebody weighed THIS product and recorded it
+#:     CONVERSION_RULE_FACTOR a rule from the scope ladder -- broader, and a claim about
+#:                            a category or a supplier rather than about this listing
+#:     REGISTRY_FACTOR        the unit registry's own ratio: arithmetic, true of every
+#:                            product, and never a judgement about any of them
+PROVIDER_ITEM_FACTOR = "provider_item"
+CONVERSION_RULE_FACTOR = "conversion_rule"
+REGISTRY_FACTOR = "registry"
+
+
+def price_component(*, component, price_irr, source_unit, msp_quantity, factor=None,
+                    factor_source=None):
     """What one material of one line costs per day, or which answer is missing.
 
     `component` is the stored row. `price_irr` and `source_unit` come from the newest
@@ -204,10 +230,11 @@ def price_component(*, component, price_irr, source_unit, msp_quantity, factor=N
         return refuse(UNKNOWN_SOURCE_UNIT, selected_unit=selected, source_unit=source or None)
 
     if source == selected:
-        converted, applied = price, None
+        converted, applied, applied_source = price, None, None
     elif can_convert(source, selected):
         # Same dimension: the registry's exact ratio, inverted because this is a price.
         converted, applied = convert_unit_price(price, source, selected), None
+        applied_source = REGISTRY_FACTOR
     else:
         measured = _decimal(factor)
         if measured is None or measured == 0:
@@ -216,6 +243,7 @@ def price_component(*, component, price_irr, source_unit, msp_quantity, factor=N
             return refuse(NEEDS_FACTOR, selected_unit=selected, source_unit=source)
         try:
             converted, applied = apply_product_factor(price, measured), measured
+            applied_source = factor_source
         except (ConversionRefused, ArithmeticError):
             return refuse(INCOMPATIBLE, selected_unit=selected, source_unit=source)
 
@@ -228,7 +256,7 @@ def price_component(*, component, price_irr, source_unit, msp_quantity, factor=N
             reason="مقدار این قلم در برنامهٔ زمان‌بندی ثبت نشده است",
             unit_price_irr=converted.quantize(WHOLE_RIAL, rounding=ROUND_HALF_UP),
             selected_unit=selected, source_unit=source, factor_applied=applied,
-            usage_mode=usage_mode, usage_quantity=usage)
+            factor_source=applied_source, usage_mode=usage_mode, usage_quantity=usage)
 
     unit_price = converted.quantize(WHOLE_RIAL, rounding=ROUND_HALF_UP)
     # The cost is computed from the EXACT converted price and rounded once, so rounding the
@@ -237,7 +265,8 @@ def price_component(*, component, price_irr, source_unit, msp_quantity, factor=N
     return PricedComponent(READY, component_id=component_id, unit_price_irr=unit_price,
                            quantity=quantity, cost_irr=cost, selected_unit=selected,
                            source_unit=source, factor_applied=applied,
-                           usage_mode=usage_mode, usage_quantity=usage)
+                           factor_source=applied_source, usage_mode=usage_mode,
+                           usage_quantity=usage)
 
 
 def _component_quantity(usage_mode, usage, msp_quantity):
