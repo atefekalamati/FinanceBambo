@@ -136,12 +136,17 @@ export function selectEstimateRows(lines = [], resources = []) {
   return { rows, hiddenLegacyCount, orphanCount, scheduleBackedCount, manualCount };
 }
 
-/** What to tell the reader about withheld rows, or null when nothing was withheld. */
-export function withheldRowsNotice({ hiddenLegacyCount = 0, orphanCount = 0 } = {}) {
+/**
+ * What to tell the reader about withheld rows, or null when nothing was withheld.
+ *
+ * The legacy `MSP-T` rows are counted and withheld but no longer announced. They are an
+ * artefact of an older import, not a state a reader has to act on, and a paragraph about
+ * them on every visit was the page apologising for its own data. A row that is withheld
+ * because its cost item is missing is different -- that one is worth fixing, so it still
+ * says so.
+ */
+export function withheldRowsNotice({ orphanCount = 0 } = {}) {
   const parts = [];
-  if (hiddenLegacyCount > 0) {
-    parts.push(`${formatDisplayNumber(String(hiddenLegacyCount))} ردیف قدیمی با کد MSP-T نمایش داده نشده است؛ این ردیف‌ها از فایل برنامه زمانی جاری خوانده نشده‌اند و حذف هم نشده‌اند.`);
-  }
   if (orphanCount > 0) {
     parts.push(`${formatDisplayNumber(String(orphanCount))} ردیف بدون قلم هزینه معتبر نمایش داده نشده است.`);
   }
