@@ -23,7 +23,7 @@ import { element } from "../../shared/dom/elements.js";
 import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
 import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTableWithControl, createPagedDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
-import { ABSENT, activityBlockStarts, activityLabel, assignmentCostOf, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
+import { ABSENT, activityBlockStarts, activityLabel, assignmentCostOf, canonicalWbs, factorSourceLabel, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
   const wrapper = element("div", "form-field");
@@ -768,6 +768,14 @@ function sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resou
   }
   const cell = document.createDocumentFragment();
   if (priced.sourcePriceUnit) cell.append(element("span", "", formatUnitLabel(priced.sourcePriceUnit)));
+
+  /* WHAT CROSSED THE TWO UNITS, in the cell the crossing belongs to.
+     A weighing of this exact listing and a rule written for a whole project produce the
+     same kind of number and deserve different amounts of trust; from the cost alone a
+     reader cannot tell which they are being shown. Said here rather than in «منبع», which
+     answers a different question -- that column names the PRODUCT, this one the units. */
+  const crossed = factorSourceLabel(priced.factorSource);
+  if (crossed) cell.append(element("span", "cell-secondary", crossed));
 
   /* Only the statuses a unit decision can answer. «قیمت روز معتبر نیست» is a different
      problem and a conversion rule would not fix it, so no button is offered there. */

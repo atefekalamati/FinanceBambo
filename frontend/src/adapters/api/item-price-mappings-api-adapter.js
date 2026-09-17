@@ -53,10 +53,19 @@ function mapRowStatus(value) {
 
     /* The unit the sheet quotes this listing in, and the unit this line is priced in.
        Read here so «واحد شیت قیمت» is a column of the table rather than something a
-       person has to open a panel to see. The service does not send them yet: they are
-       null until it does, and the cell says the status instead of inventing a unit. */
+       person has to open a panel to see. Null on a line with no component, and null on a
+       line with several -- one row cannot state two units, exactly as it cannot state two
+       product names. */
     sourcePriceUnit: value.sourcePriceUnit ?? null,
     selectedUnit: value.selectedUnit ?? null,
+
+    /* WHICH KIND OF NUMBER CROSSED THOSE TWO UNITS: `provider_item` is a weighing of this
+       exact listing, `conversion_rule` is a statement about a category or a project or
+       everything, `registry` is arithmetic that needs nobody's word. They are not equally
+       trustworthy and they were sharing one column -- «۱ شاخه = ۲۲ کیلوگرم» claimed for a
+       whole project is a different kind of fact from the same number measured on the
+       product being priced, and a reader cannot tell them apart from the cost alone. */
+    factorSource: value.factorSource ?? null,
   };
 }
 
@@ -90,6 +99,10 @@ function mapComponent(value) {
     conversionFactor: value.conversionFactor ?? null,
     conversionStatus: value.conversionStatus ?? null,
     conversionFactorId: value.conversionFactorId ?? null,
+    /* The same provenance the row carries, at the component it came from. Both are read so
+       the panel and the table cannot tell one reader two different stories about the same
+       crossing. */
+    factorSource: value.factorSource ?? null,
 
     usageMode: value.usageMode ?? null,
     usageQuantity: value.usageQuantity ?? null,
