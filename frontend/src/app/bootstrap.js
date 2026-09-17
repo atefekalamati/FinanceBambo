@@ -233,7 +233,10 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
       // supply it -- an older one, or the preview -- passes null and the section
       // says so rather than being replaced with sample rows.
       materialPricesAdapter: adapters.materialPrices ?? null,
-      surface: route.surface, focusResourceId: routeQuery.get("resourceId") ?? "" }));
+      /* No `focusResourceId`. It highlighted a row in the item roster, and the roster is
+         gone; nothing in the module builds such a link, so this was the last thing reading
+         the query parameter. The items page still uses its own. */
+      surface: route.surface }));
   }
   if (route.key === "progress") root.append(createProgressPage({ context, adapter: adapters.progress }));
   if (route.key === "invoices") root.append(createInvoicesPage({ context, adapter: adapters.invoices }));
