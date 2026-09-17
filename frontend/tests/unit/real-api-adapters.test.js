@@ -124,3 +124,36 @@ test("a Backend that says nothing about canEdit leaves the decision open", async
   const result = await createApiSettingsAdapter(context, client).getSettings();
   assert.equal(result.canEdit, null, "null is not false: it means nobody answered, so the host permission decides");
 });
+
+test("an invoice target carries the stage its activity belongs to", async () => {
+  /* The picker groups by stage, and the stage is never stored -- it is read from the
+     estimate line's own activity every time. So the adapter has to carry it through, and
+     the stage is the FIRST segment of the activity's code: «۳.۲.۱» belongs to stage «۳»,
+     which is the level the report draws. */
+  const client = { async request(path) {
+    if (path.endsWith("/resources")) return [{ id: "resource-1", type: "material", code: "R1", title: "میلگرد", baseUnit: "kg" }];
+    if (path.endsWith("/estimate-lines")) return [{ id: "line-1", resourceId: "resource-1", activityExternalId: "3.2.1", activityTitle: "آرماتوربندی", wbsCode: "3.2.1" }];
+    if (path.includes("/activities?")) return { items: [{ wbsCode: "3", title: "سفت‌کاری" }, { wbsCode: "3.2", title: "نباید برداشته شود" }], page: 1, pageSize: 200, totalItems: 2, totalPages: 1 };
+    throw new Error(path);
+  } };
+  const [target] = await createApiInvoicesAdapter(context, client).getInvoiceTargets();
+  assert.equal(target.wbsCode, "3.2.1");
+  assert.equal(target.stageCode, "3");
+  assert.equal(target.stageTitle, "سفت‌کاری", "the stage name comes from the catalogue row whose code has no dot");
+  assert.equal(target.label, "آرماتوربندی · میلگرد", "the activity's name, not its numbering");
+});
+
+test("a stage catalogue that will not load costs a label, never the invoice", async () => {
+  /* Somebody is standing there with a delivery note. Refusing to open the form because a
+     NAME could not be fetched would stop them recording real money; the picker still
+     groups correctly and simply shows the stage by number. */
+  const client = { async request(path) {
+    if (path.endsWith("/resources")) return [];
+    if (path.endsWith("/estimate-lines")) return [{ id: "line-1", resourceId: "resource-1", activityExternalId: "5.1", wbsCode: "5.1" }];
+    if (path.includes("/activities?")) throw new Error("catalogue unavailable");
+    throw new Error(path);
+  } };
+  const [target] = await createApiInvoicesAdapter(context, client).getInvoiceTargets();
+  assert.equal(target.stageCode, "5");
+  assert.equal(target.stageTitle, null);
+});

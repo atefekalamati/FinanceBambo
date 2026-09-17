@@ -71,14 +71,61 @@ function exactPreview(lines, adjustments) {
 export function createApiInvoicesAdapter(context, client) {
   const base = financeBase(context);
   let targetCache = [];
+  /* The name of each level-one stage, keyed by its WBS code.
+   *
+   * `/estimate-lines` states the ACTIVITY's code and title -- «۳.۲.۱ · آرماتوربندی» --
+   * and never the stage above it, so a picker grouped by stage would offer «۳» with no
+   * name. The activity catalogue holds one row per distinct WBS code, summary tasks
+   * included, which is where «۳ · سفت‌کاری» comes from.
+   *
+   * Only codes with no dot are kept: those are the stages the level-one report draws.
+   */
+  async function stageTitles() {
+    const titles = new Map();
+    // Bounded. The catalogue is one row per stage -- hundreds, not millions -- and a
+    // service answering with a wrong `totalPages` must not turn this into a loop that
+    // never ends while somebody waits on a dialog.
+    for (let page = 1; page <= 10; page += 1) {
+      const payload = await client.request(`${base}/activities?page=${page}&pageSize=200`);
+      for (const item of payload?.items ?? []) {
+        const code = String(item.wbsCode ?? "").trim();
+        if (code && !code.includes(".") && item.title) titles.set(code, item.title);
+      }
+      if (page >= Number(payload?.totalPages ?? 1)) break;
+    }
+    return titles;
+  }
+
   async function getInvoiceTargets() {
     const [resourcePayload, linePayload] = await Promise.all([client.request(`${base}/resources`), client.request(`${base}/estimate-lines`)]);
+    /* Stage names are a convenience: without them the picker still groups correctly and
+       shows «مرحله ۳» where it would have shown «۳ · سفت‌کاری». Refusing to open the
+       invoice form because a LABEL could not be fetched would stop somebody recording a
+       real purchase, which is the one thing this form exists to do. Every other request
+       here still raises. */
+    let titles = new Map();
+    try { titles = await stageTitles(); } catch { titles = new Map(); }
     const resources = resourcePayload.map(mapResource);
     const estimateTargets = linePayload.map((line) => {
       const resource = resources.find((item) => item.resourceId === line.resourceId);
-      return { targetId: line.id, targetType: "estimate_line", label: `${line.activityExternalId || "خط برآورد"} · ${resource?.title ?? "قلم مالی"}`, unit: resource?.baseUnit ?? null, resourceId: line.resourceId, estimateLineId: line.id };
+      const wbsCode = line.wbsCode ?? line.activityExternalId ?? null;
+      const stageCode = String(wbsCode ?? "").trim().split(".")[0].trim() || null;
+      return {
+        targetId: line.id,
+        targetType: "estimate_line",
+        /* The activity's NAME first and its code second. A draft line reading
+           «۳.۲.۱ · میلگرد» asks the reader to carry a numbering scheme in their head;
+           «آرماتوربندی · میلگرد» is the same fact in the words they ordered it with. */
+        label: `${line.activityTitle || line.activityExternalId || "خط برآورد"} · ${resource?.title ?? "قلم مالی"}`,
+        unit: resource?.baseUnit ?? null,
+        resourceId: line.resourceId,
+        estimateLineId: line.id,
+        wbsCode,
+        stageCode,
+        stageTitle: stageCode ? titles.get(stageCode) ?? null : null,
+      };
     });
-    const generalTargets = resources.filter((item) => item.type === "general_cost").map((item) => ({ targetId: item.resourceId, targetType: "general_cost", label: item.title, unit: null, resourceId: item.resourceId, estimateLineId: null }));
+    const generalTargets = resources.filter((item) => item.type === "general_cost").map((item) => ({ targetId: item.resourceId, targetType: "general_cost", label: item.title, unit: null, resourceId: item.resourceId, estimateLineId: null, wbsCode: null, stageCode: null, stageTitle: null }));
     targetCache = [...estimateTargets, ...generalTargets];
     return structuredClone(targetCache);
   }
