@@ -188,9 +188,12 @@ class ContractTests(unittest.IsolatedAsyncioTestCase):
         import inspect
         from app.finance import router
         params = list(inspect.signature(router.start_material_price_import).parameters)
+        # `triggerSource` contains "source" and is not one: it names the CALLER, for the
+        # audit trail. The rule is about where prices are read FROM, so it is spelled out
+        # rather than approximated by a substring.
         self.assertEqual([], [p for p in params
                               if "sheet" in p.lower() or "url" in p.lower()
-                              or "source" in p.lower()],
+                              or p.lower() in ("source", "sourceurl", "pricesource")],
                          "the sheet is configuration and must never be a request field")
 
 

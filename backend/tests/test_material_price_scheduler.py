@@ -213,7 +213,10 @@ class EndpointScheduleTests(unittest.TestCase):
         import inspect
         from app.finance import router
         params = list(inspect.signature(router.start_material_price_import).parameters)
-        self.assertEqual(["projectId", "request", "force", "dueOnly"], params)
+        # `triggerSource` joined later: it names what ASKED for the import, for the audit,
+        # and says nothing about what to import from. The assertion below is the rule.
+        self.assertEqual(["projectId", "request", "force", "dueOnly", "triggerSource"],
+                         params)
         self.assertFalse([p for p in params if "sheet" in p.lower() or "url" in p.lower()],
                          "the sheet is configuration; a caller must not be able to name it")
 

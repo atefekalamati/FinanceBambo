@@ -338,6 +338,16 @@ class ImportRunStartedResponse(ApiModel):
     #: import and saw an empty response cannot tell it from one that did not run.
     message: str | None = None
 
+    #: What asked for this import. `n8n_daily_material_price_update` for the automation,
+    #: `manual` for a person, or whatever a caller named itself with. Recorded so a run
+    #: in the history can be told apart from the one beside it without guessing from the
+    #: hour it started.
+    trigger_source: str | None = None
+    #: `system` for an automated run, the actor's id for a human one, null when neither
+    #: is known. Deliberately NOT a user id for the automation: there is no user, and
+    #: minting one would put a name in an audit trail that belongs to nobody.
+    initiated_by: str | None = None
+
 
 class ImportRunListResponse(ApiModel):
     items: list[ImportRunResponse]

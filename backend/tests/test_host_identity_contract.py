@@ -427,20 +427,44 @@ class SessionEndedIsNotPermissionDeniedTests(unittest.IsolatedAsyncioTestCase):
                 with self.subTest(path=str(path.relative_to(BACKEND_ROOT))):
                     self.assertIsNone(redirect.search(path.read_text(encoding="utf-8")))
 
+    #: The ONE file allowed to read a request header, and it is named here so the
+    #: exception has to be argued for rather than acquired.
+    #:
+    #: A service key is a deliberate, approved departure from "Finance authenticates
+    #: nobody": n8n triggers the daily price import and is not a person, so it presents a
+    #: shared secret on one route instead of carrying a session it cannot have. What the
+    #: exception must NOT become is a second identity system -- so the header it reads is
+    #: its own, `Authorization` stays forbidden everywhere including here, and every other
+    #: file in `app/` and `coreint/` still reads no header at all.
+    HEADER_READING_ALLOWED = ("app/finance/security/service_key.py",)
+
     def test_the_session_is_the_hosts_cookie_and_this_module_reads_no_header(self):
         """Cookie-based, with no Authorization header and no CSRF token -- both confirmed
-        by the host. The guarantee is the same one `test_demo_isolation` holds: `app/` and
-        `coreint/` read no request header at all, so neither can be expected by accident.
+        by the host. `app/` and `coreint/` read no request header, so none can be expected
+        by accident, with one named exception above.
         """
         for root in ("app", "coreint"):
             for path in (BACKEND_ROOT / root).rglob("*.py"):
                 if "__pycache__" in path.parts:
                     continue
+                relative = path.relative_to(BACKEND_ROOT).as_posix()
                 text = path.read_text(encoding="utf-8")
-                with self.subTest(path=str(path.relative_to(BACKEND_ROOT))):
-                    self.assertNotIn("request.headers", text)
+                with self.subTest(path=relative):
+                    if relative not in self.HEADER_READING_ALLOWED:
+                        self.assertNotIn("request.headers", text)
+                    # No exception, for any file. The host's session travels in its own
+                    # cookie; a Finance module that read `Authorization` would be a second
+                    # place identity could come from, which is the thing being prevented.
                     self.assertNotIn("Authorization", text)
                     self.assertNotIn("X-CSRF", text)
+
+    def test_the_header_exception_is_exactly_one_file(self):
+        """A carve-out that grows is a rule that was abandoned without anybody saying so."""
+        self.assertEqual(1, len(self.HEADER_READING_ALLOWED))
+        allowed = BACKEND_ROOT / self.HEADER_READING_ALLOWED[0]
+        self.assertTrue(allowed.is_file(), "the named exception must exist")
+        self.assertIn("X-FINANCE-SERVICE-KEY", allowed.read_text(encoding="utf-8"),
+                      "the exception exists for the service key and nothing else")
 
 
 if __name__ == "__main__":

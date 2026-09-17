@@ -171,9 +171,20 @@ class RepositoryBoundaryTests(unittest.TestCase):
                     self.assertNotIn("X-Demo-User", text)
                     self.assertNotIn("x-demo-user", text.lower().replace("x_demo_user", ""))
                     # Not "no header is ever read" -- a response may set one, and the file
-                    # route sets three. What may not happen is a header being read, which
-                    # is the only way one becomes an input to a decision.
-                    self.assertNotIn("request.headers", text)
+                    # route sets three. What may not happen is a header being read to
+                    # decide WHO the caller is, which is the only way one becomes an
+                    # impersonation.
+                    #
+                    # `service_key.py` is the one named exception and it is a different
+                    # claim: it proves a machine holds a secret this host configured, and
+                    # it names no user. It cannot say "I am user X" -- there is no user
+                    # id in the header, the scope it builds carries `actor_user_id=None`,
+                    # and the run it triggers is attributed to `system`. An impersonation
+                    # header answers "who am I acting as"; this one answers "do you know
+                    # this secret", and nobody's identity is on the other side of it.
+                    if path.relative_to(BACKEND_ROOT).as_posix() != (
+                            "app/finance/security/service_key.py"):
+                        self.assertNotIn("request.headers", text)
 
     def test_the_identity_seam_is_declared_and_left_unimplemented(self):
         """The host writes `current`; this repository states its shape and stops there.

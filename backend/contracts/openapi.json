@@ -4418,6 +4418,17 @@
             "title": "Alreadypresent",
             "type": "integer"
           },
+          "initiatedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initiatedby"
+          },
           "inserted": {
             "title": "Inserted",
             "type": "integer"
@@ -4450,6 +4461,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "triggerSource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggersource"
           },
           "worksheetReport": {
             "additionalProperties": true,
@@ -18537,6 +18559,25 @@
               "description": "import only if the interval has passed",
               "title": "Dueonly",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "what asked for this import, for the audit",
+            "in": "query",
+            "name": "triggerSource",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what asked for this import, for the audit",
+              "title": "Triggersource"
             }
           }
         ],
