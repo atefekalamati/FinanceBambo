@@ -207,6 +207,19 @@ class FakeNode {
   }
 }
 
+/* A fragment is its own TYPE, not just a node with a funny name.
+ *
+ * `data-table.js` asks `body instanceof DocumentFragment` to decide whether it can query
+ * the element for a <table> or has to resolve one later. With no such global the question
+ * throws, and a module that renders perfectly well in a browser cannot be rendered here at
+ * all. So the class exists and is published under the name the browser uses -- which is
+ * the whole of what `instanceof` needs, and still no layout, styles or selector engine. */
+class FakeDocumentFragment extends FakeNode {
+  constructor() {
+    super("#fragment");
+  }
+}
+
 /** Put a document on `globalThis`, once. Returns it. */
 export function installDom() {
   if (globalThis.document && globalThis.document.__fake) return globalThis.document;
@@ -216,10 +229,11 @@ export function installDom() {
       return new FakeNode(tag);
     },
     createDocumentFragment() {
-      return new FakeNode("#fragment");
+      return new FakeDocumentFragment();
     },
     body: new FakeNode("body"),
   };
   globalThis.document = document;
+  globalThis.DocumentFragment = FakeDocumentFragment;
   return document;
 }

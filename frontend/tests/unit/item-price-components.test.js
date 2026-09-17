@@ -432,3 +432,30 @@ test("a viewer without finance.edit can look and cannot change anything", async 
   assert.equal(button(panel, "تغییر محصول"), undefined);
   assert.match(panel.textContent, /finance\.edit/);
 });
+
+/* ------------------------------------------------------- the report surface reads only */
+
+test("گزارش مالی is handed no pricing tool at all", () => {
+  /* Connecting an item to a listing, converting units, stating a rate by hand: these are
+     how the numbers are MADE, and they live on امور مالی. The report is where they are
+     read. Both handlers are gated on the surface in ONE place, and the cells render from
+     the handlers -- so this single assertion covers every button any cell draws from them,
+     including ones not written yet.
+
+     It is asserted because it was once false: «اتصال به قیمت روز» asked only whether the
+     handler existed and appeared on the report from the day it was written. */
+  const mapGate = /onMapPrice:\s*!readOnly && priceMappingAdapter \?/.test(PAGE_SOURCE);
+  const manualGate = /onManualPrice:\s*!readOnly && pricesAdapter \?/.test(PAGE_SOURCE);
+  assert.ok(mapGate, "the daily-price link must be withheld from the report surface");
+  assert.ok(manualGate, "the manual price must be withheld from the report surface");
+});
+
+test("a cell may not reach around the surface gate to open a pricing tool", () => {
+  /* The cells receive `onMapPrice`/`onManualPrice` and nothing else -- they never see the
+     adapters, so a cell cannot build its own opener. If one ever names an adapter directly,
+     the gate above stops being the only way in and this test says so. */
+  const after = PAGE_SOURCE.split("function renderEstimateLineTable")[1] ?? "";
+  const table = after.split("export function createFinancialItemsPage")[0];
+  assert.ok(!/priceMappingAdapter|pricesAdapter/.test(table),
+            "renderEstimateLineTable must depend on the handlers, never on an adapter");
+});
