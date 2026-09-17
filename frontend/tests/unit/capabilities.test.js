@@ -139,7 +139,13 @@ test("reading a table and taking a copy of it are the same act", () => {
   // The export is not behind the edit permission: it hands back the rows the
   // account is already looking at. This checks where the button is built, not
   // merely that the words appear in the file.
-  [["prices/prices-page.js"], ["financial-items/financial-items-page.js"]].forEach(([name]) => {
+  /* The prices page is not in this list, and its absence is a known gap rather than a
+     relaxed rule. Its export wrote the rows of the cost-item roster -- «what leaves is
+     what is on screen» -- and that table was removed. The market table that replaced it is
+     paged by the SERVER, so exporting it means asking for every page: a feature to add
+     deliberately, not a button to repoint at whatever happens to be loaded. Put the page
+     back in this list on the day it has one. */
+  [["financial-items/financial-items-page.js"]].forEach(([name]) => {
     const source = featureFiles.find((entry) => entry[0] === name)[1];
     const at = source.indexOf('element("button", "button button--ghost", "خروجی اکسل")');
     assert.ok(at > 0, `${name} offers no export`);
@@ -167,7 +173,10 @@ test("a write control is not built outside an edit gate", () => {
   // inside one, and not built and then hidden.
   [
     ["financial-items/financial-items-page.js", ["خط متره جدید", "ورود گروهی برآورد", "قلم جدید", "ثبت اولین قلم"]],
-    ["prices/prices-page.js", ["ثبت نسخه جدید قیمت", "ورود گروهی قیمت", "ثبت اولین قیمت"]],
+    /* «ثبت اولین قیمت» is gone from this list because the control is gone: it lived on
+       the empty card of the cost-item roster, and that whole section was removed when the
+       page became one table of market prices. The two that remain are the toolbar's. */
+    ["prices/prices-page.js", ["ثبت نسخه جدید قیمت", "ورود گروهی قیمت"]],
   ].forEach(([name, labels]) => {
     const source = featureFiles.find((entry) => entry[0] === name)[1];
     const ranges = editOnlyRanges(source);
