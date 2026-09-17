@@ -147,16 +147,63 @@ function inputField(label, name, { type = "text", inputMode = "text", placeholde
   return { field, input };
 }
 
+/**
+ * A saved invoice's lines, in the shape the wizard edits.
+ *
+ * MATCHED BY IDENTIFIER, NEVER BY LABEL. A line knows which estimate line or which
+ * general-cost item it was raised against; the label is built from whatever that item is
+ * called today. Matching on the words would re-point a line at a different cost item the
+ * first time somebody renames one, and the invoice would move money without anybody
+ * touching it.
+ *
+ * The RAW amount is what goes back in the box. `lineAmountIRR` is the line after the
+ * header's discount and tax were distributed across it — putting that in the form would
+ * fold this invoice's tax into the typed figure, and fold it in again on the next save.
+ *
+ * A line whose target no longer exists is dropped rather than guessed at, and the caller
+ * is left to notice the count changed: silently pointing it somewhere plausible is how an
+ * edit rewrites what an invoice was for.
+ */
+export function editableLines(invoice, targets) {
+  return (invoice.lines ?? []).map((line) => {
+    /* An identifier that is ABSENT matches nothing. Comparing two undefined values is true,
+       and a line that states no resource would otherwise bind to whichever general-cost
+       item happened to be first -- an edit silently re-pointing money at something nobody
+       chose. Better to drop the line and have somebody notice it missing. */
+    const target = line.estimateLineId
+      ? targets.find((item) => item.estimateLineId === line.estimateLineId)
+      : (line.resourceId
+        ? targets.find((item) => item.targetType === "general_cost" && item.resourceId === line.resourceId)
+        : null);
+    if (!target) return null;
+    const general = target.targetType === "general_cost";
+    return {
+      targetId: target.targetId,
+      targetType: target.targetType,
+      targetLabel: target.label,
+      quantity: general ? null : line.quantity,
+      unit: general ? null : (line.unit ?? target.unit ?? null),
+      unitPriceIRR: general ? null : line.unitPriceIRR,
+      lineAmountIRR: general ? (line.rawAmountIRR ?? line.lineAmountIRR) : "",
+      description: line.description ?? "",
+    };
+  }).filter(Boolean);
+}
+
 function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoice = null }) {
   const isCorrective = mode === "corrective";
+  /* Editing an invoice that is not yet confirmed. The same three steps, opened on a
+     document that already exists: an edit form that looked different from the entry form
+     would be a second place to learn where the vendor goes. */
+  const isEdit = mode === "edit";
   const dialog = document.createElement("dialog");
   dialog.className = "confirm-dialog invoice-wizard";
   dialog.setAttribute("aria-labelledby", "invoice-wizard-title");
   const head = element("header", "invoice-detail-dialog__head");
   const heading = element("div");
-  const title = element("h2", "", isCorrective ? "ثبت سند اصلاحی مرتبط" : "ثبت فاکتور دستی");
+  const title = element("h2", "", isEdit ? `ویرایش فاکتور ${originalInvoice.invoiceNumber}` : isCorrective ? "ثبت سند اصلاحی مرتبط" : "ثبت فاکتور دستی");
   title.id = "invoice-wizard-title";
-  heading.append(title, element("p", "invoice-wizard__subtitle", isCorrective ? `سند اصلاحی به فاکتور ${originalInvoice.invoiceNumber} متصل و مستقل ثبت می‌شود.` : "پیش‌نویس تا قبل از تأیید، اثر مالی ندارد."));
+  heading.append(title, element("p", "invoice-wizard__subtitle", isEdit ? "تا پیش از ثبت نهایی، هر فیلد این فاکتور قابل تغییر است و سند هنوز اثری بر هزینه واقعی ندارد." : isCorrective ? `سند اصلاحی به فاکتور ${originalInvoice.invoiceNumber} متصل و مستقل ثبت می‌شود.` : "پیش‌نویس تا قبل از تأیید، اثر مالی ندارد."));
   const close = element("button", "dialog-close", "×");
   close.type = "button";
   close.setAttribute("aria-label", "بستن فرم ثبت فاکتور");
@@ -179,7 +226,14 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
   let selectedStage = "";
   let headerData = null;
   let lines = [];
-  let adjustments = { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
+  let adjustments = isEdit
+    ? {
+      discountIRR: originalInvoice.discountIRR ?? "0",
+      taxIRR: originalInvoice.taxIRR ?? "0",
+      shippingIRR: originalInvoice.shippingIRR ?? "0",
+      otherCostsIRR: originalInvoice.otherCostsIRR ?? "0",
+    }
+    : { discountIRR: "0", taxIRR: "0", shippingIRR: "0", otherCostsIRR: "0" };
   let preview = null;
   let duplicateOverrideReason = "";
   let correctionReason = "";
@@ -222,14 +276,14 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     // later" is a row of the form spent saying that this form has no say. The
     // number appears where it is useful -- in the register, on the saved invoice.
     const vendor = inputField("فروشنده یا ارائه‌دهنده", "vendorName");
-    vendor.input.value = headerData?.vendorName ?? (isCorrective ? originalInvoice.vendorName : "");
-    const date = createPersianDatePicker({ id: "invoiceDate", label: "تاریخ فاکتور", value: headerData?.invoiceDate ?? getTehranTodayIso() });
+    vendor.input.value = headerData?.vendorName ?? ((isCorrective || isEdit) ? originalInvoice.vendorName : "");
+    const date = createPersianDatePicker({ id: "invoiceDate", label: "تاریخ فاکتور", value: headerData?.invoiceDate ?? (isEdit ? originalInvoice.invoiceDate : getTehranTodayIso()) });
     const description = element("label", "form-field invoice-wizard-grid__wide");
     description.append(element("span", "form-label", "توضیح"));
     const textarea = element("textarea", "app-textarea");
     textarea.rows = 3;
     textarea.maxLength = 500;
-    textarea.value = headerData?.description ?? "";
+    textarea.value = headerData?.description ?? (isEdit ? (originalInvoice.description ?? "") : "");
     description.append(textarea);
     form.append(vendor.field, date.field, description);
     form.append(actions({ nextLabel: "ادامه به خطوط", onNext: () => {
@@ -358,7 +412,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     preview.lines.forEach((line, index) => { const card = element("article", "invoice-draft-line"); card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", formatTomanFromIrr(line.lineAmountIRR))); lineList.append(card); });
     const totals = element("dl", "invoice-totals");
     [["جمع خام خطوط", preview.rawLinesTotalIRR], ["تخفیف", preview.discountIRR], ["مالیات", preview.taxIRR], ["حمل", preview.shippingIRR], ["سایر هزینه‌ها", preview.otherCostsIRR], ["مبلغ نهایی", preview.finalAmountIRR]].forEach(([label, value]) => totals.append(element("dt", "", label), element("dd", "numeric", formatTomanFromIrr(value))));
-    section.append(element("div", "inline-notice", isCorrective ? "این سند پس از ثبت، با اثر مالی انتخاب‌شده و ارتباط صریح با فاکتور اصلی اعمال می‌شود؛ فاکتور اصلی تغییر نمی‌کند." : "با ثبت این مرحله فقط پیش‌نویس ساخته می‌شود و هزینه واقعی پروژه تغییر نمی‌کند."), summary, lineList, totals);
+    section.append(element("div", "inline-notice", isEdit ? "این تغییرات روی همین فاکتور نوشته می‌شود و سند تازه‌ای ساخته نمی‌شود. تا پیش از ثبت نهایی، هزینه واقعی پروژه تغییر نمی‌کند." : isCorrective ? "این سند پس از ثبت، با اثر مالی انتخاب‌شده و ارتباط صریح با فاکتور اصلی اعمال می‌شود؛ فاکتور اصلی تغییر نمی‌کند." : "با ثبت این مرحله فقط پیش‌نویس ساخته می‌شود و هزینه واقعی پروژه تغییر نمی‌کند."), summary, lineList, totals);
     let correctionReasonInput = null;
     let effectSelect = null;
     if (isCorrective) {
@@ -396,7 +450,8 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
       warning.append(matches, reason);
       section.append(warning);
     }
-    section.append(actions({ back: true, nextLabel: isCorrective ? "ثبت سند اصلاحی" : "ثبت پیش‌نویس", onNext: async (button) => {
+    const commitLabel = isEdit ? "ثبت تغییرات" : isCorrective ? "ثبت سند اصلاحی" : "ثبت پیش‌نویس";
+    section.append(actions({ back: true, nextLabel: commitLabel, onNext: async (button) => {
       duplicateOverrideReason = reasonInput?.value.trim() ?? "";
       if (preview.duplicateMatches.length && duplicateOverrideReason.length < 3) { showMessage("دلیل ادامه با وجود فاکتور مشابه باید حداقل سه نویسه داشته باشد.", true); reasonInput.focus(); return; }
       if (isCorrective) {
@@ -407,12 +462,16 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
       button.disabled = true;
       button.textContent = "در حال ثبت…";
       try {
-        if (isCorrective) await adapter.createCorrective({ originalInvoiceId: originalInvoice.invoiceId, header: headerData, lines, adjustments, financialEffectSign, reason: correctionReason, idempotencyKey });
+        /* An edit REWRITES the document it opened; it does not raise a second one. The
+           version the person was looking at travels with it, so a save lands on the
+           invoice they read and not on one somebody else has moved on since. */
+        if (isEdit) await adapter.updateInvoice({ invoiceId: originalInvoice.invoiceId, expectedVersion: originalInvoice.version, header: headerData, lines, adjustments });
+        else if (isCorrective) await adapter.createCorrective({ originalInvoiceId: originalInvoice.invoiceId, header: headerData, lines, adjustments, financialEffectSign, reason: correctionReason, idempotencyKey });
         else await adapter.createDraft({ header: headerData, lines, adjustments, duplicateOverrideReason, idempotencyKey });
         dialog.close();
         onSaved();
       }
-      catch (error) { showMessage(formatApiErrorMessage(error), true); button.disabled = false; button.textContent = isCorrective ? "ثبت سند اصلاحی" : "ثبت پیش‌نویس"; }
+      catch (error) { showMessage(formatApiErrorMessage(error), true); button.disabled = false; button.textContent = commitLabel; }
     } }));
     return section;
   }
@@ -424,7 +483,15 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
   }
 
   dialog.append(head, steps, message, body);
-  adapter.getInvoiceTargets().then((items) => { targets = items; paintStep(); }).catch((error) => showMessage(error.message, true));
+  adapter.getInvoiceTargets().then((items) => {
+    targets = items;
+    /* The saved lines become editable lines only once the targets are here: a line stores
+       a `targetId`, and the invoice states what it points AT -- an estimate line or a
+       general-cost item. Matching by those identifiers rather than by the label is what
+       keeps an edit pointing at the same cost item when somebody renames it. */
+    if (isEdit && !lines.length) lines = editableLines(originalInvoice, targets);
+    paintStep();
+  }).catch((error) => showMessage(error.message, true));
   updateStepper();
   return dialog;
 }
@@ -432,7 +499,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
 /* Exported for the tests that hold the refusal rules still. What a reader is
    shown when they may not act is as much a decision as what they are shown when
    they may, and it is not reachable from the page factory without a Backend. */
-export function renderDetail(invoice, { canEdit, project, onSubmit, onConfirm, onVoid, onCorrective }) {
+export function renderDetail(invoice, { canEdit, project, onSubmit, onConfirm, onVoid, onCorrective, onEdit }) {
   const dialog = document.createElement("dialog");
   dialog.className = "confirm-dialog invoice-detail-dialog";
   dialog.setAttribute("aria-labelledby", "invoice-detail-title");
@@ -461,6 +528,23 @@ export function renderDetail(invoice, { canEdit, project, onSubmit, onConfirm, o
   print.type = "button";
   print.addEventListener("click", () => window.print());
   metaRow.append(element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "وضعیت نامشخص"), print);
+
+  /* THE WAY BACK IN, BESIDE THE WAY TO PAPER.
+     Until the confirmation locks it, an invoice is a draft of a claim about money, and a
+     draft nobody may correct is not a draft. Both statuses before `confirmed` are open:
+     «در انتظار تأیید» is precisely where somebody reads it closely enough to find the
+     mistake, and a review that cannot lead to a change is a queue, not a review.
+     Withheld -- not disabled -- once confirmed, where the document is immutable and the
+     corrective workflow is the only honest route. A greyed button there would promise a
+     door that does not exist. */
+  const EDITABLE = ["draft", "awaitingConfirmation"];
+  if (canEdit && onEdit && EDITABLE.includes(invoice.invoiceStatus)) {
+    const edit = element("button", "button button--ghost invoice-edit-button", "ویرایش فاکتور");
+    edit.type = "button";
+    edit.dataset.action = "edit-invoice";
+    edit.addEventListener("click", () => onEdit(invoice, dialog));
+    metaRow.append(edit);
+  }
   head.append(titleRow, metaRow);
 
   const metadata = element("dl", "invoice-detail-grid");
@@ -899,6 +983,17 @@ export function createInvoicesPage({ context, adapter }) {
           root.append(correctiveDialog);
           correctiveDialog.addEventListener("close", () => correctiveDialog.remove(), { once: true });
           showAccessibleDialog(correctiveDialog, { opener });
+        },
+        /* The same wizard, opened on the document instead of on a blank form. `refreshCounts`
+           because an edit can move money between the status columns the toolbar counts --
+           the totals above the table are of the register, not of this one invoice. */
+        onEdit: (editable, detailDialog) => {
+          const opener = getDialogOpener(detailDialog);
+          detailDialog.close();
+          const editDialog = createInvoiceWizard({ adapter, onSaved: () => load({ refreshCounts: true }), mode: "edit", originalInvoice: editable });
+          root.append(editDialog);
+          editDialog.addEventListener("close", () => editDialog.remove(), { once: true });
+          showAccessibleDialog(editDialog, { opener });
         },
       });
       root.append(dialog);

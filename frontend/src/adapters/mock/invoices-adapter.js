@@ -105,8 +105,8 @@ function makeInvoice(index, context) {
     originalInvoiceId: status === "voided" || status === "corrected" ? `invoice-demo-${String(index - 1).padStart(3, "0")}` : null,
     financialEffectSign: status === "voided" ? -1 : 1,
     lines: [
-      { invoiceLineId: `line-${number}-1`, targetType: "estimate_line", targetLabel: "میلگرد فونداسیون نمونه", quantity: "1250.0000", unit: "kg", unitPriceIRR: "80000", lineAmountIRR: "100000000", description: "تحویل مرحله اول" },
-      { invoiceLineId: `line-${number}-2`, targetType: "general_cost", targetLabel: "هزینه حمل نمونه", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: String(BigInt(rawTotalIRR) - 100000000n), description: "هزینه عمومی مرتبط" },
+      { invoiceLineId: `line-${number}-1`, targetType: "estimate_line", targetLabel: "میلگرد فونداسیون نمونه", estimateLineId: "estimate-foundation-rebar", resourceId: "resource-rebar", quantity: "1250.0000", unit: "kg", unitPriceIRR: "80000", lineAmountIRR: "100000000", description: "تحویل مرحله اول" },
+      { invoiceLineId: `line-${number}-2`, targetType: "general_cost", targetLabel: "هزینه حمل نمونه", estimateLineId: null, resourceId: "resource-permit", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: String(BigInt(rawTotalIRR) - 100000000n), description: "هزینه عمومی مرتبط" },
     ],
   };
 }
@@ -137,9 +137,9 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     // Two stages and a general cost, so the stage picker has something to group. The
     // stage fields mirror the real adapter exactly: a mock that answers a narrower shape
     // is a mock that lets a page ship broken against the service it stands in for.
-    { targetId: "estimate-foundation-rebar", targetType: "estimate_line", label: "آرماتوربندی فونداسیون · میلگرد فونداسیون نمونه", unit: "kg", wbsCode: "1.2", stageCode: "1", stageTitle: "عملیات خاکی و فونداسیون" },
-    { targetId: "estimate-formwork-labor", targetType: "estimate_line", label: "قالب‌بندی سقف · اکیپ قالب‌بندی نمونه", unit: "hour", wbsCode: "2.1", stageCode: "2", stageTitle: "اسکلت بتنی" },
-    { targetId: "general-permit", targetType: "general_cost", label: "هزینه مجوز نمونه", unit: null, wbsCode: null, stageCode: null, stageTitle: null },
+    { targetId: "estimate-foundation-rebar", targetType: "estimate_line", label: "آرماتوربندی فونداسیون · میلگرد فونداسیون نمونه", unit: "kg", wbsCode: "1.2", stageCode: "1", stageTitle: "عملیات خاکی و فونداسیون", estimateLineId: "estimate-foundation-rebar", resourceId: "resource-rebar" },
+    { targetId: "estimate-formwork-labor", targetType: "estimate_line", label: "قالب‌بندی سقف · اکیپ قالب‌بندی نمونه", unit: "hour", wbsCode: "2.1", stageCode: "2", stageTitle: "اسکلت بتنی", estimateLineId: "estimate-formwork-labor", resourceId: "resource-formwork" },
+    { targetId: "general-permit", targetType: "general_cost", label: "هزینه مجوز نمونه", unit: null, wbsCode: null, stageCode: null, stageTitle: null, estimateLineId: null, resourceId: "resource-permit" },
   ];
 
   function calculateLineAmount(line) {
@@ -225,6 +225,41 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     const invoice = { invoiceId: `invoice-draft-${Date.now()}`, organizationId: context.organizationId, projectId: context.projectId, ...header, ...allocateInvoiceNumber(), source: "manual", invoiceStatus: "draft", version: 1, idempotencyKey: requestKey, duplicateWarning: duplicateMatches.length > 0, duplicateOverrideReason: duplicateMatches.length ? auditedReason : null, duplicateOfInvoiceIds: duplicateMatches.map((item) => item.invoiceId), rawLinesTotalIRR: preview.rawLinesTotalIRR, ...adjustments, finalAmountIRR: preview.finalAmountIRR, submittedBy: context.userId, createdAt: new Date().toISOString(), confirmedBy: null, confirmedAt: null, relatedInvoiceId: null, lines: preparedLines };
     invoices.unshift(invoice);
     createRequests.set(requestKey, { fingerprint, invoice: clone(invoice) });
+    return clone(invoice);
+  }
+
+  /* Rewriting an invoice nobody has confirmed.
+   *
+   * The whole document is the unit: change one quantity and the header's discount
+   * redistributes across every line, so the preview is rebuilt from what arrives rather
+   * than patched in place. The invoice NUMBER, the id, the source and the creation stamp
+   * survive -- an edit corrects a document, it does not raise a new one.
+   *
+   * Both open statuses are editable. «در انتظار تأیید» is exactly where somebody reads an
+   * invoice closely enough to find the mistake, and sending them back to raise a second
+   * document to fix a typo is how a register fills with corrections of corrections. */
+  async function updateInvoice({ invoiceId, expectedVersion, header, lines, adjustments }) {
+    await wait(420);
+    if (!context.permissionCodes?.includes("finance.edit")) throw new ApiError({ status: 403, code: "FINANCE_PERMISSION_DENIED", message: "مجوز ویرایش فاکتور وجود ندارد." });
+    const invoice = invoices.find((item) => item.invoiceId === invoiceId);
+    if (!invoice) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "فاکتور موردنظر پیدا نشد." });
+    if (!["draft", "awaitingConfirmation"].includes(invoice.invoiceStatus)) {
+      throw new ApiError({ status: 409, code: "INVOICE_ALREADY_CONFIRMED", message: "فاکتور تأییدشده قابل ویرایش نیست؛ برای اصلاح آن سند اصلاحی ثبت کنید." });
+    }
+    if (invoice.version !== expectedVersion) throw new ApiError({ status: 409, code: "STALE_VERSION", message: "نسخه فاکتور تغییر کرده است؛ اطلاعات را دوباره دریافت کنید.", requestId: "mock-invoice-stale-409" });
+    if (!header?.invoiceDate || !header.vendorName || !Array.isArray(lines) || !lines.length) throw new ApiError({ status: 422, code: "INVOICE_VALIDATION_FAILED", message: "اطلاعات فاکتور کامل نیست." });
+    const preview = buildPreview(lines, adjustments);
+    if (BigInt(preview.finalAmountIRR) < 0n) throw new ApiError({ status: 422, code: "INVOICE_NEGATIVE_TOTAL", message: "مبلغ نهایی فاکتور نمی‌تواند منفی باشد." });
+    Object.assign(invoice, {
+      invoiceDate: header.invoiceDate,
+      vendorName: header.vendorName,
+      description: header.description ?? null,
+      ...adjustments,
+      rawLinesTotalIRR: preview.rawLinesTotalIRR,
+      finalAmountIRR: preview.finalAmountIRR,
+      lines: preview.lines.map((line, index) => ({ ...line, invoiceLineId: `${invoiceId}-${index + 1}` })),
+      version: invoice.version + 1,
+    });
     return clone(invoice);
   }
 
@@ -349,5 +384,5 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     return clone(confirmed);
   }
 
-  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective, createConfirmedExtractedInvoice });
+  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective, createConfirmedExtractedInvoice, updateInvoice });
 }
