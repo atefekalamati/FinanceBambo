@@ -327,8 +327,15 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
           categoryLabel: component.categoryLabel ?? chosen?.categoryLabel ?? null,
         },
         /* Recalculated rather than assumed: whether the new rule actually resolves THIS
-           crossing is the server's answer, and asking again is how the person sees it. */
-        onSaved: () => { refreshPreview(); },
+           crossing is the server's answer, and asking again is how the person sees it.
+
+           AND THE TABLE BEHIND THIS PANEL, which is the point of writing a rule at all. A
+           rule is not about one row: a `category` or `project` rule can unblock a dozen
+           lines at once, and refreshing only the preview would leave every one of them
+           still reading «نیازمند ضریب تبدیل» behind an open panel that says it is solved.
+           `onSaved` is the page's own reload of the row statuses -- it does not close this
+           panel, so the person keeps the row they were working on. */
+        onSaved: () => { refreshPreview(); onSaved?.(); },
       });
       dialog.open();
     });

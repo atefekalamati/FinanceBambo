@@ -268,6 +268,34 @@ export function sourceLabel(line) {
   return SOURCE_LABELS[line?.source] ?? "منبع تعریف‌نشده";
 }
 
+/**
+ * What crossed the two units, and how much anybody's word it rests on.
+ *
+ * The three the service can answer with are not equally trustworthy, and until now they
+ * arrived in the same cell as the same kind of fact:
+ *
+ *   provider_item    somebody weighed THIS listing. A measurement of the thing being priced.
+ *   conversion_rule  somebody stated it for a category, a project, or everything. A claim
+ *                    that covers this listing without having been made about it.
+ *   registry         a kilogram is a thousandth of a tonne. Nobody's word at all.
+ *
+ * Said in the cell rather than in a tooltip, because a reader comparing two rows is
+ * comparing two numbers of different standing and cannot see that from the figures.
+ */
+const FACTOR_SOURCE_LABELS = Object.freeze({
+  provider_item: "وزن‌کشی همین محصول",
+  conversion_rule: "قانون تبدیل",
+  registry: "تبدیل استاندارد واحد",
+});
+
+/** The factor's origin in words, or null when nothing was converted. */
+export function factorSourceLabel(factorSource) {
+  if (!factorSource) return null;
+  /* An unknown code is REPORTED, not swallowed. The service may add a fourth origin, and a
+     row that quietly says nothing is how a reader concludes no conversion happened. */
+  return FACTOR_SOURCE_LABELS[factorSource] ?? `مبنای تبدیل: ${factorSource}`;
+}
+
 /** The same question about a cost item, answered from the same kind of evidence. */
 export function resourceSourceLabel(resource) {
   if (resource?.sourceResourceUid != null) return SCHEDULE_SOURCE;

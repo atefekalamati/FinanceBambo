@@ -1,6 +1,7 @@
 import { element } from "../../shared/dom/elements.js";
 import { formatUnitLabel } from "../../shared/formatters/display.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
+import { getUnitDefinition } from "../prices/unit-conversions-validation.js";
 
 /* Defining the crossing between a price's unit and an item's unit, without leaving the
  * item.
@@ -47,6 +48,23 @@ const SCOPE_NEEDS = Object.freeze({
   category: "category",
   provider: "providerId",
 });
+
+/* Whether these two units measure different KINDS of thing.
+ *
+ * The same question `crosses_dimensions` asks on the server, asked here only to decide
+ * whether to SHOW the acknowledgement -- never to decide whether the rule is allowed. That
+ * remains the server's judgement, and this dialog has always refused to predict it.
+ *
+ * The registry is the one the items page already loaded from `/unit-registry`, so this is
+ * not a second source of truth. A unit it does not know counts as crossing, exactly as the
+ * server counts it: an unknown unit is not evidence that two things measure alike.
+ */
+function crossesDimensions(fromUnit, toUnit) {
+  const from = getUnitDefinition(fromUnit);
+  const to = getUnitDefinition(toUnit);
+  if (!from || !to) return true;
+  return from.dimension !== to.dimension;
+}
 
 function field(labelText, control, hint = null) {
   const wrapper = element("div", "form-field");
@@ -124,23 +142,48 @@ export function createConversionRuleDialog({ context, adapter, onSaved, onClose 
   reason.rows = 2;
   reason.placeholder = "این عدد از کجا آمده است؟ مثلاً وزن یک شاخه از برگهٔ فروشنده";
 
-  /* The escape hatch, and the reason it is not open yet.
+  /* THE ESCAPE HATCH.
      A rule whose units measure different KINDS of thing — a count against a mass — is a
-     fact about one product, so the server refuses it at any scope broader than that one
-     listing. The decision has been taken to turn that refusal into an explicit
-     acknowledgement, and until the server carries the field this checkbox would send
-     something nothing reads. It is shown disabled rather than hidden so the path is
-     visible to the person who needs it. */
+     fact about ONE product: «۱ شاخه = ۲۲ کیلوگرم» is a weighing, and the next size of angle
+     weighs something else. So the server refuses it at any scope broader than that one
+     listing, which is right — except that the narrow scope it points at cannot be written
+     until a listing is attached to the line, and on this project 832 of 835 lines have
+     none. The refusal sent people to a locked door.
+
+     It is now an admission instead of a refusal: the claim may be made, with a name and a
+     moment stamped on it server-side, and every price that comes out of it reports that a
+     broad claim stands behind it.
+
+     SHOWN ONLY WHERE IT MEANS SOMETHING. On a crossing the registry can already do — tonne
+     to kilogram — there is nothing to admit, and the server stores the flag as false
+     however it arrives. A checkbox about responsibility, offered where no responsibility is
+     being taken, teaches people to tick it without reading. */
   const acknowledge = element("input", "");
   acknowledge.type = "checkbox";
   acknowledge.name = "productDependentAcknowledged";
-  acknowledge.disabled = true;
   const acknowledgeRow = element("label", "conversion-rule-dialog__acknowledge");
   acknowledgeRow.append(acknowledge, element("span", "",
-    "با مسئولیت خودم، این تبدیل را در دامنهٔ انتخاب‌شده ثبت کن (در انتظار پشتیبانی سرور)"));
+    `این تبدیل به خودِ محصول بستگی دارد و برای محصول دیگری صادق نیست. با مسئولیت خودم آن را برای دامنهٔ انتخاب‌شده ثبت می‌کنم.`));
+
+  /* Recomputed on every scope change, because the answer depends on the scope as well as
+     on the units: the same crossing needs no admission at `provider_item`, where it is a
+     statement about exactly the thing it was measured on. */
+  function syncAcknowledge() {
+    const wanted = crossesDimensions(context.fromUnit, context.toUnit)
+      && scopeSelect.value !== "provider_item";
+    acknowledgeRow.hidden = !wanted;
+    if (!wanted) acknowledge.checked = false;
+  }
 
   const feedback = element("p", "form-feedback", "");
-  const save = element("button", "button button--primary", "ثبت قانون");
+  /* Set only when a rule was written and not put in force. Kept beside the feedback line
+     because the two say different things: one is why the attempt failed, the other is what
+     now exists in the database because of it. */
+  const note = element("p", "table-note", "");
+  note.hidden = true;
+  /* The rule this dialog has already written, if any. */
+  let saved = null;
+  const save = element("button", "button button--primary", "ثبت و اعمال قانون");
   save.type = "button";
   const cancel = element("button", "button button--ghost", "انصراف");
   cancel.type = "button";
@@ -159,14 +202,17 @@ export function createConversionRuleDialog({ context, adapter, onSaved, onClose 
     field("دلیل و مبنا", reason),
     acknowledgeRow,
     actions,
-    feedback);
+    feedback,
+    note);
 
   dialog.append(head, facts, form);
 
   scopeSelect.addEventListener("change", () => {
     scopeHint.textContent = SCOPES.find((s) => s.value === scopeSelect.value)?.hint ?? "";
     feedback.textContent = "";
+    syncAcknowledge();
   });
+  syncAcknowledge();
   factorInput.addEventListener("input", renderSentence);
 
   save.addEventListener("click", async () => {
@@ -191,15 +237,37 @@ export function createConversionRuleDialog({ context, adapter, onSaved, onClose 
 
     save.disabled = true;
     try {
-      await adapter.createConversionRule({
+      /* TWO CALLS, ONE ACT.
+         A rule arrives as a DRAFT, and a draft changes no number anywhere: both resolution
+         queries filter `status='approved'` in SQL and the domain resolver filters again. So
+         a dialog that only created one would let somebody write «۱ شاخه = ۲۲ کیلوگرم»,
+         watch it save, and find the row still saying «نیازمند ضریب تبدیل» — the feature
+         working perfectly and doing nothing.
+
+         Approving is not a second decision here. Creating and approving pass through the
+         same permission gate, including the extra one the tenant-wide scopes carry, so a
+         person who could write it can put it in force. What the two steps buy is a record:
+         the rule says who stated it and who let it count, even when that is one person. */
+      const created = saved ?? await adapter.createConversionRule({
         scopeType,
         fromUnit: context.fromUnit,
         toUnit: context.toUnit,
         conversionMethod: "factor",
         factorValue: factor,
         reason: reason.value.trim(),
+        /* Coerced, and always sent. An absent key and a false one are the same JSON, so
+           omitting it would make «I did not admit this» indistinguishable from «this client
+           is too old to know about admissions» -- and the server would be right to read the
+           second as the first only by luck. */
+        productDependentAcknowledged: Boolean(acknowledge.checked),
         ...(needs ? { [needs]: context[needs] } : {}),
       });
+      /* Remembered BEFORE the approve is attempted. If approving fails the rule exists, and
+         pressing the button again must finish that rule rather than write a second one —
+         two identical rules differing only in which is approved is a worse state than the
+         draft we are recovering from. */
+      saved = created;
+      await adapter.approveConversionRule(created.id, { reason: reason.value.trim() });
       dialog.close();
       onSaved?.();
     } catch (error) {
@@ -207,7 +275,15 @@ export function createConversionRuleDialog({ context, adapter, onSaved, onClose 
          can act on it, and it says which scope was too broad and what to do instead —
          which is more than this page knows. */
       feedback.textContent = error?.message
-        ?? "ثبت قانون تبدیل انجام نشد.";
+        ?? (saved ? "قانون ثبت شد اما اعمال نشد." : "ثبت قانون تبدیل انجام نشد.");
+      /* Said plainly rather than left to be discovered: the rule is in the database and is
+         changing nothing. The button then says what pressing it will do, which is finish
+         the rule already written, not write another. */
+      if (saved) {
+        note.textContent = "این قانون به‌صورت پیش‌نویس ذخیره شد و تا تأیید نشدن، روی هیچ قیمتی اثر ندارد.";
+        note.hidden = false;
+        save.textContent = "تأیید و اعمال قانون";
+      }
       save.disabled = false;
     }
   });
