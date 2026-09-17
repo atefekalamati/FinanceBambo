@@ -1166,7 +1166,25 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
         showAccessibleDialog(dialog);
       },
       priceStatuses,
-      onMapPrice: priceMappingAdapter ? (line, resource) => {
+      /* THE PRICING TOOLS BELONG TO امور مالی, NOT TO THE REPORT.
+       *
+       * Connecting an item to a market listing, converting between units, stating a rate
+       * by hand -- these are how the numbers are MADE. گزارش مالی is where they are read.
+       * Somebody opening the report wants the figure and the export; a button that starts
+       * a calculation there invites them to change the report they came to read.
+       *
+       * Gated on the SURFACE rather than on `canEdit`, and the difference matters: a
+       * reader without write permission on امور مالی still opens the panel read-only, to
+       * see which listing priced a row. That is reading, and it stays. What leaves is the
+       * whole family of tools, and only from the report.
+       *
+       * Decided HERE, once, rather than in each cell that draws a button. The cells render
+       * FROM these handlers, so a null handler draws nothing -- and a cell added later
+       * cannot leak a tool onto the report by forgetting its own guard. That is not
+       * hypothetical: «اتصال به قیمت روز» in the actions column asked only whether the
+       * handler existed, never whether the surface may use it, and so it was on the report
+       * from the day it was written. */
+      onMapPrice: !readOnly && priceMappingAdapter ? (line, resource) => {
         const panel = createPriceMappingPanel({
           line, resource, adapter: priceMappingAdapter, canEdit,
           /* The panel STAYS OPEN after a material is saved. A line is priced from a list,
@@ -1182,7 +1200,7 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
       /* Stating the rate by hand, for the items the market will never quote. Reloads the
          whole workspace rather than only the price statuses: what this writes is a price
          VERSION on the cost item, and the item's price is part of the workspace. */
-      onManualPrice: pricesAdapter ? (line, resource) => {
+      onManualPrice: !readOnly && pricesAdapter ? (line, resource) => {
         const dialog = createManualPriceDialog({
           line, resource, adapter: pricesAdapter,
           current: line.currentUnitPriceIRR ?? null,
