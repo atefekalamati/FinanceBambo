@@ -120,14 +120,17 @@ class ObjectDiscoveryTests(unittest.TestCase):
         # `provider_item_labels` with 0022, `finance_mpp_currency_decisions` with 0023,
         # `finance_item_price_mappings` with 0024,
         # `finance_item_price_mapping_components` with 0025, and the two conversion tables
-        # with 0026 -- which also adds columns to `finance_mpp_rows`, already listed. That
-        # the discovery found them without being told is the property this test is about.
+        # with 0026 -- which also adds columns to `finance_mpp_rows`, already listed.
+        # `finance_price_categories` arrives with 0032, which also adds `origin` to
+        # `provider_items` and `price_observations`, both already listed. That the
+        # discovery found them without being told is the property this test is about.
         self.assertEqual(
             ["estimate_line_source_completions", "estimate_lines",
              "finance_invoice_counters", "finance_item_price_mapping_components",
              "finance_item_price_mappings",
              "finance_mpp_currency_decisions",
-             "finance_mpp_rows", "finance_mpp_source_versions", "finance_resources",
+             "finance_mpp_rows", "finance_mpp_source_versions",
+             "finance_price_categories", "finance_resources",
              "finance_unit_conversion_issues", "finance_unit_conversion_rules",
              "invoices", "material_unit_settings", "price_collection_runs",
              "price_observations", "price_providers", "progress_snapshot_refs",

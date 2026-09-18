@@ -146,6 +146,11 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/finance-settings/unit-conversions/{ruleId}/approve", "post"),
                 ("/api/projects/{projectId}/finance/finance-settings/unit-conversions/{ruleId}/supersede", "post"),
                 ("/api/projects/{projectId}/finance/finance-settings/unit-conversion-issues", "get"),
+                # Declaring a category, and recording a price nobody imported. Both are
+                # finance.edit at the route; a category above project level is refused in
+                # the service unless the caller also holds finance.manage_settings.
+                ("/api/projects/{projectId}/finance/material-prices/categories", "post"),
+                ("/api/projects/{projectId}/finance/material-prices/manual", "post"),
                 ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/labels", "get"),
                 ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/labels", "post"),
                 ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/factors", "get"),

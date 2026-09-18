@@ -348,7 +348,8 @@ class AlembicChainTests(unittest.TestCase):
              "0028_source_version_supersession",
              "0029_identity_required_of_valid_rows_only",
              "0030_estimate_lines_state_their_provenance",
-             "0031_product_dependent_conversion_acknowledgement"],
+             "0031_product_dependent_conversion_acknowledgement",
+             "0032_manual_material_prices_and_declared_categories"],
             sorted(path.stem for path in VERSIONS.glob("*.py")))
 
     def test_every_revision_runs_both_directions(self):

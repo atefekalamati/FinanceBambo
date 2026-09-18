@@ -39,7 +39,8 @@ from .schemas.items_and_estimates import (AssignmentResponse,
     ResourceAggregateResponse, SourceVersionResponse)
 from .security import service_key
 from .services.material_price_import import MaterialPriceSheetNotConfigured
-from .schemas.material_prices import (ImportRunStartedResponse,ImportRunListResponse,ImportRunResponse,
+from .schemas.material_prices import (ManualPriceCreate,ManualPriceResponse,
+    MaterialCategoryCreate,ImportRunStartedResponse,ImportRunListResponse,ImportRunResponse,
     MaterialCategoryListResponse,MaterialCategoryResponse,MaterialPriceHistoryListResponse,
     MaterialPriceHistoryResponse,MaterialPriceListResponse,MaterialPriceResponse,
     MaterialUnitSettingCreate,MaterialUnitSettingListResponse,MaterialUnitSettingResponse,
@@ -659,9 +660,60 @@ async def material_categories(projectId:str,request:Request):
     # category whose sheet does not state one.
     return MaterialCategoryListResponse(items=[
         _declared(MaterialCategoryResponse,
-                  dict(x, label=category_label(x["category"]),
+                  # A declared category may carry its own label; otherwise the shared
+                  # vocabulary names it, exactly as before.
+                  dict(x, label=(x.get("declared_label")
+                                 or category_label(x["category"])),
                        columns=category_columns(x["category"])))
         for x in items])
+
+@router.post("/material-prices/categories",response_model=MaterialCategoryResponse,
+             status_code=201,responses=FINANCE_ERROR_RESPONSES)
+async def declare_material_category(projectId:str,payload:MaterialCategoryCreate,
+                                    request:Request):
+    """Name a category that does not exist yet, at a level.
+
+    The chips on the prices page are counted from `provider_items.category`, and this
+    does not change that. What it adds is the two things a column cannot hold: which
+    level the word belongs to, and a category that exists before anything has been
+    recorded in it -- which is the state a person is in between naming a category and
+    entering the first price for it.
+
+    Permissions are the ones that already exist, gated the way the conversion rules gate
+    theirs. The ROUTE asks for `finance.edit`, like every other price write. The SERVICE
+    then refuses `organization` and `global` unless the caller also holds
+    `finance.manage_settings` -- a word that lands in every project's list is a decision
+    about the tenant, and editing THIS project is not consent to that.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    row=await request.app.state.material_price_service.declare_category(
+        scope,payload,scope.actor_user_id,permissions=scope.permission_codes)
+    return _declared(MaterialCategoryResponse,
+                     dict(row,item_count=0,active_count=0,inactive_count=0,
+                          declared=True,
+                          label=row.get("label") or category_label(row["category"]),
+                          columns=category_columns(row["category"])))
+
+@router.post("/material-prices/manual",response_model=ManualPriceResponse,
+             status_code=201,responses=FINANCE_ERROR_RESPONSES)
+async def record_manual_material_price(projectId:str,payload:ManualPriceCreate,
+                                       request:Request):
+    """Record a price somebody obtained for a product the sheet does not carry.
+
+    It becomes a listing and an observation in the same tables as every imported price,
+    so the prices table, the history and the estimate read it without knowing it was
+    typed. Two things mark it: `origin = 'manual'`, and an author and a reason, which are
+    required by the database rather than by this handler.
+
+    Recording again for the same product APPENDS. `price_observations` is append-only by
+    trigger and correcting a price means stating the new one, so the history shows what
+    was believed and when -- exactly as it does for the sheet.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    answer=await request.app.state.material_price_service.record_manual_price(
+        scope,payload,scope.actor_user_id)
+    return _declared(ManualPriceResponse,dict(answer,
+                                              provider_item_id=str(answer["provider_item_id"])))
 
 @router.get("/material-prices/current",response_model=MaterialPriceListResponse)
 async def material_prices_current(projectId:str,request:Request,

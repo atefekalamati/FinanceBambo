@@ -5934,6 +5934,111 @@
         "title": "LiveReportResponse",
         "type": "object"
       },
+      "ManualPriceCreate": {
+        "additionalProperties": false,
+        "description": "A price somebody obtained themselves, for a product the sheet does not carry.\n\n`reason` is required and is the difference between a quote and a guess: a number with\nno account of where it came from is one nobody can question later. The unit must be a\nregistry code, because a price per something nobody can name cannot be converted and\nwould enter an estimate as a number with no denominator.",
+        "properties": {
+          "category": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "observedAt": {
+            "format": "date",
+            "title": "Observedat",
+            "type": "string"
+          },
+          "priceIrr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Priceirr"
+          },
+          "productName": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Productname",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "sourceUnit": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Sourceunit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "productName",
+          "category",
+          "sourceUnit",
+          "priceIrr",
+          "observedAt",
+          "reason"
+        ],
+        "title": "ManualPriceCreate",
+        "type": "object"
+      },
+      "ManualPriceResponse": {
+        "additionalProperties": false,
+        "description": "What one hand-entered price became.\n\n`alreadyRecorded` is true when this exact price, for this product, on this day was\nalready stored. It is not an error: somebody pressing save twice has not made a\nsecond quote, and the fingerprint that recognises a re-imported sheet row recognises\nthis the same way.",
+        "properties": {
+          "alreadyRecorded": {
+            "default": false,
+            "title": "Alreadyrecorded",
+            "type": "boolean"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "observedAt": {
+            "format": "date",
+            "title": "Observedat",
+            "type": "string"
+          },
+          "priceIrr": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Priceirr",
+            "type": "string"
+          },
+          "productName": {
+            "title": "Productname",
+            "type": "string"
+          },
+          "providerItemId": {
+            "title": "Provideritemid",
+            "type": "string"
+          },
+          "sourceUnit": {
+            "title": "Sourceunit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "providerItemId",
+          "productName",
+          "category",
+          "sourceUnit",
+          "priceIrr",
+          "observedAt"
+        ],
+        "title": "ManualPriceResponse",
+        "type": "object"
+      },
       "MappingFiltersResponse": {
         "additionalProperties": false,
         "description": "What the modal may filter by at this point in its cascade.\n\nRead from the data rather than hard-coded, and scoped as the cascade narrows: providers\nby the chosen category, product types by category AND provider.",
@@ -5981,6 +6086,45 @@
         "title": "MappingFiltersResponse",
         "type": "object"
       },
+      "MaterialCategoryCreate": {
+        "additionalProperties": false,
+        "description": "A person naming a category that does not exist yet.\n\n`scopeLevel` is the whole reason this is a record rather than a string: the same word\ncan belong to one project, to an organization, or to BAMBO, and a column on a listing\nhas nowhere to say which.",
+        "properties": {
+          "category": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "scopeLevel": {
+            "default": "project",
+            "enum": [
+              "project",
+              "organization",
+              "global"
+            ],
+            "title": "Scopelevel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category"
+        ],
+        "title": "MaterialCategoryCreate",
+        "type": "object"
+      },
       "MaterialCategoryListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6018,6 +6162,11 @@
             "title": "Columns",
             "type": "array"
           },
+          "declared": {
+            "default": false,
+            "title": "Declared",
+            "type": "boolean"
+          },
           "inactiveCount": {
             "title": "Inactivecount",
             "type": "integer"
@@ -6036,6 +6185,22 @@
               }
             ],
             "title": "Label"
+          },
+          "scopeLevel": {
+            "anyOf": [
+              {
+                "enum": [
+                  "project",
+                  "organization",
+                  "global"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopelevel"
           }
         },
         "required": [
@@ -6471,6 +6636,18 @@
             ],
             "title": "Displayunit"
           },
+          "enteredBy": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enteredby"
+          },
           "externalId": {
             "title": "Externalid",
             "type": "string"
@@ -6728,6 +6905,11 @@
               "unknown"
             ],
             "title": "Observedatsource",
+            "type": "string"
+          },
+          "origin": {
+            "default": "sheet",
+            "title": "Origin",
             "type": "string"
           },
           "piecesPerPackage": {
@@ -18410,6 +18592,152 @@
         "tags": [
           "finance"
         ]
+      },
+      "post": {
+        "description": "Name a category that does not exist yet, at a level.\n\nThe chips on the prices page are counted from `provider_items.category`, and this\ndoes not change that. What it adds is the two things a column cannot hold: which\nlevel the word belongs to, and a category that exists before anything has been\nrecorded in it -- which is the state a person is in between naming a category and\nentering the first price for it.\n\nPermissions are the ones that already exist, gated the way the conversion rules gate\ntheirs. The ROUTE asks for `finance.edit`, like every other price write. The SERVICE\nthen refuses `organization` and `global` unless the caller also holds\n`finance.manage_settings` -- a word that lands in every project's list is a decision\nabout the tenant, and editing THIS project is not consent to that.",
+        "operationId": "declare_material_category_api_projects__projectId__finance_material_prices_categories_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialCategoryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialCategoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
+          }
+        },
+        "summary": "Declare Material Category",
+        "tags": [
+          "finance"
+        ]
       }
     },
     "/api/projects/{projectId}/finance/material-prices/current": {
@@ -18825,6 +19153,154 @@
           }
         },
         "summary": "Material Item Labels",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/manual": {
+      "post": {
+        "description": "Record a price somebody obtained for a product the sheet does not carry.\n\nIt becomes a listing and an observation in the same tables as every imported price,\nso the prices table, the history and the estimate read it without knowing it was\ntyped. Two things mark it: `origin = 'manual'`, and an author and a reason, which are\nrequired by the database rather than by this handler.\n\nRecording again for the same product APPENDS. `price_observations` is append-only by\ntrigger and correcting a price means stating the new one, so the history shows what\nwas believed and when -- exactly as it does for the sheet.",
+        "operationId": "record_manual_material_price_api_projects__projectId__finance_material_prices_manual_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualPriceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualPriceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
+          }
+        },
+        "summary": "Record Manual Material Price",
         "tags": [
           "finance"
         ]
