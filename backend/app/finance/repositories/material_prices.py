@@ -129,11 +129,33 @@ class PsycopgMaterialPriceRepository:
                                                           EXCLUDED.spec_source),
                                  spec_conflicts = EXCLUDED.spec_conflicts,
                                  """ + keep_existing + """
+                   -- A HAND-ENTERED LISTING IS NOT THE IMPORTER'''S TO CHANGE.
+                   --
+                   -- Without this a re-import that happened to generate the same
+                   -- external_id would rename the product, move its category, replace
+                   -- its unit and could deactivate it -- silently overwriting a price
+                   -- somebody obtained by telephone with one the sheet never carried.
+                   -- The row is skipped, not merged: there is nothing about a manual
+                   -- listing an import knows better.
+                   WHERE provider_items.origin = 'sheet'
                    RETURNING *""",
                 [uuid4(), s.organization_id, s.project_id, provider_id, external_id,
                  external_name, category, url, source_unit, worksheet, active,
                  inactive_reason, Jsonb(metadata or {}), spec_source,
                  Jsonb(spec_conflicts) if spec_conflicts else None] + values)
+            written = await c.fetchone()
+            if written is not None:
+                return written
+            # The WHERE above refused the update because this listing is a manual one.
+            # The importer still needs a row to hang its observation on -- refusing to
+            # CHANGE the listing is not refusing to record that the sheet also quoted
+            # this product -- so the untouched row is read back and returned as it
+            # stands.
+            await c.execute(
+                """SELECT * FROM provider_items
+                    WHERE organization_id=%s AND project_id=%s AND provider_id=%s
+                      AND external_id=%s""",
+                (s.organization_id, s.project_id, provider_id, external_id))
             return await c.fetchone()
 
     async def items_page(self, s, *, category=None, provider_id=None, active=None,
@@ -174,6 +196,170 @@ class PsycopgMaterialPriceRepository:
                     GROUP BY category ORDER BY category""",
                 (s.organization_id, s.project_id))
             return await c.fetchall()
+
+    # ------------------------------------------------------ declared categories
+
+    async def declared_categories(self, s):
+        """Categories a person declared that this project can see.
+
+        Its own `project` ones, its organization's, and every `global` one. A project
+        does not see another project's declarations -- a word one site chose for its own
+        materials is not a word the site next door has agreed to.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """SELECT id, category, label, scope_level, project_id, created_by,
+                          created_at
+                     FROM finance_price_categories
+                    WHERE organization_id=%s
+                      AND (scope_level='global'
+                           OR scope_level='organization'
+                           OR (scope_level='project' AND project_id=%s))
+                    ORDER BY category""",
+                (s.organization_id, s.project_id))
+            return await c.fetchall()
+
+    async def declare_category(self, s, *, category, label, scope_level, created_by,
+                               category_id):
+        """Record one declared category, or None when this scope already has it.
+
+        The uniqueness is the table's own constraint, so two people declaring the same
+        word at the same moment cannot both succeed. `ON CONFLICT DO NOTHING` turns that
+        race into an empty result the caller reports as a conflict, rather than an
+        integrity error surfacing as a 500.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """INSERT INTO finance_price_categories
+                       (id, organization_id, project_id, scope_level, category, label,
+                        created_by)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT DO NOTHING
+                   RETURNING id, category, label, scope_level, project_id, created_by,
+                             created_at""",
+                (category_id, s.organization_id,
+                 s.project_id if scope_level == "project" else None,
+                 scope_level, category, label, created_by))
+            return await c.fetchone()
+
+    async def category_exists(self, s, category):
+        """Whether this word is already a category here -- declared, or in use by a listing.
+
+        Both count. A category that arrived in the sheet is as real as one somebody
+        declared, and requiring a declaration for it would mean re-declaring the seven
+        the workbook already uses.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """SELECT EXISTS (
+                       SELECT 1 FROM provider_items
+                        WHERE organization_id=%s AND project_id=%s AND category=%s)
+                    OR EXISTS (
+                       SELECT 1 FROM finance_price_categories
+                        WHERE organization_id=%s AND category=%s
+                          AND (scope_level<>'project' OR project_id=%s))
+                       AS present""",
+                (s.organization_id, s.project_id, category,
+                 s.organization_id, category, s.project_id))
+            return bool((await c.fetchone())["present"])
+
+    # ----------------------------------------------------------- manual price entry
+
+    async def ensure_manual_provider(self, s, *, name, provider_id):
+        """The one provider manual rows hang from, created on first use.
+
+        A price with no supplier row cannot be joined to anything, and inventing a
+        different provider per entry would fill the supplier list with one-offs. So there
+        is exactly one per project and it is named for what it is.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """SELECT * FROM price_providers
+                    WHERE organization_id=%s AND project_id=%s AND name=%s
+                    LIMIT 1""",
+                (s.organization_id, s.project_id, name))
+            existing = await c.fetchone()
+            if existing is not None:
+                return existing
+            await c.execute(
+                """INSERT INTO price_providers
+                       (id, organization_id, project_id, name, domain, provider_type,
+                        crawl_method, active, default_interval_minutes)
+                   VALUES (%s, %s, %s, %s, %s, 'manual', 'manual_entry', true, 1440)
+                   RETURNING *""",
+                (provider_id, s.organization_id, s.project_id, name,
+                 "manual://%s" % s.project_id))
+            return await c.fetchone()
+
+    async def find_manual_item(self, s, *, provider_id, external_name, category):
+        """The listing a previous manual entry created for this product, if any.
+
+        Matched on the name the person typed, within the manual provider and category.
+        Re-entering a price for the same product must append an observation to the
+        listing that already exists, not create a second listing with the same name --
+        two listings would be two rows on the prices page for one product, each with half
+        its history.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """SELECT * FROM provider_items
+                    WHERE organization_id=%s AND project_id=%s AND provider_id=%s
+                      AND origin='manual' AND external_name=%s AND category=%s
+                    LIMIT 1""",
+                (s.organization_id, s.project_id, provider_id, external_name, category))
+            return await c.fetchone()
+
+    async def create_manual_item(self, s, *, provider_id, item_id, external_id,
+                                 external_name, category, source_unit):
+        """One hand-entered listing. `origin='manual'` is what keeps the importer off it."""
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """INSERT INTO provider_items
+                       (id, organization_id, project_id, provider_id, external_id,
+                        external_name, category, source_unit, url, active, metadata,
+                        origin)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, true, '{}'::jsonb,
+                           'manual')
+                   RETURNING *""",
+                (item_id, s.organization_id, s.project_id, provider_id, external_id,
+                 external_name, category, source_unit))
+            return await c.fetchone()
+
+    async def record_manual_observation(self, s, *, observation_id, provider_id,
+                                        provider_item_id, price_irr, source_unit,
+                                        observed_on, entered_by, reason, fingerprint,
+                                        product_name, provider_name):
+        """A hand-entered price, appended like every other observation.
+
+        No run and no url: this was not an import and must not claim to be. The
+        append-only trigger applies here exactly as it does to imported rows, which is
+        why correcting a manual price means recording another one rather than editing
+        this one.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """INSERT INTO price_observations
+                       (id, organization_id, project_id, provider_id, provider_item_id,
+                        collection_run_id, raw_price, normalized_price_irr,
+                        source_currency, source_unit, source_url, observed_at,
+                        fetched_at, availability, validation_status, validation_reasons,
+                        raw_data, observed_at_source, workflow_date_gregorian,
+                        row_fingerprint, product_external_id, product_name_snapshot,
+                        provider_name_snapshot, origin, entered_by, reason)
+                   VALUES (%s, %s, %s, %s, %s,
+                           NULL, %s, %s,
+                           'IRR', %s, NULL, %s,
+                           now(), 'available', 'valid', '[]'::jsonb,
+                           '{}'::jsonb, 'workflow_date', %s,
+                           %s, %s, %s,
+                           %s, 'manual', %s, %s)
+                   ON CONFLICT DO NOTHING
+                   RETURNING *""",
+                (observation_id, s.organization_id, s.project_id, provider_id,
+                 provider_item_id, str(price_irr), price_irr, source_unit, observed_on,
+                 observed_on, fingerprint, str(provider_item_id), product_name,
+                 provider_name, entered_by, reason))
+            return await c.fetchone()
 
     async def projects_with_active_providers(self):
         """Every (organization, project) with an active spreadsheet provider, and how

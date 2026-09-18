@@ -18,9 +18,67 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from .base import ApiModel
+
+
+class MaterialCategoryCreate(ApiModel):
+    """A person naming a category that does not exist yet.
+
+    `scopeLevel` is the whole reason this is a record rather than a string: the same word
+    can belong to one project, to an organization, or to BAMBO, and a column on a listing
+    has nowhere to say which.
+    """
+
+    category: str = Field(min_length=1, max_length=60)
+    label: str | None = Field(default=None, max_length=120)
+    scope_level: Literal["project", "organization", "global"] = "project"
+
+
+class ManualPriceCreate(ApiModel):
+    """A price somebody obtained themselves, for a product the sheet does not carry.
+
+    `reason` is required and is the difference between a quote and a guess: a number with
+    no account of where it came from is one nobody can question later. The unit must be a
+    registry code, because a price per something nobody can name cannot be converted and
+    would enter an estimate as a number with no denominator.
+    """
+
+    product_name: str = Field(min_length=1, max_length=200)
+    category: str = Field(min_length=1, max_length=60)
+    source_unit: str = Field(min_length=1, max_length=32)
+    #: Whole rials, like every other price here. Strictly positive: zero is not a quote.
+    price_irr: Decimal = Field(gt=0)
+    #: The day the price was obtained. NOT the moment it was typed -- a price quoted on
+    #: Sunday and entered on Tuesday applies to Sunday.
+    observed_at: date
+    reason: str = Field(min_length=1, max_length=500)
+
+    @field_validator("price_irr")
+    @classmethod
+    def whole_rials(cls, value):
+        if value != value.to_integral_value():
+            raise ValueError("price must be a whole number of rials")
+        return value
+
+
+class ManualPriceResponse(ApiModel):
+    """What one hand-entered price became.
+
+    `alreadyRecorded` is true when this exact price, for this product, on this day was
+    already stored. It is not an error: somebody pressing save twice has not made a
+    second quote, and the fingerprint that recognises a re-imported sheet row recognises
+    this the same way.
+    """
+
+    provider_item_id: str
+    product_name: str
+    category: str
+    source_unit: str
+    price_irr: Decimal
+    observed_at: date
+    already_recorded: bool = False
 
 
 class MaterialCategoryResponse(ApiModel):
@@ -37,6 +95,13 @@ class MaterialCategoryResponse(ApiModel):
     #: before a single row arrives -- and so a category whose sheet states no measurements,
     #: like pipe, gets a short honest table rather than empty columns borrowed from another.
     columns: list[dict] = Field(default_factory=list)
+
+    #: Which level this category belongs to, or null when nothing declared it and it is
+    #: simply a word the sheet uses. A reader cannot tell a declared chip from a counted
+    #: one without these two fields, and that is deliberate: on screen they are the same
+    #: kind of thing and behave identically.
+    scope_level: Literal["project", "organization", "global"] | None = None
+    declared: bool = False
 
 
 class MaterialCategoryListResponse(ApiModel):
@@ -211,6 +276,14 @@ class MaterialPriceResponse(ApiModel):
     #: last believable price keeps being reported -- but the reader has to be able to see
     #: that today's sheet said something unusable, rather than wondering why a number has
     #: not moved for three days.
+    #: sheet: the importer read this from the configured workbook. manual: a person
+    #: entered it. The two numbers do not carry the same weight and the column that shows
+    #: them has to be able to say so.
+    origin: str = "sheet"
+    #: Who entered it, on a manual row. Null on an imported one -- an import has a run,
+    #: not an author.
+    entered_by: UUID | None = None
+
     rejected_after_date: date | None = None
     rejected_after_raw_price: str | None = None
     rejected_after_reasons: list[str] = Field(default_factory=list)
@@ -337,6 +410,16 @@ class ImportRunStartedResponse(ApiModel):
     #: success too: "nothing changed" is a result, and an operator who triggered an
     #: import and saw an empty response cannot tell it from one that did not run.
     message: str | None = None
+
+    #: What asked for this import. `n8n_daily_material_price_update` for the automation,
+    #: `manual` for a person, or whatever a caller named itself with. Recorded so a run
+    #: in the history can be told apart from the one beside it without guessing from the
+    #: hour it started.
+    trigger_source: str | None = None
+    #: `system` for an automated run, the actor's id for a human one, null when neither
+    #: is known. Deliberately NOT a user id for the automation: there is no user, and
+    #: minting one would put a name in an audit trail that belongs to nobody.
+    initiated_by: str | None = None
 
 
 class ImportRunListResponse(ApiModel):

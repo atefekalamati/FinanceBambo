@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from ..domain.material_specs import SPEC_COLUMNS, WEIGHT_BASES_USABLE_FOR_CONVERSION
+from ..domain.errors import FinanceDomainError
 from ..domain.unit_conversion import can_convert
 from .material_price_resolution import Resolution, canonical_unit, resolve
 
@@ -24,6 +25,25 @@ from .material_price_resolution import Resolution, canonical_unit, resolve
 DEFAULT_STALE_AFTER_DAYS = 7
 
 
+#: A category at these levels is a statement about every project the tenant will ever
+#: run, so it is gated harder than editing the project in front of you -- the same
+#: distinction, and the same permission, the conversion rules draw for their own scopes.
+TENANT_WIDE_CATEGORY_SCOPES = frozenset({"organization", "global"})
+TENANT_WIDE_CATEGORY_PERMISSION = "finance.manage_settings"
+
+
+class MaterialCategoryRefused(FinanceDomainError):
+    """A category or a manual price the caller may not record as asked.
+
+    409 rather than 422: the request is well formed and the conflict is with what already
+    exists, which is the caller's to resolve by choosing another word or declaring the
+    category first.
+    """
+
+    status = 409
+    code = "FINANCE_MATERIAL_CATEGORY_REFUSED"
+
+
 class MaterialPriceService:
     def __init__(self, repository, conversion_repository=None,
                  stale_after_days=DEFAULT_STALE_AFTER_DAYS):
@@ -31,8 +51,128 @@ class MaterialPriceService:
         self.conversions = conversion_repository
         self.stale_after_days = stale_after_days
 
+    #: The supplier row every hand-entered price hangs from. One per project, named for
+    #: what it is rather than for a company, because no company quoted through this path.
+    MANUAL_PROVIDER_NAME = "ورود دستی"
+
     async def categories(self, scope):
-        return await self.repository.categories(scope)
+        """Every category this project can show: counted from listings, plus declared ones.
+
+        The union is deliberately seamless. A chip somebody declared and a chip the sheet
+        produced look and behave the same on screen, and a client that wants to tell them
+        apart reads `declared` and `scopeLevel` rather than inferring it from the shape of
+        the answer.
+
+        A declared category with no listings yet reports zero counts, which is the true
+        answer: somebody named it and nothing has been recorded in it.
+        """
+        counted = await self.repository.categories(scope)
+        by_name = {row["category"]: dict(row, declared=False, scope_level=None)
+                   for row in counted}
+        if hasattr(self.repository, "declared_categories"):
+            for row in await self.repository.declared_categories(scope):
+                existing = by_name.get(row["category"])
+                if existing is None:
+                    by_name[row["category"]] = {
+                        "category": row["category"], "item_count": 0,
+                        "active_count": 0, "inactive_count": 0,
+                        "declared": True, "scope_level": row["scope_level"],
+                        "declared_label": row.get("label")}
+                else:
+                    # It was declared AND something has been recorded in it. The counts
+                    # stay -- they describe the listings -- and the level is added.
+                    existing["declared"] = True
+                    existing["scope_level"] = row["scope_level"]
+                    existing["declared_label"] = row.get("label")
+        return [by_name[name] for name in sorted(by_name)]
+
+    async def declare_category(self, scope, payload, actor_id, *, permissions=()):
+        """Record a category nobody had named yet.
+
+        A category above project level is checked here rather than at the route, because
+        `finance.manage_settings` is not one of the permissions a route may be gated on
+        and the conversion rules already answer this question the same way: the route asks
+        for `finance.edit`, and the wider scope is refused in the service.
+
+        Refused when the word is already in this project's view -- declared here, declared
+        for the organization, or simply in use by a listing the sheet brought. Two chips
+        with the same name would be two chips for one thing, and the second would be
+        unreachable from the first.
+        """
+        from uuid import uuid4
+
+        if payload.scope_level in TENANT_WIDE_CATEGORY_SCOPES:
+            if TENANT_WIDE_CATEGORY_PERMISSION not in set(permissions or ()):
+                raise MaterialCategoryRefused(
+                    "دسته‌ای که فراتر از این پروژه است تنها با دسترسی «%s» قابل ثبت است"
+                    % TENANT_WIDE_CATEGORY_PERMISSION)
+        category = payload.category.strip()
+        if await self.repository.category_exists(scope, category):
+            raise MaterialCategoryRefused(
+                "دستهٔ «%s» از قبل وجود دارد." % category)
+        row = await self.repository.declare_category(
+            scope, category=category, label=(payload.label or "").strip() or None,
+            scope_level=payload.scope_level, created_by=actor_id,
+            category_id=uuid4())
+        if row is None:
+            # Somebody declared the same word between the check and the insert. The
+            # table's own uniqueness caught it, which is why the check above is a
+            # courtesy and this is the guarantee.
+            raise MaterialCategoryRefused(
+                "دستهٔ «%s» هم‌زمان توسط شخص دیگری ثبت شد." % category)
+        return row
+
+    async def record_manual_price(self, scope, payload, actor_id):
+        """One price a person obtained, stored in the same world as the imported ones.
+
+        It becomes a listing and an observation, exactly like a sheet row, so everything
+        downstream -- the prices table, the history, the estimate -- reads it without
+        knowing it was typed. What marks it is `origin`, and what protects it is that the
+        importer's upsert never touches a manual listing.
+
+        Recording a NEW price for the same product appends another observation rather than
+        editing the last: the table is append-only by trigger, and a price that can be
+        rewritten is not a record of what anything cost.
+        """
+        from hashlib import sha256
+        from uuid import uuid4
+
+        category = payload.category.strip()
+        if not await self.repository.category_exists(scope, category):
+            raise MaterialCategoryRefused(
+                "دستهٔ «%s» تعریف نشده است. اول آن را بسازید." % category)
+        unit = canonical_unit(payload.source_unit)
+        if unit is None:
+            raise MaterialCategoryRefused(
+                "واحد «%s» در فهرست واحدهای سامانه نیست." % payload.source_unit)
+
+        provider = await self.repository.ensure_manual_provider(
+            scope, name=self.MANUAL_PROVIDER_NAME, provider_id=uuid4())
+        name = payload.product_name.strip()
+        item = await self.repository.find_manual_item(
+            scope, provider_id=provider["id"], external_name=name, category=category)
+        if item is None:
+            item = await self.repository.create_manual_item(
+                scope, provider_id=provider["id"], item_id=uuid4(),
+                external_id="MANUAL-%s" % uuid4().hex[:12].upper(),
+                external_name=name, category=category, source_unit=unit)
+
+        # The same triple every imported row is fingerprinted on, so entering an
+        # identical price for an identical day twice is recognised as one observation
+        # rather than stored twice.
+        fingerprint = sha256(
+            "\x1f".join((str(item["id"]), payload.observed_at.isoformat(),
+                          str(payload.price_irr))).encode("utf-8")).hexdigest()
+        observation = await self.repository.record_manual_observation(
+            scope, observation_id=uuid4(), provider_id=provider["id"],
+            provider_item_id=item["id"], price_irr=payload.price_irr, source_unit=unit,
+            observed_on=payload.observed_at, entered_by=actor_id,
+            reason=payload.reason.strip(), fingerprint=fingerprint, product_name=name,
+            provider_name=self.MANUAL_PROVIDER_NAME)
+        return {"provider_item_id": item["id"], "category": category,
+                "product_name": name, "source_unit": unit,
+                "price_irr": payload.price_irr, "observed_at": payload.observed_at,
+                "already_recorded": observation is None}
 
     async def runs(self, scope, page, page_size):
         return await self.repository.runs_page(scope, page=page, page_size=page_size)
@@ -251,6 +391,12 @@ class MaterialPriceService:
             # above is therefore older than the sheet's newest word on the product, and a
             # reader has to be told: without this they see a three-day-old number and no
             # reason it did not move.
+            # Where this price came from. The prices table shows imported and
+            # hand-entered rows side by side, and the two do not carry the same weight:
+            # one is what a workbook published, the other is what a person obtained and
+            # signed for. A column that cannot say which is a column that hides it.
+            "origin": row.get("origin") or "sheet",
+            "entered_by": row.get("entered_by"),
             "rejected_after_date": row.get("rejected_after_date"),
             "rejected_after_raw_price": row.get("rejected_after_raw_price"),
             "rejected_after_reasons": list(row.get("rejected_after_reasons") or []),

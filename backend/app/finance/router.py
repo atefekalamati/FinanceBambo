@@ -12,7 +12,8 @@ from .schemas.settings import (
     FinanceSettingsRevisionResponse,
     FinanceSummaryResponse,
 )
-from .security.guards import FinanceNotFound, authorize_finance_request
+from .security.guards import (FinanceNotFound, FinanceScope,
+                              authorize_finance_request)
 from .adapters.ports import supports_actor_names
 from .domain.actors import apply_actor_names, collect_actor_ids
 from .services.settings import SETTINGS_EDIT_PERMISSION, may_edit_settings
@@ -36,8 +37,10 @@ from .schemas.audit import AuditEventListResponse,AuditEventResponse
 from .schemas.items_and_estimates import (AssignmentResponse,
     ItemsAndEstimatesResponse, LegacyLineResponse,
     ResourceAggregateResponse, SourceVersionResponse)
+from .security import service_key
 from .services.material_price_import import MaterialPriceSheetNotConfigured
-from .schemas.material_prices import (ImportRunStartedResponse,ImportRunListResponse,ImportRunResponse,
+from .schemas.material_prices import (ManualPriceCreate,ManualPriceResponse,
+    MaterialCategoryCreate,ImportRunStartedResponse,ImportRunListResponse,ImportRunResponse,
     MaterialCategoryListResponse,MaterialCategoryResponse,MaterialPriceHistoryListResponse,
     MaterialPriceHistoryResponse,MaterialPriceListResponse,MaterialPriceResponse,
     MaterialUnitSettingCreate,MaterialUnitSettingListResponse,MaterialUnitSettingResponse,
@@ -137,6 +140,31 @@ async def get_finance_summary(projectId: str, request: Request):
     )
     value = await request.app.state.finance_settings_service.summary(scope)
     return FinanceSummaryResponse.from_domain(value)
+
+
+async def _service_scope(project_id, service):
+    """The scope an AUTOMATED import runs in. The caller chooses none of it.
+
+    The organization is read from the provider configuration of the project named in the
+    path, never from the request. A key that could name a tenant could import one
+    tenant's prices into another's books, and nothing about holding the key says which
+    tenant the holder speaks for.
+
+    A project with no active spreadsheet provider is not reachable this way at all: there
+    is nothing configured to import, so there is no organization to infer and the answer
+    is a refusal rather than a guess.
+
+    `actor_user_id` stays None. There is no user, and minting one would put a name in the
+    audit trail that belongs to nobody -- the run records `initiatedBy: system` instead,
+    which is true.
+    """
+    for row in await service.repository.projects_with_active_providers():
+        if row["project_id"] == project_id:
+            return FinanceScope(organization_id=row["organization_id"],
+                                project_id=project_id, actor_user_id=None)
+    raise MaterialPriceSheetNotConfigured(
+        "no active price provider is configured for project %r, so there is nothing "
+        "to import" % project_id)
 
 
 async def _resource_scope(project_id, request, permission):
@@ -632,9 +660,60 @@ async def material_categories(projectId:str,request:Request):
     # category whose sheet does not state one.
     return MaterialCategoryListResponse(items=[
         _declared(MaterialCategoryResponse,
-                  dict(x, label=category_label(x["category"]),
+                  # A declared category may carry its own label; otherwise the shared
+                  # vocabulary names it, exactly as before.
+                  dict(x, label=(x.get("declared_label")
+                                 or category_label(x["category"])),
                        columns=category_columns(x["category"])))
         for x in items])
+
+@router.post("/material-prices/categories",response_model=MaterialCategoryResponse,
+             status_code=201,responses=FINANCE_ERROR_RESPONSES)
+async def declare_material_category(projectId:str,payload:MaterialCategoryCreate,
+                                    request:Request):
+    """Name a category that does not exist yet, at a level.
+
+    The chips on the prices page are counted from `provider_items.category`, and this
+    does not change that. What it adds is the two things a column cannot hold: which
+    level the word belongs to, and a category that exists before anything has been
+    recorded in it -- which is the state a person is in between naming a category and
+    entering the first price for it.
+
+    Permissions are the ones that already exist, gated the way the conversion rules gate
+    theirs. The ROUTE asks for `finance.edit`, like every other price write. The SERVICE
+    then refuses `organization` and `global` unless the caller also holds
+    `finance.manage_settings` -- a word that lands in every project's list is a decision
+    about the tenant, and editing THIS project is not consent to that.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    row=await request.app.state.material_price_service.declare_category(
+        scope,payload,scope.actor_user_id,permissions=scope.permission_codes)
+    return _declared(MaterialCategoryResponse,
+                     dict(row,item_count=0,active_count=0,inactive_count=0,
+                          declared=True,
+                          label=row.get("label") or category_label(row["category"]),
+                          columns=category_columns(row["category"])))
+
+@router.post("/material-prices/manual",response_model=ManualPriceResponse,
+             status_code=201,responses=FINANCE_ERROR_RESPONSES)
+async def record_manual_material_price(projectId:str,payload:ManualPriceCreate,
+                                       request:Request):
+    """Record a price somebody obtained for a product the sheet does not carry.
+
+    It becomes a listing and an observation in the same tables as every imported price,
+    so the prices table, the history and the estimate read it without knowing it was
+    typed. Two things mark it: `origin = 'manual'`, and an author and a reason, which are
+    required by the database rather than by this handler.
+
+    Recording again for the same product APPENDS. `price_observations` is append-only by
+    trigger and correcting a price means stating the new one, so the history shows what
+    was believed and when -- exactly as it does for the sheet.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    answer=await request.app.state.material_price_service.record_manual_price(
+        scope,payload,scope.actor_user_id)
+    return _declared(ManualPriceResponse,dict(answer,
+                                              provider_item_id=str(answer["provider_item_id"])))
 
 @router.get("/material-prices/current",response_model=MaterialPriceListResponse)
 async def material_prices_current(projectId:str,request:Request,
@@ -688,7 +767,9 @@ async def material_price_history(projectId:str,providerItemId:UUID,request:Reque
              status_code=201,responses=FINANCE_ERROR_RESPONSES)
 async def start_material_price_import(projectId:str,request:Request,
     force:bool=Query(True,description="import even if one ran recently"),
-    dueOnly:bool=Query(False,description="import only if the interval has passed")):
+    dueOnly:bool=Query(False,description="import only if the interval has passed"),
+    triggerSource:str|None=Query(None,max_length=64,
+                                 description="what asked for this import, for the audit")):
     """Read the configured sheet now, and say what that did.
 
     THE TRIGGER THIS SYSTEM DID NOT HAVE.
@@ -710,12 +791,24 @@ async def start_material_price_import(projectId:str,request:Request,
     partial unique index refuses the second copy. Two simultaneous runs are refused by the
     database, not by a flag.
     """
-    scope=await _resource_scope(projectId,request,"finance.edit")
     service=getattr(request.app.state,"material_price_import_service",None)
     if service is None:
         raise MaterialPriceSheetNotConfigured(
             "this host has no material price import configured; "
             "set FINANCE_MATERIAL_PRICE_SHEET_URL and restart")
+    # TWO CALLERS, TWO PROOFS.
+    #
+    # A person clicking a button carries a host session and is gated on `finance.edit`,
+    # exactly as before. n8n carries no session -- it is not a person, has no account and
+    # appears in no directory -- so it presents the configured service key instead. A
+    # request with NO key takes the human path untouched; a request with a WRONG key is
+    # refused rather than being dropped into a permission error about a role the
+    # automation was never going to hold.
+    automated=service_key.authenticate(request)
+    if automated:
+        scope=await _service_scope(projectId,service)
+    else:
+        scope=await _resource_scope(projectId,request,"finance.edit")
     # `force` and `dueOnly` are inverses of one decision: whether to respect the schedule.
     # Both names are accepted because both are how callers ask -- a person clicking a
     # button says force, a scheduler says dueOnly -- and either one asking for the
@@ -730,6 +823,9 @@ async def start_material_price_import(projectId:str,request:Request,
             return ImportRunStartedResponse(
                 status="skipped",run=None,inserted=0,already_present=0,rejected=0,
                 worksheet_report={},
+                trigger_source=(triggerSource or ("n8n_daily_material_price_update"
+                                                 if automated else "manual")),
+                initiated_by=(service_key.SYSTEM_INITIATOR if automated else None),
                 message=("skipped: an import for this project succeeded within the last "
                          "%d minutes" % interval))
     outcome=await service.run(scope)
@@ -740,6 +836,11 @@ async def start_material_price_import(projectId:str,request:Request,
         already_present=outcome.already_present,
         rejected=outcome.rejected,
         worksheet_report=outcome.worksheet_report or {},
+        trigger_source=(triggerSource or ("n8n_daily_material_price_update" if automated
+                                          else "manual")),
+        initiated_by=(service_key.SYSTEM_INITIATOR if automated
+                      else (None if scope.actor_user_id is None
+                            else str(scope.actor_user_id))),
         message=("%d new price(s); %d already recorded; %d row(s) refused"
                  % (outcome.inserted, outcome.already_present, outcome.rejected)))
 

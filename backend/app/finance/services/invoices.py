@@ -1,9 +1,11 @@
+from dataclasses import dataclass
 from datetime import datetime,timezone
 from decimal import Decimal
 from uuid import uuid4
 from ..domain.invoices import Invoice,calculate_invoice
 from ..domain.resources import FinanceRecordNotFound
 from ..domain.errors import FinanceDomainError
+from ..schemas.invoices import PATCH_PLAIN_FIELDS
 class DuplicateInvoice(FinanceDomainError):status=409;code="DUPLICATE_INVOICE"
 class StaleInvoice(FinanceDomainError):status=409;code="STALE_VERSION"
 class InvoiceAlreadyConfirmed(FinanceDomainError):status=409;code="INVOICE_ALREADY_CONFIRMED"
@@ -13,6 +15,28 @@ class InvoiceValidationError(FinanceDomainError):status=422;code="VALIDATION_ERR
 # is not the service's to decide any more. It is allocated by the database inside the
 # transaction that writes the invoice, which is the only place it can be decided correctly
 # when two people are entering invoices at the same moment.
+#: The two states a document can be corrected in. `awaitingConfirmation` is here because
+#: it is the state a reader is IN when they find the mistake.
+EDITABLE_STATUSES=frozenset({"draft","awaitingConfirmation"})
+
+
+@dataclass(frozen=True)
+class _Restated:
+ """A patch, wearing the shape `_calculate_lines` reads.
+
+ It exists so the correction path can hand the create path's calculator exactly what a
+ create hands it, with no branch inside the calculator for "this one came from a patch".
+ The calculator reads six attributes; this carries those six and nothing else.
+ """
+
+ lines:list
+ direct_adjustment_allocations:list
+ discount_irr:Decimal
+ tax_irr:Decimal
+ shipping_irr:Decimal
+ other_costs_irr:Decimal
+
+
 class FinanceInvoiceService:
  def __init__(self,repo,id_factory=uuid4,clock=lambda:datetime.now(timezone.utc)):self.repo=repo;self.ids=id_factory;self.clock=clock
  async def list(self,s,page=1,page_size=50,query=None,status=None,source=None,invoice_date_from=None,invoice_date_to=None):return await self.repo.list(s,page,page_size,query,status,source,invoice_date_from,invoice_date_to)
@@ -51,14 +75,37 @@ class FinanceInvoiceService:
   for command,value in zip(c.lines,calc.lines):lines.append({**command.model_dump(),"raw_amount_irr":value.raw,"allocated_discount_irr":value.discount,"allocated_tax_irr":value.tax,"allocated_shipping_irr":value.shipping,"allocated_other_costs_irr":value.other,"final_line_amount_irr":value.final})
   return lines,calc
  async def update(self,s,invoice_id,c):
+  """Correct a document before anybody approves it.
+
+  BOTH unconfirmed states are editable, and that is the fix this exists for. An extracted
+  invoice is moved to `awaitingConfirmation` to be looked at, and looking at it is exactly
+  when the wrong quantity is noticed -- so the state in which errors are FOUND used to be
+  the state in which they could not be corrected, and the only way forward was to discard
+  the document and type it again.
+
+  A CONFIRMED invoice is still untouchable here. It has a number, it has been approved and
+  the reports count it; correcting it is void-and-reissue, which leaves both versions
+  readable. That is a different act with a different audit trail, not a stricter version
+  of this one.
+  """
   current=await self.get(s,invoice_id)
   # Not a stale version: retrying with a fresher one would fail identically, and
-  # STALE_VERSION tells the client to refresh and try again. A confirmed document is
-  # corrected through the void/corrective workflow instead.
-  if current.status!="draft":raise InvoiceAlreadyConfirmed("only a draft invoice can be edited directly")
+  # STALE_VERSION tells the client to refresh and try again.
+  if current.status not in EDITABLE_STATUSES:raise InvoiceAlreadyConfirmed("only an unconfirmed invoice can be edited directly")
   if current.version!=c.expected_version:raise StaleInvoice("stale invoice version")
-  description=c.description if "description" in c.model_fields_set else current.description
-  try:return await self.repo.update_draft(s,current,description,c.status,self.ids(),self.clock())
+  sent=c.model_fields_set
+  header={name:(getattr(c,name) if name in sent else getattr(current,name)) for name in PATCH_PLAIN_FIELDS}
+  money={name:(getattr(c,name) if name in sent else getattr(current,name)) for name in ("discount_irr","tax_irr","shipping_irr","other_costs_irr")}
+  lines=None;final_amount=current.final_amount_irr
+  if c.lines is not None:
+   # The SAME distribution the create path uses, given the same shape of command. Not a
+   # second implementation that agrees with it today: an invoice whose tax was spread one
+   # way when it was created and another way when it was corrected would be two documents
+   # with one number.
+   restated=_Restated(c.lines,c.direct_adjustment_allocations or [],**money)
+   lines,calc=await self._calculate_lines(s,restated)
+   final_amount=calc.final_total
+  try:return await self.repo.update_editable(s,current,header,money,lines,final_amount,c.status,self.ids(),self.clock())
   except ValueError as error:raise StaleInvoice("stale invoice version") from error
  async def confirm(self,s,invoice_id,c):
   if s.actor_user_id is None:raise PermissionError("actor required")

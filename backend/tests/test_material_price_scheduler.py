@@ -145,14 +145,31 @@ class TickTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ConfigurationTests(unittest.TestCase):
+    """What the CODE defaults to, not what this machine happens to be configured as.
+
+    `setting()` reads two sources: the process environment, and `.env`. Clearing only the
+    first leaves the second answering, so on an operator's machine -- where turning the
+    scheduler on is exactly what `.env` is for -- "it is off unless turned on" would fail
+    while the code it describes is correct. Both sources are therefore taken away, and the
+    file is pointed at a path that does not exist rather than being edited: a test that
+    rewrites an operator's configuration to make itself pass is worse than a red one.
+    """
+
     def setUp(self):
         import os
+        from devhost import environment
+
         self.env = os.environ
         self.saved = {k: self.env.get(k) for k in
                       ("FINANCE_MATERIAL_PRICE_IMPORT_ENABLED",
                        "FINANCE_MATERIAL_PRICE_IMPORT_INTERVAL_MINUTES")}
+        self.environment = environment
+        self.saved_env_file = environment.ENV_FILE
+        environment.ENV_FILE = environment.ENV_FILE.with_name(".env.absent-for-this-test")
+        self.assertFalse(environment.ENV_FILE.is_file())
 
     def tearDown(self):
+        self.environment.ENV_FILE = self.saved_env_file
         for key, value in self.saved.items():
             if value is None:
                 self.env.pop(key, None)
@@ -213,7 +230,10 @@ class EndpointScheduleTests(unittest.TestCase):
         import inspect
         from app.finance import router
         params = list(inspect.signature(router.start_material_price_import).parameters)
-        self.assertEqual(["projectId", "request", "force", "dueOnly"], params)
+        # `triggerSource` joined later: it names what ASKED for the import, for the audit,
+        # and says nothing about what to import from. The assertion below is the rule.
+        self.assertEqual(["projectId", "request", "force", "dueOnly", "triggerSource"],
+                         params)
         self.assertFalse([p for p in params if "sheet" in p.lower() or "url" in p.lower()],
                          "the sheet is configuration; a caller must not be able to name it")
 

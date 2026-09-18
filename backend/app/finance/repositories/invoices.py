@@ -5,6 +5,28 @@ from psycopg.types.json import Jsonb
 from dataclasses import replace
 from ..domain.invoices import Invoice
 from .invoice_numbering import InvoiceNumberConflict,allocate_invoice_number
+def _document(v,status,version,lines,final_amount=None):
+ """One invoice as an audit row records it: everything a reader would want back.
+
+ Money is stringified rather than left as Decimal because the column is JSON, and JSON
+ numbers are floats -- writing 12_345_678_901 rial as a float is how a rounding error gets
+ into the record of what the rounding was.
+ """
+ return {"invoiceDate":v.invoice_date.isoformat(),"vendorName":v.vendor_name,
+         "description":v.description,"status":status,"version":version,
+         "discountIrr":str(v.discount_irr),"taxIrr":str(v.tax_irr),
+         "shippingIrr":str(v.shipping_irr),"otherCostsIrr":str(v.other_costs_irr),
+         "finalAmountIrr":str(v.final_amount_irr if final_amount is None else final_amount),
+         "lines":[{"resourceId":str(x["resource_id"]),
+                   "estimateLineId":None if x["estimate_line_id"] is None else str(x["estimate_line_id"]),
+                   "quantity":None if x["quantity"] is None else str(x["quantity"]),
+                   "unit":x["unit"],
+                   "unitPriceIrr":None if x["unit_price_irr"] is None else str(x["unit_price_irr"]),
+                   "finalLineAmountIrr":str(x["final_line_amount_irr"]),
+                   "description":x["description"]}
+                  for x in lines]}
+
+
 class PsycopgInvoiceRepository:
  def __init__(self,db):self.db=db
  # Vendor, date and amount. The invoice number is deliberately NOT part of this: it is
@@ -96,14 +118,47 @@ class PsycopgInvoiceRepository:
     raise InvoiceNumberConflict("an invoice number was written without the counter") from error
    raise ValueError("invoice idempotency or linked document conflict") from error
   return v
- async def update_draft(self,s,v,description,status,audit_id,at):
-  next_status=status or "draft"
+ async def update_editable(self,s,v,header,money,lines,final_amount,status,audit_id,at):
+  """Rewrite an unconfirmed invoice, its lines, and the record of what it was.
+
+  ONE TRANSACTION, AND WHY IT MATTERS HERE MORE THAN USUALLY
+
+  The header, the lines and the audit event go together or not at all. An invoice whose
+  `final_amount_irr` was updated while its lines were not is a document that disagrees
+  with itself about what it costs, and nothing downstream -- the reports, the estimate
+  comparison, the confirmation -- has any way to tell which half to believe.
+
+  LINES ARE REPLACED, NOT RECONCILED
+
+  Delete and re-insert, rather than matching old rows to new ones and editing the
+  differences. There is no stable identity to match ON: two lines for the same resource
+  with different quantities are ordinary, so any matching rule would be a heuristic, and a
+  heuristic that picks wrong silently moves money between lines. Nothing references an
+  `invoice_lines.id` from outside the invoice, so replacing them costs nothing real.
+
+  This is only ever reached for a draft or an awaiting-confirmation invoice. A CONFIRMED
+  invoice's lines are what the reports counted and are never rewritten.
+
+  THE `status IN (...)` IN THE WHERE CLAUSE IS THE CONCURRENCY CONTRACT
+
+  Right tenant, right invoice, still unconfirmed, unchanged version. Zero rows means
+  somebody else got there first, and the caller is told to refresh -- which is true, and
+  is something they can act on.
+  """
+  next_status=status or v.status
   async with self.db.transaction():
    async with self.db.cursor() as c:
-    await c.execute("UPDATE invoices SET description=%s,status=%s,version=version+1,updated_at=%s WHERE organization_id=%s AND project_id=%s AND id=%s AND status='draft' AND version=%s",(description,next_status,at,s.organization_id,s.project_id,v.id,v.version))
+    await c.execute("UPDATE invoices SET invoice_date=%s,vendor_name=%s,description=%s,discount_irr=%s,tax_irr=%s,shipping_irr=%s,other_costs_irr=%s,final_amount_irr=%s,status=%s,version=version+1,updated_at=%s WHERE organization_id=%s AND project_id=%s AND id=%s AND status IN ('draft','awaitingConfirmation') AND version=%s",(header["invoice_date"],header["vendor_name"],header["description"],money["discount_irr"],money["tax_irr"],money["shipping_irr"],money["other_costs_irr"],final_amount,next_status,at,s.organization_id,s.project_id,v.id,v.version))
     if c.rowcount!=1:raise ValueError("stale invoice version")
-    await c.execute("INSERT INTO finance_audit_events(id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,before_values,after_values,occurred_at) VALUES(%s,%s,%s,%s,'invoice.updated','invoices',%s,%s,%s,%s)",(audit_id,s.organization_id,s.project_id,s.actor_user_id,v.id,Jsonb({"description":v.description,"status":v.status,"version":v.version}),Jsonb({"description":description,"status":next_status,"version":v.version+1}),at))
-  return replace(v,description=description,status=next_status,version=v.version+1)
+    if lines is not None:
+     await c.execute("DELETE FROM invoice_lines WHERE organization_id=%s AND project_id=%s AND invoice_id=%s",(s.organization_id,s.project_id,v.id))
+     for x in lines:await c.execute("INSERT INTO invoice_lines(id,organization_id,project_id,invoice_id,estimate_line_id,resource_id,quantity,unit,unit_price_snapshot_irr,raw_amount_irr,allocated_discount_irr,allocated_tax_irr,allocated_shipping_irr,allocated_other_costs_irr,final_line_amount_irr,description) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(uuid4(),s.organization_id,s.project_id,v.id,x["estimate_line_id"],x["resource_id"],x["quantity"],x["unit"],x["unit_price_irr"],x["raw_amount_irr"],x["allocated_discount_irr"],x["allocated_tax_irr"],x["allocated_shipping_irr"],x["allocated_other_costs_irr"],x["final_line_amount_irr"],x["description"]))
+    # The whole document before and after, not the fields that happened to change. A
+    # reviewer asking "what did this invoice say when it was approved" is asking about the
+    # document, and an audit row listing three changed fields cannot answer that -- it can
+    # only answer it in combination with every earlier row, correctly replayed.
+    await c.execute("INSERT INTO finance_audit_events(id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,before_values,after_values,occurred_at) VALUES(%s,%s,%s,%s,'invoice.updated','invoices',%s,%s,%s,%s)",(audit_id,s.organization_id,s.project_id,s.actor_user_id,v.id,Jsonb(_document(v,v.status,v.version,v.lines)),Jsonb(_document(replace(v,**header,**money),next_status,v.version+1,v.lines if lines is None else lines,final_amount)),at))
+  return replace(v,**header,**money,status=next_status,version=v.version+1,final_amount_irr=final_amount,lines=v.lines if lines is None else lines)
  async def confirmation_matches(self,s,invoice_id,key):
   async with self.db.cursor(row_factory=dict_row) as c:await c.execute("SELECT confirmation_idempotency_key FROM invoices WHERE organization_id=%s AND project_id=%s AND id=%s AND status='confirmed'",(s.organization_id,s.project_id,invoice_id));row=await c.fetchone()
   return row is not None and row["confirmation_idempotency_key"]==key
