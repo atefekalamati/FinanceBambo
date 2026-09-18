@@ -4911,6 +4911,7 @@
       },
       "InvoicePatch": {
         "additionalProperties": false,
+        "description": "A correction to a document nobody has confirmed yet.\n\nWHAT THIS REPLACED, AND WHY\n\nIt used to carry `description` and `status` and nothing else. An invoice read off a\nphotograph by an extraction model arrives with a vendor, a date and a list of lines that\nare USUALLY right, and the person checking it is doing so precisely because \"usually\" is\nnot \"always\". Being able to correct only the description meant that an invoice with one\nwrong quantity could not be corrected at all: the way out was to delete the document and\nre-enter it by hand, which is the work the extraction was supposed to save. So every\nfield that a reader can see is wrong is a field they can now put right.\n\nWHAT IT STILL WILL NOT DO\n\nIt does not touch a CONFIRMED invoice. That document has been approved, it has a number,\nand it is the thing the reports count -- it is corrected through void/corrective, which\nleaves both versions readable. This is for the window before that.\n\nEVERY FIELD IS OPTIONAL, AND ABSENT IS NOT NULL\n\nA field that is not sent is left alone; a field sent as `null` is cleared. The two are\ntold apart by `model_fields_set`, which is why `description=None` can mean \"remove the\ndescription\" here instead of meaning nothing at all.\n\nMONEY TRAVELS WITH ITS LINES\n\nChange any of the four adjustments and you must send the complete `lines` list too. The\nadjustments are DISTRIBUTED across the lines, and `directAdjustmentAllocations` -- which\nsays whether an adjustment lands on one line or is spread over all of them -- is consumed\nat calculation time and never stored. Only its effect is. So a patch that moved the tax\nwithout restating the lines would force the server to guess the targeting from per-line\namounts, and a guess about where somebody's tax goes is not something to build on. The\nwhole basis gets restated, or none of it does.",
         "properties": {
           "description": {
             "anyOf": [
@@ -4923,10 +4924,99 @@
             ],
             "title": "Description"
           },
+          "directAdjustmentAllocations": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DirectAdjustmentAllocation"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directadjustmentallocations"
+          },
+          "discountIrr": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,18}|(?=[\\d.]{1,19}0*$)\\d{0,18}\\.\\d{0,0}0*$)",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discountirr"
+          },
           "expectedVersion": {
             "minimum": 1.0,
             "title": "Expectedversion",
             "type": "integer"
+          },
+          "invoiceDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoicedate"
+          },
+          "lines": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/InvoiceLineCreate"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lines"
+          },
+          "otherCostsIrr": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,18}|(?=[\\d.]{1,19}0*$)\\d{0,18}\\.\\d{0,0}0*$)",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Othercostsirr"
+          },
+          "shippingIrr": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,18}|(?=[\\d.]{1,19}0*$)\\d{0,18}\\.\\d{0,0}0*$)",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippingirr"
           },
           "status": {
             "anyOf": [
@@ -4939,6 +5029,34 @@
               }
             ],
             "title": "Status"
+          },
+          "taxIrr": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,18}|(?=[\\d.]{1,19}0*$)\\d{0,18}\\.\\d{0,0}0*$)",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taxirr"
+          },
+          "vendorName": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendorname"
           }
         },
         "required": [

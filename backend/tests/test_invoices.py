@@ -39,10 +39,17 @@ NOW=datetime(2026,8,8,tzinfo=timezone.utc)
 def invoice(status="draft",version=1,submitted_by=ACTOR):
  return Invoice(INVOICE_ID,ORG,"p1",7,date(2026,8,8),"Vendor",None,"manual",status,Decimal(0),Decimal(0),Decimal(0),Decimal(0),Decimal(100),"create-key",version,submitted_by,ACTOR if status=="confirmed" else None,NOW if status=="confirmed" else None,NOW,[])
 class FakeInvoiceRepo:
- def __init__(self,value):self.value=value;self.confirm_key=None;self.confirm_calls=0;self.by_key={};self.reversed=False
+ def __init__(self,value):self.value=value;self.confirm_key=None;self.confirm_calls=0;self.by_key={};self.reversed=False;self.updated=None
  async def get(self,_scope,_id):return self.value
- async def update_draft(self,_scope,value,description,status,_audit,_at):
-  self.value=replace(value,description=description,status=status or "draft",version=value.version+1);return self.value
+ async def update_editable(self,_scope,value,header,money,lines,final_amount,status,_audit,_at):
+  # The same shape the real repository returns, including that absent lines keep the ones
+  # already there -- a double that replaced them with None would make every test that
+  # patches only a description pass while the real thing emptied the invoice.
+  self.updated=dict(header,**money,status=status or value.status,final_amount_irr=final_amount)
+  self.value=replace(value,**header,**money,status=status or value.status,
+                     version=value.version+1,final_amount_irr=final_amount,
+                     lines=value.lines if lines is None else lines)
+  return self.value
  async def confirmation_matches(self,_scope,_id,key):return self.confirm_key==key
  async def confirm(self,scope,value,key,_audit,at):
   self.confirm_calls+=1;self.confirm_key=key

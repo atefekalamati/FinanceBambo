@@ -40,8 +40,86 @@ class InvoiceCreate(ApiModel):
   if len(kinds)!=len(set(kinds)):raise ValueError("each adjustment kind can be allocated once")
   if any(x.general_cost_line_index>=len(self.lines) for x in self.direct_adjustment_allocations):raise ValueError("general cost line index is out of range")
   return self
+#: The fields on a patch whose value enters the calculation. Named at module level so the
+#: schema's own rule and the service that recalculates agree about what "changing the
+#: money" means, rather than each carrying its own list that drifts from the other.
+PATCH_MONEY_FIELDS=("discount_irr","tax_irr","shipping_irr","other_costs_irr",
+                    "direct_adjustment_allocations")
+#: And the fields a patch may change without touching a single number.
+PATCH_PLAIN_FIELDS=("invoice_date","vendor_name","description")
 class InvoicePatch(ApiModel):
- description:str|None=None;status:Literal["awaitingConfirmation"]|None=None;expected_version:int=Field(ge=1)
+ """A correction to a document nobody has confirmed yet.
+
+ WHAT THIS REPLACED, AND WHY
+
+ It used to carry `description` and `status` and nothing else. An invoice read off a
+ photograph by an extraction model arrives with a vendor, a date and a list of lines that
+ are USUALLY right, and the person checking it is doing so precisely because "usually" is
+ not "always". Being able to correct only the description meant that an invoice with one
+ wrong quantity could not be corrected at all: the way out was to delete the document and
+ re-enter it by hand, which is the work the extraction was supposed to save. So every
+ field that a reader can see is wrong is a field they can now put right.
+
+ WHAT IT STILL WILL NOT DO
+
+ It does not touch a CONFIRMED invoice. That document has been approved, it has a number,
+ and it is the thing the reports count -- it is corrected through void/corrective, which
+ leaves both versions readable. This is for the window before that.
+
+ EVERY FIELD IS OPTIONAL, AND ABSENT IS NOT NULL
+
+ A field that is not sent is left alone; a field sent as `null` is cleared. The two are
+ told apart by `model_fields_set`, which is why `description=None` can mean "remove the
+ description" here instead of meaning nothing at all.
+
+ MONEY TRAVELS WITH ITS LINES
+
+ Change any of the four adjustments and you must send the complete `lines` list too. The
+ adjustments are DISTRIBUTED across the lines, and `directAdjustmentAllocations` -- which
+ says whether an adjustment lands on one line or is spread over all of them -- is consumed
+ at calculation time and never stored. Only its effect is. So a patch that moved the tax
+ without restating the lines would force the server to guess the targeting from per-line
+ amounts, and a guess about where somebody's tax goes is not something to build on. The
+ whole basis gets restated, or none of it does.
+ """
+
+ invoice_date:date|None=None
+ vendor_name:str|None=Field(default=None,min_length=1)
+ description:str|None=None
+ discount_irr:Decimal|None=Field(default=None,ge=0,max_digits=18,decimal_places=0)
+ tax_irr:Decimal|None=Field(default=None,ge=0,max_digits=18,decimal_places=0)
+ shipping_irr:Decimal|None=Field(default=None,ge=0,max_digits=18,decimal_places=0)
+ other_costs_irr:Decimal|None=Field(default=None,ge=0,max_digits=18,decimal_places=0)
+ direct_adjustment_allocations:list[DirectAdjustmentAllocation]|None=None
+ #: The complete list, not a delta. An invoice with three lines whose second is wrong is
+ #: sent back with all three, because a partial list has no way to say whether a missing
+ #: line was deleted or simply not mentioned -- and the difference is money.
+ lines:list[InvoiceLineCreate]|None=Field(default=None,min_length=1)
+ status:Literal["awaitingConfirmation"]|None=None
+ expected_version:int=Field(ge=1)
+
+
+ @field_validator("discount_irr","tax_irr","shipping_irr","other_costs_irr",mode="before")
+ @classmethod
+ def strict_patch_money(cls,v):return strict_optional_decimal(v)
+
+ @field_validator("vendor_name")
+ @classmethod
+ def patch_vendor_nonblank(cls,v):
+  if v is not None and not v.strip():raise ValueError("must not be blank")
+  return None if v is None else v.strip()
+
+ @model_validator(mode="after")
+ def coherent_patch(self):
+  allocations=self.direct_adjustment_allocations or []
+  kinds=[x.kind for x in allocations]
+  if len(kinds)!=len(set(kinds)):raise ValueError("each adjustment kind can be allocated once")
+  if self.lines is None:
+   if any(name in self.model_fields_set for name in PATCH_MONEY_FIELDS):
+    raise ValueError("changing an amount or an allocation requires the complete lines list")
+  elif any(x.general_cost_line_index>=len(self.lines) for x in allocations):
+   raise ValueError("general cost line index is out of range")
+  return self
 class InvoiceConfirm(ApiModel):
  expected_version:int=Field(ge=1);idempotency_key:str=Field(min_length=1)
  @field_validator("idempotency_key")
