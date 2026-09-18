@@ -217,6 +217,10 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
       // and the table renders exactly as it did before the feature existed rather than
       // showing sample links.
       priceMappingAdapter: adapters.itemPriceMappings ?? null,
+      /* Writing a price by hand goes through the prices module, because what it writes is
+         a price version on the cost item -- the same record the prices page manages. Null
+         in the preview, and the button is then simply not offered. */
+      pricesAdapter: adapters.prices ?? null,
       surface: route.surface,
       focusResourceId: routeQuery.get("resourceId") ?? "",
       focusEstimateLineId: routeQuery.get("estimateLineId") ?? "",
@@ -229,7 +233,10 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
       // supply it -- an older one, or the preview -- passes null and the section
       // says so rather than being replaced with sample rows.
       materialPricesAdapter: adapters.materialPrices ?? null,
-      surface: route.surface, focusResourceId: routeQuery.get("resourceId") ?? "" }));
+      /* No `focusResourceId`. It highlighted a row in the item roster, and the roster is
+         gone; nothing in the module builds such a link, so this was the last thing reading
+         the query parameter. The items page still uses its own. */
+      surface: route.surface }));
   }
   if (route.key === "progress") root.append(createProgressPage({ context, adapter: adapters.progress }));
   if (route.key === "invoices") root.append(createInvoicesPage({ context, adapter: adapters.invoices }));

@@ -1,8 +1,6 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { SURFACES } from "../../core/config/routes.js";
-import { downloadCsvFile } from "../../shared/exports/csv.js";
-import { buildPricesCsv, pricesFileName } from "./prices-csv.js";
 import { renderMaterialPrices } from "./material-prices-section.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
@@ -22,7 +20,7 @@ import { getCompatibleTargetUnits, getConfigurableSourceUnits, getUnitDefinition
 import { describeImportPreview } from "../../shared/imports/import-preview-notice.js";
 import { element } from "../../shared/dom/elements.js";
 import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
-import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTableWithControl, createPagedDataTable, defaultVisibleColumns }
+import { IDENTITY, PRIMARY, SECONDARY, createDataTableWithControl, createPagedDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 
 const SCOPE_LABELS = Object.freeze({ organization: "پایه سازمان", project: "اختصاصی پروژه" });
@@ -462,89 +460,6 @@ function createPriceDialog(adapter, currentPrices, onSaved) {
   return dialog;
 }
 
-/* The columns of the day-price list. Labels carry the display currency, so they
-   are built per render rather than frozen at module load. */
-function currentPriceColumns() {
-  const currency = getDisplayCurrencyLabel();
-  return [
-    { key: "identity", label: "قلم هزینه", tier: IDENTITY },
-    { key: "unit", label: "واحد پایه", tier: SECONDARY, keepOnTablet: true },
-    { key: "organization", label: `قیمت پایه سازمان (${currency})`, tier: SECONDARY, cellClass: "numeric" },
-    { key: "project", label: `قیمت اختصاصی پروژه (${currency})`, tier: SECONDARY, cellClass: "numeric" },
-    { key: "current", label: `قیمت روز (${currency})`, tier: PRIMARY, cellClass: "numeric price-current" },
-    { key: "trend", label: "روند", tier: PRIMARY },
-    { key: "scope", label: "منبع قیمت", tier: SECONDARY, keepOnTablet: true },
-    { key: "effectiveFrom", label: "تاریخ اعتبار", tier: SECONDARY },
-  ];
-}
-
-function renderCurrentPrices(items, history, focusResourceId = "", columns, visible, paging) {
-  /* Paged after filtering, never before: the filter above searches every item
-     the project has, and slicing first would have searched one page and called
-     the rest absent. */
-  return createPagedDataTable({
-    name: "current-prices",
-    page: paging.page,
-    pageSize: paging.pageSize,
-    onChange: paging.onChange,
-    paginationLabel: "صفحه‌بندی قیمت روز اقلام",
-    className: "current-prices-table",
-    caption: "فهرست قیمت روز اقلام پروژه",
-    scrollLabel: "جدول قیمت روز اقلام",
-    columns,
-    rows: items,
-    visible,
-    rowAttributes: (item) => (focusResourceId && item.resource.resourceId === focusResourceId
-      ? { className: "deep-link-target", tabIndex: -1 }
-      : null),
-    cells: (item) => {
-      // No .data-table-identity here: that class is a flex row, and this cell is a
-      // title with its code stacked under it -- .table-subtext is display: block
-      // and was doing that before this table moved onto the component.
-      const identity = document.createDocumentFragment();
-      identity.append(element("strong", "", item.resource.title), element("small", "table-subtext numeric", item.resource.code));
-      return {
-        identity,
-        unit: formatUnitLabel(item.resource.baseUnit),
-        organization: item.organizationPrice ? formatTomanFromIrr(item.organizationPrice.unitPriceIRR, { withCurrency: false }) : "—",
-        project: item.projectPrice ? formatTomanFromIrr(item.projectPrice.unitPriceIRR, { withCurrency: false }) : "—",
-        current: item.currentPrice ? formatTomanFromIrr(item.currentPrice.unitPriceIRR, { withCurrency: false }) : "ثبت نشده",
-        trend: createPriceTrend(item, history),
-        scope: item.currentPrice ? SCOPE_LABELS[item.currentPrice.scope] : "بدون قیمت",
-        effectiveFrom: item.currentPrice ? formatBusinessDate(item.currentPrice.effectiveFrom) : "—",
-      };
-    },
-  });
-}
-
-function renderPriceFilters(filters, onApply, onReset) {
-  const form = element("form", "price-list-filters");
-  const search = element("input", "app-input");
-  search.type = "search";
-  search.value = filters.query;
-  search.placeholder = "جست‌وجوی عنوان یا کد قلم هزینه";
-  search.setAttribute("aria-label", "جست‌وجوی قلم هزینه");
-  const scope = element("select", "app-select");
-  scope.setAttribute("aria-label", "فیلتر منبع قیمت روز");
-  [["all", "همه مبناها"], ["project", "اختصاصی پروژه"], ["organization", "پایه سازمان"], ["missing", "بدون قیمت"]].forEach(([value, label]) => {
-    const node = element("option", "", label);
-    node.value = value;
-    scope.append(node);
-  });
-  scope.value = filters.scope;
-  const submit = element("button", "button button--primary", "اعمال فیلتر");
-  submit.type = "submit";
-  const reset = element("button", "button button--ghost", "پاک‌کردن");
-  reset.type = "button";
-  reset.addEventListener("click", onReset);
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    onApply({ query: search.value.trim(), scope: scope.value });
-  });
-  form.append(search, scope, submit, reset);
-  return form;
-}
-
 function priceHistoryColumns() {
   return [
     { key: "identity", label: "قلم هزینه", tier: IDENTITY },
@@ -661,12 +576,11 @@ export function renderConversionHistory(history) {
  * route is a thing you can reason about; one mode per account is not.
  */
 export function createPricesPage({ context, adapter, materialPricesAdapter = null,
-                                  surface = SURFACES.OPERATIONS, focusResourceId = "" }) {
+                                  surface = SURFACES.OPERATIONS }) {
   const root = element("div", "prices-page");
   const readOnly = surface === SURFACES.REPORT;
   const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
   let state = createRequestState(REQUEST_STATUS.LOADING);
-  let listFilters = { query: "", scope: "all" };
   /* One page number per table on this page. Held here rather than inside the
      component because `paint()` rebuilds the whole tree: a component that
      remembered its own page would lose it on every repaint, and one that both
@@ -691,12 +605,9 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
     paint();
   }
 
-  let pricePaging = { page: 1, pageSize: getRowsPerPage("current-prices") };
   let historyPaging = { page: 1, pageSize: getRowsPerPage("price-history") };
   // Lives with the page: paint() rebuilds the tree, so a choice held inside a
   // render would last only until the next filter.
-  const priceColumns = currentPriceColumns();
-  const visiblePriceColumns = defaultVisibleColumns(priceColumns);
   const historyColumns = priceHistoryColumns();
   const visibleHistoryColumns = defaultVisibleColumns(historyColumns);
 
@@ -705,12 +616,11 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
     paint();
     try {
       const workspace = await adapter.getPrices();
-      /* The history no longer arrives with the page, so it cannot decide whether
-         the page has anything on it. What it has is items and their prices. */
-      const hasSomething = workspace.currentPrices.length
-        || workspace.currentConversions.length
-        || workspace.conversionHistory.length;
-      state = createRequestState(hasSomething ? REQUEST_STATUS.SUCCESS : REQUEST_STATUS.EMPTY, workspace);
+      /* No emptiness of its own any more. The page used to call itself empty when the
+         project had no cost items, because the item roster was its content; the content is
+         now the market sheet, which reports its own states -- not configured, not loaded
+         yet, no rows in this category -- and none of those is the page being blank. */
+      state = createRequestState(REQUEST_STATUS.SUCCESS, workspace);
     } catch (error) {
       state = createRequestState(REQUEST_STATUS.ERROR, null, error);
     }
@@ -730,32 +640,16 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
     showAccessibleDialog(dialog);
   }
 
-  function renderEmpty() {
-    const card = element("section", "state-card prices-empty");
-    card.append(element("h2", "", "هنوز قیمتی ثبت نشده است"), element("p", "", canEdit ? "اولین قیمت پایه سازمان یا قیمت اختصاصی پروژه را ثبت کنید." : "برای اقلام این پروژه هنوز قیمت قابل نمایشی وجود ندارد."));
-    if (canEdit) {
-      const button = element("button", "button button--primary", "ثبت اولین قیمت");
-      button.type = "button";
-      button.addEventListener("click", async () => openEditor(await adapter.getPrices()));
-      card.append(button);
-    }
-    return card;
-  }
-
   function renderContent(workspace) {
     const fragment = document.createDocumentFragment();
     const toolbar = element("div", "prices-toolbar");
-    toolbar.append(element("p", "", "قیمت روز، آخرین قیمت معتبر است و قیمت اختصاصی پروژه بر قیمت پایه سازمان اولویت دارد."));
-    // Taking away a copy of a table you are already reading is not a privilege,
-    // so the export is offered to every account that can see the page.
+    /* No sentence about scope precedence, and no CSV button. Both described the item
+       roster that used to be here: the sentence explained which of an item's two price
+       versions wins, and the export wrote exactly the rows that table was showing -- «what
+       leaves is what is on screen» was its own rule, and there is no such screen now. The
+       market table below is paged by the server, so exporting it means asking for every
+       page; that is a feature to add deliberately, not a button to repoint quietly. */
     const toolbarActions = element("div", "prices-toolbar__actions");
-    const exportCsv = element("button", "button button--ghost", "خروجی اکسل");
-    exportCsv.type = "button";
-    exportCsv.addEventListener("click", () => {
-      // What leaves is what is on screen: the filters are already applied.
-      downloadCsvFile(buildPricesCsv(filteredPrices), pricesFileName({ projectCode: context.projectCode, asOfDate: workspace.asOfDate }));
-    });
-    toolbarActions.append(exportCsv);
     toolbar.append(toolbarActions);
     if (canEdit) {
       const importPrices = element("button", "button button--ghost", "ورود گروهی قیمت");
@@ -775,37 +669,27 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
       conversions.href = "#finance/settings";
       toolbarActions.append(conversions, importPrices, add);
     }
-    const normalizedQuery = listFilters.query.toLocaleLowerCase("fa-IR");
-    const filteredPrices = workspace.currentPrices.filter((item) => {
-      const matchesQuery = !normalizedQuery || `${item.resource.title} ${item.resource.code}`.toLocaleLowerCase("fa-IR").includes(normalizedQuery);
-      const currentScope = item.currentPrice?.scope ?? "missing";
-      return matchesQuery && (listFilters.scope === "all" || currentScope === listFilters.scope);
-    });
-    const filters = renderPriceFilters(listFilters, (next) => { listFilters = next; paint(); }, () => { listFilters = { query: "", scope: "all" }; paint(); });
-    const current = element("section", "prices-section prices-section--current");
-    const currentHeading = element("div", "prices-section-heading");
-    const currentMeta = element("div", "prices-section-heading__meta");
-    currentMeta.append(
-      element("span", "section-count numeric", `${formatDisplayNumber(String(filteredPrices.length))} قلم`),
-      createColumnControl({
-        name: "current-prices",
-        columns: priceColumns,
-        visible: visiblePriceColumns,
-        table: () => root.querySelector(".current-prices-table"),
-      }),
-    );
-    currentHeading.append(element("div", "", ""), currentMeta);
-    currentHeading.firstElementChild.append(element("h2", "", "قیمت روز اقلام"), element("p", "prices-section__hint", `قیمت‌ها به ${getDisplayCurrencyLabel()} نمایش داده می‌شوند و نمودار کوچک، روند تغییرات هر قلم را نشان می‌دهد.`));
-    current.append(currentHeading, filters);
-    if (filteredPrices.length) current.append(renderCurrentPrices(filteredPrices, workspace.history, focusResourceId, priceColumns, visiblePriceColumns, {
-      ...pricePaging,
-      onChange: (next) => { pricePaging = next; paint(); },
-    }));
-    else current.append(element("div", "state-card price-filter-empty", "قلمی مطابق فیلترهای انتخاب‌شده پیدا نشد."));
+    /* «قیمت روز اقلام» -- a row per cost item and its price version -- stood here.
+       It listed ITEMS, not prices: every cost item got a row whether or not anybody had
+       priced it, so most of the table read «ثبت نشده». And it could never hold what this
+       page is for. The sheet writes no price version at all, so market prices lived in a
+       SECOND table below it, and one page answered "what does this cost" twice, in two
+       vocabularies and two kinds of identity -- a cost item «آرماتور» above, a supplier's
+       listing «میلگرد ۱۶ · فولاد مبارکه» below.
+
+       One table now, and it is the market one. A price entered by hand will join it once
+       the service can take one: as a listing with a category, the way a sheet row is,
+       so it lands under the same chips and needs no second vocabulary. Until then an
+       unpriced item is reported where something can be done about it -- «ریز برآورد»
+       states its status and carries the button that prices it. */
     /* Asked for, not assumed. The history is append-only and only grows, and
        nothing on this page reads it -- the current price and its sparkline both
        come from `/prices/current`. A reader who opened this page to check one
        item's price today should not wait for every price it ever had. */
+    /* Not on the report surface. «گزارش مالی» answers what things cost now; every price
+       an item ever had is a maintenance question, and the page that maintains prices is
+       where it belongs. Nothing loads it there either -- the section is what carries the
+       button that asks for it. */
     const history = element("section", "prices-section");
     history.append(
       element("h2", "", "تاریخچه قیمت‌ها"),
@@ -846,7 +730,7 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
     if (!materialPricesAdapter) {
       market.append(marketTitle,
         element("p", "inline-notice", "این بخش در این نسخه از میزبان در دسترس نیست."));
-      fragment.append(toolbar, current, history, market);
+      fragment.append(toolbar, ...(readOnly ? [] : [history]), market);
       return fragment;
     }
     if (marketError) {
@@ -869,14 +753,30 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
       ask.append(show);
       market.append(ask);
     } else {
-      fragment.append(toolbar, current, history, renderMaterialPrices(marketPrices.items, {
+      fragment.append(toolbar, ...(readOnly ? [] : [history]),
+                      renderMaterialPrices(marketPrices.items, {
         categories: marketCategories,
         selectedCategory: marketCategory,
-        onSelectCategory: (value) => { marketCategory = value; loadMarketPrices(); },
+        readOnly,
+        /* Back to the first page whenever the category changes. Staying on page four of
+           «لوله» while switching to «نبشی» -- which has twelve products -- would ask the
+           server for a page that does not exist and show an empty table for a category
+           that is not empty. */
+        onSelectCategory: (value) => {
+          marketCategory = value;
+          marketPaging = { ...marketPaging, page: 1 };
+          loadMarketPrices();
+        },
+        paging: {
+          page: marketPrices.page ?? marketPaging.page,
+          pageSize: marketPrices.pageSize ?? marketPaging.pageSize,
+          totalItems: marketPrices.totalItems ?? marketPrices.items.length,
+          onChange: (next) => { marketPaging = next; loadMarketPrices(); },
+        },
       }));
       return fragment;
     }
-    fragment.append(toolbar, current, history, market);
+    fragment.append(toolbar, ...(readOnly ? [] : [history]), market);
     return fragment;
   }
 
@@ -887,6 +787,10 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
   let marketCategory = null;
   let marketLoading = false;
   let marketError = null;
+  /* SERVER paging, not a slice of something already fetched. The sheet holds 992 pipes in
+     one category alone; asking for all of them to show fifty is the request this avoids,
+     and it is the whole reason the page state carries a page number at all. */
+  let marketPaging = { page: 1, pageSize: 50 };
 
   async function loadMarketPrices() {
     if (!materialPricesAdapter) return;
@@ -899,7 +803,8 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
          means cannot say a price is old. */
       const [page, categories] = await Promise.all([
         materialPricesAdapter.listCurrentPrices({
-          category: marketCategory, asOf: getTehranTodayIso(), pageSize: 200,
+          category: marketCategory, asOf: getTehranTodayIso(),
+          page: marketPaging.page, pageSize: marketPaging.pageSize,
         }),
         materialPricesAdapter.listCategories(),
       ]);
@@ -916,7 +821,7 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
   }
 
   function paint() {
-    root.replaceChildren(renderHeader(), renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    root.replaceChildren(renderHeader(), renderPageState(state, { renderContent, onRetry: load }));
     const target = root.querySelector(".deep-link-target");
     if (target) queueMicrotask(() => {
       target.scrollIntoView({ block: "center", behavior: "smooth" });

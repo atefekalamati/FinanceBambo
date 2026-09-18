@@ -1,5 +1,6 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createPriceMappingPanel, statusChip } from "./price-mapping-panel.js";
+import { createManualPriceDialog } from "./manual-price-dialog.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { SURFACES } from "../../core/config/routes.js";
 import { downloadCsvFile } from "../../shared/exports/csv.js";
@@ -22,7 +23,7 @@ import { element } from "../../shared/dom/elements.js";
 import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
 import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTableWithControl, createPagedDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
-import { ABSENT, activityBlockStarts, activityLabel, assignmentCostOf, canonicalWbs, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
+import { ABSENT, activityBlockStarts, activityLabel, assignmentCostOf, canonicalWbs, factorSourceLabel, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
   const wrapper = element("div", "form-field");
@@ -688,11 +689,23 @@ function renderResourceTable(resources, withheld = null, paging) {
   return fragment;
 }
 
-/* The ten columns of ریز برآورد. Three of them are money and they are three on
-   purpose: «هزینه MSP فعالیت» is what the schedule says the activity costs,
-   «قیمت اولیه» is the unit price this line was estimated at and never changes,
-   «قیمت روز» is the price in force today. None is computed from another and an
-   empty one means unknown, not zero. */
+/* The columns of ریز برآورد.
+ *
+ * THE TWO UNIT COLUMNS ARE THE POINT
+ * «واحد فایل MSP» is what the schedule measures this line in; «واحد شیت قیمت» is what the
+ * market quotes its price in. They are two different statements and the gap between them
+ * is exactly what stops a daily price from being computed -- so they sit side by side,
+ * and the cell that reconciles them is the one between.
+ *
+ * ONE QUANTITY COLUMN, NOT TWO
+ * The original and the revised used to be separate columns, which spent two columns saying
+ * the same thing on every row that has never been revised -- which today is all 835 of
+ * them. One column now carries the latest figure and marks it when it is a revision.
+ *
+ * THREE MONEY COLUMNS AND THEY ARE THREE ON PURPOSE: «هزینه برآورد» is what the schedule
+ * says this assignment costs, «قیمت اولیه» is the unit price it was estimated at and never
+ * changes, «قیمت روز» is today's. None is computed from another and an empty one means
+ * unknown, not zero. */
 function estimateLineColumns() {
   return [
     // The pinned column answers "what is this row": the activity on a summary
@@ -700,15 +713,84 @@ function estimateLineColumns() {
     // summary row has no item and an item row has no activity -- so one column
     // holds both and «قلم هزینه» is not a column of its own any more.
     { key: "identity", label: "فعالیت و قلم هزینه", tier: IDENTITY },
-    { key: "unit", label: "واحد", tier: SECONDARY, cellClass: "numeric" },
-    { key: "originalQuantity", label: "مقدار برآورد اولیه", tier: SECONDARY, cellClass: "numeric" },
-    { key: "revisedQuantity", label: "آخرین مقدار برآورد", tier: PRIMARY, cellClass: "numeric" },
-    { key: "scheduleCost", label: "هزینه MSP فعالیت", tier: SECONDARY, keepOnTablet: true, cellClass: "numeric" },
+    { key: "mspUnit", label: "واحد فایل MSP", tier: SECONDARY, cellClass: "numeric" },
+    { key: "sheetUnit", label: "واحد شیت قیمت", tier: SECONDARY, cellClass: "numeric" },
+    { key: "revisedQuantity", label: "مقدار برآورد", tier: PRIMARY, cellClass: "numeric" },
+    { key: "scheduleCost", label: "هزینه برآورد", tier: SECONDARY, keepOnTablet: true, cellClass: "numeric" },
     { key: "originalPrice", label: "قیمت اولیه", tier: SECONDARY, cellClass: "numeric" },
     { key: "currentPrice", label: "قیمت روز", tier: PRIMARY, cellClass: "numeric" },
     { key: "source", label: "منبع", tier: SECONDARY },
     { key: "actions", label: "عملیات", tier: SECONDARY, keepOnTablet: true, cellClass: "line-actions" },
   ];
+}
+
+/* The unit the SCHEDULE measures this line in.
+ *
+ * Not the Finance resource's base unit, which is what this column used to show: that is a
+ * property of the cost item in the catalogue, while this is what the MS Project file says
+ * about THIS assignment. They can differ, and when they do it is the file's that the
+ * daily-price arithmetic has to land in.
+ *
+ * Empty on two rows in three, and not because the import failed. MS Project keeps the
+ * resource's initials in the field this comes from -- a single Persian letter for most
+ * rows of a real schedule -- and the importer records a unit only where the text is
+ * actually one. So "no unit" here is a fact about the file, and the cell says so rather
+ * than showing a dash that reads as a rendering fault. */
+function mspUnitCell(line, resource, isGeneralCost) {
+  if (isGeneralCost) return getDisplayCurrencyLabel();
+  const unit = line.mppUnit ?? null;
+  if (unit) return formatUnitLabel(unit);
+  const cell = document.createDocumentFragment();
+  cell.append(element("span", "missing-value", "در فایل ثبت نشده"));
+  /* The catalogue's own unit, offered as context rather than as a substitute: somebody
+     choosing the official unit needs to know what the item is normally measured in. */
+  if (resource?.baseUnit) {
+    cell.append(element("span", "cell-secondary",
+      `واحد قلم: ${formatUnitLabel(resource.baseUnit)}`));
+  }
+  return cell;
+}
+
+/* The unit the PRICE SHEET quotes this product in, and the way to reconcile it.
+ *
+ * Known only once the line is linked to a listing -- before that there is no sheet price
+ * and so no sheet unit. Today the sheet states one for rebar and for nothing else, so most
+ * linked rows land on «واحد قیمت مبدأ مشخص نیست»; that is the sheet's gap, not this page's,
+ * and it is named plainly so nobody looks for the fault here.
+ *
+ * When both units are known and do not meet, the button to define the crossing is IN THIS
+ * CELL. It is where the person is looking when they find out, and sending them to a
+ * settings page means asking them to carry two unit codes and a product in their head. */
+function sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resource }) {
+  if (isGeneralCost) return ABSENT;
+  if (!priced || !priced.componentCount) {
+    return element("span", "missing-value", "هنوز به قیمت روز وصل نشده");
+  }
+  const cell = document.createDocumentFragment();
+  if (priced.sourcePriceUnit) cell.append(element("span", "", formatUnitLabel(priced.sourcePriceUnit)));
+
+  /* WHAT CROSSED THE TWO UNITS, in the cell the crossing belongs to.
+     A weighing of this exact listing and a rule written for a whole project produce the
+     same kind of number and deserve different amounts of trust; from the cost alone a
+     reader cannot tell which they are being shown. Said here rather than in «منبع», which
+     answers a different question -- that column names the PRODUCT, this one the units. */
+  const crossed = factorSourceLabel(priced.factorSource);
+  if (crossed) cell.append(element("span", "cell-secondary", crossed));
+
+  /* Only the statuses a unit decision can answer. «قیمت روز معتبر نیست» is a different
+     problem and a conversion rule would not fix it, so no button is offered there. */
+  const UNIT_TROUBLE = new Set(["unknown_source_unit", "needs_factor", "needs_unit"]);
+  if (UNIT_TROUBLE.has(priced.status)) {
+    cell.append(element("span", "cell-secondary", priced.statusLabel ?? ""));
+    if (canEdit && onMapPrice) {
+      const fix = element("button", "table-action table-action--map-price", "تبدیل واحد");
+      fix.type = "button";
+      fix.dataset.action = "fix-unit";
+      fix.addEventListener("click", () => onMapPrice(line, resource));
+      cell.append(fix);
+    }
+  }
+  return cell;
 }
 
 /* What «قیمت روز» shows once an item is linked to a market listing.
@@ -723,11 +805,19 @@ function estimateLineColumns() {
  * A PARTLY priced row shows both -- the total of what resolved AND how much of the list it
  * came from. The total is real and incomplete, and a sum presented without that count
  * looks finished, which is the more dangerous of the two mistakes. */
-function dailyPriceCell(line, priced, isGeneralCost) {
+function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, resource } = {}) {
   const fallback = formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false });
   if (!priced || isGeneralCost) return fallback;
   const cell = document.createDocumentFragment();
-  if (priced.status !== "ready") cell.append(statusChip(priced.status, priced.statusLabel));
+  /* The service's own label for an unlinked row still says «افزودن مصالح», from the days
+     when a line held several materials. One row of one table must not carry two
+     vocabularies for the same state, so the wording is corrected here until the service
+     changes it. Everything else passes through as it arrives. */
+  const UNLINKED = "needs_components";
+  if (priced.status !== "ready") {
+    cell.append(statusChip(priced.status,
+      priced.status === UNLINKED ? "وصل نشده" : priced.statusLabel));
+  }
   if (priced.dailyItemCostIRR !== null) {
     cell.append(element("span", "",
       formatTomanFromIrr(priced.dailyItemCostIRR, { withCurrency: false })));
@@ -740,10 +830,32 @@ function dailyPriceCell(line, priced, isGeneralCost) {
        unresolved, which says nothing about the price somebody entered by hand. */
     cell.append(element("span", "cell-secondary", fallback));
   }
+  cell.append(manualPriceButton(line, isGeneralCost, { canEdit, onManualPrice, resource }));
   return cell;
 }
 
-function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible, paging, priceStatuses = new Map(), onMapPrice = null }) {
+/* Entering the price by hand, on every row.
+ *
+ * Some items will never be on the sheet. «برچیدن جدول» is 3,538 metres of demolition and
+ * no supplier quotes it; waiting for the market to cover it would leave that row, and the
+ * report total above it, blank for good. So the admin can state the rate themselves, and
+ * the row stops being a hole in the customer's report.
+ *
+ * Offered whether or not the row is linked, because both states need it: an unlinked row
+ * has nothing else, and a linked one may still need correcting. The label says which of
+ * the two is happening, so pressing it is never a guess. */
+function manualPriceButton(line, isGeneralCost, { canEdit, onManualPrice, resource } = {}) {
+  if (isGeneralCost || !canEdit || !onManualPrice) return document.createDocumentFragment();
+  const hasManual = line.currentUnitPriceIRR !== null && line.currentUnitPriceIRR !== undefined;
+  const button = element("button", "table-action table-action--manual-price",
+                         hasManual ? "ویرایش قیمت روز" : "ثبت دستی قیمت روز");
+  button.type = "button";
+  button.dataset.action = "manual-price";
+  button.addEventListener("click", () => onManualPrice(line, resource));
+  return button;
+}
+
+function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible, paging, priceStatuses = new Map(), onMapPrice = null, onManualPrice = null }) {
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
   const fragment = document.createDocumentFragment();
   if (withheld) fragment.append(element("p", "table-note", withheld));
@@ -817,13 +929,13 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
         actions.append(revise);
       }
 
-      /* The daily-price link. Four of the ten columns gain content from it and none is
-         added: the official calculation unit goes in «واحد», the converted daily price
-         and this line's daily cost in «قیمت روز», the chosen listing in «منبع», and the
-         action here. The table's shape is what people navigate by. */
+      /* The daily-price link. Four columns gain content from it and none is added: the
+         sheet's unit in «واحد شیت قیمت», this line's daily cost in «قیمت روز», the chosen
+         listing in «منبع», and the action here. The table's shape is what people navigate
+         by. */
       const priced = priceStatuses.get(line.lineId) ?? null;
       if (onMapPrice && !isGeneralCost) {
-        const label = priced?.componentCount ? "ویرایش مصالح" : "افزودن مصالح";
+        const label = priced?.componentCount ? "تغییر محصول" : "اتصال به قیمت روز";
         const map = element("button", "table-action table-action--map-price", label);
         map.type = "button";
         map.dataset.action = "map-price";
@@ -833,16 +945,13 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
 
       return {
         identity,
-        /* The ACTIVITY's own unit -- the cubic metres of «کانال‌کنی», not the kilograms of
-           the rebar it uses. Each material carries its own calculation unit now, and there
-           is no single one for a row built from several; showing the first material's unit
-           beside the row's quantity would say the 500 was 500 kilograms. */
-        unit: isGeneralCost ? getDisplayCurrencyLabel() : formatUnitLabel(resource?.baseUnit),
-        originalQuantity: isGeneralCost ? formatTomanFromIrr(original, { withCurrency: false }) : formatDisplayNumber(original),
+        mspUnit: mspUnitCell(line, resource, isGeneralCost),
+        sheetUnit: sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resource }),
         revisedQuantity: revisedCell,
         scheduleCost: formatTomanFromIrr(assignmentCostOf(line), { withCurrency: false }),
         originalPrice: formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false }),
-        currentPrice: dailyPriceCell(line, priced, isGeneralCost),
+        currentPrice: dailyPriceCell(line, priced, isGeneralCost,
+                                     { canEdit, onManualPrice, resource }),
         /* One material names its product; several say how many there are. Listing three
            product names in a table cell is unreadable, and naming only the first would be
            a lie about what priced the row. */
@@ -866,7 +975,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
  * administrator reading the report gets the read-only table too. One mode per
  * route is a thing you can reason about; one mode per account is not.
  */
-export function createFinancialItemsPage({ context, adapter, priceMappingAdapter = null, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
+export function createFinancialItemsPage({ context, adapter, priceMappingAdapter = null, pricesAdapter = null, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
   const root = element("div", "financial-items-page");
   const readOnly = surface === SURFACES.REPORT;
   /* Which market listing prices each line, and what that makes it cost today.
@@ -1065,7 +1174,25 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
         showAccessibleDialog(dialog);
       },
       priceStatuses,
-      onMapPrice: priceMappingAdapter ? (line, resource) => {
+      /* THE PRICING TOOLS BELONG TO امور مالی, NOT TO THE REPORT.
+       *
+       * Connecting an item to a market listing, converting between units, stating a rate
+       * by hand -- these are how the numbers are MADE. گزارش مالی is where they are read.
+       * Somebody opening the report wants the figure and the export; a button that starts
+       * a calculation there invites them to change the report they came to read.
+       *
+       * Gated on the SURFACE rather than on `canEdit`, and the difference matters: a
+       * reader without write permission on امور مالی still opens the panel read-only, to
+       * see which listing priced a row. That is reading, and it stays. What leaves is the
+       * whole family of tools, and only from the report.
+       *
+       * Decided HERE, once, rather than in each cell that draws a button. The cells render
+       * FROM these handlers, so a null handler draws nothing -- and a cell added later
+       * cannot leak a tool onto the report by forgetting its own guard. That is not
+       * hypothetical: «اتصال به قیمت روز» in the actions column asked only whether the
+       * handler existed, never whether the surface may use it, and so it was on the report
+       * from the day it was written. */
+      onMapPrice: !readOnly && priceMappingAdapter ? (line, resource) => {
         const panel = createPriceMappingPanel({
           line, resource, adapter: priceMappingAdapter, canEdit,
           /* The panel STAYS OPEN after a material is saved. A line is priced from a list,
@@ -1077,6 +1204,18 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
         openPricePanel = panel;
         root.append(panel);
         showAccessibleDialog(panel);
+      } : null,
+      /* Stating the rate by hand, for the items the market will never quote. Reloads the
+         whole workspace rather than only the price statuses: what this writes is a price
+         VERSION on the cost item, and the item's price is part of the workspace. */
+      onManualPrice: !readOnly && pricesAdapter ? (line, resource) => {
+        const dialog = createManualPriceDialog({
+          line, resource, adapter: pricesAdapter,
+          current: line.currentUnitPriceIRR ?? null,
+          onSaved: () => load(),
+          onClose: () => dialog.element.remove(),
+        });
+        dialog.open();
       } : null,
     }));
 

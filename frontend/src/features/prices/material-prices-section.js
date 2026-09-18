@@ -1,4 +1,5 @@
 import { element } from "../../shared/dom/elements.js";
+import { createDataTable, createTablePagination } from "../../shared/components/data-table.js";
 import { formatBusinessDate, formatDisplayNumber, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 
@@ -95,6 +96,31 @@ export function columnsFor(selectedCategory, categories) {
   return declared?.columns?.length ? declared.columns : [...ALL_CATEGORIES_COLUMNS];
 }
 
+/* The supplier and the worksheet's own product id. Useful to somebody maintaining the
+   sheet -- they are how a row is found in it -- and noise to somebody reading the
+   financial report, who is asking what things cost rather than where the quote came
+   from. Dropped on the report surface only; امور مالی keeps both. */
+const MAINTENANCE_ONLY_COLUMNS = Object.freeze(new Set(["source", "productId"]));
+
+/* «تاریخ آپدیت ورک فلو» is the sheet's own phrase for it and it reads as jargon in a
+   table of prices. The key is what everything else matches on, so only the label moves. */
+const COLUMN_LABEL_OVERRIDES = Object.freeze({ workflowDate: "آخرین آپدیت" });
+
+/**
+ * The columns as this surface presents them.
+ *
+ * Applied AFTER `columnsFor`, and that is deliberate: the per-category schema comes from
+ * the Backend and carries these same columns, so filtering only the shared list would drop
+ * them from the all-categories view and leave them in every category's own.
+ */
+export function presentedColumns(columns, { readOnly = false } = {}) {
+  return columns
+    .filter((column) => !(readOnly && MAINTENANCE_ONLY_COLUMNS.has(column.key)))
+    .map((column) => (COLUMN_LABEL_OVERRIDES[column.key]
+      ? { ...column, label: COLUMN_LABEL_OVERRIDES[column.key] }
+      : column));
+}
+
 /** One cell's text, by where the column says its value lives. */
 export function cellValue(column, row, categoryLabels = {}) {
   if (column.kind === "spec") {
@@ -178,42 +204,46 @@ export function statusText(row) {
   return row.resolutionReason ? `${label} — ${row.resolutionReason}` : label;
 }
 
-function renderRow(row, columns, categoryLabels) {
-  const tr = element("tr", "material-price__row");
+/* One cell per column, keyed the way the shared table wants them. The product cell is a
+   fragment rather than a string: the status badge and the unit note hang under the name,
+   which is where a reader judging a price looks, and neither is a column of the sheet. */
+function cellsFor(row, columns, categoryLabels) {
+  const built = {};
   columns.forEach((column) => {
-    const cell = element("td", column.numeric ? "numeric" : "", cellValue(column, row, categoryLabels));
-    if (column.key === "product") {
-      cell.className = "material-price__name";
-      /* Status and unit are NOT columns of this table -- the worksheet has no such
-         columns and adding them would be the generic shape returning by another door.
-         They travel as a small badge under the name, where a reader who wants to judge
-         the price can see them without the header row claiming the sheet states them. */
-      const text = statusText(row);
-      if (text) {
-        cell.append(element("span",
-          `material-price__badge ${RESOLUTION_CLASS[row.resolutionStatus] ?? ""}`, text));
-      }
-      /* The unit note, only when there IS a unit to state. Six of the seven worksheets
-         declare none, so «واحد اعلام نشده» would repeat under every one of hundreds of
-         rows and say nothing the status badge has not already said. */
-      if (row.targetUnit || row.sourceUnitCode || row.sourceUnit) {
-        cell.append(element("span", "material-price__unit-note", unitCell(row)));
-      }
+    const value = cellValue(column, row, categoryLabels);
+    if (column.key !== "product") { built[column.key] = value; return; }
+    const cell = document.createDocumentFragment();
+    cell.append(element("span", "material-price__name", value));
+    /* Status and unit are NOT columns of this table -- the worksheet has no such columns
+       and adding them would be the generic shape returning by another door. */
+    const text = statusText(row);
+    if (text) {
+      cell.append(element("span",
+        `material-price__badge ${RESOLUTION_CLASS[row.resolutionStatus] ?? ""}`, text));
     }
-    tr.append(cell);
+    /* The unit note, only when there IS a unit to state. Six of the seven worksheets
+       declare none, so «واحد اعلام نشده» would repeat under every one of hundreds of rows
+       and say nothing the status badge has not already said. */
+    if (row.targetUnit || row.sourceUnitCode || row.sourceUnit) {
+      cell.append(element("span", "material-price__unit-note", unitCell(row)));
+    }
+    built[column.key] = cell;
   });
 
-  /* Everything a reader might need to check this number, on the row itself: what was
-     converted and how, what the supplier actually called the thing, and how it lines up
-     with the Finance item. A converted price nobody can check is a number nobody should
-     trust -- and none of these is a worksheet column, so none of them is one here. */
+  return built;
+}
+
+/* Everything a reader might need to check this number, on the row itself: what was
+   converted and how, what the supplier actually called the thing, and how it lines up with
+   the Finance item. A converted price nobody can check is a number nobody should trust --
+   and none of these is a worksheet column, so none of them is one here. */
+function rowNotes(row) {
   const notes = [];
   if (row.conversionNote) notes.push(row.conversionNote);
   if ((row.labelDisplayName || row.label) && row.name) notes.push(`نام در برگه: ${row.name}`);
   if (row.labelSourceBasis) notes.push(`مبنای قیمت: ${row.labelSourceBasis}`);
   if (row.financeResourceUnit || row.unitAlignment) notes.push(`قلم هزینه: ${alignmentCell(row)}`);
-  if (notes.length) tr.title = notes.join(" · ");
-  return tr;
+  return notes.length ? notes.join(" · ") : null;
 }
 
 /**
@@ -222,8 +252,15 @@ function renderRow(row, columns, categoryLabels) {
  * `rows` is whatever the database returned — possibly empty, possibly all unresolved.
  * There is no branch here that invents one.
  */
+/**
+ * @param paging  `{ page, pageSize, totalItems, onChange }` — SERVER paging. The rows given
+ *   are the page the server already sliced, so nothing here slices again: the sheet holds
+ *   992 pipes and asking for all of them to show fifty is the request this avoids. Absent,
+ *   the section renders the rows it was handed with no footer, as it always did.
+ */
 export function renderMaterialPrices(rows, { categories = [], selectedCategory = null,
-                                             onSelectCategory = null } = {}) {
+                                             onSelectCategory = null, paging = null,
+                                             readOnly = false } = {}) {
   const section = element("section", "prices-section material-prices");
   const heading = element("header", "prices-section__header");
   heading.append(element("h2", "", "قیمت روز بازار (برگه مصالح)"));
@@ -265,37 +302,62 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
   /* Built for the chosen category, from the schema the Backend published for it. Switching
      the category tab rebuilds this section, so the header row is rebuilt with it -- there
      is no path that keeps one category's headers over another's rows. */
-  const columns = columnsFor(selectedCategory, categories);
+  const columns = presentedColumns(columnsFor(selectedCategory, categories), { readOnly });
   const categoryLabels = Object.fromEntries(
     (categories ?? []).map((c) => [c.category, c.label ?? c.category]));
   const chosen = (categories ?? []).find((c) => c.category === selectedCategory);
 
-  const wrapper = element("div", "app-table-scroll");
-  const table = element("table", "app-table material-prices__table");
-  const caption = element("caption", "sr-only",
-    chosen ? `قیمت روز بازار — ${chosen.label ?? chosen.category}` : "قیمت روز بازار به تفکیک محصول");
-  const thead = element("thead", "");
-  const headRow = element("tr", "");
-  columns.forEach((column) => {
-    const th = element("th", "", column.label);
-    th.scope = "col";
-    /* So a test -- and anyone inspecting the page -- can see which worksheet key a column
-       came from, and that a spec column is the sheet's own rather than this page's. */
-    th.dataset.columnKey = column.key;
-    th.dataset.columnKind = column.kind ?? "base";
-    headRow.append(th);
-  });
-  thead.append(headRow);
-  const tbody = element("tbody", "");
-  rows.forEach((row) => tbody.append(renderRow(row, columns, categoryLabels)));
-  table.append(caption, thead, tbody);
-  wrapper.append(table);
-  section.append(wrapper);
+  const caption = chosen
+    ? `قیمت روز بازار — ${chosen.label ?? chosen.category}`
+    : "قیمت روز بازار به تفکیک محصول";
 
+  const table = createDataTable({
+    caption,
+    className: "material-prices__table",
+    columns,
+    rows,
+    cells: (row) => cellsFor(row, columns, categoryLabels),
+    rowAttributes: () => ({ className: "material-price__row" }),
+    emptyMessage: "هیچ محصولی در این دسته نیست.",
+  });
+  /* Which worksheet key each column came from, and whether it is one of the sheet's own
+     spec columns or part of the shared set. Stamped here rather than asked of the shared
+     component: it is this table's fact -- no other table has a per-category schema -- and
+     a parameter for it would put a worksheet concept into every table in the module. */
+  [...table.querySelectorAll("th")].forEach((th, index) => {
+    if (!columns[index]) return;
+    th.dataset.columnKey = columns[index].key;
+    th.dataset.columnKind = columns[index].kind ?? "base";
+  });
+  /* The row's own explanation, in its title. Stamped after the fact for the same reason
+     as the header keys: the shared table carries `className` and `tabIndex` and nothing
+     else, and widening that contract for one table would put a tooltip in every one. Rows
+     are in the order they were given, which is the order this walks. */
+  [...table.querySelectorAll("tbody tr")].forEach((tr, index) => {
+    const title = rows[index] ? rowNotes(rows[index]) : null;
+    if (title) tr.title = title;
+  });
+  section.append(table);
+
+  if (paging) {
+    section.append(createTablePagination({
+      name: `material-prices-${selectedCategory ?? "all"}`,
+      page: paging.page,
+      total: paging.totalItems,
+      pageSize: paging.pageSize,
+      label: "صفحه‌بندی قیمت روز بازار",
+      onPageChange: (next) => paging.onChange?.({ page: next, pageSize: paging.pageSize }),
+      onPageSizeChange: (next) => paging.onChange?.({ page: 1, pageSize: next }),
+    }));
+  }
+
+  /* Counted over THIS PAGE, and it says so. With the server slicing, «۱۲ قلم از ۵۰» is
+     about the fifty on screen; claiming it was about the whole category would be a figure
+     nobody could check against anything visible. */
   const unresolved = rows.filter((row) => row.resolutionStatus !== "resolved").length;
   if (unresolved) {
     section.append(element("p", "prices-section__hint",
-      `${unresolved} قلم از ${rows.length} قلم قیمت قابل استفاده ندارد. دلیل هر کدام در ستون وضعیت آمده است.`));
+      `${unresolved} قلم از ${rows.length} قلم این صفحه قیمت قابل استفاده ندارد. دلیل هر کدام زیر نام محصول آمده است.`));
   }
   return section;
 }

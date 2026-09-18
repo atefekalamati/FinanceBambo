@@ -25,10 +25,10 @@
    override it everywhere else in this stylesheet.
    -------------------------------------------------------------------------- */
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog),
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *,
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *::before,
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *::after {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog),
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) *,
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) *::before,
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) *::after {
   box-sizing: border-box;
 }
 
@@ -53,51 +53,62 @@ body[data-finance-runtime="standalone"] {
 
 /* Mounted, the module carries its own type and direction rather than taking the
    host's page: the host keeps its document, and this keeps its own reading. */
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) {
   direction: rtl;
   font-family: var(--font-fa);
   color: var(--color-text-primary);
   line-height: 1.75;
 }
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(img, svg) {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) :is(img, svg) {
   display: block;
   max-inline-size: 100%;
 }
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(button, input) {
+/* `hidden` has to mean hidden.
+   The attribute's only backing is the user agent's `[hidden] { display: none }`, which any
+   author rule that states a display outranks -- and `.button` states `inline-flex`. So
+   every `node.hidden = true` in this module was silently doing nothing to a button: the
+   pricing panel went on offering «اتصال به قیمت روز» underneath the form that button had
+   just opened. Scoped like the rest of this reset, and `!important` because the point is
+   to beat a component's own display. */
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) [hidden] {
+  display: none !important;
+}
+
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) :is(button, input) {
   font: inherit;
 }
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) button {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) button {
   border: none;
   background: none;
   cursor: pointer;
 }
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(select, textarea) {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) :is(select, textarea) {
   font-family: inherit;
 }
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(select option, select optgroup) {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) :is(select option, select optgroup) {
   color: var(--color-text-primary);
   background-color: var(--color-surface-page);
 }
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) select option:disabled {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) select option:disabled {
   color: var(--color-text-muted);
 }
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) a {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) a {
   color: inherit;
   text-decoration: none;
 }
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(h1, h2, p) {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) :is(h1, h2, p) {
   margin-block-start: 0;
 }
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :is(button, a) {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) :is(button, a) {
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -105,7 +116,7 @@ body[data-finance-runtime="standalone"] {
    Accessibility and shared helpers
    -------------------------------------------------------------------------- */
 
-:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) :focus-visible {
+:where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) :focus-visible {
   outline: .1875rem solid var(--brand-teal);
   outline-offset: .1875rem;
 }
@@ -154,9 +165,9 @@ body[data-finance-runtime="standalone"] {
    -------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
-  :where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *,
-  :where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *::before,
-  :where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog) *::after {
+  :where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) *,
+  :where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) *::before,
+  :where(#finance-module-root, dialog.confirm-dialog, dialog.persian-calendar-dialog, dialog.price-mapping-panel, dialog.conversion-rule-dialog, dialog.manual-price-dialog) *::after {
     scroll-behavior: auto !important;
     transition-duration: .01ms !important;
     animation-duration: .01ms !important;

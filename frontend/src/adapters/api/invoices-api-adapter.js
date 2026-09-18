@@ -50,6 +50,13 @@ function mapInvoice(value, targets = []) {
         unit: line.unit,
         unitPriceIRR: line.unitPriceIrr,
         lineAmountIRR: line.finalLineAmountIrr,
+        /* The line BEFORE the header's discount, tax, shipping and other costs were
+           distributed across it. `finalLineAmountIrr` is what the line came to and is what
+           a reader should see; `rawAmountIrr` is what somebody TYPED, and it is the only
+           one an edit form may put back in the box. Prefilling a general-cost line with its
+           final amount would fold that invoice's tax into the figure and fold it in again
+           on the next save. */
+        rawAmountIRR: line.rawAmountIrr,
         description: line.description,
       };
     }),
@@ -71,14 +78,61 @@ function exactPreview(lines, adjustments) {
 export function createApiInvoicesAdapter(context, client) {
   const base = financeBase(context);
   let targetCache = [];
+  /* The name of each level-one stage, keyed by its WBS code.
+   *
+   * `/estimate-lines` states the ACTIVITY's code and title -- «۳.۲.۱ · آرماتوربندی» --
+   * and never the stage above it, so a picker grouped by stage would offer «۳» with no
+   * name. The activity catalogue holds one row per distinct WBS code, summary tasks
+   * included, which is where «۳ · سفت‌کاری» comes from.
+   *
+   * Only codes with no dot are kept: those are the stages the level-one report draws.
+   */
+  async function stageTitles() {
+    const titles = new Map();
+    // Bounded. The catalogue is one row per stage -- hundreds, not millions -- and a
+    // service answering with a wrong `totalPages` must not turn this into a loop that
+    // never ends while somebody waits on a dialog.
+    for (let page = 1; page <= 10; page += 1) {
+      const payload = await client.request(`${base}/activities?page=${page}&pageSize=200`);
+      for (const item of payload?.items ?? []) {
+        const code = String(item.wbsCode ?? "").trim();
+        if (code && !code.includes(".") && item.title) titles.set(code, item.title);
+      }
+      if (page >= Number(payload?.totalPages ?? 1)) break;
+    }
+    return titles;
+  }
+
   async function getInvoiceTargets() {
     const [resourcePayload, linePayload] = await Promise.all([client.request(`${base}/resources`), client.request(`${base}/estimate-lines`)]);
+    /* Stage names are a convenience: without them the picker still groups correctly and
+       shows «مرحله ۳» where it would have shown «۳ · سفت‌کاری». Refusing to open the
+       invoice form because a LABEL could not be fetched would stop somebody recording a
+       real purchase, which is the one thing this form exists to do. Every other request
+       here still raises. */
+    let titles = new Map();
+    try { titles = await stageTitles(); } catch { titles = new Map(); }
     const resources = resourcePayload.map(mapResource);
     const estimateTargets = linePayload.map((line) => {
       const resource = resources.find((item) => item.resourceId === line.resourceId);
-      return { targetId: line.id, targetType: "estimate_line", label: `${line.activityExternalId || "خط برآورد"} · ${resource?.title ?? "قلم مالی"}`, unit: resource?.baseUnit ?? null, resourceId: line.resourceId, estimateLineId: line.id };
+      const wbsCode = line.wbsCode ?? line.activityExternalId ?? null;
+      const stageCode = String(wbsCode ?? "").trim().split(".")[0].trim() || null;
+      return {
+        targetId: line.id,
+        targetType: "estimate_line",
+        /* The activity's NAME first and its code second. A draft line reading
+           «۳.۲.۱ · میلگرد» asks the reader to carry a numbering scheme in their head;
+           «آرماتوربندی · میلگرد» is the same fact in the words they ordered it with. */
+        label: `${line.activityTitle || line.activityExternalId || "خط برآورد"} · ${resource?.title ?? "قلم مالی"}`,
+        unit: resource?.baseUnit ?? null,
+        resourceId: line.resourceId,
+        estimateLineId: line.id,
+        wbsCode,
+        stageCode,
+        stageTitle: stageCode ? titles.get(stageCode) ?? null : null,
+      };
     });
-    const generalTargets = resources.filter((item) => item.type === "general_cost").map((item) => ({ targetId: item.resourceId, targetType: "general_cost", label: item.title, unit: null, resourceId: item.resourceId, estimateLineId: null }));
+    const generalTargets = resources.filter((item) => item.type === "general_cost").map((item) => ({ targetId: item.resourceId, targetType: "general_cost", label: item.title, unit: null, resourceId: item.resourceId, estimateLineId: null, wbsCode: null, stageCode: null, stageTitle: null }));
     targetCache = [...estimateTargets, ...generalTargets];
     return structuredClone(targetCache);
   }
@@ -133,5 +187,41 @@ export function createApiInvoicesAdapter(context, client) {
     const payload = { invoiceDate: header.invoiceDate, vendorName: header.vendorName, description: header.description || null, source: "corrective", discountIrr: adjustments.discountIRR, taxIrr: adjustments.taxIRR, shippingIrr: adjustments.shippingIRR, otherCostsIrr: adjustments.otherCostsIRR, idempotencyKey, duplicateReason: null, directAdjustmentAllocations: [], lines: await linePayload(lines), financialEffectSign, reason };
     return mapInvoice(await client.request(`${base}/invoices/${encodeURIComponent(originalInvoiceId)}/corrective`, jsonOptions("POST", payload)), targetCache);
   }
-  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective });
+  /* Rewriting an invoice that has not been confirmed.
+   *
+   * WHY IT SENDS EVERYTHING
+   * The whole document is the unit of an edit: change a quantity and the header's discount
+   * redistributes across every line, so a patch of one field would leave the other lines
+   * holding shares of a total that no longer exists. The service recomputes the
+   * distribution from what it is given, exactly as it does on create.
+   *
+   * `expectedVersion` is the version the person was LOOKING AT. If somebody else moved the
+   * invoice on — submitted it, or edited it — the service refuses with STALE_VERSION rather
+   * than overwriting a change nobody in this dialog saw.
+   *
+   * WHAT THE SERVICE ACCEPTS TODAY
+   * `InvoicePatch` takes `description`, `status` and `expectedVersion` and forbids extra
+   * fields, so everything below the description is refused until the service is widened —
+   * with the service's own 422, not a silent partial write. That is the honest failure:
+   * nothing is saved, and nothing the person typed is quietly dropped. When the endpoint
+   * grows the fields, this call starts working with no change here.
+   */
+  async function updateInvoice({ invoiceId, expectedVersion, header, lines, adjustments }) {
+    const payload = {
+      expectedVersion,
+      invoiceDate: header.invoiceDate,
+      vendorName: header.vendorName,
+      description: header.description || null,
+      discountIrr: adjustments.discountIRR,
+      taxIrr: adjustments.taxIRR,
+      shippingIrr: adjustments.shippingIRR,
+      otherCostsIrr: adjustments.otherCostsIRR,
+      directAdjustmentAllocations: [],
+      lines: await linePayload(lines),
+    };
+    return mapInvoice(await client.request(
+      `${base}/invoices/${encodeURIComponent(invoiceId)}`, jsonOptions("PATCH", payload)), targetCache);
+  }
+
+  return Object.freeze({ getInvoices, getInvoice, getInvoiceTargets, previewDraft, createDraft, submitDraft, confirmInvoice, voidInvoice, createCorrective, updateInvoice });
 }

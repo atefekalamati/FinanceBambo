@@ -136,12 +136,17 @@ export function selectEstimateRows(lines = [], resources = []) {
   return { rows, hiddenLegacyCount, orphanCount, scheduleBackedCount, manualCount };
 }
 
-/** What to tell the reader about withheld rows, or null when nothing was withheld. */
-export function withheldRowsNotice({ hiddenLegacyCount = 0, orphanCount = 0 } = {}) {
+/**
+ * What to tell the reader about withheld rows, or null when nothing was withheld.
+ *
+ * The legacy `MSP-T` rows are counted and withheld but no longer announced. They are an
+ * artefact of an older import, not a state a reader has to act on, and a paragraph about
+ * them on every visit was the page apologising for its own data. A row that is withheld
+ * because its cost item is missing is different -- that one is worth fixing, so it still
+ * says so.
+ */
+export function withheldRowsNotice({ orphanCount = 0 } = {}) {
   const parts = [];
-  if (hiddenLegacyCount > 0) {
-    parts.push(`${formatDisplayNumber(String(hiddenLegacyCount))} ردیف قدیمی با کد MSP-T نمایش داده نشده است؛ این ردیف‌ها از فایل برنامه زمانی جاری خوانده نشده‌اند و حذف هم نشده‌اند.`);
-  }
   if (orphanCount > 0) {
     parts.push(`${formatDisplayNumber(String(orphanCount))} ردیف بدون قلم هزینه معتبر نمایش داده نشده است.`);
   }
@@ -261,6 +266,34 @@ const SCHEDULE_SOURCE = "فایل برنامه زمانی (MPP)";
 export function sourceLabel(line) {
   if (line?.sourceAssignmentUid != null) return SCHEDULE_SOURCE;
   return SOURCE_LABELS[line?.source] ?? "منبع تعریف‌نشده";
+}
+
+/**
+ * What crossed the two units, and how much anybody's word it rests on.
+ *
+ * The three the service can answer with are not equally trustworthy, and until now they
+ * arrived in the same cell as the same kind of fact:
+ *
+ *   provider_item    somebody weighed THIS listing. A measurement of the thing being priced.
+ *   conversion_rule  somebody stated it for a category, a project, or everything. A claim
+ *                    that covers this listing without having been made about it.
+ *   registry         a kilogram is a thousandth of a tonne. Nobody's word at all.
+ *
+ * Said in the cell rather than in a tooltip, because a reader comparing two rows is
+ * comparing two numbers of different standing and cannot see that from the figures.
+ */
+const FACTOR_SOURCE_LABELS = Object.freeze({
+  provider_item: "وزن‌کشی همین محصول",
+  conversion_rule: "قانون تبدیل",
+  registry: "تبدیل استاندارد واحد",
+});
+
+/** The factor's origin in words, or null when nothing was converted. */
+export function factorSourceLabel(factorSource) {
+  if (!factorSource) return null;
+  /* An unknown code is REPORTED, not swallowed. The service may add a fourth origin, and a
+     row that quietly says nothing is how a reader concludes no conversion happened. */
+  return FACTOR_SOURCE_LABELS[factorSource] ?? `مبنای تبدیل: ${factorSource}`;
 }
 
 /** The same question about a cost item, answered from the same kind of evidence. */
