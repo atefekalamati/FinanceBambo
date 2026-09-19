@@ -59,8 +59,23 @@ class HeaderTests(unittest.TestCase):
         self.assertIn("قیمت", problem)
 
     def test_an_absent_optional_column_is_simply_absent(self):
+        """An ATTRIBUTE column may be missing. The pricing unit may not -- see below."""
+        self.assertIsNone(check_headers("steel -Rebar", HEADER + ("وزن",)))
+        self.assertIsNone(check_headers("steel -Rebar", HEADER))
+
+    def test_a_worksheet_that_states_no_pricing_unit_is_refused(self):
+        """Six of the seven worksheets spell this column «واحد» and only Rebar spells it
+        «واحد - وزن». Reading one name only is why six imported with no unit at all, so
+        both are accepted -- and a worksheet with neither is refused rather than read as a
+        list of prices per nothing."""
         headers = tuple(h for h in HEADER if h != "واحد - وزن")
-        self.assertIsNone(check_headers("steel -Rebar", headers))
+        problem = check_headers("steel -Rebar", headers)
+        self.assertIn("states no pricing unit column", problem)
+        self.assertIsNone(check_headers("Pipe-table", headers + ("واحد",)))
+
+    def test_stating_the_pricing_unit_twice_is_refused_like_any_other_repeat(self):
+        problem = check_headers("steel -Rebar", HEADER + ("واحد",))
+        self.assertIn("states the pricing unit twice", problem)
 
 
 class WorksheetTests(unittest.TestCase):

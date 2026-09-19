@@ -84,41 +84,64 @@ class ExtractionTests(unittest.TestCase):
             "ضخامت": "5.0", "طول": "6 متر", "وزن": "27.0", "تعداد شاخه": "80.0"})
         self.assertEqual(Decimal("5.0"), values["thickness_value"])
         self.assertEqual(Decimal("6"), values["length_value"])
-        self.assertEqual("m", values["length_unit"])
+        # The unit «متر» was read and is recorded where it survives: `length_m`. Since 0033
+        # there is no `length_unit` column to put it in -- it said 'm' on every row that
+        # ever had one, beside a value already normalised to metres.
+        self.assertNotIn("length_unit", values)
         self.assertEqual(Decimal("6"), values["length_m"])
-        self.assertEqual(Decimal("27.0"), values["weight_value"])
+        # And NO weight. The angle worksheet writes its weight as a bare `27.0` with no
+        # unit anywhere on the row, so there is nothing to state kilograms from -- the 48
+        # angle listings in the database are exactly this case. Reading it as 27 kg because
+        # the neighbouring worksheets use kilograms is the guess this model exists to
+        # refuse; the number is reported as a conflict instead.
+        self.assertNotIn("weight_kg", values)
+        self.assertEqual([{"field": "weight", "raw": "27.0", "unit": None,
+                           "reason": "weight has no unit, so it cannot be stated in kilograms"}],
+                         values["spec_conflicts"])
         self.assertEqual(Decimal("80.0"), values["branch_count"])
 
     def test_19_a_weight_no_sheet_gives_a_basis_for_is_marked_unknown(self):
-        # An unknown basis is a value a conversion must refuse, not one it may use.
-        values, _ = extract_specs("angle", {"وزن": "27.0"})
+        # An unknown basis is a value a conversion must refuse, not one it may use. Asked
+        # of a sheet that states the unit, because a weight with no unit does not reach a
+        # basis at all -- see the angle case above.
+        values, _ = extract_specs("brick", {"وزن": "1150 گرم"})
         self.assertEqual("unknown", values["weight_basis"])
         self.assertIn("unknown", WEIGHT_BASES)
         self.assertNotIn("weight_per_branch_kg", values)
         self.assertNotIn("weight_per_meter_kg", values)
 
-    def test_a_weight_whose_cell_states_grams_keeps_grams(self):
-        values, _ = extract_specs("brick", {"وزن": "1150 گرم"})
-        self.assertEqual(Decimal("1150"), values["weight_value"])
-        self.assertEqual("g", values["weight_unit"])
+    def test_a_weight_stated_in_grams_is_stored_in_kilograms(self):
+        """1150 g is 1.15 kg. The sheet's unit is READ, used, and then spent.
 
-    def test_a_weight_whose_cell_states_nothing_keeps_no_unit(self):
+        Storing `1150` beside a `g` was what 0034 removed: two fields meant a reader could
+        take the first and miss the second, and 1150 kg of brick is a brick the size of a
+        car.
+        """
+        values, _ = extract_specs("brick", {"وزن": "1150 گرم"})
+        self.assertEqual(Decimal("1.150"), values["weight_kg"])
+        self.assertNotIn("weight_unit", values)
+        self.assertNotIn("weight_value", values)
+
+    def test_a_weight_whose_cell_states_no_unit_yields_no_weight_at_all(self):
+        """The 84 rows. A number with no unit is not a weight, it is a number."""
         values, _ = extract_specs("angle", {"وزن": "27.0"})
-        self.assertEqual(Decimal("27.0"), values["weight_value"])
-        self.assertIsNone(values.get("weight_unit"))
+        self.assertNotIn("weight_kg", values)
+        self.assertNotIn("weight_basis", values)
+        self.assertEqual("weight", values["spec_conflicts"][0]["field"])
 
     def test_an_origin_in_the_weight_column_becomes_a_manufacturer(self):
         # 34 of 103 ibeam rows do this. Coercing would have produced a null weight and
         # lost the only thing the cell actually said.
         values, leftovers = extract_specs("ibeam", {"وزن - کیلوگرم": "وارداتی"})
         self.assertEqual("وارداتی", values["manufacturer"])
-        self.assertNotIn("weight_value", values)
+        self.assertNotIn("weight_kg", values)
         self.assertEqual({}, leftovers)
 
     def test_a_number_in_that_same_column_is_a_weight_in_kilograms(self):
+        """Here the COLUMN NAME states the unit, which is evidence like any other."""
         values, _ = extract_specs("ibeam", {"وزن - کیلوگرم": "190.0"})
-        self.assertEqual(Decimal("190"), values["weight_value"])
-        self.assertEqual("kg", values["weight_unit"])
+        self.assertEqual(Decimal("190"), values["weight_kg"])
+        self.assertNotIn("weight_unit", values)
 
     def test_dimensions_stay_text_because_nobody_declared_the_order(self):
         # «7×33×2.5» -- width first or thickness first is the difference between a 7mm

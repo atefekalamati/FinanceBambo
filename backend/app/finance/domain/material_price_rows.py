@@ -27,6 +27,22 @@ from decimal import Decimal, InvalidOperation
 
 from .persian_calendar import persian_to_gregorian
 
+#: The commercial unit a price is PER, under both spellings the workbook uses for it.
+#:
+#: This is one concept with two headings, and reading only one of them is why six of the
+#: seven worksheets imported with no pricing unit at all. Counted on the live workbook:
+#: `واحد` heads the column on I-beam, Angle, Channel, Hollow, Pipe and brick;
+#: `واحد - وزن` heads it on Rebar alone. The importer asked for the second name only,
+#: so Rebar was the only worksheet whose unit survived -- 1,244 listings out of 6,579.
+#:
+#: The Rebar heading is also the misleading one: `واحد - وزن` reads as "unit - weight",
+#: but the column holds `عدد` on Pipe and on brick. It is not a weight. It is what one
+#: unit of price buys, which is exactly what `source_unit` means.
+#:
+#: It lives in the domain because the row decision is what needs it; the sheet service
+#: imports it from here to require the column, rather than the other way round.
+SOURCE_UNIT_HEADERS = ('واحد', 'واحد - وزن')
+
 #: Toman -> IRR. One place, applied once, and never mixed with a unit conversion.
 TOMAN_TO_IRR = Decimal(10)
 
@@ -38,7 +54,14 @@ _DIGITS = {ord(c): str(i % 10) for i, c in enumerate("۰۱۲۳۴۵۶۷۸۹٠١٢
 #: carries one of these. The worksheet a row came from is recorded separately and is not
 #: what decides this.
 CATEGORY_BY_PREFIX = {
+    # Two spellings of one category. The sheet used to emit `IBEAM-...` and now emits
+    # `I_BEAM-...`; both are listed because the older identifiers are what 601 already
+    # imported listings are keyed on, and dropping the old name would orphan every one of
+    # them while the new one would still be refused. Measured on the live workbook:
+    # 104 of 104 I-beam rows carry `I_BEAM`, and every one was being rejected as an
+    # unknown category -- the whole worksheet, for a missing underscore.
     "IBEAM": "ibeam",
+    "I_BEAM": "ibeam",
     "ANGLE": "angle",
     "CHANNEL": "channel",
     "PROFILE": "profile",
@@ -272,6 +295,22 @@ def decide_row(*, worksheet: str, row_number: int, cells: dict,
         # `fetched_at` or today, which would state a business date nobody quoted.
         reasons.append("workflow date is not a date: %s" % raw_date)
 
+    # The pricing unit, under whichever heading this worksheet gives it. Read here rather
+    # than by one hard-coded name: the two spellings are one column, and asking for the
+    # Rebar one alone left six worksheets priced per nothing.
+    source_unit = None
+    for heading in SOURCE_UNIT_HEADERS:
+        if heading in cells:
+            source_unit = _text(cells.get(heading))
+            if source_unit:
+                break
+    if not source_unit:
+        # Rejected, never filled in. A unit inferred from the category would price angle
+        # iron per kilogram because angle iron usually is -- and the one listing sold by
+        # the branch would then be wrong by its own weight, silently, because the number
+        # would look exactly like every other number in the column.
+        reasons.append("row states no pricing unit")
+
     attributes = {}
     for column in attribute_columns:
         if column in cells:
@@ -287,7 +326,7 @@ def decide_row(*, worksheet: str, row_number: int, cells: dict,
         category=category,
         raw_price=None if cells.get("قیمت") is None else normalize_digits(cells["قیمت"]).strip(),
         price_irr=price_irr,
-        source_unit=_text(cells.get("واحد - وزن")),
+        source_unit=source_unit,
         workflow_date_raw=raw_date,
         workflow_date_jalali=jalali,
         workflow_date_gregorian=gregorian,

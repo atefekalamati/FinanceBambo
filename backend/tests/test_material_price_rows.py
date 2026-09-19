@@ -216,6 +216,7 @@ class WholeRowTests(unittest.TestCase):
             "محصول": "آجر سه سانتی رسی زرد",
             "کد": "LO1",
             "ابعاد": "8×40×2.5",
+            "واحد": "عدد",
             "وزن": "2800 گرم",
             "قیمت": 4300.0,
             "قیمت در هر مترمربع": 430000.0,
@@ -230,7 +231,7 @@ class WholeRowTests(unittest.TestCase):
 
     def test_a_brick_with_no_square_metre_price_still_has_its_primary_price(self):
         decided = decide_row(worksheet="brick", row_number=6, cells={
-            "source": "Toranj Brick", "محصول": "آجر", "قیمت": 4300.0,
+            "source": "Toranj Brick", "محصول": "آجر", "قیمت": 4300.0, "واحد": "عدد",
             "قیمت در هر مترمربع": None, "تاریخ آپدیت ورک فلو": "۱۴۰۵/۶/۲۱",
             "productId": "BRICK-X",
         })
@@ -243,6 +244,7 @@ class WholeRowTests(unittest.TestCase):
         """94 of 213 brick rows state no weight, and 38 of 56 channel rows state none."""
         decided = decide_row(worksheet="brick", row_number=7, cells={
             "source": "Toranj Brick", "محصول": "آجر", "وزن": None, "قیمت": 4300.0,
+            "واحد": "عدد",
             "تاریخ آپدیت ورک فلو": "۱۴۰۵/۶/۲۱", "productId": "BRICK-Y",
         }, attribute_columns=("وزن",))
         self.assertEqual(RowStatus.ACCEPTED, decided.status)

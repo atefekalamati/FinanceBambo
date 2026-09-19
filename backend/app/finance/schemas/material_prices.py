@@ -142,18 +142,15 @@ class MaterialPriceResponse(ApiModel):
     product_type: str | None = None
     dimensions_text: str | None = None
     length_value: Decimal | None = None
-    length_unit: str | None = None
     length_m: Decimal | None = None
     width_value: Decimal | None = None
-    width_unit: str | None = None
     height_value: Decimal | None = None
-    height_unit: str | None = None
     thickness_value: Decimal | None = None
-    thickness_unit: str | None = None
     diameter_value: Decimal | None = None
-    diameter_unit: str | None = None
-    weight_value: Decimal | None = None
-    weight_unit: str | None = None
+    #: Always kilograms. The `weightValue`/`weightUnit` pair it replaced is gone: a reader
+    #: had to combine two fields to know what a product weighed, and a reader who forgot
+    #: read 1100 grams of brick as 1100 kilograms.
+    weight_kg: Decimal | None = None
     weight_basis: str | None = None
     branch_count: Decimal | None = None
     pieces_per_package: Decimal | None = None

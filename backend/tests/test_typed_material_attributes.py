@@ -92,23 +92,22 @@ class TypedAttributeTests(unittest.TestCase):
     def test_15_every_specification_may_be_null(self):
         row = self.item()
         for column in ("product_code", "manufacturer", "grade", "product_type",
-                       "dimensions_text", "length_value", "length_unit", "length_m",
+                       "dimensions_text", "length_value", "length_m",
                        "width_value", "height_value", "thickness_value", "diameter_value",
-                       "weight_value", "weight_unit", "weight_basis", "branch_count",
+                       "weight_kg", "weight_basis", "branch_count",
                        "pieces_per_package", "coverage_m2", "volume_m3"):
             self.assertIsNone(row[column], column)
 
     def test_16_17_18_a_weight_a_length_and_a_thickness_land_in_their_own_columns(self):
-        row = self.item(weight_value=Decimal("27"), weight_basis="branch", weight_unit="kg",
-                        length_value=Decimal("6"), length_unit="m", length_m=Decimal("6"),
-                        thickness_value=Decimal("4"), thickness_unit="mm")
-        self.assertEqual(Decimal("27"), row["weight_value"])
-        self.assertEqual("kg", row["weight_unit"])
+        row = self.item(weight_kg=Decimal("27"), weight_basis="branch",
+                        length_value=Decimal("6"), length_m=Decimal("6"),
+                        thickness_value=Decimal("4"))
+        self.assertEqual(Decimal("27"), row["weight_kg"])
         self.assertEqual(Decimal("6"), row["length_m"])
         self.assertEqual(Decimal("4"), row["thickness_value"])
 
     def test_20_a_missing_specification_is_null_and_never_zero(self):
-        row = self.item(weight_value=Decimal("27"), weight_basis="unknown")
+        row = self.item(weight_kg=Decimal("27"), weight_basis="unknown")
         self.assertIsNone(row["thickness_value"])
         self.assertIsNone(row["length_value"])
         self.assertNotEqual(Decimal("0"), row["thickness_value"])
@@ -117,36 +116,36 @@ class TypedAttributeTests(unittest.TestCase):
         # An unknown basis is a value a conversion must refuse; NO basis is a number that
         # means nothing at all, and the database will not hold one.
         with self.assertRaises(psycopg.errors.CheckViolation):
-            self.item(weight_value=Decimal("27"))
+            self.item(weight_kg=Decimal("27"))
         self.db.rollback()
 
     def test_a_measurement_must_be_positive_and_finite(self):
-        for columns in ({"weight_value": Decimal("-1"), "weight_basis": "piece"},
-                        {"weight_value": Decimal("0"), "weight_basis": "piece"},
+        for columns in ({"weight_kg": Decimal("-1"), "weight_basis": "piece"},
+                        {"weight_kg": Decimal("0"), "weight_basis": "piece"},
                         {"thickness_value": Decimal("0")},
                         {"branch_count": Decimal("0")},
-                        {"weight_value": Decimal("NaN"), "weight_basis": "piece"}):
+                        {"weight_kg": Decimal("NaN"), "weight_basis": "piece"}):
             with self.assertRaises(psycopg.errors.CheckViolation, msg=str(columns)):
                 self.item(**columns)
             self.db.rollback()
 
-    def test_a_unit_without_its_value_is_refused(self):
-        # Half a fact is worse than none: an importer that lost the number finds out.
-        with self.assertRaises(psycopg.errors.CheckViolation):
-            self.item(weight_unit="kg")
-        self.db.rollback()
+    def test_there_is_no_unit_column_left_to_disagree_with_the_value(self):
+        """0034 removed the pair. These two tests used to guard `weight_unit` -- that a
+        unit needed a value, and that it had to be a registry code -- and both questions
+        stop existing once the only weight column IS its unit.
 
-    def test_a_unit_outside_the_registry_is_refused(self):
-        with self.assertRaises(psycopg.errors.CheckViolation):
-            self.item(weight_value=Decimal("5"), weight_basis="piece", weight_unit="stone")
-        self.db.rollback()
-        with self.assertRaises(psycopg.errors.CheckViolation):
-            self.item(length_value=Decimal("5"), length_unit="kg")
-        self.db.rollback()
+        What replaces them is stronger than either: a stored weight cannot be in the wrong
+        unit, because there is nowhere to say a unit.
+        """
+        columns = [row["column_name"] for row in self.db.execute(
+            "SELECT column_name FROM information_schema.columns"
+            " WHERE table_name='provider_items' AND column_name LIKE 'weight%'"
+            " ORDER BY 1").fetchall()]
+        self.assertEqual(["weight_basis", "weight_kg"], columns)
 
     def test_an_unlisted_weight_basis_is_refused(self):
         with self.assertRaises(psycopg.errors.CheckViolation):
-            self.item(weight_value=Decimal("5"), weight_basis="per-lorry")
+            self.item(weight_kg=Decimal("5"), weight_basis="per-lorry")
         self.db.rollback()
 
     def test_21_an_unrecognised_attribute_stays_in_metadata(self):

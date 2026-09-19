@@ -111,13 +111,40 @@ SPEC_MAP = {
     "pipe_fitting": {},
 }
 
+#: How many kilograms one of each recognised mass unit is. The whole conversion, in one
+#: place, so "is a gram a thousandth or a thousand" is answered once.
+KILOGRAMS_PER = {"g": Decimal("0.001"), "kg": Decimal(1), "ton": Decimal(1000)}
+
+
+def to_kilograms(value, unit):
+    """A weight in kilograms, or None when nothing here can say what it is.
+
+    None for an unknown unit AND for no unit at all -- those are the same situation from a
+    calculation's point of view, and the sheets produce both. A bare `27` in a weight
+    column is not 27 kg because its neighbours are kilograms; it is a number whose unit
+    nobody wrote down, and the honest destination for it is nowhere.
+    """
+    if value is None or unit is None:
+        return None
+    factor = KILOGRAMS_PER.get(str(unit).strip())
+    return None if factor is None else Decimal(value) * factor
+
+
 #: Which target columns take a unit beside the value, and where that unit is stored.
+#:
+#: ONE entry, since 0033. The dimension columns had one each and the sheets never filled
+#: them: width, height, thickness and diameter units were NULL on all 6,579 listings, and
+#: length said 'm' on every row that had one -- already recorded, normalised, in `length_m`,
+#: which is what a conversion reads. A parsed unit for those attributes is now simply not
+#: stored; `.get()` below returns None and the number stands alone, as it already did.
+#:
+#: Weight is the exception and is the reason this mapping still exists: brick states weights
+#: in g and the steel worksheets state them in kg, so the label here is the difference
+#: between 232 brick rows meaning what they say and meaning a thousand times more.
+#: INTERNAL to one parse, since 0034. Neither key is a column any more: the sheet's unit is
+#: read, used to convert, and then dropped, because `weight_kg` records the answer and a
+#: stored unit alongside it could only ever disagree with it.
 UNIT_COLUMN_OF = {
-    "length_value": "length_unit",
-    "width_value": "width_unit",
-    "height_value": "height_unit",
-    "thickness_value": "thickness_unit",
-    "diameter_value": "diameter_unit",
     "weight_value": "weight_unit",
 }
 
@@ -138,9 +165,9 @@ WEIGHT_BASES_USABLE_FOR_CONVERSION = ("branch", "meter", "piece", "package", "ba
 #: database, declared in the schema, and never actually returned.
 SPEC_COLUMNS = (
     "product_code", "manufacturer", "grade", "product_type", "dimensions_text",
-    "length_value", "length_unit", "length_m", "width_value", "width_unit",
-    "height_value", "height_unit", "thickness_value", "thickness_unit",
-    "diameter_value", "diameter_unit", "weight_value", "weight_unit", "weight_basis",
+    "length_value", "length_m", "width_value",
+    "height_value", "thickness_value",
+    "diameter_value", "weight_kg", "weight_basis",
     "branch_count", "pieces_per_package", "coverage_m2", "volume_m3")
 
 #: Where a stored value came from, so a reader is never left guessing which layer answered.
@@ -284,10 +311,26 @@ def extract_specs(category, metadata):
             values[unit_column] = rule["unit_from_name"]
         claimed.add(key)
 
-    # No sheet read so far states what a weight is PER. Saying 'unknown' is what stops the
-    # number being used in a conversion that needs a basis.
-    if "weight_value" in values:
+    # ------------------------------------------------- one weight, in one unit, or none
+    # The pair the rules above produce is a reading of the sheet; `weight_kg` is what the
+    # database keeps. Converting HERE rather than in each declaration means every worksheet
+    # goes through the same arithmetic, and a row whose unit could not be read simply has
+    # no weight rather than a number in an unstated unit.
+    weight = values.pop("weight_value", None)
+    unit = values.pop("weight_unit", None)
+    kilograms = to_kilograms(weight, unit)
+    if kilograms is not None:
+        values["weight_kg"] = kilograms
+        # No sheet read so far states what a weight is PER. Saying 'unknown' is what stops
+        # the number being used in a conversion that needs a basis.
         values.setdefault("weight_basis", "unknown")
+    elif weight is not None:
+        # A number was read and its unit was not. Recorded as a leftover rather than
+        # silently forgotten, so `/invalid-rows` and the spec-conflict report can show that
+        # the sheet stated a weight this system declined to interpret.
+        values.setdefault("spec_conflicts", []).append(
+            {"field": "weight", "raw": str(weight), "unit": unit,
+             "reason": "weight has no unit, so it cannot be stated in kilograms"})
 
     leftovers = {k: v for k, v in stored.items() if k not in claimed}
     return values, leftovers
