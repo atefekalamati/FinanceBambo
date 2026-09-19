@@ -458,7 +458,7 @@ def _conversion_eligible(row, source, target, factor):
         return True
     # Only a product property can bridge it now, and a weight is the property these sheets
     # state. One with no basis is not a measurement anybody may convert with.
-    if row.get("weight_value") is not None:
+    if row.get("weight_kg") is not None:
         return row.get("weight_basis") in WEIGHT_BASES_USABLE_FOR_CONVERSION
     return False
 

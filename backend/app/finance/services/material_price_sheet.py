@@ -27,12 +27,14 @@ caller decides -- it is not this file's place to publish half a price set.
 
 from dataclasses import dataclass, field
 
-from ..domain.material_price_rows import RowStatus, decide_row
+from ..domain.material_price_rows import (SOURCE_UNIT_HEADERS, RowStatus,
+                                          decide_row)
 
 #: Present in every one of the seven worksheets, measured. A worksheet missing any of these
 #: is not importable: without an identifier there is nothing to attach a price to, and
 #: without the date column there is nothing to order two observations by.
 REQUIRED_HEADERS = ("source", "محصول", "قیمت", "تاریخ آپدیت ورک فلو", "productId")
+
 
 #: Category-specific columns, kept verbatim as attributes. All optional: brick states no
 #: weight on 94 of its 213 rows and channel none on 38 of 56, and an absent attribute is
@@ -137,6 +139,16 @@ def check_headers(title: str, headers) -> str | None:
     if missing:
         return ("worksheet %r is missing the required column(s) %s"
                 % (title, ", ".join(missing)))
+    # Exactly one pricing-unit column, named either way. Zero is a worksheet whose prices
+    # have no denominator; two would make the unit depend on which column is read last,
+    # which is the same coin toss the duplicate check above refuses for a price.
+    present = [h for h in SOURCE_UNIT_HEADERS if h in named]
+    if not present:
+        return ("worksheet %r states no pricing unit column (expected one of %s)"
+                % (title, ", ".join(SOURCE_UNIT_HEADERS)))
+    if len(present) > 1:
+        return ("worksheet %r states the pricing unit twice (%s)"
+                % (title, ", ".join(present)))
     return None
 
 
