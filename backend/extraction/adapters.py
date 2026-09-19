@@ -47,6 +47,9 @@ from pathlib import Path
 #: A field the text does not support is absent rather than blank, and nothing here creates
 #: or confirms an invoice.
 from .invoice_parser import parse_invoice
+from .providers.llm_invoice import (ExtractionProviderResponseInvalid,
+                                    ExtractionProviderUnavailable,
+                                    build_extraction_provider)
 
 LOG = logging.getLogger("extraction.adapters")
 
@@ -117,10 +120,12 @@ def _as_contract(result):
     confidence = min(1.0, max(0.0, confidence))
     fields = [{"key": RAW_TEXT_KEY, "extractedValue": text,
                "confidence": confidence, "editedByUser": False}]
-    fields.extend(_structured_fields(text, confidence))
+    structured = _structured_fields(text, confidence)
+    fields.extend(structured)
     fields.extend(_ai_fields(text, {field["key"] for field in fields},
                              transcript=result.get("transcript"),
-                             metadata=result.get("metadata")))
+                             metadata=result.get("metadata"),
+                             needs_ai=_needs_ai(structured, confidence)))
     return {"fields": fields}
 
 
@@ -131,20 +136,77 @@ def _as_contract(result):
 AI_CONFIDENCE_WEIGHT = 0.9
 
 
-def _ai_fields(text, already_emitted, transcript=None, metadata=None):
-    """AvalAI's candidates for the fields the deterministic parser could not find.
+def _needs_ai(structured_fields, ocr_confidence):
+    keys = {field["key"] for field in structured_fields}
+    if ocr_confidence < 0.5:
+        return True
+    if "items" not in keys:
+        return True
+    warnings = next((field["extractedValue"] for field in structured_fields
+                     if field["key"] == "parserWarnings"), [])
+    return any(isinstance(item, dict) and item.get("code") == "INVOICE_TABLE_NOT_RECOGNISED"
+               for item in warnings)
+
+
+def _ai_fields(text, already_emitted, transcript=None, metadata=None, needs_ai=True):
+    """LLM candidates for fields the deterministic parser could not find.
 
     THE ORDER IS THE POINT. `_structured_fields` runs first and its keys are passed in
     here as `already_emitted`; anything it produced is never asked of the model and never
     overwritten by it. A rule that can be read beats a model that cannot, so the model
     fills gaps and does not arbitrate.
 
-    Switched off entirely when `AVALAI_API_KEY` is unset, which is the default. Every
-    failure -- no key, gateway down, a reply that is not the agreed JSON -- returns no
-    fields and lets the extraction continue: the OCR text and the parser's candidates are
-    already in `fields`, and losing them because a second opinion was unavailable would
-    make the pipeline less reliable for having gained a provider.
+    Switched off unless `FINANCE_AI_EXTRACTION_ENABLED=true`,
+    `FINANCE_AI_PROVIDER=openai`, and `FINANCE_AI_API_KEY` are configured. Every failure
+    returns warning fields and lets the extraction continue: OCR text and parser
+    candidates are already in `fields`, and losing them because a second opinion was
+    unavailable would make the pipeline less reliable.
     """
+    if not needs_ai:
+        return []
+    provider = build_extraction_provider()
+    if provider is None:
+        legacy = _legacy_avalai_fields(text, already_emitted, transcript, metadata)
+        return legacy
+    try:
+        candidate = provider.extract_invoice(text, {"transcript": transcript,
+                                                    "metadata": metadata})
+    except (ExtractionProviderUnavailable, ExtractionProviderResponseInvalid) as error:
+        LOG.warning("finance AI extraction skipped: %s", error)
+        return _warning_fields("aiWarnings", [str(error)], "ai-unavailable")
+    except Exception:                                          # noqa: BLE001
+        LOG.exception("finance AI extraction failed; the rest of the extraction stands")
+        return _warning_fields("aiWarnings", ["AI extraction failed"], "ai-failed")
+
+    emitted = []
+    emitted.append({"key": "extractionSource", "extractedValue": candidate.provider,
+                    "confidence": 1.0, "editedByUser": False})
+    emitted.append({"key": "extractionConfidence", "extractedValue": candidate.confidence,
+                    "confidence": 1.0, "editedByUser": False})
+    warnings = list(candidate.warnings)
+    if candidate.confidence < 0.5:
+        warnings.append("AI confidence is below 0.5; structured AI fields were not used.")
+        emitted.extend(_warning_fields("aiWarnings", warnings, "ai-low-confidence"))
+        return emitted
+    if candidate.confidence < 0.85:
+        warnings.append("AI confidence is below 0.85; review is required before use.")
+    if warnings:
+        emitted.extend(_warning_fields("aiWarnings", warnings, "ai-review-required"))
+
+    for key, value in _candidate_fields(candidate):
+        if key in already_emitted:
+            continue
+        confidence = candidate.confidence
+        emitted.append({"key": key, "extractedValue": value,
+                        "confidence": min(1.0, max(0.0, confidence * AI_CONFIDENCE_WEIGHT)),
+                        "editedByUser": False})
+    return emitted
+
+
+def _legacy_avalai_fields(text, already_emitted, transcript=None, metadata=None):
+    setting = (os.environ.get("FINANCE_AI_EXTRACTION_ENABLED") or "").strip().lower()
+    if setting in {"0", "false", "no", "off"}:
+        return []
     try:
         from extraction.providers.avalai import (AvalAIProvider, ProviderResponseInvalid,
                                                  ProviderUnavailable)
@@ -156,12 +218,10 @@ def _ai_fields(text, already_emitted, transcript=None, metadata=None):
     try:
         candidates = provider.extract(text, transcript=transcript, metadata=metadata)
     except (ProviderUnavailable, ProviderResponseInvalid) as error:
-        # Named, not swallowed: "the AI was unavailable" and "the AI answered nonsense"
-        # send a reader to different places.
-        LOG.warning("avalai extraction skipped: %s", error)
+        LOG.warning("legacy avalai extraction skipped: %s", error)
         return []
     except Exception:                                          # noqa: BLE001
-        LOG.exception("avalai extraction failed; the rest of the extraction stands")
+        LOG.exception("legacy avalai extraction failed; the rest of the extraction stands")
         return []
 
     emitted = []
@@ -172,6 +232,40 @@ def _ai_fields(text, already_emitted, transcript=None, metadata=None):
                         "confidence": min(1.0, max(0.0, confidence * AI_CONFIDENCE_WEIGHT)),
                         "editedByUser": False})
     return emitted
+
+
+def _warning_fields(key, warnings, source):
+    return [{"key": key, "extractedValue": [{"source": source, "message": item}
+                                            for item in warnings],
+             "confidence": 1.0, "editedByUser": False}]
+
+
+def _candidate_fields(candidate):
+    invoice = candidate.invoice or {}
+    mapping = (
+        ("supplierName", invoice.get("supplier")),
+        ("buyerName", invoice.get("customer")),
+        ("invoiceNumber", invoice.get("invoice_number")),
+        ("invoiceDate", invoice.get("invoice_date")),
+        ("currency", invoice.get("currency")),
+        ("totalAmount", invoice.get("total_amount")),
+    )
+    fields = [(key, value) for key, value in mapping if value is not None]
+    items = []
+    for item in candidate.items:
+        items.append({
+            "name": item.get("description"),
+            "description": item.get("description"),
+            "quantity": item.get("quantity"),
+            "unit": item.get("unit"),
+            "unitPrice": item.get("unit_price"),
+            "amount": item.get("total_price"),
+            "totalPrice": item.get("total_price"),
+            "warnings": [],
+        })
+    if items:
+        fields.append(("items", items))
+    return fields
 
 
 def _decimal_text(value):
