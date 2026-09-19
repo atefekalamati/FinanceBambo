@@ -591,6 +591,17 @@ function summaryRow(tone, text) {
   return row;
 }
 
+export function summarizeReportWarnings(warnings) {
+  const counts = new Map();
+  for (const warning of warnings) {
+    const message = reportWarningText(warning);
+    counts.set(message, (counts.get(message) ?? 0) + 1);
+  }
+  return [...counts].map(([message, count]) =>
+    count > 1 ? `${message} (برای ${formatDisplayNumber(count)} مورد)` : message,
+  );
+}
+
 /** هشدارهای کیفیت محاسبه, as one of the three equal insight cards. */
 function buildWarningsCard(data) {
   const warnings = document.createElement("section");
@@ -609,10 +620,11 @@ function buildWarningsCard(data) {
   const title = document.createElement("h2");
   title.textContent = "هشدارهای کیفیت محاسبه";
   warnings.append(title);
-  if (reportWarnings.length) {
+  const warningMessages = summarizeReportWarnings(reportWarnings);
+  if (warningMessages.length) {
     const list = document.createElement("ul");
-    reportWarnings.forEach((warning) => {
-      list.append(summaryRow("warn", reportWarningText(warning)));
+    warningMessages.forEach((message) => {
+      list.append(summaryRow("warn", message));
     });
     warnings.append(list);
   } else {
