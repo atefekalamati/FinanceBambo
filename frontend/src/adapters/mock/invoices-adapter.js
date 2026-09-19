@@ -137,8 +137,8 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
     // Two stages and a general cost, so the stage picker has something to group. The
     // stage fields mirror the real adapter exactly: a mock that answers a narrower shape
     // is a mock that lets a page ship broken against the service it stands in for.
-    { targetId: "estimate-foundation-rebar", targetType: "estimate_line", label: "آرماتوربندی فونداسیون · میلگرد فونداسیون نمونه", unit: "kg", wbsCode: "1.2", stageCode: "1", stageTitle: "عملیات خاکی و فونداسیون", estimateLineId: "estimate-foundation-rebar", resourceId: "resource-rebar" },
-    { targetId: "estimate-formwork-labor", targetType: "estimate_line", label: "قالب‌بندی سقف · اکیپ قالب‌بندی نمونه", unit: "hour", wbsCode: "2.1", stageCode: "2", stageTitle: "اسکلت بتنی", estimateLineId: "estimate-formwork-labor", resourceId: "resource-formwork" },
+    { targetId: "estimate-foundation-rebar", targetType: "estimate_line", label: "آرماتوربندی فونداسیون · میلگرد فونداسیون نمونه", unit: "kg", wbsCode: "1.2.1", stageCode: "1.2", stageTitle: "عملیات خاکی و فونداسیون", estimateLineId: "estimate-foundation-rebar", resourceId: "resource-rebar" },
+    { targetId: "estimate-formwork-labor", targetType: "estimate_line", label: "قالب‌بندی سقف · اکیپ قالب‌بندی نمونه", unit: "hour", wbsCode: "1.3.1", stageCode: "1.3", stageTitle: "اسکلت بتنی", estimateLineId: "estimate-formwork-labor", resourceId: "resource-formwork" },
     { targetId: "general-permit", targetType: "general_cost", label: "هزینه مجوز نمونه", unit: null, wbsCode: null, stageCode: null, stageTitle: null, estimateLineId: null, resourceId: "resource-permit" },
   ];
 

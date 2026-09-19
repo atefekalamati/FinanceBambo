@@ -319,20 +319,50 @@ class DevPermissionTests(unittest.TestCase):
     of the invoice pipeline, and a 403 on upload is indistinguishable in a browser from
     the extraction being broken -- which is where "the AI review screen errors" came from.
 
-    Derived from the router's own source rather than pinned as a second list, so the next
+    Derived from the module's own source rather than pinned as a second list, so the next
     permission somebody introduces fails here instead of in a browser.
+
+    THE SERVICES ARE READ TOO, AND THAT IS THE POINT OF THE SECOND FAILURE.
+
+    This test read the ROUTER alone, and `finance.manage_settings` is deliberately not a
+    permission a route may be gated on: declaring a category above project level and
+    approving a conversion rule that outlives this project are both checked in the service,
+    because the route asks for `finance.edit` and only the WIDER scope is refused. So the
+    permission was invisible here, absent from the dev operator, and the browser answered
+    403 to making an organization-level chip -- which reads as a rule somebody chose rather
+    than a list that fell behind. Exactly the shape of the `finance.manage_invoice` failure
+    this class was written for, one layer down.
     """
 
-    def test_dev_permissions_cover_the_router(self):
+    def test_dev_permissions_cover_the_module(self):
         import inspect
+        import pkgutil
         import re
+        import importlib
 
         from devhost.ports import ALL_FINANCE_PERMISSIONS
         from app.finance import router as router_module
+        from app.finance import services as services_package
 
-        required = set(re.findall(r'"(finance[a-z_]*\.[a-z_]+)"',
-                                  inspect.getsource(router_module)))
+        # THE ROUTER, BROADLY. Every permission there is a literal inside a
+        # `_resource_scope(...)` call, and nothing else in that file looks like one.
+        routes = re.findall(r'"(finance[a-z_]*\.[a-z_]+)"',
+                            inspect.getsource(router_module))
+
+        # THE SERVICES, BY NAME ONLY. The same broad pattern here matches
+        # `logging.getLogger("finance.extraction")` and `"finance.conversion_rules"` --
+        # module names shaped exactly like permission codes -- and a guard that fails on
+        # a logger is a guard somebody turns off. The services declare the real ones as
+        # `*_PERMISSION` constants, which is this codebase's own convention and the thing
+        # worth reading.
+        gated = []
+        for module in pkgutil.iter_modules(services_package.__path__):
+            source = inspect.getsource(
+                importlib.import_module(f"{services_package.__name__}.{module.name}"))
+            gated += re.findall(r'_PERMISSIONS?\s*=\s*"(finance[a-z_]*\.[a-z_]+)"', source)
+
+        required = set(routes) | set(gated)
         self.assertTrue(required, "no permission strings found; the pattern has drifted")
         missing = sorted(required - set(ALL_FINANCE_PERMISSIONS))
         self.assertEqual([], missing,
-                         "the development operator cannot reach routes gated on these")
+                         "the development operator cannot reach what these gate")

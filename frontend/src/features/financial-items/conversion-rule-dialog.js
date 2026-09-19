@@ -41,6 +41,11 @@ const SCOPES = Object.freeze([
     hint: "برای همهٔ سازمان‌ها و همهٔ پروژه‌ها." },
 ]);
 
+/* The scopes whose claim outlives this project. The service names the same two, and this
+   is the only place the interface repeats them -- not to enforce anything, which is the
+   server's job, but so a choice nobody here can make is not presented as available. */
+const TENANT_WIDE_SCOPES = Object.freeze(new Set(["organization", "global"]));
+
 /* Which identifier each scope must carry. A `category` rule with no category is a rule
    about every category, which is not what the person choosing «این دسته» meant. */
 const SCOPE_NEEDS = Object.freeze({
@@ -84,7 +89,7 @@ function field(labelText, control, hint = null) {
  * @param context.productName, providerName, categoryLabel  what to show a person
  * @param onSaved  called after the server accepts the rule, so the caller can recalculate
  */
-export function createConversionRuleDialog({ context, adapter, onSaved, onClose }) {
+export function createConversionRuleDialog({ context, adapter, canManageSettings = true, onSaved, onClose }) {
   const dialog = element("dialog", "conversion-rule-dialog");
   dialog.setAttribute("aria-label", "تعریف قانون تبدیل واحد");
 
@@ -115,9 +120,19 @@ export function createConversionRuleDialog({ context, adapter, onSaved, onClose 
 
   const scopeSelect = element("select", "app-select");
   scopeSelect.name = "scopeType";
+  /* A scope beyond this project is refused in the SERVICE, never at the route, so nothing
+     about the request reveals it in advance -- the route takes `finance.edit` and only the
+     wider claim is turned down, at the end of a form somebody has already filled in. The
+     capability is asked for instead, and the choices this account cannot make are offered
+     disabled with the reason attached rather than removed: a person who needs «کل سازمان»
+     has to be able to see that it exists and that it is somebody else's to grant. */
   SCOPES.forEach((scope) => {
     const option = element("option", "", scope.label);
     option.value = scope.value;
+    if (TENANT_WIDE_SCOPES.has(scope.value) && !canManageSettings) {
+      option.disabled = true;
+      option.textContent = `${scope.label} — نیازمند دسترسی «مدیریت تنظیمات مالی»`;
+    }
     scopeSelect.append(option);
   });
   const scopeHint = element("p", "table-note", SCOPES[0].hint);

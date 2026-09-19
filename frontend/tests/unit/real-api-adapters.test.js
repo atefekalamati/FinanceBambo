@@ -127,19 +127,20 @@ test("a Backend that says nothing about canEdit leaves the decision open", async
 
 test("an invoice target carries the stage its activity belongs to", async () => {
   /* The picker groups by stage, and the stage is never stored -- it is read from the
-     estimate line's own activity every time. So the adapter has to carry it through, and
-     the stage is the FIRST segment of the activity's code: «۳.۲.۱» belongs to stage «۳»,
-     which is the level the report draws. */
+     estimate line's own activity every time. So the adapter has to carry it through, at the
+     depth the level-one chart draws: «۳.۲.۱» belongs to stage «۳.۲». Measured on the
+     audited project, where the whole plan hangs under one «۱» and the chart's stages are
+     «۱.۵», «۱.۶», «۱.۷» -- reading one segment would put all 835 lines in one group. */
   const client = { async request(path) {
     if (path.endsWith("/resources")) return [{ id: "resource-1", type: "material", code: "R1", title: "میلگرد", baseUnit: "kg" }];
     if (path.endsWith("/estimate-lines")) return [{ id: "line-1", resourceId: "resource-1", activityExternalId: "3.2.1", activityTitle: "آرماتوربندی", wbsCode: "3.2.1" }];
-    if (path.includes("/activities?")) return { items: [{ wbsCode: "3", title: "سفت‌کاری" }, { wbsCode: "3.2", title: "نباید برداشته شود" }], page: 1, pageSize: 200, totalItems: 2, totalPages: 1 };
+    if (path.includes("/activities?")) return { items: [{ wbsCode: "3.2", title: "سفت‌کاری" }, { wbsCode: "3.2.1", title: "نباید برداشته شود" }], page: 1, pageSize: 200, totalItems: 2, totalPages: 1 };
     throw new Error(path);
   } };
   const [target] = await createApiInvoicesAdapter(context, client).getInvoiceTargets();
   assert.equal(target.wbsCode, "3.2.1");
-  assert.equal(target.stageCode, "3");
-  assert.equal(target.stageTitle, "سفت‌کاری", "the stage name comes from the catalogue row whose code has no dot");
+  assert.equal(target.stageCode, "3.2");
+  assert.equal(target.stageTitle, "سفت‌کاری", "named from the catalogue row that IS a whole stage, not one beneath it");
   assert.equal(target.label, "آرماتوربندی · میلگرد", "the activity's name, not its numbering");
 });
 
@@ -149,11 +150,11 @@ test("a stage catalogue that will not load costs a label, never the invoice", as
      groups correctly and simply shows the stage by number. */
   const client = { async request(path) {
     if (path.endsWith("/resources")) return [];
-    if (path.endsWith("/estimate-lines")) return [{ id: "line-1", resourceId: "resource-1", activityExternalId: "5.1", wbsCode: "5.1" }];
+    if (path.endsWith("/estimate-lines")) return [{ id: "line-1", resourceId: "resource-1", activityExternalId: "5.1.2", wbsCode: "5.1.2" }];
     if (path.includes("/activities?")) throw new Error("catalogue unavailable");
     throw new Error(path);
   } };
   const [target] = await createApiInvoicesAdapter(context, client).getInvoiceTargets();
-  assert.equal(target.stageCode, "5");
+  assert.equal(target.stageCode, "5.1");
   assert.equal(target.stageTitle, null);
 });

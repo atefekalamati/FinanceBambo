@@ -26,6 +26,12 @@ ALL_FINANCE_PERMISSIONS = (
     "finance.view",
     "finance.edit",
     "finance.manage_invoice",
+    # Checked in the SERVICES, never at a route: declaring a category above project level
+    # and approving a conversion rule that outlives this project both ask for it. It was
+    # missing here for the same reason the test below could not see it -- the test read
+    # the router alone -- so the development operator could make a project chip and was
+    # refused an organization one, with a 403 that looked like a rule rather than a gap.
+    "finance.manage_settings",
     "finance_report.view",
     "finance_report.issue",
     "finance_report.export",

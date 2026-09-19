@@ -1,7 +1,7 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
-import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel, toPersianCode } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
@@ -131,7 +131,7 @@ function stageOptionLabel(stage) {
   const count = `${formatDisplayNumber(String(stage.count))} ردیف`;
   if (stage.value === GENERAL_COST_STAGE) return `هزینه‌های عمومی پروژه · ${count}`;
   if (stage.value === UNSTAGED) return `بدون مرحله در فایل زمان‌بندی · ${count}`;
-  const number = formatDisplayNumber(stage.value);
+  const number = toPersianCode(stage.value);
   return `${stage.title ? `${number} · ${stage.title}` : `مرحله ${number}`} · ${count}`;
 }
 

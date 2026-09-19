@@ -581,6 +581,9 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
   const root = element("div", "prices-page");
   const readOnly = surface === SURFACES.REPORT;
   const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
+  /* A category above project level is checked in the service and never at the route, so a
+     request cannot reveal it in advance. The dialog is told before it offers the levels. */
+  const canManageSettings = capabilitiesFor(context).manageSettings;
   let state = createRequestState(REQUEST_STATUS.LOADING);
   /* One page number per table on this page. Held here rather than inside the
      component because `paint()` rebuilds the whole tree: a component that
@@ -684,6 +687,7 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
           const dialog = createManualMarketPriceDialog({
             categories: marketCategories,
             adapter: materialPricesAdapter,
+            canManageSettings,
             onSaved: () => { marketPaging = { ...marketPaging, page: 1 }; loadMarketPrices(); },
             onClose: () => dialog.element.remove(),
           });

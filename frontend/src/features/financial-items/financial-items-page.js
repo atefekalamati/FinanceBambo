@@ -997,6 +997,10 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
   let resourcePaging = { page: 1, pageSize: getRowsPerPage("resources") };
   let linePaging = { page: 1, pageSize: getRowsPerPage("estimate-lines") };
   const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
+  /* Read once, beside the other one. A conversion rule for the whole organization is
+     refused in the service and not at the route, so the dialog cannot learn about it from
+     a failed request -- it has to be told before it offers the choice. */
+  const canManageSettings = capabilitiesFor(context).manageSettings;
   let state = createRequestState(REQUEST_STATUS.LOADING);
   // Lives with the page: paint() rebuilds the tree, so a choice held inside a
   // render would last only until the next one.
@@ -1194,7 +1198,7 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
        * from the day it was written. */
       onMapPrice: !readOnly && priceMappingAdapter ? (line, resource) => {
         const panel = createPriceMappingPanel({
-          line, resource, adapter: priceMappingAdapter, canEdit,
+          line, resource, adapter: priceMappingAdapter, canEdit, canManageSettings,
           /* The panel STAYS OPEN after a material is saved. A line is priced from a list,
              and closing after the first entry would make adding the second a fresh trip
              through the table. The row behind it refreshes so the total stays honest. */

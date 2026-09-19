@@ -223,3 +223,26 @@ test("a category list that will not load costs the list, never the dialog", asyn
     .map((o) => o.value);
   assert.ok(values.includes("__new__"));
 });
+
+test("a level this account cannot grant is shown, disabled, with the reason", () => {
+  /* Refused in the SERVICE and never at the route, so the request gives no warning: an
+     account without the right would fill the whole form and be turned down on the last
+     step. Disabled rather than removed — somebody who needs an organization-wide chip
+     should see that the level exists and is somebody else's to grant, which is a different
+     message from it not being a thing at all. */
+  const dialog = createManualMarketPriceDialog({
+    categories: CATEGORIES, adapter: recordingAdapter(), canManageSettings: false, onSaved: () => {} });
+  const scope = [...dialog.element.querySelectorAll("select")].find((s) => s.name === "scopeLevel");
+  const state = [...scope.querySelectorAll("option")]
+    .map((o) => [o.value, Boolean(o.disabled)]);
+  assert.deepEqual(state, [["project", false], ["organization", true], ["global", true]]);
+  assert.match(scope.textContent, /مدیریت تنظیمات مالی/, "the reason travels with the refusal");
+});
+
+test("an account that may state things for the tenant is offered every level", () => {
+  const dialog = createManualMarketPriceDialog({
+    categories: CATEGORIES, adapter: recordingAdapter(), canManageSettings: true, onSaved: () => {} });
+  const scope = [...dialog.element.querySelectorAll("select")].find((s) => s.name === "scopeLevel");
+  assert.deepEqual([...scope.querySelectorAll("option")].map((o) => Boolean(o.disabled)),
+                   [false, false, false]);
+});

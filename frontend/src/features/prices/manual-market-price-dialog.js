@@ -38,6 +38,10 @@ const SCOPES = Object.freeze([
     hint: "در همهٔ سازمان‌ها و همهٔ پروژه‌ها قابل انتخاب می‌شود." },
 ]);
 
+/* The levels whose claim leaves this project. Named here only so a choice this account
+   cannot make is not presented as available; the service decides, as it always did. */
+const TENANT_WIDE_SCOPES = Object.freeze(new Set(["organization", "global"]));
+
 /** The value the category select carries when somebody wants a chip that is not there. */
 const NEW_CATEGORY = "__new__";
 
@@ -63,7 +67,7 @@ function option(value, label) {
  * @param adapter     needs `createManualPrice` and `createCategory`
  * @param onSaved     called after the price is stored, so the caller can reload rows AND chips
  */
-export function createManualMarketPriceDialog({ categories = [], adapter, onSaved, onClose }) {
+export function createManualMarketPriceDialog({ categories = [], adapter, canManageSettings = true, onSaved, onClose }) {
   const dialog = element("dialog", "manual-market-price-dialog");
   dialog.setAttribute("aria-label", "ثبت دستی قیمت بازار");
 
@@ -108,7 +112,19 @@ export function createManualMarketPriceDialog({ categories = [], adapter, onSave
   newCategoryName.autocomplete = "off";
   const scopeSelect = element("select", "app-select");
   scopeSelect.name = "scopeLevel";
-  SCOPES.forEach((scope) => scopeSelect.append(option(scope.value, scope.label)));
+  /* A chip beyond this project is refused in the SERVICE, not at the route, so the request
+     gives no warning -- an account without the right fills the whole form and is turned
+     down on the last step. Disabled rather than removed: somebody who needs an
+     organization-wide chip should see that the level exists and is somebody else's to
+     grant, which is a different message from it not being a thing at all. */
+  SCOPES.forEach((scope) => {
+    const node = option(scope.value, scope.label);
+    if (TENANT_WIDE_SCOPES.has(scope.value) && !canManageSettings) {
+      node.disabled = true;
+      node.textContent = `${scope.label} — نیازمند دسترسی «مدیریت تنظیمات مالی»`;
+    }
+    scopeSelect.append(node);
+  });
   const scopeHint = element("p", "table-note", SCOPES[0].hint);
   scopeSelect.addEventListener("change", () => {
     scopeHint.textContent = SCOPES.find((s) => s.value === scopeSelect.value)?.hint ?? "";

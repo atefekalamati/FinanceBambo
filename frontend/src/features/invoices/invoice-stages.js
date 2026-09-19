@@ -13,11 +13,20 @@ import { compareWbsCodes } from "../../shared/reports/wbs-rollup.js";
  * So the stage here is a FILTER, not a field. It narrows 835 estimate lines to the few
  * dozen of one stage, and then falls away. Nothing it produces is sent to the service.
  *
- * WHY THE FIRST SEGMENT
- * The report draws level one -- nineteen stages on this project. An activity's code is
- * the full path («۳.۲.۱»), so the stage it belongs to is the code's first segment. Any
- * deeper grouping would give back the long flat list this exists to break up.
+ * WHICH SEGMENTS ARE THE STAGE
+ * Whatever the level-one report draws, because that is the whole claim this makes: pick
+ * the stage you see on the chart. On the audited project the chart's stages are «۱.۵»,
+ * «۱.۶», «۱.۷» -- TWO segments -- because the entire project hangs under a single «۱»,
+ * and an activity's code is the full path beneath it («۱.۱۱.۱.۲», four deep).
+ *
+ * This read the FIRST segment, which on that shape is «۱» for every line in the project:
+ * one group of 835, which is the flat list this module exists to break up, wearing a
+ * stage's name. The depth is named once, here, and `STAGE_DEPTH` is the only thing to
+ * change if a project's chart is ever drawn at another level.
  */
+
+/** How many leading segments of an activity's code name the stage the chart draws. */
+const STAGE_DEPTH = 2;
 
 /** Targets with no estimate line at all. Real money, and no stage can be derived for it. */
 export const GENERAL_COST_STAGE = "general_cost";
@@ -27,8 +36,12 @@ export const UNSTAGED = "unstaged";
 
 /** The stage an activity's WBS code belongs to, or null when it states none. */
 export function stageCodeOf(wbsCode) {
-  const head = String(wbsCode ?? "").trim().split(".")[0].trim();
-  return head || null;
+  const parts = String(wbsCode ?? "").trim().split(".").map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  /* A code shallower than a stage IS its own stage rather than nothing: «۱.۳» has one
+     estimate line on this project and «۱.۱» has one, and dropping them would lose a real
+     row to a rule about depth. */
+  return parts.slice(0, STAGE_DEPTH).join(".");
 }
 
 /** Which group a target sits in. Every target sits in exactly one. */
