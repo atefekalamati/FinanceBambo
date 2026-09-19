@@ -776,3 +776,81 @@ html[data-theme="light"] .price-form select {
   font-size: 0.74rem;
   color: var(--color-text-muted, #7c8798);
 }
+
+/* --- entering a market price by hand ---------------------------------------
+   Built to the same measurements as «تعریف قانون تبدیل واحد» in financial-items.css,
+   and deliberately so: the two are the module's manual escape hatches, they open the
+   same way over the same kind of table, and a person who has used one should recognise
+   the other before reading a word of it. */
+.manual-market-price-dialog {
+  z-index: 50;
+  display: grid;
+  gap: 0.75rem;
+  max-block-size: 90vh;
+  overflow-y: auto;
+  padding: 1.15rem;
+  width: min(30rem, calc(100vw - 2rem));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--dash-card-grad);
+  color: var(--color-text-primary);
+  box-shadow: 0 1rem 3rem rgb(3 8 20 / 55%);
+}
+
+.manual-market-price-dialog::backdrop {
+  background: rgb(3 8 20 / 72%);
+  backdrop-filter: blur(5px);
+}
+
+.manual-market-price-dialog__head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.manual-market-price-dialog__head h2 { margin: 0; font-size: 1rem; }
+
+.manual-market-price-dialog__form { display: grid; gap: 0.7rem; }
+
+/* Every control fills its field. Left to shrink-to-fit, a `<select>` is as wide as its
+   longest option — so «دسته» would be a different width from «واحد قیمت» on every
+   project, and a column of boxes with ragged edges reads as an unfinished form. */
+.manual-market-price-dialog .form-field {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.manual-market-price-dialog .form-field > :is(input, select, textarea) {
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+/* Making a category, inside the form that needs one. Set apart with a rule down its
+   inline edge rather than a box, because it is a branch of the field above it and a
+   second bordered panel inside a dialog reads as a second dialog. */
+.manual-market-price-dialog__new-category {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  border-inline-start: 3px solid var(--brand-teal);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--brand-teal) 8%, transparent);
+}
+
+/* What was typed, read back as money: «۵۰۰٬۰۰۰ تومان» under a box holding «500000»,
+   so a zero too many is caught before it is a price in a report. */
+.manual-market-price-dialog__echo {
+  margin: 0;
+  min-block-size: 1.2rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.manual-market-price-dialog__echo:not(:empty) {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.manual-market-price-dialog__actions { display: flex; gap: 0.5rem; }

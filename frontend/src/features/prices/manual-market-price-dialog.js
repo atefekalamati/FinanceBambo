@@ -84,13 +84,18 @@ export function createManualMarketPriceDialog({ categories = [], adapter, onSave
      this page having an opinion about an order it is not the author of. */
   const categorySelect = element("select", "app-select");
   categorySelect.name = "category";
-  categorySelect.append(option("", "انتخاب کنید"));
-  categories.forEach((item) => {
-    const count = Number(item.itemCount ?? 0);
-    categorySelect.append(option(item.category,
-      count ? `${item.label ?? item.category} · ${formatDisplayNumber(String(count))} قلم` : (item.label ?? item.category)));
-  });
-  categorySelect.append(option(NEW_CATEGORY, "+ دستهٔ جدید…"));
+
+  function fillCategories(list) {
+    categorySelect.replaceChildren();
+    categorySelect.append(option("", list.length ? "انتخاب کنید" : "دسته‌ای یافت نشد"));
+    list.forEach((item) => {
+      const count = Number(item.itemCount ?? 0);
+      categorySelect.append(option(item.category,
+        count ? `${item.label ?? item.category} · ${formatDisplayNumber(String(count))} قلم` : (item.label ?? item.category)));
+    });
+    categorySelect.append(option(NEW_CATEGORY, "+ دستهٔ جدید…"));
+  }
+  fillCategories(categories);
 
   /* The whole of making a chip, inline. Hidden until it is asked for, so the common case —
      a price that belongs to a category that already exists — stays a four-field form. */
@@ -177,6 +182,23 @@ export function createManualMarketPriceDialog({ categories = [], adapter, onSave
     feedback);
 
   dialog.append(head, form);
+
+  /* THE CHIPS ARE FETCHED HERE WHEN THE CALLER HAS NONE.
+     The page loads them inside `loadMarketPrices`, which does not run until somebody
+     presses «نمایش قیمت روز بازار» -- so a person who opens this dialog first was being
+     shown an empty menu and the only way forward was to invent a category that already
+     existed. Asking for them is one request and it is the request this dialog cannot do
+     without. A failure is not fatal: «+ دستهٔ جدید» still works, and the feedback line
+     says why the list is empty rather than leaving it looking like the project has no
+     categories at all. */
+  if (!categories.length && adapter?.listCategories) {
+    adapter.listCategories()
+      .then((list) => { if (list?.length) fillCategories(list); })
+      .catch((error) => {
+        feedback.textContent = error?.message ?? "فهرست دسته‌ها دریافت نشد.";
+      });
+  }
+
 
   save.addEventListener("click", async () => {
     feedback.textContent = "";

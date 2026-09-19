@@ -185,3 +185,41 @@ test("the service's own refusal is shown, not a guess about which call failed", 
   assert.match(ui.feedback.textContent, /از قبل وجود دارد/);
   assert.deepEqual(adapter.calls.map((c) => c[0]), ["category"], "the price is not sent after a refused chip");
 });
+
+test("opening with no chips in hand fetches them, rather than showing an empty menu", async () => {
+  /* The page loads categories inside `loadMarketPrices`, which does not run until somebody
+     presses «نمایش قیمت روز بازار». A person who opens this dialog first was shown an empty
+     menu, and the only way forward was to invent a category that already existed. */
+  const adapter = recordingAdapter();
+  let asked = 0;
+  adapter.listCategories = async () => { asked += 1; return CATEGORIES; };
+  const dialog = createManualMarketPriceDialog({ categories: [], adapter, onSaved: () => {} });
+  await settle();
+  await settle();
+  assert.equal(asked, 1);
+  const values = [...dialog.element.querySelector("select").querySelectorAll("option")]
+    .map((o) => o.value);
+  assert.ok(values.includes("rebar") && values.includes("scaffold"));
+});
+
+test("chips already in hand are used as they are, with no second request", async () => {
+  const adapter = recordingAdapter();
+  let asked = 0;
+  adapter.listCategories = async () => { asked += 1; return []; };
+  createManualMarketPriceDialog({ categories: CATEGORIES, adapter, onSaved: () => {} });
+  await settle();
+  assert.equal(asked, 0, "the page already paid for this list");
+});
+
+test("a category list that will not load costs the list, never the dialog", async () => {
+  /* «+ دستهٔ جدید» is still there, which is the one path that needs no list at all. */
+  const adapter = recordingAdapter();
+  adapter.listCategories = async () => { throw new Error("دسته‌ها دریافت نشد."); };
+  const dialog = createManualMarketPriceDialog({ categories: [], adapter, onSaved: () => {} });
+  await settle();
+  await settle();
+  assert.match(dialog.element.querySelector(".form-feedback").textContent, /دریافت نشد/);
+  const values = [...dialog.element.querySelector("select").querySelectorAll("option")]
+    .map((o) => o.value);
+  assert.ok(values.includes("__new__"));
+});
