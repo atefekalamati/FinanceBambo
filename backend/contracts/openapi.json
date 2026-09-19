@@ -6709,17 +6709,6 @@
             ],
             "title": "Currentpriceirr"
           },
-          "diameterUnit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Diameterunit"
-          },
           "diameterValue": {
             "anyOf": [
               {
@@ -6834,17 +6823,6 @@
               }
             ],
             "title": "Grade"
-          },
-          "heightUnit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Heightunit"
           },
           "heightValue": {
             "anyOf": [
@@ -6970,17 +6948,6 @@
               }
             ],
             "title": "Lengthm"
-          },
-          "lengthUnit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lengthunit"
           },
           "lengthValue": {
             "anyOf": [
@@ -7277,17 +7244,6 @@
             ],
             "title": "Targetunit"
           },
-          "thicknessUnit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Thicknessunit"
-          },
           "thicknessValue": {
             "anyOf": [
               {
@@ -7345,18 +7301,7 @@
             ],
             "title": "Weightbasis"
           },
-          "weightUnit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weightunit"
-          },
-          "weightValue": {
+          "weightKg": {
             "anyOf": [
               {
                 "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -7366,18 +7311,7 @@
                 "type": "null"
               }
             ],
-            "title": "Weightvalue"
-          },
-          "widthUnit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Widthunit"
+            "title": "Weightkg"
           },
           "widthValue": {
             "anyOf": [

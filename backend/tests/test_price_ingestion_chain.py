@@ -40,6 +40,9 @@ from test_material_price_api import FakeRepository, observation, service
 
 CELLS = {"source": "Mashhad Foolad", "productId": "REBAR-1",
          "محصول": "میلگرد آجدار ۸ A3", "قیمت": "95500",
+         # The pricing unit is a required cell, not an optional one: a price with no unit
+         # is a number with no denominator, and a row that states none is rejected.
+         "واحد - وزن": "کیلو",
          "تاریخ آپدیت ورک فلو": "1405-06-22"}
 
 

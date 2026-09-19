@@ -118,6 +118,9 @@ WORKSHEET_PREFIX = {
 }
 
 
+#: Every row a test builds by hand carries the pricing unit, because the importer requires
+#: one. `واحد - وزن` is the Rebar spelling and HEADER above uses it; six of the seven real
+#: worksheets spell the same column `واحد`, which `test_material_price_sheet` covers.
 def full_workbook(rebar_rows=None):
     """Every allowlisted worksheet present, so a complete workbook is the default."""
     book = {}
@@ -220,8 +223,8 @@ class ImportTests(RealDatabaseTestCase):
 
     def test_one_product_on_two_workflow_dates_is_kept_as_two_observations(self):
         book = full_workbook([
-            ("Sivanland", "لوله پلی اتیلن 110", None, 339400.0, "۱۴۰۵/۶/۲۱", "PIPE-DUP"),
-            ("Sivanland", "لوله پلی اتیلن 110", None, 339400.0, "۱۴۰۵/۶/۱۹", "PIPE-DUP"),
+            ("Sivanland", "لوله پلی اتیلن 110", "عدد", 339400.0, "۱۴۰۵/۶/۲۱", "PIPE-DUP"),
+            ("Sivanland", "لوله پلی اتیلن 110", "عدد", 339400.0, "۱۴۰۵/۶/۱۹", "PIPE-DUP"),
         ])
         outcome = run(self.service(book).run(self.scope))
         self.assertEqual(8, outcome.inserted)
@@ -234,8 +237,8 @@ class ImportTests(RealDatabaseTestCase):
 
     def test_a_non_pipe_row_is_stored_and_marked_inactive_with_a_reason(self):
         book = full_workbook([
-            ("Sivanland", "لوله پلی اتیلن 110", None, 100000.0, "۱۴۰۵/۶/۲۱", "PIPE-REAL"),
-            ("Sivanland", "تفلون صورتی خمیری آسیا", None, 24000.0, "۱۴۰۵/۶/۲۱", "PIPE-TAPE"),
+            ("Sivanland", "لوله پلی اتیلن 110", "عدد", 100000.0, "۱۴۰۵/۶/۲۱", "PIPE-REAL"),
+            ("Sivanland", "تفلون صورتی خمیری آسیا", "عدد", 24000.0, "۱۴۰۵/۶/۲۱", "PIPE-TAPE"),
         ])
         run(self.service(book).run(self.scope))
         rows = self.sync.execute(
@@ -260,7 +263,7 @@ class ImportTests(RealDatabaseTestCase):
 
     def test_a_blank_price_is_stored_as_rejected_and_never_as_zero(self):
         book = full_workbook([
-            ("Mashhad Foolad", "میلگرد", "کیلو", None, "1405-06-22", "REBAR-BLANK"),
+            ("Mashhad Foolad", "میلگرد", "کیلو", "عدد", "1405-06-22", "REBAR-BLANK"),
         ])
         outcome = run(self.service(book).run(self.scope))
         self.assertEqual(1, outcome.rejected)

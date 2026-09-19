@@ -96,7 +96,7 @@ class DeclaredFieldTests(unittest.IsolatedAsyncioTestCase):
                          "declared by the schema, published in OpenAPI, and never set")
 
     async def test_the_typed_specification_columns_reach_the_reader(self):
-        stored = {"weight_value": Decimal("27.5"), "weight_unit": "kg",
+        stored = {"weight_kg": Decimal("27.5"),
                   "weight_basis": "unknown", "manufacturer": "ذوب آهن",
                   "length_m": Decimal("12"), "spec_source": "dedicated_column"}
         rows, _ = await service(rows=[observation(**stored)]).current(object())
@@ -128,7 +128,7 @@ class ConversionEligibilityTests(unittest.IsolatedAsyncioTestCase):
     async def test_an_unknown_weight_basis_is_refused(self):
         """27 kg per WHAT. Nobody wrote it down, so nothing may be computed from it."""
         rows, _ = await service(
-            rows=[observation(weight_value=Decimal("27"), weight_unit="kg",
+            rows=[observation(weight_kg=Decimal("27"),
                               weight_basis="unknown")],
             settings=[setting("branch")]).current(object())
         self.assertIs(False, rows[0]["conversion_eligible"])
@@ -137,7 +137,7 @@ class ConversionEligibilityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_stated_basis_is_eligible(self):
         rows, _ = await service(
-            rows=[observation(weight_value=Decimal("27"), weight_unit="kg",
+            rows=[observation(weight_kg=Decimal("27"),
                               weight_basis="branch")],
             settings=[setting("branch")]).current(object())
         self.assertIs(True, rows[0]["conversion_eligible"])
@@ -145,7 +145,7 @@ class ConversionEligibilityTests(unittest.IsolatedAsyncioTestCase):
     async def test_a_measured_factor_makes_it_eligible_whatever_the_weight_says(self):
         """A person measured this product and gave a reason. That is evidence."""
         rows, _ = await service(
-            rows=[observation(weight_value=Decimal("27"), weight_basis="unknown")],
+            rows=[observation(weight_kg=Decimal("27"), weight_basis="unknown")],
             settings=[setting("branch")],
             factors=[{"from_unit": "kg", "to_unit": "branch",
                       "factor": Decimal("27"), "origin": "manual"}]).current(object())
@@ -212,7 +212,9 @@ class UnreadableDateTests(unittest.TestCase):
     """
 
     CELLS = {"source": "Mashhad Foolad", "productId": "REBAR-1",
-             "محصول": "میلگرد آجدار ۸ A3", "قیمت": "95500"}
+             "محصول": "میلگرد آجدار ۸ A3", "قیمت": "95500",
+             # Required since the pricing unit became mandatory; this suite is about dates.
+             "واحد - وزن": "کیلو"}
 
     def row(self, written):
         from app.finance.domain.material_price_rows import decide_row
