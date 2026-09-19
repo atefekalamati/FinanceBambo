@@ -1,4 +1,5 @@
 import { ApiError } from "../../core/api/api-error.js";
+import { statesTotal } from "../../features/invoices/invoices-validation.js";
 
 const STATUSES = ["draft", "awaitingConfirmation", "confirmed", "voided", "corrected"];
 const SOURCES = ["manual", "image", "voice"];
@@ -143,7 +144,10 @@ export function createMockInvoicesAdapter(context, { initialState = "success" } 
   ];
 
   function calculateLineAmount(line) {
-    if (line.targetType === "general_cost") return line.lineAmountIRR;
+    /* Whatever the LINE states. An estimate line billed as one figure has no quantity to
+       multiply, exactly as a general cost has none -- and the service reads a stated
+       amount as the raw amount either way. */
+    if (statesTotal(line)) return line.lineAmountIRR;
     const [integer, fraction = ""] = line.quantity.split(".");
     const scaledQuantity = BigInt(`${integer}${fraction.padEnd(4, "0")}`);
     return ((scaledQuantity * BigInt(line.unitPriceIRR) + 5000n) / 10000n).toString();

@@ -3,6 +3,8 @@ import { financeBase, jsonOptions, mapResource } from "./api-utils.js";
 /* The one rule for what a stage is. Counting dots here instead would be a second answer
    for the picker to disagree with. */
 import { stageCodeOf } from "../../features/invoices/invoice-stages.js";
+/* And the one rule for which shape a line states its amount in. */
+import { statesTotal } from "../../features/invoices/invoices-validation.js";
 
 /**
  * InvoiceLineResponse carries estimateLineId and resourceId but no human
@@ -68,7 +70,7 @@ function mapInvoice(value, targets = []) {
 
 function exactPreview(lines, adjustments) {
   const prepared = lines.map((line) => {
-    if (line.targetType === "general_cost") return { ...line, lineAmountIRR: line.lineAmountIRR };
+    if (statesTotal(line)) return { ...line, lineAmountIRR: line.lineAmountIRR };
     const [integer, fraction = ""] = line.quantity.split(".");
     const scaled = BigInt(`${integer}${fraction.padEnd(4, "0")}`);
     return { ...line, lineAmountIRR: ((scaled * BigInt(line.unitPriceIRR) + 5000n) / 10000n).toString() };
@@ -171,7 +173,21 @@ export function createApiInvoicesAdapter(context, client) {
     return lines.map((line) => {
       const target = targetCache.find((item) => item.targetId === line.targetId);
       if (!target) throw new ApiError({ status: 422, code: "INVOICE_TARGET_INVALID", message: "اتصال خط فاکتور به قلم مالی معتبر نیست." });
-      return { estimateLineId: target.estimateLineId, resourceId: target.resourceId, quantity: line.targetType === "general_cost" ? null : line.quantity, unit: line.targetType === "general_cost" ? null : line.unit, unitPriceIrr: line.targetType === "general_cost" ? null : line.unitPriceIRR, lineAmountIrr: line.targetType === "general_cost" ? line.lineAmountIRR : null, description: line.description || null };
+      /* WHAT THE LINE STATES, not what its target usually states. An estimate line may be
+         billed either way -- a quantity and a rate, or one figure off the document -- and
+         reading the TYPE would send a general cost's shape for one and an estimate line's
+         for the other regardless of what somebody typed. The service refuses an amount
+         sent beside a quantity, so the two shapes are exclusive here as well. */
+      const total = statesTotal(line);
+      return {
+        estimateLineId: target.estimateLineId,
+        resourceId: target.resourceId,
+        quantity: total ? null : line.quantity,
+        unit: total ? null : line.unit,
+        unitPriceIrr: total ? null : line.unitPriceIRR,
+        lineAmountIrr: total ? line.lineAmountIRR : null,
+        description: line.description || null,
+      };
     });
   }
   async function createDraft({ header, lines, adjustments, duplicateOverrideReason, idempotencyKey }) {

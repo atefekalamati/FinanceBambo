@@ -16,13 +16,53 @@ export function validateInvoiceHeader(values) {
   return { valid: Object.keys(errors).length === 0, errors, values: normalized };
 }
 
-export function validateInvoiceLine(values, target) {
+/* HOW A LINE SAYS WHAT IT COST.
+ *
+ * `computed` is a quantity and a rate, and the site multiplies them: twelve tonnes at
+ * eight hundred thousand. `total` is the figure off the document and nothing else.
+ *
+ * Both are ordinary for an estimate line. A delivery note states quantity and rate; a
+ * contractor's bill for the same activity states one number and no breakdown, and the
+ * person holding it should not have to invent a rate so the form will accept it. The
+ * service has always taken either -- `InvoiceLineCreate` refuses only the COMBINATION,
+ * and `services/invoices.py` reads a stated amount as the raw amount -- so this is a
+ * question the interface was not asking, not a capability it lacked.
+ *
+ * A general cost has no quantity to state, so it is always `total`. */
+export const AMOUNT_MODES = Object.freeze({ COMPUTED: "computed", TOTAL: "total" });
+
+/**
+ * Whether this line states its amount outright, rather than a quantity to multiply.
+ *
+ * Read from the LINE, never from the target's type. A general cost always states a total
+ * and an estimate line may, and asking the type instead is how one of them ends up sent
+ * with both shapes or neither -- which the service refuses, correctly, at the end of a
+ * form somebody has already filled in.
+ */
+export function statesTotal(line) {
+  const amount = String(line?.lineAmountIRR ?? "").trim();
+  return amount !== "" && amount !== "0";
+}
+
+/** Which shape a target may use, and which it must. */
+export function amountModesFor(target) {
+  return target?.targetType === "general_cost"
+    ? [AMOUNT_MODES.TOTAL]
+    : [AMOUNT_MODES.COMPUTED, AMOUNT_MODES.TOTAL];
+}
+
+export function validateInvoiceLine(values, target, amountMode = null) {
   const errors = {};
   const description = String(values.description ?? "").trim();
   if (!target) errors.targetId = "اتصال مالی خط را انتخاب کنید.";
-  if (target?.targetType === "general_cost") {
+  const allowed = amountModesFor(target);
+  const mode = allowed.includes(amountMode) ? amountMode : allowed[0];
+  if (mode === AMOUNT_MODES.TOTAL) {
     const amountIRR = normalizeDecimalInput(values.amountIRR);
     if (!/^\d+$/.test(amountIRR) || !/[1-9]/.test(amountIRR)) errors.amountIRR = `مبلغ خط باید مقدار مثبت و معتبر ${getDisplayCurrencyLabel()} باشد.`;
+    /* Nothing but the figure. The other three are explicitly null rather than absent: the
+       service refuses an amount sent beside a quantity, and «I left it out» and «I sent
+       nothing» must not be two different requests. */
     return { valid: Object.keys(errors).length === 0, errors, values: { targetId: target?.targetId ?? "", targetType: target?.targetType ?? "", targetLabel: target?.label ?? "", quantity: null, unit: null, unitPriceIRR: null, lineAmountIRR: amountIRR, description } };
   }
   const quantity = validatePositiveDecimal(values.quantity, { precision: 4, requiredMessage: "مقدار خط الزامی است.", invalidMessage: "مقدار باید مثبت و حداکثر چهار رقم اعشار باشد." });
