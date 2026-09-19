@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   AMOUNT_MODES,
+  ESTIMATE_LINE_TOTAL_SUPPORTED,
   amountModesFor,
+  availableAmountModes,
   statesTotal,
   validateInvoiceLine,
 } from "../../src/features/invoices/invoices-validation.js";
@@ -35,16 +37,40 @@ const GENERAL = Object.freeze({
   unit: null, estimateLineId: null, resourceId: "resource-permit",
 });
 
-test("an estimate line may be billed either way; a general cost only one", () => {
+test("an estimate line has both shapes; a general cost has one", () => {
   /* A general cost has no quantity to state, so «مقدار × قیمت واحد» is not a shape it has.
      A menu with one option in it is a question with one answer. */
-  assert.deepEqual(amountModesFor(ESTIMATE), [AMOUNT_MODES.COMPUTED, AMOUNT_MODES.TOTAL]);
-  assert.deepEqual(amountModesFor(GENERAL), [AMOUNT_MODES.TOTAL]);
+  assert.deepEqual(amountModesFor(ESTIMATE).map((m) => m.value),
+                   [AMOUNT_MODES.COMPUTED, AMOUNT_MODES.TOTAL]);
+  assert.deepEqual(amountModesFor(GENERAL).map((m) => m.value), [AMOUNT_MODES.TOTAL]);
 });
 
-test("billed as one figure, an estimate line carries no quantity and no rate", () => {
+test("a shape the service refuses is offered, marked, and never sent", () => {
+  /* `services/invoices.py:67` refuses a stated amount unless the resource is a general
+     cost. The shape is still SHOWN, carrying that reason -- somebody billing a lump sum
+     needs to see it exists and what stands in its way -- and `availableAmountModes` is what
+     anything sending a request must ask. */
+  const total = amountModesFor(ESTIMATE).find((m) => m.value === AMOUNT_MODES.TOTAL);
+  assert.equal(total.available, ESTIMATE_LINE_TOTAL_SUPPORTED);
+  if (!ESTIMATE_LINE_TOTAL_SUPPORTED) {
+    assert.match(total.reason, /سرویس/);
+    assert.deepEqual(availableAmountModes(ESTIMATE), [AMOUNT_MODES.COMPUTED]);
+    /* And a stale selection falls back rather than producing a refused request. */
+    const { values } = validateInvoiceLine(
+      { quantity: "12", unitPriceIRR: "800000" }, ESTIMATE, AMOUNT_MODES.TOTAL);
+    assert.equal(values.quantity, "12");
+    assert.equal(values.lineAmountIRR, "");
+  }
+  /* A general cost is unaffected: its one shape is the one the service takes. */
+  assert.deepEqual(availableAmountModes(GENERAL), [AMOUNT_MODES.TOTAL]);
+});
+
+test("billed as one figure, a line carries no quantity and no rate", () => {
+  /* Written against the general cost, which is the target the service takes a total on
+     today. The moment `ESTIMATE_LINE_TOTAL_SUPPORTED` is true this holds for an estimate
+     line too, by the same code path -- the shape never depended on the target's type. */
   const { valid, values } = validateInvoiceLine(
-    { amountIRR: "5000000", description: "صورت‌وضعیت پیمانکار" }, ESTIMATE, AMOUNT_MODES.TOTAL);
+    { amountIRR: "5000000", description: "صورت‌وضعیت پیمانکار" }, GENERAL, AMOUNT_MODES.TOTAL);
   assert.equal(valid, true);
   assert.equal(values.lineAmountIRR, "5000000");
   /* Explicitly null, not absent. The service refuses an amount sent beside a quantity, and
@@ -52,7 +78,7 @@ test("billed as one figure, an estimate line carries no quantity and no rate", (
   assert.equal(values.quantity, null);
   assert.equal(values.unit, null);
   assert.equal(values.unitPriceIRR, null);
-  assert.equal(values.targetType, "estimate_line", "it is still billed against that line");
+  assert.equal(values.targetType, "general_cost");
 });
 
 test("billed as a quantity, the same line keeps working exactly as before", () => {
@@ -77,7 +103,7 @@ test("a general cost is billed as a total whatever mode it is handed", () => {
 });
 
 test("each mode is judged on what it actually asked for", () => {
-  const missingAmount = validateInvoiceLine({ amountIRR: "0" }, ESTIMATE, AMOUNT_MODES.TOTAL);
+  const missingAmount = validateInvoiceLine({ amountIRR: "0" }, GENERAL, AMOUNT_MODES.TOTAL);
   assert.equal(missingAmount.valid, false);
   assert.ok(missingAmount.errors.amountIRR, "a total of nothing is not a total");
 
@@ -85,7 +111,7 @@ test("each mode is judged on what it actually asked for", () => {
   assert.equal(missingRate.valid, false);
   assert.ok(missingRate.errors.unitPriceIRR);
   /* And the quantity is NOT complained about in total mode, which is the whole point. */
-  assert.equal(validateInvoiceLine({ amountIRR: "1" }, ESTIMATE, AMOUNT_MODES.TOTAL).errors.quantity,
+  assert.equal(validateInvoiceLine({ amountIRR: "1" }, GENERAL, AMOUNT_MODES.TOTAL).errors.quantity,
                undefined);
 });
 

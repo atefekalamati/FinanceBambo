@@ -44,18 +44,48 @@ export function statesTotal(line) {
   return amount !== "" && amount !== "0";
 }
 
-/** Which shape a target may use, and which it must. */
+/* WHETHER THE SERVICE WILL TAKE A TOTAL ON AN ESTIMATE LINE. It will not, yet.
+ *
+ * `InvoiceLineCreate` accepts the shape -- it refuses only an amount sent BESIDE a
+ * quantity -- and the report engine already handles a line with no quantity: it adds the
+ * cost to the line and skips the quantity arithmetic. But `services/invoices.py:67` gates
+ * it separately, and refuses a stated amount unless every such line's resource is a
+ * `general_cost`:
+ *
+ *     direct line amount requires a general_cost resource
+ *
+ * So the choice is BUILT and OFFERED and marked unavailable, with that reason on it. A
+ * person billing a contractor's lump sum needs to see that the shape exists and what is
+ * standing in its way -- which is a different message from the form not having it. When
+ * the service takes it, this becomes `true` and nothing else here changes. */
+export const ESTIMATE_LINE_TOTAL_SUPPORTED = false;
+
+/** The shapes a target may be billed in, and whether each can be used today. */
 export function amountModesFor(target) {
-  return target?.targetType === "general_cost"
-    ? [AMOUNT_MODES.TOTAL]
-    : [AMOUNT_MODES.COMPUTED, AMOUNT_MODES.TOTAL];
+  if (target?.targetType === "general_cost") {
+    return [{ value: AMOUNT_MODES.TOTAL, available: true, reason: null }];
+  }
+  return [
+    { value: AMOUNT_MODES.COMPUTED, available: true, reason: null },
+    { value: AMOUNT_MODES.TOTAL, available: ESTIMATE_LINE_TOTAL_SUPPORTED,
+      reason: ESTIMATE_LINE_TOTAL_SUPPORTED ? null : "سرویس هنوز مبلغ کل را برای ردیف برآورد نمی‌پذیرد" },
+  ];
+}
+
+/** The shapes that can actually be sent, in order. Never empty. */
+export function availableAmountModes(target) {
+  const usable = amountModesFor(target).filter((mode) => mode.available);
+  return usable.length ? usable.map((mode) => mode.value) : [AMOUNT_MODES.COMPUTED];
 }
 
 export function validateInvoiceLine(values, target, amountMode = null) {
   const errors = {};
   const description = String(values.description ?? "").trim();
   if (!target) errors.targetId = "اتصال مالی خط را انتخاب کنید.";
-  const allowed = amountModesFor(target);
+  /* A shape the service will refuse is not chosen here either, however the form got into
+     that state. Falling through to the usable one keeps a stale selection from producing a
+     request whose only possible answer is the service's own refusal. */
+  const allowed = availableAmountModes(target);
   const mode = allowed.includes(amountMode) ? amountMode : allowed[0];
   if (mode === AMOUNT_MODES.TOTAL) {
     const amountIRR = normalizeDecimalInput(values.amountIRR);

@@ -12,7 +12,7 @@ import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { createPermissionNotice } from "../../shared/components/permission-notice.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
-import { AMOUNT_MODES, amountModesFor, statesTotal, validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
+import { AMOUNT_MODES, amountModesFor, availableAmountModes, statesTotal, validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { GENERAL_COST_STAGE, UNSTAGED, buildStageIndex, targetsInStage } from "./invoice-stages.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { actorLabel } from "../../shared/formatters/actor.js";
@@ -345,8 +345,7 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     modeField.append(element("span", "form-label", "روش ثبت مبلغ"));
     const modeSelect = element("select", "app-select");
     modeSelect.name = "amountMode";
-    modeSelect.append(option(AMOUNT_MODES.COMPUTED, "مقدار × قیمت واحد"),
-                      option(AMOUNT_MODES.TOTAL, "فقط مبلغ کل"));
+    const MODE_LABELS = { [AMOUNT_MODES.COMPUTED]: "مقدار × قیمت واحد", [AMOUNT_MODES.TOTAL]: "فقط مبلغ کل" };
     modeField.append(modeSelect);
 
     const generalWarning = element("p", "invoice-warning",
@@ -371,11 +370,24 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
     function paintAmountFields() {
       const target = targets.find((item) => item.targetId === targetSelect.value);
       const choices = amountModesFor(target);
+      /* Rebuilt per target, because which shapes exist AND which are usable both depend on
+         it. A shape the service will refuse is shown disabled with the reason on it rather
+         than dropped: somebody billing a contractor's lump sum needs to see that the shape
+         exists and what stands in its way, which is not the same message as the form not
+         having it. */
+      modeSelect.replaceChildren(...choices.map((choice) => {
+        const node = option(choice.value, choice.available
+          ? MODE_LABELS[choice.value]
+          : `${MODE_LABELS[choice.value]} — ${choice.reason}`);
+        node.disabled = !choice.available;
+        return node;
+      }));
       /* The control appears only when there is something to choose. On a general cost the
          single amount box IS the only shape, and a menu with one option in it is a question
          with one answer. */
       modeField.hidden = !target || choices.length < 2;
-      if (!choices.includes(modeSelect.value)) modeSelect.value = choices[0];
+      const usable = availableAmountModes(target);
+      if (!usable.includes(modeSelect.value)) modeSelect.value = usable[0];
       const total = !target || modeSelect.value === AMOUNT_MODES.TOTAL;
       quantity.field.hidden = !target || total;
       unitPrice.field.hidden = !target || total;
