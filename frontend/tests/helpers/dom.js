@@ -144,6 +144,14 @@ class FakeNode {
     this.dispatch("click");
   }
 
+  /* A no-op, deliberately. Forms move focus -- to the box a validation message is about, to
+     the field a disclosure just revealed -- and a stub that threw would make every such
+     form untestable here. Pretending to track focus would be worse: nothing in this file
+     lays anything out, and a `document.activeElement` that no browser rule maintained
+     would be a fact these tests could assert and be wrong about. */
+  focus() {}
+  blur() {}
+
   /* `<dialog>` has these and a panel calls them on its own close button. No focus trap and
      no backdrop here: this stub does not lay anything out, and pretending otherwise would
      be a worse lie than an honest no-op. */

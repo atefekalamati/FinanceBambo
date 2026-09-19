@@ -19,6 +19,13 @@ function mapPrice(value) {
     name: value.externalName,
     category: value.category,
     providerName: value.providerName,
+    /* WHETHER A PERSON TYPED THIS PRICE OR AN IMPORT READ IT.
+       `sheet` came off the supplier's worksheet; `manual` is somebody's own figure for a
+       product the sheet does not carry. Both are real prices and both are shown, but they
+       do not rest on the same evidence, and a column of numbers that cannot say which is
+       which invites a reader to trust them equally. */
+    origin: value.origin ?? "sheet",
+    enteredBy: value.enteredBy ?? null,
     active: value.active,
     inactiveReason: value.inactiveReason ?? null,
     worksheet: value.worksheet ?? null,
@@ -202,7 +209,64 @@ export function createMaterialPricesApiAdapter(context, { client }) {
         itemCount: item.itemCount,
         activeCount: item.activeCount,
         inactiveCount: item.inactiveCount,
+        /* A chip somebody declared, and the breadth they declared it at. `null` on a
+           category that exists only because the sheet has products in it -- which is most
+           of them, and is not a lesser kind of chip. The two come back as one list on
+           purpose: a reader filtering by «داربست» should not have to know whether that
+           word arrived from a worksheet or from a person. */
+        declared: item.declared ?? false,
+        scopeLevel: item.scopeLevel ?? null,
       }));
+    },
+
+    /* A chip a person declares, at the breadth they declare it for.
+     *
+     * `project` is this project alone; `organization` every project this tenant runs;
+     * `global` every organization in BAMBO. The choice is the whole point of the call --
+     * the category STRING lands in the same column the sheet's own categories live in, so
+     * the chip itself needs no home, but nothing in that column can say how widely the word
+     * was meant.
+     *
+     * The service refuses a duplicate rather than quietly adopting it, which is what keeps
+     * «داربست» from becoming three chips with three spellings.
+     */
+    async createCategory({ category, label = null, scopeLevel = "project" }) {
+      const payload = await client.request(`${base}/material-prices/categories`,
+        jsonOptions("POST", { category, label, scopeLevel }));
+      return {
+        category: payload.category,
+        label: payload.label ?? payload.category,
+        scopeLevel: payload.scopeLevel ?? scopeLevel,
+        declared: payload.declared ?? true,
+        columns: payload.columns ?? [],
+        itemCount: payload.itemCount ?? 0,
+        activeCount: payload.activeCount ?? 0,
+        inactiveCount: payload.inactiveCount ?? 0,
+      };
+    },
+
+    /* A price for something the worksheet will never carry.
+     *
+     * It becomes a listing in the same world the sheet's rows live in -- same table, same
+     * chips, same paging -- rather than a price version on a cost item, which is a
+     * different kind of record that this page does not show. What marks it apart is
+     * `origin`, not where it is kept.
+     *
+     * `alreadyRecorded` comes back true when the service recognised this as the same entry
+     * rather than writing a second one; the dialog says so instead of claiming a new save.
+     */
+    async createManualPrice({ productName, category, sourceUnit, priceIrr, observedAt, reason }) {
+      const payload = await client.request(`${base}/material-prices/manual`,
+        jsonOptions("POST", { productName, category, sourceUnit, priceIrr, observedAt, reason }));
+      return {
+        providerItemId: payload.providerItemId,
+        productName: payload.productName,
+        category: payload.category,
+        sourceUnit: payload.sourceUnit ?? null,
+        priceIRR: payload.priceIrr ?? null,
+        observedAt: payload.observedAt ?? null,
+        alreadyRecorded: payload.alreadyRecorded ?? false,
+      };
     },
 
     async listCurrentPrices({ category = null, asOf = null, includeInactive = false,
