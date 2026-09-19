@@ -8,7 +8,7 @@ BACKEND_ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(BACKEND_R
 from app.finance.domain.invoices import Invoice,actual_cost,calculate_invoice
 from app.finance.schemas.invoices import CorrectiveInvoiceCreate,InvoiceConfirm,InvoiceCreate,InvoicePatch,InvoiceVoid
 from app.finance.security.guards import FinanceScope
-from app.finance.services.invoices import FinanceInvoiceService,InvoiceAlreadyConfirmed,StaleInvoice
+from app.finance.services.invoices import FinanceInvoiceService,InvoiceAlreadyConfirmed,InvoiceValidationError,StaleInvoice
 class InvoiceTests(unittest.TestCase):
  def test_round_half_up_and_proportional_adjustments_last_line_remainder(self):
   result=calculate_invoice([("2.5","101"),("1","100")],discount=Decimal("10"),tax=Decimal("7"),shipping=Decimal("3"),other=Decimal("0"))
@@ -30,6 +30,7 @@ class InvoiceTests(unittest.TestCase):
   command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="V",idempotencyKey="gc",lines=[{"resourceId":"11111111-1111-4111-8111-111111111111","lineAmountIrr":"12000001"}])
   self.assertEqual(Decimal("12000001"),command.lines[0].line_amount_irr)
   with self.assertRaises(ValueError):InvoiceCreate(invoiceDate="2026-08-08",vendorName="V",idempotencyKey="bad",lines=[{"resourceId":"11111111-1111-4111-8111-111111111111","lineAmountIrr":"100","unitPriceIrr":"100"}])
+  with self.assertRaises(ValueError):InvoiceCreate(invoiceDate="2026-08-08",vendorName="V",idempotencyKey="bad-linked",lines=[{"estimateLineId":"22222222-2222-4222-8222-222222222222","resourceId":"11111111-1111-4111-8111-111111111111","quantity":"2","lineAmountIrr":"100"}])
 
 ACTOR=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1")
 OTHER=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2")
@@ -69,7 +70,46 @@ class SimilarInvoiceRepo(FakeInvoiceRepo):
  async def duplicate(self,*_args):return "similar"
  async def create(self,_scope,value,_audit,_reason,_action="invoice.created"):
   self.action=_action;return value
+class NonGeneralCostRepo(FakeInvoiceRepo):
+ def __init__(self,value):super().__init__(value);self.checked_links=[];self.general_cost_checks=0
+ async def valid_line_links(self,_scope,lines):
+  self.checked_links.extend(lines)
+  return all(line.estimate_line_id is not None for line in lines)
+ async def are_general_costs(self,_scope,_ids):
+  self.general_cost_checks+=1
+  return False
 class InvoiceLifecycleTests(unittest.IsolatedAsyncioTestCase):
+ async def test_linked_non_general_cost_line_accepts_total_without_inventing_quantity(self):
+  repo=NonGeneralCostRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW)
+  command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="linked-total",lines=[{"estimateLineId":str(INVOICE_ID),"resourceId":str(ORG),"lineAmountIrr":"300"}])
+  created=await service.create(FinanceScope(ORG,"p1",ACTOR),command)
+  self.assertEqual(Decimal("300"),created.final_amount_irr)
+  self.assertEqual((None,None,None,Decimal("300")),tuple(created.lines[0][key] for key in ("quantity","unit","unit_price_irr","raw_amount_irr")))
+  self.assertEqual(1,len(repo.checked_links))
+  self.assertEqual(0,repo.general_cost_checks)
+
+ async def test_linked_total_can_be_patched_into_a_draft(self):
+  repo=NonGeneralCostRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW)
+  changed=await service.update(FinanceScope(ORG,"p1",ACTOR),INVOICE_ID,InvoicePatch(expectedVersion=1,lines=[{"estimateLineId":str(INVOICE_ID),"resourceId":str(ORG),"lineAmountIrr":"375"}]))
+  self.assertEqual((2,Decimal("375")),(changed.version,changed.final_amount_irr))
+  self.assertIsNone(changed.lines[0]["quantity"])
+  self.assertEqual(0,repo.general_cost_checks)
+
+ async def test_mixed_quantity_and_linked_total_sum_without_a_fake_rate(self):
+  repo=NonGeneralCostRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW)
+  command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="mixed",lines=[{"estimateLineId":str(INVOICE_ID),"resourceId":str(ORG),"quantity":"2","unit":"each","unitPriceIrr":"100"},{"estimateLineId":str(INVOICE_ID),"resourceId":str(ORG),"lineAmountIrr":"300"}])
+  created=await service.create(FinanceScope(ORG,"p1",ACTOR),command)
+  self.assertEqual(Decimal("500"),created.final_amount_irr)
+  self.assertEqual([Decimal("200"),Decimal("300")],[line["final_line_amount_irr"] for line in created.lines])
+  self.assertEqual(0,repo.general_cost_checks)
+
+ async def test_direct_adjustment_still_requires_a_general_cost_target(self):
+  repo=NonGeneralCostRepo(invoice());service=FinanceInvoiceService(repo,clock=lambda:NOW)
+  command=InvoiceCreate(invoiceDate="2026-08-08",vendorName="Vendor",idempotencyKey="allocation",lines=[{"estimateLineId":str(INVOICE_ID),"resourceId":str(ORG),"lineAmountIrr":"300"}],taxIrr="10",directAdjustmentAllocations=[{"kind":"tax","generalCostLineIndex":0}])
+  with self.assertRaises(InvoiceValidationError):
+   await service.create(FinanceScope(ORG,"p1",ACTOR),command)
+  self.assertEqual(1,repo.general_cost_checks)
+
  def test_actual_cost_ignores_draft_and_applies_linked_document_sign(self):
   confirmed=invoice("confirmed",3);draft=invoice("draft",1);reversal=replace(invoice("voided",1),financial_effect_sign=-1,original_invoice_id=INVOICE_ID)
   self.assertEqual(Decimal(0),actual_cost([confirmed,draft,reversal]))

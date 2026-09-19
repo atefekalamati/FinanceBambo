@@ -131,16 +131,19 @@ class WeightInKilogramsTests(unittest.TestCase):
 
 
 class WeightExtractionTests(unittest.TestCase):
-    def test_a_sheet_that_states_grams_yields_kilograms(self):
+    def test_a_sheet_that_states_grams_keeps_source_and_yields_kilograms(self):
         values, _ = extract_specs("brick", {"وزن": "1150 گرم"})
+        self.assertEqual(Decimal("1150"), values["weight_value"])
         self.assertEqual(Decimal("1.150"), values["weight_kg"])
 
     def test_a_column_name_that_states_kilograms_is_evidence_like_any_other(self):
         values, _ = extract_specs("ibeam", {"وزن - کیلوگرم": "190.0"})
+        self.assertEqual(Decimal("190.0"), values["weight_value"])
         self.assertEqual(Decimal("190"), values["weight_kg"])
 
     def test_a_bare_number_yields_no_weight_and_says_why(self):
         values, _ = extract_specs("channel", {"وزن": "24.0"})
+        self.assertEqual(Decimal("24.0"), values["weight_value"])
         self.assertNotIn("weight_kg", values)
         self.assertEqual("weight", values["spec_conflicts"][0]["field"])
         self.assertIn("no unit", values["spec_conflicts"][0]["reason"])
@@ -148,8 +151,9 @@ class WeightExtractionTests(unittest.TestCase):
     def test_no_unit_column_survives_in_the_published_specification(self):
         """0033 and 0034 between them removed all six. A stored weight cannot be in the
         wrong unit, because there is nowhere left to state one."""
+        self.assertIn("weight_value", SPEC_COLUMNS)
         self.assertIn("weight_kg", SPEC_COLUMNS)
-        for gone in ("weight_value", "weight_unit", "length_unit", "width_unit",
+        for gone in ("weight_unit", "length_unit", "width_unit",
                      "height_unit", "thickness_unit", "diameter_unit"):
             self.assertNotIn(gone, SPEC_COLUMNS)
 

@@ -94,6 +94,7 @@ class ExtractionTests(unittest.TestCase):
         # angle listings in the database are exactly this case. Reading it as 27 kg because
         # the neighbouring worksheets use kilograms is the guess this model exists to
         # refuse; the number is reported as a conflict instead.
+        self.assertEqual(Decimal("27.0"), values["weight_value"])
         self.assertNotIn("weight_kg", values)
         self.assertEqual([{"field": "weight", "raw": "27.0", "unit": None,
                            "reason": "weight has no unit, so it cannot be stated in kilograms"}],
@@ -118,13 +119,14 @@ class ExtractionTests(unittest.TestCase):
         car.
         """
         values, _ = extract_specs("brick", {"وزن": "1150 گرم"})
+        self.assertEqual(Decimal("1150"), values["weight_value"])
         self.assertEqual(Decimal("1.150"), values["weight_kg"])
         self.assertNotIn("weight_unit", values)
-        self.assertNotIn("weight_value", values)
 
     def test_a_weight_whose_cell_states_no_unit_yields_no_weight_at_all(self):
         """The 84 rows. A number with no unit is not a weight, it is a number."""
         values, _ = extract_specs("angle", {"وزن": "27.0"})
+        self.assertEqual(Decimal("27.0"), values["weight_value"])
         self.assertNotIn("weight_kg", values)
         self.assertNotIn("weight_basis", values)
         self.assertEqual("weight", values["spec_conflicts"][0]["field"])

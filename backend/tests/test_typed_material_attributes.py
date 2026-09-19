@@ -94,7 +94,7 @@ class TypedAttributeTests(unittest.TestCase):
         for column in ("product_code", "manufacturer", "grade", "product_type",
                        "dimensions_text", "length_value", "length_m",
                        "width_value", "height_value", "thickness_value", "diameter_value",
-                       "weight_kg", "weight_basis", "branch_count",
+                       "weight_value", "weight_kg", "weight_basis", "branch_count",
                        "pieces_per_package", "coverage_m2", "volume_m3"):
             self.assertIsNone(row[column], column)
 
@@ -141,7 +141,7 @@ class TypedAttributeTests(unittest.TestCase):
             "SELECT column_name FROM information_schema.columns"
             " WHERE table_name='provider_items' AND column_name LIKE 'weight%'"
             " ORDER BY 1").fetchall()]
-        self.assertEqual(["weight_basis", "weight_kg"], columns)
+        self.assertEqual(["weight_basis", "weight_kg", "weight_value"], columns)
 
     def test_an_unlisted_weight_basis_is_refused(self):
         with self.assertRaises(psycopg.errors.CheckViolation):

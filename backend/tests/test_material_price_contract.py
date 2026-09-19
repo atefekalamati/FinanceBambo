@@ -96,12 +96,21 @@ class DeclaredFieldTests(unittest.IsolatedAsyncioTestCase):
                          "declared by the schema, published in OpenAPI, and never set")
 
     async def test_the_typed_specification_columns_reach_the_reader(self):
-        stored = {"weight_kg": Decimal("27.5"),
+        stored = {"weight_value": Decimal("27.5"), "weight_kg": Decimal("27.5"),
                   "weight_basis": "unknown", "manufacturer": "ذوب آهن",
                   "length_m": Decimal("12"), "spec_source": "dedicated_column"}
         rows, _ = await service(rows=[observation(**stored)]).current(object())
         for column, value in stored.items():
             self.assertEqual(value, rows[0][column], column)
+
+    async def test_an_unresolved_source_weight_still_reaches_the_api(self):
+        rows, _ = await service(rows=[observation(
+            weight_value=Decimal("32"), weight_kg=None)]).current(object())
+        declared = {key: value for key, value in rows[0].items()
+                    if key in MaterialPriceResponse.model_fields}
+        payload = MaterialPriceResponse.model_validate(declared).model_dump(by_alias=True)
+        self.assertEqual(Decimal("32"), payload["weightValue"])
+        self.assertIsNone(payload["weightKg"])
 
     async def test_a_column_the_sheet_said_nothing_about_is_null_not_zero(self):
         rows, _ = await service(rows=[observation()]).current(object())

@@ -167,7 +167,7 @@ SPEC_COLUMNS = (
     "product_code", "manufacturer", "grade", "product_type", "dimensions_text",
     "length_value", "length_m", "width_value",
     "height_value", "thickness_value",
-    "diameter_value", "weight_kg", "weight_basis",
+    "diameter_value", "weight_value", "weight_kg", "weight_basis",
     "branch_count", "pieces_per_package", "coverage_m2", "volume_m3")
 
 #: Where a stored value came from, so a reader is never left guessing which layer answered.
@@ -313,10 +313,9 @@ def extract_specs(category, metadata):
 
     # ------------------------------------------------- one weight, in one unit, or none
     # The pair the rules above produce is a reading of the sheet; `weight_kg` is what the
-    # database keeps. Converting HERE rather than in each declaration means every worksheet
-    # goes through the same arithmetic, and a row whose unit could not be read simply has
-    # no weight rather than a number in an unstated unit.
-    weight = values.pop("weight_value", None)
+    # database keeps beside the source number. A missing unit prevents normalization,
+    # never preservation of the value the sheet actually supplied.
+    weight = values.get("weight_value")
     unit = values.pop("weight_unit", None)
     kilograms = to_kilograms(weight, unit)
     if kilograms is not None:
