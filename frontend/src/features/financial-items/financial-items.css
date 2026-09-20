@@ -978,7 +978,6 @@ html[data-theme="light"] .workspace-form select {
    surface that had simply changed its mind about what it was showing. */
 .conversion-rule-dialog {
   z-index: 50;
-  display: grid;
   gap: 0.75rem;
   max-block-size: 90vh;
   overflow-y: auto;
@@ -989,6 +988,10 @@ html[data-theme="light"] .workspace-form select {
   background: var(--dash-card-grad);
   color: var(--color-text-primary);
   box-shadow: 0 1rem 3rem rgb(3 8 20 / 55%);
+}
+
+.conversion-rule-dialog[open] {
+  display: grid;
 }
 
 .conversion-rule-dialog::backdrop {
