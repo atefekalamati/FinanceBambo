@@ -625,6 +625,7 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
          now the market sheet, which reports its own states -- not configured, not loaded
          yet, no rows in this category -- and none of those is the page being blank. */
       state = createRequestState(REQUEST_STATUS.SUCCESS, workspace);
+      await loadMarketPrices();
     } catch (error) {
       state = createRequestState(REQUEST_STATUS.ERROR, null, error);
     }
@@ -771,14 +772,8 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
       market.append(marketTitle,
         element("div", "inline-notice", "در حال دریافت قیمت روز بازار…"));
     } else if (marketPrices === null) {
-      market.append(marketTitle, element("p", "prices-section__hint",
-        "قیمت‌های وارد‌شده از برگه مصالح، جدا از قیمت رسمی مالی پروژه."));
-      const ask = element("div", "prices-history-ask");
-      const show = element("button", "button button--primary", "نمایش قیمت روز بازار");
-      show.type = "button";
-      show.addEventListener("click", loadMarketPrices);
-      ask.append(show);
-      market.append(ask);
+      market.append(marketTitle,
+        element("div", "inline-notice", "در حال آماده‌سازی قیمت‌های روز بازار…"));
     } else {
       fragment.append(toolbar, ...(readOnly ? [] : [history]),
                       renderMaterialPrices(marketPrices.items, {

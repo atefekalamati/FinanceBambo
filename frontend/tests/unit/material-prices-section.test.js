@@ -202,17 +202,37 @@ test("a converted row carries the explanation of what was applied", () => {
   assert.match(tr.title, /dividing/);
 });
 
-test("category filters come from the data and never from a hardcoded list", () => {
+test("five primary categories stay visible and every other category lives in the more menu", () => {
   const chosen = [];
   const section = renderMaterialPrices([row()], {
-    categories: [{ category: "rebar", activeCount: 590, itemCount: 590, inactiveCount: 0 }],
+    categories: [
+      { category: "rebar", activeCount: 590, itemCount: 590, inactiveCount: 0 },
+      { category: "angle", label: "نبشی", activeCount: 12, itemCount: 12, inactiveCount: 0 },
+    ],
     selectedCategory: "rebar",
     onSelectCategory: (value) => chosen.push(value),
   });
-  const chips = [...section.querySelectorAll(".app-chip")].map((chip) => chip.textContent);
-  assert.deepEqual(chips, ["همه", "rebar (590)"]);
-  section.querySelectorAll(".app-chip")[0].click();
-  assert.deepEqual(chosen, [null]);
+  const filter = section.querySelector(".material-prices__filters");
+  assert.deepEqual(filter.children.slice(0, 6).map((chip) => chip.textContent),
+    ["همه", "آجر", "میلگرد (590)", "تیرآهن", "ناودانی", "لوله"]);
+
+  const more = filter.children[6];
+  assert.equal(more.tagName, "DETAILS");
+  assert.equal(more.children[0].textContent, "…");
+  more.open = true;
+  /* The test DOM deliberately supports only selectors the product generally uses; use the
+     menu's own button here rather than teaching it a one-off data selector. */
+  more.querySelector("button").click();
+  assert.equal(more.open, false);
+  assert.deepEqual(chosen, ["angle"]);
+});
+
+test("the prices page loads market prices on entry instead of waiting for a display button", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(
+    new URL("../../src/features/prices/prices-page.js", import.meta.url), "utf8");
+  assert.match(source, /state = createRequestState\(REQUEST_STATUS\.SUCCESS, workspace\);\s*await loadMarketPrices\(\);/);
+  assert.doesNotMatch(source, /نمایش قیمت روز بازار/);
 });
 
 test("the module reaches no external address", async () => {
