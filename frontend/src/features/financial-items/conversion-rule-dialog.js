@@ -1,7 +1,10 @@
 import { element } from "../../shared/dom/elements.js";
-import { formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatUnitLabel, formatDisplayNumber } from "../../shared/formatters/display.js";
+import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
 import { getUnitDefinition } from "../prices/unit-conversions-validation.js";
+import { convertedUnitPriceIRR, lineCostIRR, occupantsOf, rulesForCrossing }
+  from "./conversion-rule-math.js";
 
 /* Defining the crossing between a price's unit and an item's unit, without leaving the
  * item.
@@ -12,10 +15,16 @@ import { getUnitDefinition } from "../prices/unit-conversions-validation.js";
  * supplier, which category, and both units. Sending them to a settings page means asking
  * them to carry six values in their head and find their way back to the row they were on.
  *
- * WHAT IT DOES NOT DECIDE
- * The number. «۱ شاخه = ۲۲ کیلوگرم» is a weighing, and this dialog has no way to weigh
- * anything: it collects what a person measured, with their reason, and sends it to the
- * server to be stored and approved. There is no suggested factor and no arithmetic here.
+ * THREE QUESTIONS, IN THE ORDER A PERSON CAN ANSWER THEM
+ *
+ *   1. what already answers this crossing   — so nobody writes a rule that exists
+ *   2. what do you know, and how widely      — the claim, and how far it reaches
+ *   3. what will that do to the price        — the only way the claim can be checked
+ *
+ * The third is the point of the whole feature. A rule exists so a daily price appears, and
+ * a person who cannot see the price a rule produces cannot tell a correct rule from one
+ * that is wrong by the square of its factor. The arithmetic lives in
+ * `conversion-rule-math.js`, exactly matching the server's own division.
  *
  * DIRECTION IS CHOSEN, NEVER INFERRED
  * The rule reads «۱ <from> = factor <to>», and WHICH unit is the one is the person's
@@ -23,7 +32,7 @@ import { getUnitDefinition } from "../prices/unit-conversions-validation.js";
  * that a branch of angle weighs twenty-two kilograms; nobody knows offhand that a kilogram
  * is 0.0454545… of a branch, and made to type that they would round it and bake the
  * rounding into every price the rule ever produces. So both questions are offered, the
- * answer is stored exactly as stated, and the resolver reads the rule from either side.
+ * answer is stored exactly as stated, and the server reads the rule from either side.
  *
  * Neither direction is preselected. Read the wrong way round, «۱ شاخه = ۲۲ کیلوگرم»
  * becomes a claim that a kilogram weighs twenty-two branches — a price wrong by a factor
@@ -43,10 +52,12 @@ const SCOPES = Object.freeze([
   { value: "project", label: "کل این پروژه",
     hint: "فقط در این پروژه اعمال می‌شود." },
   { value: "organization", label: "کل سازمان",
-    hint: "برای همهٔ پروژه‌های این سازمان." },
+    hint: "برای همهٔ پروژه‌های این سازمان، در هر پروژه‌ای که همین دو واحد به هم برسند." },
   { value: "global", label: "کل بامبو",
     hint: "برای همهٔ سازمان‌ها و همهٔ پروژه‌ها." },
 ]);
+
+const SCOPE_LABELS = Object.fromEntries(SCOPES.map((scope) => [scope.value, scope.label]));
 
 /* The scopes whose claim outlives this project. The service names the same two, and this
    is the only place the interface repeats them -- not to enforce anything, which is the
@@ -89,9 +100,33 @@ function field(labelText, control, hint = null) {
   return wrapper;
 }
 
+function section(titleText, modifier) {
+  const node = element("section",
+    `conversion-rule-dialog__section conversion-rule-dialog__section--${modifier}`);
+  node.append(element("h3", "conversion-rule-dialog__section-title", titleText));
+  return node;
+}
+
+/** «۱ شاخه = ۲۲ کیلوگرم», from a rule as the server stores it. */
+export function ruleSentence(rule) {
+  const from = formatUnitLabel(rule?.fromUnit) ?? rule?.fromUnit ?? "—";
+  const to = formatUnitLabel(rule?.toUnit) ?? rule?.toUnit ?? "—";
+  const factor = rule?.factorValue == null ? "—" : formatDisplayNumber(rule.factorValue);
+  return `۱ ${from} = ${factor} ${to}`;
+}
+
+/** What a stored rule is, in one line: its claim, how far it reaches, and whether it counts. */
+export function ruleSummary(rule) {
+  const scope = SCOPE_LABELS[rule?.scopeType] ?? rule?.scopeType ?? "—";
+  const state = rule?.status === "approved" ? "در حال اعمال" : "پیش‌نویس، بدون اثر";
+  return `${ruleSentence(rule)} — ${scope} · ${state}`;
+}
+
 /**
  * @param context.fromUnit      the unit the market price is quoted in
  * @param context.toUnit        the unit this estimate line is measured in
+ * @param context.sourcePriceIRR  today's price, per `fromUnit`, as a decimal string
+ * @param context.quantity      this line's own quantity, for the cost preview
  * @param context.providerItemId, providerId, category  what the chosen listing is
  * @param context.productName, providerName, categoryLabel  what to show a person
  * @param onSaved  called after the server accepts the rule, so the caller can recalculate
@@ -126,6 +161,58 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
     facts.append(element("dt", "", "دسته"), element("dd", "", context.categoryLabel));
   }
 
+  // ------------------------------------------------------- 1. what already answers this
+
+  /* Read before anything is typed, because the commonest correct action on a crossing that
+     already has a rule is to leave it alone, and the second commonest is to replace it.
+     Neither is possible for somebody who cannot see that the rule exists -- they write a
+     second one, and either the database refuses it or the tenant ends up with two answers
+     to one question. */
+  let existingRules = [];
+  const existingBody = element("div", "conversion-rule-dialog__existing");
+  const existingSection = section("قانون‌هایی که همین حالا برای این دو واحد ثبت شده‌اند", "existing");
+  existingSection.append(existingBody);
+  existingBody.append(element("p", "table-note", "در حال خواندن…"));
+
+  function renderExisting() {
+    existingBody.replaceChildren();
+    const live = rulesForCrossing(existingRules, {
+      fromUnit: context.fromUnit, toUnit: context.toUnit });
+    if (!live.length) {
+      existingBody.append(element("p", "table-note",
+        "هیچ قانونی برای این عبور ثبت نشده است. این اولین قانون خواهد بود."));
+      return;
+    }
+    const list = element("ul", "conversion-rule-dialog__rules");
+    live.forEach((rule) => {
+      const item = element("li", "conversion-rule-dialog__rule");
+      item.dataset.scope = rule.scopeType ?? "";
+      item.dataset.status = rule.status ?? "";
+      item.append(element("span", "", ruleSummary(rule)));
+      list.append(item);
+    });
+    existingBody.append(list);
+    /* Said once, plainly, rather than left for somebody to infer from six rows: the
+       narrowest rule is the one that answers, and a broad rule they can see is not
+       necessarily the one producing the number in front of them. */
+    existingBody.append(element("p", "table-note",
+      "وقتی چند قانون هست، باریک‌ترین آن‌ها اعمال می‌شود: محصول، بعد تأمین‌کننده و دسته، "
+      + "بعد پروژه، بعد سازمان، و در آخر کل بامبو."));
+  }
+
+  // -------------------------------------------------------------- 2. stating the claim
+
+  /* The two ways the same crossing can be stated. `forward` is the direction the pricing
+     path asks in -- price unit to line unit -- and `reverse` is the same measurement read
+     backwards. Both are stored as they are said: the row's own `from_unit`/`to_unit`
+     ordering IS the direction, which is why neither needs converting before it is sent. */
+  const DIRECTIONS = Object.freeze([
+    { value: "forward", from: context.fromUnit, to: context.toUnit,
+      fromLabel, toLabel },
+    { value: "reverse", from: context.toUnit, to: context.fromUnit,
+      fromLabel: toLabel, toLabel: fromLabel },
+  ]);
+
   const scopeSelect = element("select", "app-select");
   scopeSelect.name = "scopeType";
   /* A scope beyond this project is refused in the SERVICE, never at the route, so nothing
@@ -144,17 +231,6 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
     scopeSelect.append(option);
   });
   const scopeHint = element("p", "table-note", SCOPES[0].hint);
-
-  /* The two ways the same crossing can be stated. `forward` is the direction the pricing
-     path asks in -- price unit to line unit -- and `reverse` is the same measurement read
-     backwards. Both are stored as they are said: the row's own `from_unit`/`to_unit`
-     ordering IS the direction, which is why neither needs converting before it is sent. */
-  const DIRECTIONS = Object.freeze([
-    { value: "forward", from: context.fromUnit, to: context.toUnit,
-      fromLabel, toLabel },
-    { value: "reverse", from: context.toUnit, to: context.fromUnit,
-      fromLabel: toLabel, toLabel: fromLabel },
-  ]);
 
   const factorInput = element("input", "app-input");
   factorInput.type = "text";
@@ -188,7 +264,7 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
         if (value !== direction.value) other.checked = false;
       });
       feedback.textContent = "";
-      renderSentence();
+      renderEffect();
     });
     directionInputs.set(direction.value, input);
     directionGroup.append(row);
@@ -198,26 +274,6 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
   const factorLabel = element("label", "form-label", "");
   factorLabel.htmlFor = factorInput.id;
   factorField.append(factorLabel, factorInput);
-
-  /* The sentence the number completes, written out with the real unit names so nobody has
-     to work out which way round it goes -- and, before a direction is picked, saying that
-     there is nothing to read yet rather than showing one of the two and inviting the
-     number to be typed against it. */
-  const sentence = element("p", "conversion-rule-dialog__sentence", "");
-  function renderSentence() {
-    if (!chosen) {
-      factorLabel.textContent = "ضریب تبدیل";
-      factorInput.disabled = true;
-      sentence.textContent = "ابتدا مشخص کنید کدام طرف را می‌دانید.";
-      return;
-    }
-    factorLabel.textContent =
-      `ضریب تبدیل — یک ${chosen.fromLabel} چند ${chosen.toLabel} است؟`;
-    factorInput.disabled = false;
-    const value = factorInput.value.trim();
-    sentence.textContent =
-      `۱ ${chosen.fromLabel} = ${value === "" ? "…" : value} ${chosen.toLabel}`;
-  }
 
   const reason = element("textarea", "app-textarea");
   reason.name = "reason";
@@ -257,6 +313,107 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
     if (!wanted) acknowledge.checked = false;
   }
 
+  /* Every live rule this scope already holds. Set by `syncReplacement`, read by the save
+     handler, and the reason the button sometimes says «جایگزینی».
+
+     A list rather than one rule, because the live project has a listing holding an approved
+     `kg→branch` AND an approved `branch→kg` at the same scope -- both written before the
+     server started refusing the pair. Closing one of them would leave the other in force
+     and the new rule would then be refused by the unique index. */
+  let replacing = [];
+  const replaceNote = element("p", "conversion-rule-dialog__replacing", "");
+  replaceNote.hidden = true;
+
+  function syncReplacement() {
+    replacing = occupantsOf(existingRules, {
+      scopeType: scopeSelect.value,
+      fromUnit: context.fromUnit,
+      toUnit: context.toUnit,
+      providerItemId: context.providerItemId,
+      providerId: context.providerId,
+      category: context.category,
+    });
+    replaceNote.hidden = replacing.length === 0;
+    if (replacing.length) {
+      /* Named with its number and its direction, because «قانونی وجود دارد» tells somebody
+         nothing about whether the one that exists is the one they were about to write. And
+         when there are several, all of them: a person about to close two rules has to see
+         both, or the one they did not read disappears without their noticing. */
+      const named = replacing.map((rule) => `${ruleSentence(rule)}`
+        + `${rule.version ? ` (نسخهٔ ${formatDisplayNumber(rule.version)})` : ""}`
+        + `${rule.status === "approved" ? "" : " — پیش‌نویس"}`).join(" و ");
+      replaceNote.textContent = replacing.length === 1
+        ? `این دامنه قانون دارد: ${named}. اگر ذخیره کنید، این قانون بسته می‌شود و قانون شما جای آن را می‌گیرد.`
+        : `این دامنه ${formatDisplayNumber(replacing.length)} قانون فعال دارد: ${named}. `
+          + "اگر ذخیره کنید، همهٔ آن‌ها بسته می‌شوند و قانون شما جای آن‌ها را می‌گیرد.";
+    }
+    save.textContent = saved ? "تأیید و اعمال قانون"
+      : replacing.length ? "جایگزینی قانون" : "ثبت و اعمال قانون";
+  }
+
+  // ---------------------------------------------------------- 3. what it does to the price
+
+  /* The sentence the number completes, written out with the real unit names so nobody has
+     to work out which way round it goes -- and, before a direction is picked, saying that
+     there is nothing to read yet rather than showing one of the two and inviting the
+     number to be typed against it. */
+  const sentence = element("p", "conversion-rule-dialog__sentence", "");
+  const effect = element("dl", "conversion-rule-dialog__effect");
+  const effectNote = element("p", "table-note", "");
+
+  function renderEffect() {
+    effect.replaceChildren();
+    effectNote.textContent = "";
+    if (!chosen) {
+      factorLabel.textContent = "ضریب تبدیل";
+      factorInput.disabled = true;
+      sentence.textContent = "ابتدا مشخص کنید کدام طرف را می‌دانید.";
+      return;
+    }
+    factorLabel.textContent =
+      `ضریب تبدیل — یک ${chosen.fromLabel} چند ${chosen.toLabel} است؟`;
+    factorInput.disabled = false;
+    const value = factorInput.value.trim();
+    sentence.textContent =
+      `۱ ${chosen.fromLabel} = ${value === "" ? "…" : value} ${chosen.toLabel}`;
+
+    /* The price this rule would produce, worked out here and now. Without a sheet price
+       there is nothing to show and the dialog says so rather than drawing an empty row --
+       a listing with no validated observation is a normal state, not a fault. */
+    if (!context.sourcePriceIRR) {
+      effectNote.textContent =
+        "قیمت روزی برای این محصول ثبت نشده، پس نتیجهٔ این ضریب اینجا قابل نمایش نیست.";
+      return;
+    }
+    const unitPrice = convertedUnitPriceIRR({
+      priceIRR: context.sourcePriceIRR,
+      sourceUnit: context.fromUnit,
+      selectedUnit: context.toUnit,
+      statedFrom: chosen.from,
+      statedTo: chosen.to,
+      factor: value,
+    });
+    if (unitPrice === null) {
+      effectNote.textContent = "عدد ضریب را وارد کنید تا نتیجه‌اش را ببینید.";
+      return;
+    }
+    effect.append(
+      element("dt", "", `قیمت برگه، بابت هر ${fromLabel}`),
+      element("dd", "numeric", formatTomanFromIrr(context.sourcePriceIRR)),
+      element("dt", "", `قیمت روز این قلم، بابت هر ${toLabel}`),
+      element("dd", "numeric conversion-rule-dialog__result",
+              formatTomanFromIrr(unitPrice)));
+    const cost = lineCostIRR({ unitPriceIRR: unitPrice, quantity: context.quantity });
+    if (cost !== null) {
+      effect.append(
+        element("dt", "", `هزینهٔ این ردیف (${formatDisplayNumber(context.quantity)} ${toLabel})`),
+        element("dd", "numeric", formatTomanFromIrr(cost)));
+    }
+    /* The one check nobody else can do for them. The units and the number can both be
+       right and the rule still be backwards, and the resulting price is where that shows. */
+    effectNote.textContent = "اگر این عدد با آنچه انتظار دارید نمی‌خواند، جهت یا ضریب را عوض کنید.";
+  }
+
   const feedback = element("p", "form-feedback", "");
   /* Set only when a rule was written and not put in force. Kept beside the feedback line
      because the two say different things: one is why the attempt failed, the other is what
@@ -274,19 +431,22 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
   const actions = element("div", "conversion-rule-dialog__actions");
   actions.append(save, cancel);
 
-  const form = element("form", "conversion-rule-dialog__form");
-  form.addEventListener("submit", (event) => event.preventDefault());
-  form.append(
+  const claim = section("قانون شما", "claim");
+  claim.append(
     field("دامنهٔ اعمال", scopeSelect),
     scopeHint,
+    replaceNote,
     directionGroup,
     factorField,
-    sentence,
     field("دلیل و مبنا", reason),
-    acknowledgeRow,
-    actions,
-    feedback,
-    note);
+    acknowledgeRow);
+
+  const result = section("پیش از ذخیره، نتیجه را ببینید", "effect");
+  result.append(sentence, effect, effectNote);
+
+  const form = element("form", "conversion-rule-dialog__form");
+  form.addEventListener("submit", (event) => event.preventDefault());
+  form.append(existingSection, claim, result, actions, feedback, note);
 
   dialog.append(head, facts, form);
 
@@ -294,10 +454,41 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
     scopeHint.textContent = SCOPES.find((s) => s.value === scopeSelect.value)?.hint ?? "";
     feedback.textContent = "";
     syncAcknowledge();
+    syncReplacement();
   });
   syncAcknowledge();
-  renderSentence();
-  factorInput.addEventListener("input", renderSentence);
+  syncReplacement();
+  renderExisting();
+  renderEffect();
+  factorInput.addEventListener("input", renderEffect);
+
+  /* Fetched, not required. A host that has not wired the settings endpoint still gets a
+     working dialog -- it simply cannot show what already exists, and says so rather than
+     claiming there is nothing. */
+  async function loadExisting() {
+    if (typeof adapter?.conversionRules !== "function") {
+      existingBody.replaceChildren(element("p", "table-note",
+        "فهرست قانون‌های موجود در این نسخه در دسترس نیست."));
+      return;
+    }
+    try {
+      /* Both spellings, because a rule stating «۱ شاخه = ۲۲ کیلوگرم» answers this crossing
+         and is stored the other way round from the way this row asks about it. */
+      const [direct, reverse] = await Promise.all([
+        adapter.conversionRules({ fromUnit: context.fromUnit, toUnit: context.toUnit }),
+        adapter.conversionRules({ fromUnit: context.toUnit, toUnit: context.fromUnit }),
+      ]);
+      const byId = new Map();
+      [...(direct?.items ?? []), ...(reverse?.items ?? [])]
+        .filter(Boolean).forEach((rule) => byId.set(rule.id, rule));
+      existingRules = [...byId.values()];
+      renderExisting();
+      syncReplacement();
+    } catch (error) {
+      existingBody.replaceChildren(element("p", "table-note",
+        error?.message ?? "خواندن قانون‌های موجود انجام نشد."));
+    }
+  }
 
   save.addEventListener("click", async () => {
     feedback.textContent = "";
@@ -327,17 +518,24 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
 
     save.disabled = true;
     try {
-      /* TWO CALLS, ONE ACT.
+      /* THREE CALLS, ONE ACT, AND THE ORDER IS THE WHOLE SAFETY OF IT.
          A rule arrives as a DRAFT, and a draft changes no number anywhere: both resolution
          queries filter `status='approved'` in SQL and the domain resolver filters again. So
          a dialog that only created one would let somebody write «۱ شاخه = ۲۲ کیلوگرم»,
          watch it save, and find the row still saying «نیازمند ضریب تبدیل» — the feature
          working perfectly and doing nothing.
 
+         When a rule already holds this scope it has to be CLOSED between the two, and in
+         that order. The database's partial unique index permits one approved, open rule per
+         scope and unit pair, so approving first would be refused outright; and closing
+         first, before the replacement exists, would leave the crossing unanswered if the
+         write then failed. Create, close, approve: at every moment either the old rule or
+         the new one is the answer, and the only gap is one a second press closes.
+
          Approving is not a second decision here. Creating and approving pass through the
          same permission gate, including the extra one the tenant-wide scopes carry, so a
-         person who could write it can put it in force. What the two steps buy is a record:
-         the rule says who stated it and who let it count, even when that is one person. */
+         person who could write it can put it in force. What the steps buy is a record: the
+         rule says who stated it and who let it count, even when that is one person. */
       const created = saved ?? await adapter.createConversionRule({
         scopeType,
         /* The direction the person chose, sent as they said it. Inverting here would put a
@@ -354,13 +552,27 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
            is too old to know about admissions» -- and the server would be right to read the
            second as the first only by luck. */
         productDependentAcknowledged: Boolean(acknowledge.checked),
+        /* Recorded on the new rule so the chain is readable. It does NOT close the old one
+           -- the server only stores the link -- which is why the call below exists. */
+        ...(replacing.length ? { supersedesRuleId: replacing[0].id } : {}),
         ...(needs ? { [needs]: context[needs] } : {}),
       });
-      /* Remembered BEFORE the approve is attempted. If approving fails the rule exists, and
-         pressing the button again must finish that rule rather than write a second one —
-         two identical rules differing only in which is approved is a worse state than the
-         draft we are recovering from. */
+      /* Remembered BEFORE anything else is attempted. If a later step fails the rule
+         exists, and pressing the button again must finish that rule rather than write a
+         second one — two identical rules differing only in which is approved is a worse
+         state than the draft we are recovering from. */
       saved = created;
+      if (replacing.length && typeof adapter.supersedeConversionRule === "function") {
+        /* One at a time and in order, emptying the list as each closes. A second press
+           after a failure then finishes what is left rather than closing a rule twice --
+           the server answers «این قانون پیش‌تر بسته شده است» to that, which would read as
+           the whole replacement having failed. */
+        while (replacing.length) {
+          await adapter.supersedeConversionRule(replacing[0].id, {
+            reason: reason.value.trim() });
+          replacing = replacing.slice(1);
+        }
+      }
       await adapter.approveConversionRule(created.id, { reason: reason.value.trim() });
       dialog.close();
       onSaved?.();
@@ -387,6 +599,10 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
     open() {
       document.body.append(dialog);
       showAccessibleDialog(dialog, { initialFocus: scopeSelect });
+      loadExisting();
     },
+    /* Exposed for the page's own tests and for a caller that wants the list ready before
+       the dialog is on screen. Never required: `open` does it. */
+    loadExisting,
   };
 }

@@ -43,13 +43,24 @@ const CONTEXT = Object.freeze({
 /** A crossing the registry cannot make: a count against a mass. */
 const PRODUCT_DEPENDENT = Object.freeze({ ...CONTEXT, fromUnit: "each", toUnit: "kg" });
 
-function recordingAdapter({ approveFails = false } = {}) {
+function recordingAdapter({ approveFails = false, existing = [] } = {}) {
   const calls = [];
   return {
     calls,
+    /* Asked for each direction separately, because the endpoint filters the unit pair
+       exactly and a rule answering this crossing may be stored the other way round. */
+    async conversionRules({ fromUnit, toUnit }) {
+      calls.push(["list", fromUnit, toUnit]);
+      return { items: existing.filter((rule) => rule.fromUnit === fromUnit
+                                             && rule.toUnit === toUnit) };
+    },
     async createConversionRule(payload) {
       calls.push(["create", payload]);
       return { id: "rule-1", status: "draft" };
+    },
+    async supersedeConversionRule(ruleId, payload) {
+      calls.push(["supersede", ruleId, payload]);
+      return { id: ruleId, status: "superseded" };
     },
     async approveConversionRule(ruleId, payload) {
       calls.push(["approve", ruleId, payload]);
@@ -62,8 +73,9 @@ function recordingAdapter({ approveFails = false } = {}) {
 function open(context, adapter, onSaved = () => {}) {
   const dialog = createConversionRuleDialog({ context, adapter, onSaved });
   const root = dialog.element;
+  const ui = { dialog };
   const directions = [...root.querySelectorAll('input[type="radio"]')];
-  return {
+  return Object.assign(ui, {
     root,
     scope: root.querySelector("select"),
     directions,
@@ -75,8 +87,11 @@ function open(context, adapter, onSaved = () => {}) {
     save: [...root.querySelectorAll("button")].find((b) => /ثبت و اعمال|تأیید و اعمال/.test(b.textContent)),
     note: [...root.querySelectorAll("p")].find((p) => p.className === "table-note" && p.textContent.includes("پیش‌نویس")),
     sentence: root.querySelector(".conversion-rule-dialog__sentence"),
+    existing: root.querySelector(".conversion-rule-dialog__existing"),
+    replacing: root.querySelector(".conversion-rule-dialog__replacing"),
+    effect: root.querySelector(".conversion-rule-dialog__effect"),
     feedback: root.querySelector(".form-feedback"),
-  };
+  });
 }
 
 /** Picks a direction the way a person does: the browser checks it, then fires `change`. */
@@ -298,4 +313,194 @@ test("saving with no direction picked writes nothing and says what is missing", 
 
   assert.deepEqual(adapter.calls, [], "a factor with no direction must not reach the server");
   assert.match(ui.feedback.textContent, /کدام طرف/);
+});
+
+/* WHAT ALREADY ANSWERS THIS CROSSING, AND WHAT PRESSING SAVE WILL DO TO IT.
+ *
+ * A person who cannot see the rule that already exists writes a second one. Either the
+ * database refuses it — the partial unique index permits one approved, open rule per scope
+ * and unit pair — or, in the opposite direction, the service refuses it, because 22 and
+ * 0.05 are not each other's inverse and two live answers to one question is worse than
+ * none. Both refusals arrive at the end of a form somebody has already filled in.
+ *
+ * So the rules are read when the dialog opens, and the one occupying the chosen scope
+ * turns the save button into a replacement.
+ */
+
+const ORG_RULE = Object.freeze({
+  id: "rule-org", scopeType: "organization", fromUnit: "kg", toUnit: "each",
+  factorValue: "22", status: "approved", version: 3, effectiveTo: null,
+});
+
+test("the rules already written for this crossing are read and shown", async () => {
+  const adapter = recordingAdapter({ existing: [ORG_RULE] });
+  const ui = open(PRODUCT_DEPENDENT, adapter);
+  await ui.dialog.loadExisting();
+
+  assert.deepEqual(adapter.calls.map((c) => c.slice(0, 3)),
+                   [["list", "each", "kg"], ["list", "kg", "each"]],
+                   "both spellings, because a rule may be stored the other way round");
+  const shown = ui.existing.textContent;
+  assert.match(shown, /۱ کیلوگرم = ۲۲ عدد/);
+  assert.match(shown, /کل سازمان/);
+  assert.match(shown, /در حال اعمال/);
+});
+
+test("with nothing written, it says so rather than showing an empty box", async () => {
+  const ui = open(PRODUCT_DEPENDENT, recordingAdapter({ existing: [] }));
+  await ui.dialog.loadExisting();
+  assert.match(ui.existing.textContent, /هیچ قانونی برای این عبور ثبت نشده/);
+});
+
+test("a host without the settings endpoint says that, not «nothing exists»", async () => {
+  /* The two are different facts and lead to opposite actions. */
+  const ui = open(PRODUCT_DEPENDENT, { async createConversionRule() {},
+                                       async approveConversionRule() {} });
+  await ui.dialog.loadExisting();
+  assert.match(ui.existing.textContent, /در دسترس نیست/);
+});
+
+test("the scope that already has a rule turns save into a replacement", async () => {
+  const ui = open(PRODUCT_DEPENDENT, recordingAdapter({ existing: [ORG_RULE] }));
+  await ui.dialog.loadExisting();
+
+  assert.equal(ui.replacing.hidden, true, "no scope is occupied until one is chosen");
+  assert.match(ui.save.textContent, /ثبت و اعمال/);
+
+  ui.scope.value = "organization";
+  ui.scope.dispatch("change");
+  assert.equal(ui.replacing.hidden, false);
+  assert.match(ui.replacing.textContent, /۱ کیلوگرم = ۲۲ عدد/);
+  assert.match(ui.replacing.textContent, /نسخهٔ ۳/);
+  assert.match(ui.save.textContent, /جایگزینی قانون/,
+               "the button must say what pressing it will do to the rule in force");
+
+  ui.scope.value = "project";
+  ui.scope.dispatch("change");
+  assert.equal(ui.replacing.hidden, true, "another scope is another slot, and it is empty");
+  assert.match(ui.save.textContent, /ثبت و اعمال/);
+});
+
+test("replacing writes, closes the old one, and only then puts the new one in force", async () => {
+  /* THE ORDER IS THE SAFETY. The database permits one approved, open rule per scope and
+     unit pair, so approving before closing is refused outright; and closing before the
+     replacement exists would leave the crossing unanswered if the write then failed. */
+  const adapter = recordingAdapter({ existing: [ORG_RULE] });
+  const ui = open(PRODUCT_DEPENDENT, adapter);
+  await ui.dialog.loadExisting();
+  fill(ui, { scope: "organization", direction: "reverse", factor: "24" });
+  ui.acknowledge.checked = true;
+  ui.save.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const order = adapter.calls.map((c) => c[0]).filter((name) => name !== "list");
+  assert.deepEqual(order, ["create", "supersede", "approve"]);
+  const payload = adapter.calls.find((c) => c[0] === "create")[1];
+  assert.equal(payload.supersedesRuleId, "rule-org",
+               "the new rule has to name the one it replaces, or the chain is unreadable");
+  assert.equal(payload.fromUnit, "kg");
+  assert.equal(payload.toUnit, "each");
+  assert.equal(adapter.calls.find((c) => c[0] === "supersede")[1], "rule-org");
+});
+
+test("writing into an empty scope closes nothing", async () => {
+  const adapter = recordingAdapter({ existing: [ORG_RULE] });
+  const ui = open(PRODUCT_DEPENDENT, adapter);
+  await ui.dialog.loadExisting();
+  fill(ui, { scope: "project", direction: "forward", factor: "22" });
+  ui.acknowledge.checked = true;
+  ui.save.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const order = adapter.calls.map((c) => c[0]).filter((name) => name !== "list");
+  assert.deepEqual(order, ["create", "approve"]);
+  assert.equal(adapter.calls.find((c) => c[0] === "create")[1].supersedesRuleId, undefined);
+});
+
+/* WHAT THE RULE DOES TO THE PRICE, BEFORE IT IS SAVED.
+ *
+ * The units can be right and the factor can be right and the rule still be backwards. The
+ * resulting price is the only place that shows, and it is the number the person came here
+ * to produce.
+ */
+
+const PRICED = Object.freeze({
+  ...CONTEXT, fromUnit: "kg", toUnit: "branch",
+  sourcePriceIRR: "932000", quantity: "10",
+});
+
+test("the converted price is shown, worked the way the server works it", () => {
+  const ui = open(PRICED, recordingAdapter());
+  choose(ui, "reverse");                       // «۱ شاخه چند کیلوگرم است؟»
+  ui.factor.value = "22";
+  ui.factor.dispatch("input");
+  const shown = ui.effect.textContent;
+  assert.match(shown, /۲٬۰۵۰٬۴۰۰/, `932000 × 22 rials is 2,050,400 toman; got: ${shown}`);
+  assert.match(shown, /۲۰٬۵۰۴٬۰۰۰/, "and the row's cost at a quantity of ten");
+});
+
+test("the other direction gives the other number, in the same place", () => {
+  const ui = open(PRICED, recordingAdapter());
+  choose(ui, "forward");                       // «۱ کیلوگرم چند شاخه است؟»
+  ui.factor.value = "22";
+  ui.factor.dispatch("input");
+  assert.match(ui.effect.textContent, /۴٬۲۳۶/,
+               "932000 ÷ 22 rials is about 4,236 toman — the same inputs, a price 484 "
+               + "times apart, which is exactly why this is on screen");
+});
+
+test("with no sheet price it says why there is no number, and shows none", () => {
+  const ui = open({ ...PRICED, sourcePriceIRR: null }, recordingAdapter());
+  choose(ui, "reverse");
+  ui.factor.value = "22";
+  ui.factor.dispatch("input");
+  assert.equal(ui.effect.textContent, "");
+  const notes = [...ui.root.querySelectorAll("p")].map((p) => p.textContent).join(" | ");
+  assert.match(notes, /قیمت روزی برای این محصول ثبت نشده/);
+});
+
+test("a quantity nobody knows produces no row cost, and no zero", () => {
+  const ui = open({ ...PRICED, quantity: null }, recordingAdapter());
+  choose(ui, "reverse");
+  ui.factor.value = "22";
+  ui.factor.dispatch("input");
+  assert.match(ui.effect.textContent, /۲٬۰۵۰٬۴۰۰/);
+  assert.doesNotMatch(ui.effect.textContent, /هزینهٔ این ردیف/);
+});
+
+test("a scope holding two live rules closes both, and says so before it does", async () => {
+  /* The state the live project is actually in. Closing one and approving beside the other
+     is refused by the partial unique index — at the end of a form somebody already filled
+     in, with a constraint name for a message. */
+  const both = [
+    { id: "a1", scopeType: "organization", fromUnit: "kg", toUnit: "each",
+      factorValue: "0.045", status: "approved", version: 1, effectiveTo: null },
+    { id: "a2", scopeType: "organization", fromUnit: "each", toUnit: "kg",
+      factorValue: "22", status: "approved", version: 2, effectiveTo: null },
+  ];
+  const adapter = recordingAdapter({ existing: both });
+  const ui = open(PRODUCT_DEPENDENT, adapter);
+  await ui.dialog.loadExisting();
+  ui.scope.value = "organization";
+  ui.scope.dispatch("change");
+
+  assert.match(ui.replacing.textContent, /۲ قانون فعال دارد/);
+  assert.match(ui.replacing.textContent, /۱ کیلوگرم = ۰٫۰۴۵ عدد/);
+  assert.match(ui.replacing.textContent, /۱ عدد = ۲۲ کیلوگرم/);
+
+  fill(ui, { scope: "organization", direction: "reverse", factor: "24" });
+  ui.acknowledge.checked = true;
+  ui.save.click();
+  for (let tick = 0; tick < 6; tick += 1) await new Promise((r) => setTimeout(r, 0));
+
+  const order = adapter.calls.map((c) => c[0]).filter((name) => name !== "list");
+  assert.deepEqual(order, ["create", "supersede", "supersede", "approve"],
+                   "both have to be closed before the replacement is put in force");
+  /* Sorted: which of two equally-live rules is closed first is not a fact worth pinning,
+     and the list arrives in whatever order the two direction queries answered. */
+  assert.deepEqual(adapter.calls.filter((c) => c[0] === "supersede").map((c) => c[1]).sort(),
+                   ["a1", "a2"]);
 });

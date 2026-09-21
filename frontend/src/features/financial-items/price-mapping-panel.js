@@ -382,6 +382,13 @@ export function createPriceMappingPanel({ line, resource, adapter, materialPrice
         context: {
           fromUnit: component.sourceUnit,
           toUnit: component.selectedUnit,
+          /* The two numbers that let the dialog show what the rule DOES, before it is
+             saved. Without them it can only restate the sentence somebody just typed,
+             which is no check at all: the units and the factor can both be right and the
+             rule still be backwards, and the resulting price is the only place that
+             shows. Both are already on the component this panel is displaying. */
+          sourcePriceIRR: component.sourcePriceIRR ?? chosen?.rawPrice ?? null,
+          quantity: component.componentQuantity ?? null,
           providerItemId: component.providerItemId ?? chosen?.providerItemId ?? null,
           providerId: chosen?.providerId ?? null,
           category: component.category ?? chosen?.category ?? null,

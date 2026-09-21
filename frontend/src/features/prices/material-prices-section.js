@@ -311,24 +311,49 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
 
   if (categories.length && onSelectCategory) {
     const filter = element("div", "material-prices__filters");
-    const all = element("button", "app-chip" + (selectedCategory ? "" : " app-chip--active"), "همه");
-    all.type = "button";
-    all.addEventListener("click", () => onSelectCategory(null));
-    filter.append(all);
-    categories.forEach((category) => {
+    const fixedCategories = [
+      { category: "brick", label: "آجر" },
+      { category: "rebar", label: "میلگرد" },
+      { category: "ibeam", label: "تیرآهن" },
+      { category: "channel", label: "ناودانی" },
+      { category: "pipe", label: "لوله" },
+    ];
+    const byCode = new Map(categories.map((category) => [category.category, category]));
+    const makeChip = (category, container = filter, dropdown = null) => {
       const active = category.category === selectedCategory;
-      /* The Persian name the Backend publishes, not the raw importer key. These tabs read
-         «angle (12)» and «pipe_fitting (0)» to a Finance user who has no reason to know
-         what the importer calls its worksheets. The code stays on the element, where a
-         test and anyone inspecting the page can still find it. */
+      const count = category.activeCount == null ? "" : ` (${category.activeCount})`;
       const chip = element("button", "app-chip" + (active ? " app-chip--active" : ""),
-        `${category.label ?? category.category} (${category.activeCount})`);
+        `${category.label ?? category.category}${count}`);
       chip.type = "button";
       chip.dataset.category = category.category;
       chip.setAttribute("aria-pressed", String(active));
-      chip.addEventListener("click", () => onSelectCategory(category.category));
-      filter.append(chip);
-    });
+      chip.addEventListener("click", () => {
+        if (dropdown) dropdown.open = false;
+        onSelectCategory(category.category);
+      });
+      container.append(chip);
+    };
+
+    const all = element("button", "app-chip" + (selectedCategory ? "" : " app-chip--active"), "همه");
+    all.type = "button";
+    all.setAttribute("aria-pressed", String(!selectedCategory));
+    all.addEventListener("click", () => onSelectCategory(null));
+    filter.append(all);
+    fixedCategories.forEach((fixed) => makeChip({ ...byCode.get(fixed.category), ...fixed }));
+
+    const fixedCodes = new Set(fixedCategories.map(({ category }) => category));
+    const overflowCategories = categories.filter(({ category }) => !fixedCodes.has(category));
+    if (overflowCategories.length) {
+      const dropdown = element("details", "material-prices__more");
+      const overflowActive = overflowCategories.some(({ category }) => category === selectedCategory);
+      const summary = element("summary", "app-chip material-prices__more-trigger"
+        + (overflowActive ? " app-chip--active" : ""), "…");
+      summary.setAttribute("aria-label", "سایر دسته‌بندی‌ها");
+      const menu = element("div", "material-prices__more-menu");
+      overflowCategories.forEach((category) => makeChip(category, menu, dropdown));
+      dropdown.append(summary, menu);
+      filter.append(dropdown);
+    }
     section.append(filter);
   }
 
