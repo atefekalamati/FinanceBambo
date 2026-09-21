@@ -32,16 +32,18 @@ from app.finance.domain.conversion_rules import (CONVERSION_RULE_FACTOR,
                                                  DIRECTION_DIRECT, DIRECTION_REVERSE,
                                                  PROVIDER_ITEM_FACTOR, choose_conversion,
                                                  resolve_rule)
+from app.finance.repositories.unit_conversion_rules import _RULE_COLUMNS
 
 ITEM = UUID(int=11)
 PROVIDER = UUID(int=12)
 
-#: The exact column list `PsycopgUnitConversionRuleRepository` selects, and nothing else.
-REPOSITORY_COLUMNS = ("id", "organization_id", "project_id", "provider_id",
-                      "provider_item_id", "category", "scope_type", "from_unit",
-                      "to_unit", "conversion_method", "factor_value",
-                      "formula_definition", "direction_definition", "status",
-                      "effective_from", "effective_to")
+#: Parsed from the repository's OWN select list rather than copied from it. A hand-kept
+#: copy is the thing that failed here once already: the fixture said what somebody
+#: believed the row contained, the row said something else, and the tests agreed with the
+#: fixture. Bound this way, a column added, dropped or renamed in the repository shows up
+#: in these tests on the next run instead of the next incident.
+REPOSITORY_COLUMNS = tuple(name.strip() for name in _RULE_COLUMNS.split(",")
+                           if name.strip())
 
 
 def rule(**overrides):
@@ -64,6 +66,16 @@ class RepositoryShapeTests(unittest.TestCase):
         self.assertEqual(set(REPOSITORY_COLUMNS), set(row))
         self.assertIn("factor_value", row)
         self.assertNotIn("factor", row)
+
+    def test_the_repository_selects_no_column_called_factor(self):
+        """The premise every other test here rests on, asserted against the real query.
+
+        If somebody ever adds `factor_value AS factor` to the select list, this is where
+        that decision surfaces -- rather than in a row that prices differently from the
+        estimate beneath it.
+        """
+        self.assertIn("factor_value", REPOSITORY_COLUMNS)
+        self.assertNotIn("factor", REPOSITORY_COLUMNS)
 
     def test_a_row_with_only_factor_value_resolves_and_prices(self):
         rows = [rule(from_unit="kg", to_unit="branch", factor_value=Decimal("1.2"))]
