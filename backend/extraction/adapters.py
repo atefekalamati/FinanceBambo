@@ -348,14 +348,111 @@ def _layout_fields(raw_lines, already_emitted):
                                                             table.confidence)],
             "layout-low-confidence"))
         return emitted
-    if "items" in already_emitted:
-        # The parser already read this table. The geometry agreed enough to rebuild it,
-        # and the parser's reading is the tested one.
-        return emitted
     emitted.append({"key": "tableRows", "extractedValue": table.rows,
                     "confidence": min(1.0, max(0.0, table.confidence)),
                     "editedByUser": False})
+    if "items" in already_emitted:
+        # The parser already read this table from the text. Its reading is the tested one
+        # and it stands; the reconstruction still travels, because a reviewer comparing
+        # the two is exactly who `tableRows` is for.
+        return emitted
+
+    items = _items_from_table(table)
+    if items:
+        emitted.append({"key": "items", "extractedValue": items,
+                        "confidence": min(1.0, max(0.0, table.confidence)),
+                        "editedByUser": False})
     return emitted
+
+
+def _items_from_table(table):
+    """`tableRows` in the shape the parser emits, or `[]` when nothing survives.
+
+    WHY THE PARSER'S OWN RULES AND NOT NEW ONES
+
+    Every money cell goes through `strict_amount`, which is what the text path uses. It
+    refuses `135,00,0` rather than stripping the separators out of it, and that refusal is
+    the reason a mangled figure does not become a confident wrong number. A second reader
+    with its own idea of what a number looks like would be a second answer to a question
+    this codebase has already settled.
+
+    WHAT AN UNREADABLE CELL BECOMES
+
+    None, and a warning on the item saying which cell and why -- never a zero, and never
+    the raw text passed off as a value. `null` in a review form is a question; `0` is an
+    assertion that something cost nothing.
+
+    An item keeps its description even when every number on the row failed. A reviewer who
+    can see «سیمان تیپ ۲» beside three empty fields is being told something useful; a row
+    dropped entirely tells them nothing.
+    """
+    from decimal import Decimal
+
+    from extraction.invoice_parser import strict_amount
+    from extraction.parsing import find_unit, normalize, to_decimal
+
+    items = []
+    for row in table.rows:
+        name = (row.get("name") or "").strip()
+        if not name:
+            continue
+        warnings = []
+
+        def money(role):
+            raw = (row.get(role) or "").strip()
+            if not raw:
+                return None
+            value, problem = strict_amount(raw)
+            if value is None:
+                warnings.append({"code": "INVOICE_CELL_UNREADABLE",
+                                 "message": "the %s cell does not form a number (%s)"
+                                            % (role, problem),
+                                 "evidence": raw})
+            return _decimal_text(value)
+
+        # Quantity is `to_decimal`, not `strict_amount`: a quantity cell reads «12 عدد» and
+        # the unit beside the number is ordinary there, while in a money cell it would mean
+        # the figure was misread. Different cells, different strictness, both deliberate.
+        quantity_raw = (row.get("quantity") or "").strip()
+        quantity = to_decimal(quantity_raw) if quantity_raw else None
+        if quantity_raw and quantity is None:
+            warnings.append({"code": "INVOICE_CELL_UNREADABLE",
+                             "message": "the quantity cell does not form a number",
+                             "evidence": quantity_raw})
+
+        # The matched WORD, exactly as `_item_from_block` stores it -- «پاکت», not `bag`.
+        # These items sit beside the parser's own in one field, and a reviewer reading the
+        # list should not be able to tell which reader produced which row. The registry
+        # code is settled later, by the layer that converts.
+        unit_cell = (row.get("unit") or "").strip()
+        _code, unit_word = find_unit(unit_cell) if unit_cell else (None, None)
+        unit = unit_word or (unit_cell or None)
+        if unit_cell and unit_word is None:
+            warnings.append({"code": "INVOICE_UNIT_UNKNOWN",
+                             "message": "the unit is not one this system knows; it is "
+                                        "reported as the sheet wrote it",
+                             "evidence": unit_cell})
+
+        unit_price = money("unit_price")
+        amount = money("amount")
+        # The same cross-check `_item_from_block` makes. Both figures are reported as read
+        # -- neither is corrected to agree with the other, because which one is wrong is
+        # not something this can know.
+        if quantity is not None and unit_price is not None and amount is not None:
+            if quantity * Decimal(unit_price) != Decimal(amount):
+                warnings.append({
+                    "code": "INVOICE_ITEM_ARITHMETIC_MISMATCH",
+                    "message": "quantity x unitPrice does not equal the stated amount; "
+                               "both values are reported as read.",
+                    "evidence": "%s x %s != %s" % (quantity, unit_price, amount)})
+
+        items.append({"name": normalize(name),
+                      "quantity": _decimal_text(quantity),
+                      "unit": unit,
+                      "unitPrice": unit_price,
+                      "amount": amount,
+                      "warnings": warnings})
+    return items
 
 
 def _structured_fields(text, ocr_confidence):

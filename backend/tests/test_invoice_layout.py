@@ -278,5 +278,168 @@ class DiagnosisTests(unittest.TestCase):
                                            "box": None}]))
 
 
+class TableBecomesLineItemsTests(unittest.TestCase):
+    """The last step of the pipeline: a reconstructed table reaches the draft as items.
+
+    `tableRows` was being produced and consumed by nobody. These pin the conversion, and
+    in particular that it goes through the PARSER's number rules rather than a second set
+    of its own -- a mangled figure must be refused here exactly as it is refused on the
+    text path.
+    """
+
+    def items(self, lines):
+        from extraction import adapters
+        table = layout.reconstruct(lines)
+        self.assertIsNotNone(table)
+        return adapters._items_from_table(table)
+
+    def test_a_clean_table_becomes_items_in_the_parser_s_own_shape(self):
+        items = self.items(HEADER + BODY)
+        self.assertEqual(3, len(items))
+        self.assertEqual({"name": "سیمان تیپ 2", "quantity": "100", "unit": "پاکت",
+                          "unitPrice": "1200000", "amount": "120000000",
+                          "warnings": []},
+                         items[0])
+
+    def test_the_unit_is_the_word_the_sheet_wrote_not_a_registry_code(self):
+        """These sit in one field beside the parser's own items. A reviewer should not be
+        able to tell which reader produced which row."""
+        self.assertEqual("کیلوگرم", self.items(HEADER + BODY)[1]["unit"])
+
+    def test_a_mangled_amount_becomes_null_and_says_why(self):
+        """`۱۲۰٬۰۰,۰` is not 120,000. Stripping the separators would produce a confident
+        wrong number, which is the failure `strict_amount` exists to prevent."""
+        items = self.items(HEADER + row_at(160, "سیمان", "پاکت", "۱۰۰",
+                                           "۱٬۲۰۰٬۰۰۰", "۱۲۰٬۰۰,۰"))
+        self.assertIsNone(items[0]["amount"], "never a repaired number")
+        self.assertEqual("INVOICE_CELL_UNREADABLE", items[0]["warnings"][0]["code"])
+
+    def test_a_row_with_no_number_anywhere_never_reaches_the_conversion(self):
+        """The structural gate runs first and is the stricter of the two.
+
+        A row naming something with no digits in either money cell is not an item -- it is
+        a wrapped description or a stray mark -- so it is dropped in `layout` before this
+        code sees it. The neighbouring real row is unaffected, which is the point: one bad
+        row does not cost the table.
+        """
+        items = self.items(HEADER + row_at(160, "سیمان تیپ ۲", "پاکت", "x", "y", "z")
+                           + row_at(220, "ماسه", "مترمکعب", "۲۰", "۵۵۰٬۰۰۰", "۱۱٬۰۰۰٬۰۰۰"))
+        self.assertEqual(["ماسه"], [i["name"] for i in items])
+
+    def test_an_item_keeps_its_description_when_a_figure_is_unreadable(self):
+        """A reviewer seeing «سیمان» beside one empty field is being told something
+        useful. Dropping the row would tell them nothing."""
+        items = self.items(HEADER + row_at(160, "سیمان تیپ ۲", "پاکت", "۱۰۰",
+                                           "۱٬۲۰۰٬۰۰۰", "۱۲۰٬۰۰,۰"))
+        self.assertEqual("سیمان تیپ 2", items[0]["name"])
+        self.assertEqual("1200000", items[0]["unitPrice"], "the readable figure survives")
+        self.assertIsNone(items[0]["amount"])
+
+    def test_an_arithmetic_mismatch_is_reported_and_neither_figure_is_corrected(self):
+        """Which of the two is wrong is not something this can know."""
+        items = self.items(HEADER + row_at(160, "سیمان", "پاکت", "۱۰۰",
+                                           "۱٬۲۰۰٬۰۰۰", "۹۹٬۰۰۰"))
+        self.assertEqual("1200000", items[0]["unitPrice"])
+        self.assertEqual("99000", items[0]["amount"], "reported as read")
+        self.assertEqual("INVOICE_ITEM_ARITHMETIC_MISMATCH",
+                         items[0]["warnings"][0]["code"])
+
+    def test_an_unknown_unit_is_kept_as_written_and_flagged(self):
+        # «طاقه» is a real trade unit and is not in the registry, which is exactly the
+        # case this covers. «حلقه» would NOT do: it is a known unit and would match.
+        items = self.items(HEADER + row_at(160, "داربست", "طاقه", "۱۰",
+                                           "۵۰۰٬۰۰۰", "۵٬۰۰۰٬۰۰۰"))
+        self.assertEqual("طاقه", items[0]["unit"], "kept as the sheet wrote it")
+        self.assertIn("INVOICE_UNIT_UNKNOWN",
+                      [w["code"] for w in items[0]["warnings"]])
+
+    def test_a_row_with_no_description_produces_no_item(self):
+        from extraction import adapters
+        self.assertEqual([], adapters._items_from_table(
+            type("T", (), {"rows": [{"amount": "۱۲۰٬۰۰۰"}]})()))
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class AvalAIProviderSelectionTests(unittest.TestCase):
+    """`FINANCE_AI_PROVIDER=avalai` reaches AvalAI, and no key is ever logged.
+
+    `build_extraction_provider` used to accept the literal string "openai" and nothing
+    else, so an operator following the AvalAI setup notes got a warning in a log nobody
+    reads and a pipeline that quietly did without its second reader. AvalAI is a gateway
+    in front of the same chat-completions API, so this is a table entry rather than a
+    second client.
+    """
+
+    KEYS = ("FINANCE_AI_EXTRACTION_ENABLED", "FINANCE_AI_PROVIDER", "FINANCE_AI_API_KEY",
+            "FINANCE_AI_MODEL", "FINANCE_AI_BASE_URL", "AVALAI_API_KEY", "AVALAI_MODEL",
+            "AVALAI_BASE_URL")
+
+    def setUp(self):
+        import os
+        self.saved = {name: os.environ.get(name) for name in self.KEYS}
+        for name in self.KEYS:
+            os.environ.pop(name, None)
+
+    def tearDown(self):
+        import os
+        for name, value in self.saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    def enable(self, provider, **extra):
+        import os
+        os.environ["FINANCE_AI_EXTRACTION_ENABLED"] = "true"
+        os.environ["FINANCE_AI_PROVIDER"] = provider
+        os.environ.update(extra)
+        from extraction.providers import llm_invoice
+        return llm_invoice
+
+    def test_avalai_is_reached_with_its_own_key_and_gateway(self):
+        llm = self.enable("avalai", AVALAI_API_KEY="k" * 20)
+        provider = llm.build_extraction_provider()
+        self.assertIsNotNone(provider, "avalai used to be refused as unsupported")
+        self.assertEqual("https://api.avalai.ir/v1", provider._base_url)
+        self.assertEqual("gpt-4o-mini", provider._model)
+        self.assertTrue(llm.provider_configured())
+
+    def test_avalai_accepts_the_shared_finance_key_too(self):
+        """A host that configures every provider through the one Finance variable keeps
+        working; AVALAI_API_KEY is preferred because it is the name the notes use."""
+        llm = self.enable("avalai", FINANCE_AI_API_KEY="k" * 20)
+        self.assertIsNotNone(llm.build_extraction_provider())
+
+    def test_openai_is_unchanged(self):
+        llm = self.enable("openai", FINANCE_AI_API_KEY="k" * 20)
+        self.assertEqual("https://api.openai.com/v1",
+                         llm.build_extraction_provider()._base_url)
+
+    def test_an_unknown_provider_is_refused_rather_than_guessed(self):
+        llm = self.enable("gemini", FINANCE_AI_API_KEY="k" * 20)
+        self.assertIsNone(llm.build_extraction_provider())
+        self.assertFalse(llm.provider_configured())
+
+    def test_no_key_means_off_and_not_a_crash(self):
+        llm = self.enable("avalai")
+        self.assertIsNone(llm.build_extraction_provider())
+        self.assertFalse(llm.provider_configured())
+
+    def test_disabled_beats_every_other_setting(self):
+        import os
+        llm = self.enable("avalai", AVALAI_API_KEY="k" * 20)
+        os.environ["FINANCE_AI_EXTRACTION_ENABLED"] = "false"
+        self.assertIsNone(llm.build_extraction_provider())
+
+    def test_no_credential_reaches_the_log(self):
+        """The warning names the VARIABLES to set, never a value."""
+        import logging
+        llm = self.enable("avalai")
+        with self.assertLogs("extraction.providers.llm_invoice", level="WARNING") as logs:
+            llm.build_extraction_provider()
+        joined = " ".join(logs.output)
+        self.assertIn("AVALAI_API_KEY", joined, "an operator needs the variable name")
+        self.assertNotIn("k" * 20, joined)
