@@ -354,14 +354,11 @@ class NoCoreForeignKeyTests(unittest.TestCase):
             spec.loader.exec_module(module)
             yield path.name, module.UPGRADE_SQL + "\n" + module.DOWNGRADE_SQL
 
-    #: The ONE sanctioned Core foreign key, decided by the project owner for the
-    #: task-resource link table: 0009 references msp_tasks (id) ON DELETE CASCADE so
-    #: a task Core deletes takes its mappings with it. The 0009 docstring records the
-    #: operational precondition this reverses from 0007's day: the production
-    #: migration role must first receive GRANT REFERENCES ON msp_tasks. Nothing else
-    #: is sanctioned; a second entry in this set is a review decision, not a
-    #: convenience.
-    SANCTIONED_CORE_KEYS = {("0009_finance_task_resource_map.py", "msp_tasks")}
+    # Finance owns references to Core identities logically, but must never
+    # create database foreign keys into Core-owned tables. 0009 validates
+    # task existence and project scope through its Finance-owned constraint
+    # trigger without requiring REFERENCES privileges on msp_tasks.
+    SANCTIONED_CORE_KEYS = set()
 
     def test_no_revision_references_a_core_table(self):
         """A Finance revision may not point a foreign key at a Core table -- except
@@ -381,23 +378,13 @@ class NoCoreForeignKeyTests(unittest.TestCase):
                         sql, r"ALTER\s+TABLE\s+(?:ONLY\s+)?%s\b" % table,
                         "a Finance revision must not alter a Core-owned table")
 
-    def test_exactly_the_sanctioned_key_reaches_into_core(self):
-        """One Core foreign key across the whole chain: 0009 -> msp_tasks (id).
-
-        Until 0009 the count was zero and had to be: the production migration role
-        had no REFERENCES privilege on Core tables. The project owner has since
-        decided the task-resource link MUST be database-enforced, which turns the
-        missing privilege into a deployment precondition (GRANT REFERENCES ON
-        msp_tasks, recorded in 0009) instead of a design rule. This test pins the
-        exception to exactly that one pair so the next Core key is a decision
-        someone makes on purpose. The other logical relationships stay logical, and
-        docs/sql/msp_resource_assignment_data_validation.sql counts their orphans.
-        """
+    def test_no_finance_foreign_key_reaches_into_core(self):
+        """Finance migrations must contain zero foreign keys into Core tables."""
         found = {(name, table)
                  for name, sql in self.revision_sql()
                  for table in self.CORE_TABLES
                  if re.search(r"REFERENCES\s+%s\b" % table, sql)}
-        self.assertEqual(self.SANCTIONED_CORE_KEYS, found)
+        self.assertEqual(set(), found)
 
     def test_no_revision_alters_an_existing_core_table(self):
         """The ownership line that did not move: Core tables are never modified here."""

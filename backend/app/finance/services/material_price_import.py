@@ -248,7 +248,7 @@ class MaterialPriceImportService:
         inserted = already = rejected = 0
         try:
             for worksheet in workbook.worksheets:
-                url = export_url(document_id, WORKSHEET_ALLOWLIST.get(worksheet.title))
+                url = export_url(document_id, worksheet.gid or WORKSHEET_ALLOWLIST.get(worksheet.title))
                 for decided in worksheet.rows:
                     if decided.source is None or decided.product_id is None:
                         # Without a source there is no provider to hang it on and without an
