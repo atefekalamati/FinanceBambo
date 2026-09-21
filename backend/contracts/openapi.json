@@ -2062,6 +2062,17 @@
             ],
             "title": "Dailyitemcostirr"
           },
+          "factorSource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factorsource"
+          },
           "productName": {
             "anyOf": [
               {
