@@ -141,9 +141,11 @@ def to_kilograms(value, unit):
 #: Weight is the exception and is the reason this mapping still exists: brick states weights
 #: in g and the steel worksheets state them in kg, so the label here is the difference
 #: between 232 brick rows meaning what they say and meaning a thousand times more.
-#: INTERNAL to one parse, since 0034. Neither key is a column any more: the sheet's unit is
-#: read, used to convert, and then dropped, because `weight_kg` records the answer and a
-#: stored unit alongside it could only ever disagree with it.
+#: `weight_unit` is INTERNAL to one parse and is not a column. The sheet's unit is read,
+#: used to convert, and then dropped, because `weight_kg` records the answer and a stored
+#: unit alongside it could only ever come to disagree with it. `weight_value` IS a column
+#: again since 0035 -- it is what the sheet said, and it is kept whether or not the unit
+#: beside it could be worked out.
 UNIT_COLUMN_OF = {
     "weight_value": "weight_unit",
 }
@@ -167,7 +169,7 @@ SPEC_COLUMNS = (
     "product_code", "manufacturer", "grade", "product_type", "dimensions_text",
     "length_value", "length_m", "width_value",
     "height_value", "thickness_value",
-    "diameter_value", "weight_kg", "weight_basis",
+    "diameter_value", "weight_value", "weight_kg", "weight_basis",
     "branch_count", "pieces_per_package", "coverage_m2", "volume_m3")
 
 #: Where a stored value came from, so a reader is never left guessing which layer answered.
@@ -311,23 +313,18 @@ def extract_specs(category, metadata):
             values[unit_column] = rule["unit_from_name"]
         claimed.add(key)
 
-    # ------------------------------------------------- one weight, in one unit, or none
-    # The pair the rules above produce is a reading of the sheet; `weight_kg` is what the
-    # database keeps. Converting HERE rather than in each declaration means every worksheet
-    # goes through the same arithmetic, and a row whose unit could not be read simply has
-    # no weight rather than a number in an unstated unit.
-    weight = values.pop("weight_value", None)
+    # -------------------------------------- the sheet's number, and kilograms beside it
+    # `weight_value` is source data and survives even when its unit cannot be proven;
+    # `weight_kg` is an optional derived value. Normalisation is additive.
+    weight = values.get("weight_value")
     unit = values.pop("weight_unit", None)
+    if weight is not None:
+        values.setdefault("weight_basis", "unknown")
     kilograms = to_kilograms(weight, unit)
     if kilograms is not None:
         values["weight_kg"] = kilograms
-        # No sheet read so far states what a weight is PER. Saying 'unknown' is what stops
-        # the number being used in a conversion that needs a basis.
-        values.setdefault("weight_basis", "unknown")
     elif weight is not None:
-        # A number was read and its unit was not. Recorded as a leftover rather than
-        # silently forgotten, so `/invalid-rows` and the spec-conflict report can show that
-        # the sheet stated a weight this system declined to interpret.
+        # Keep the source value but record why a normalised mass is unavailable.
         values.setdefault("spec_conflicts", []).append(
             {"field": "weight", "raw": str(weight), "unit": unit,
              "reason": "weight has no unit, so it cannot be stated in kilograms"})

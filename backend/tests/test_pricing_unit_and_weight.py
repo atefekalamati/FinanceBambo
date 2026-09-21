@@ -20,7 +20,7 @@ from app.finance.domain.material_price_rows import (SOURCE_UNIT_HEADERS, RowStat
                                                     decide_row)
 from app.finance.domain.material_specs import (KILOGRAMS_PER, SPEC_COLUMNS, extract_specs,
                                                to_kilograms)
-from app.finance.services.material_price_resolution import canonical_unit
+from app.finance.services.material_price_resolution import canonical_unit, resolve
 from app.finance.services.material_price_sheet import check_headers
 
 #: The five columns every worksheet is required to carry, before the unit is added.
@@ -52,9 +52,8 @@ class PricingUnitHeaderTests(unittest.TestCase):
         Channel, Hollow, Pipe and brick; `واحد - وزن` heads it on Rebar alone."""
         self.assertEqual(("واحد", "واحد - وزن"), SOURCE_UNIT_HEADERS)
 
-    def test_a_worksheet_with_no_pricing_unit_column_is_refused_outright(self):
-        problem = check_headers("Pipe-table", CORE)
-        self.assertIn("states no pricing unit column", problem)
+    def test_a_worksheet_with_no_pricing_unit_column_keeps_source_price(self):
+        self.assertIsNone(check_headers("Pipe-table", CORE))
 
     def test_stating_it_twice_is_refused_because_the_winner_would_be_a_coin_toss(self):
         problem = check_headers("any", CORE + SOURCE_UNIT_HEADERS)
@@ -78,24 +77,22 @@ class PricingUnitRowTests(unittest.TestCase):
                 self.assertEqual(RowStatus.ACCEPTED, decided.status, decided.reasons)
                 self.assertEqual("عدد", decided.source_unit)
 
-    def test_a_row_with_no_pricing_unit_is_rejected_and_not_given_one(self):
-        """The rule the business decision asks for, and the one it forbids.
-
-        Rejected -- not filled in from the category, the product name or the worksheet's
-        other rows. A price per nothing cannot enter an estimate, and a price per a guess
-        enters it looking exactly like a price per a fact.
-        """
+    def test_a_row_with_no_pricing_unit_is_retained_but_not_given_one(self):
         decided = decide_row(worksheet="brick", row_number=2, cells=cells(**{"واحد": None}))
-        self.assertEqual(RowStatus.REJECTED, decided.status)
-        self.assertIn("row states no pricing unit", decided.reasons)
+        self.assertEqual(RowStatus.ACCEPTED, decided.status)
         self.assertIsNone(decided.source_unit)
+        outcome = resolve({"normalized_price_irr": decided.price_irr,
+                           "validation_status": "valid", "source_unit": None})
+        self.assertEqual("unresolved_unit", outcome.status)
+        self.assertIsNone(outcome.price)
 
     def test_a_blank_unit_cell_is_the_same_as_no_cell(self):
         for blank in ("", "   "):
             with self.subTest(repr(blank)):
                 decided = decide_row(worksheet="brick", row_number=2,
                                      cells=cells(**{"واحد": blank}))
-                self.assertEqual(RowStatus.REJECTED, decided.status)
+                self.assertEqual(RowStatus.ACCEPTED, decided.status)
+                self.assertIsNone(decided.source_unit)
 
     def test_every_unit_the_live_workbook_states_resolves_to_a_registry_code(self):
         """The whole observed vocabulary, and what each becomes. Four spellings, two codes;
@@ -133,23 +130,26 @@ class WeightInKilogramsTests(unittest.TestCase):
 class WeightExtractionTests(unittest.TestCase):
     def test_a_sheet_that_states_grams_yields_kilograms(self):
         values, _ = extract_specs("brick", {"وزن": "1150 گرم"})
+        self.assertEqual(Decimal("1150"), values["weight_value"])
         self.assertEqual(Decimal("1.150"), values["weight_kg"])
 
     def test_a_column_name_that_states_kilograms_is_evidence_like_any_other(self):
         values, _ = extract_specs("ibeam", {"وزن - کیلوگرم": "190.0"})
+        self.assertEqual(Decimal("190.0"), values["weight_value"])
         self.assertEqual(Decimal("190"), values["weight_kg"])
 
     def test_a_bare_number_yields_no_weight_and_says_why(self):
         values, _ = extract_specs("channel", {"وزن": "24.0"})
+        self.assertEqual(Decimal("24.0"), values["weight_value"])
         self.assertNotIn("weight_kg", values)
         self.assertEqual("weight", values["spec_conflicts"][0]["field"])
         self.assertIn("no unit", values["spec_conflicts"][0]["reason"])
 
     def test_no_unit_column_survives_in_the_published_specification(self):
-        """0033 and 0034 between them removed all six. A stored weight cannot be in the
-        wrong unit, because there is nowhere left to state one."""
+        """The source number and derived kilograms survive; generic unit columns do not."""
+        self.assertIn("weight_value", SPEC_COLUMNS)
         self.assertIn("weight_kg", SPEC_COLUMNS)
-        for gone in ("weight_value", "weight_unit", "length_unit", "width_unit",
+        for gone in ("weight_unit", "length_unit", "width_unit",
                      "height_unit", "thickness_unit", "diameter_unit"):
             self.assertNotIn(gone, SPEC_COLUMNS)
 

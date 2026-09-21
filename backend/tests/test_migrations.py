@@ -351,7 +351,8 @@ class AlembicChainTests(unittest.TestCase):
              "0031_product_dependent_conversion_acknowledgement",
              "0032_manual_material_prices_and_declared_categories",
              "0033_attribute_units_the_sheet_never_stated",
-             "0034_one_weight_in_one_unit"],
+             "0034_one_weight_in_one_unit",
+             "0035_the_sheet_value_survives_a_failed_normalisation"],
             sorted(path.stem for path in VERSIONS.glob("*.py")))
 
     def test_every_revision_runs_both_directions(self):

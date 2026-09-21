@@ -763,6 +763,20 @@ async def material_price_history(projectId:str,providerItemId:UUID,request:Reque
         items=[_declared(MaterialPriceHistoryResponse, x) for x in items],
         page=page,page_size=pageSize,total_items=total,total_pages=(total+pageSize-1)//pageSize)
 
+
+@router.get("/material-prices/{providerItemId}/latest",response_model=MaterialPriceResponse)
+async def material_price_latest(projectId:str,providerItemId:UUID,request:Request):
+    """One provider listing's newest usable observation in the authorized project scope."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    items,_=await request.app.state.material_price_service.current(
+        scope,provider_item_id=providerItemId,page=1,page_size=1)
+    if not items:
+        raise HTTPException(status_code=404,detail="material price listing not found")
+    row=items[0]
+    return _declared(MaterialPriceResponse,
+                     {**{k:v for k,v in row.items() if k!="metadata"},
+                      "specs":specs_of(row.get("category"),row.get("metadata"))})
+
 @router.post("/material-prices/import-runs",response_model=ImportRunStartedResponse,
              status_code=201,responses=FINANCE_ERROR_RESPONSES)
 async def start_material_price_import(projectId:str,request:Request,

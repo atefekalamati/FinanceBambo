@@ -131,17 +131,16 @@ class OutputMappingTests(unittest.TestCase):
         self.assertEqual({"fields"}, set(payload))
         ProviderExtractionResult.model_validate(payload)
 
-    def test_nothing_read_yields_no_field_at_all(self):
-        """An empty draft field is an invitation to type a number into it.
-
-        "Read nothing" and "read an empty string" are one fact, and neither is a value.
-        """
+    def test_nothing_read_preserves_empty_ocr_evidence_and_warning(self):
         for empty in ("", "   ", None):
             with self.subTest(empty=empty):
                 payload = run(ImageExtractionAdapter(
                     FakeOCR({"text": empty, "confidence": 0.9})).extract(JPEG, {}))
-                self.assertEqual({"fields": []}, payload)
-                self.assertEqual([], ProviderExtractionResult.model_validate(payload).fields)
+                fields = {field.key: field for field in
+                          ProviderExtractionResult.model_validate(payload).fields}
+                self.assertEqual("" if empty is None else empty,
+                                 fields["rawText"].extracted_value)
+                self.assertIn("ocrWarnings", fields)
 
     def test_a_confidence_outside_the_range_is_clamped_not_fatal(self):
         """The column is 0..1. A provider reporting 1.4 should not fail the extraction."""

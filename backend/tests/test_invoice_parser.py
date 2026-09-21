@@ -123,6 +123,13 @@ class LabelledFieldTests(unittest.TestCase):
 
 
 class TableTests(unittest.TestCase):
+    def test_alternate_product_price_and_amount_headers_create_a_candidate_item(self):
+        text = "مبلغ\nقیمت\nواحد\nتعداد\nمحصول\n120000\n1200\nعدد\n100\nآجر"
+        parsed = parse_invoice(text)
+        self.assertEqual(1, len(parsed.items))
+        self.assertEqual("آجر", parsed.items[0].name)
+        self.assertEqual(Decimal("120000"), parsed.items[0].amount)
+
     def test_a_flattened_persian_table_reconstructs_both_items(self):
         parsed = parse_invoice(REAL_OCR)
         self.assertEqual(2, len(parsed.items))
@@ -280,8 +287,10 @@ class ContractIntegrationTests(unittest.TestCase):
         self.assertEqual([RAW_TEXT_KEY, "validationStatus", "parserWarnings"],
                          self.keys("some unstructured note"))
 
-    def test_empty_recognition_still_yields_no_fields_at_all(self):
-        self.assertEqual({"fields": []}, self.result(""))
+    def test_empty_recognition_preserves_raw_text_and_warns(self):
+        fields = {field["key"]: field for field in self.result("")["fields"]}
+        self.assertEqual("", fields[RAW_TEXT_KEY]["extractedValue"])
+        self.assertIn("ocrWarnings", fields)
 
     def test_nothing_here_confirms_or_creates_anything(self):
         # The contract carries candidates only: every field arrives unedited, and there is

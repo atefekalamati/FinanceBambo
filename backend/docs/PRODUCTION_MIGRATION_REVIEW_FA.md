@@ -44,7 +44,8 @@
 31. `0031_product_dependent_conversion_acknowledgement`
 32. `0032_manual_material_prices_and_declared_categories`
 33. `0033_attribute_units_the_sheet_never_stated`
-34. `0034_one_weight_in_one_unit` (head)
+34. `0034_one_weight_in_one_unit`
+35. `0035_the_sheet_value_survives_a_failed_normalisation` (head)
 
 **۰۰۲۷ فقط شکل می‌سازد و هیچ داده‌ای نمی‌نویسد.** ستون‌های تایپ‌شدهٔ مشخصات روی
 `provider_items`، سه ستون Snapshot و یک تاریخ اجباری روی `price_observations`.

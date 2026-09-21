@@ -304,12 +304,8 @@ def decide_row(*, worksheet: str, row_number: int, cells: dict,
             source_unit = _text(cells.get(heading))
             if source_unit:
                 break
-    if not source_unit:
-        # Rejected, never filled in. A unit inferred from the category would price angle
-        # iron per kilogram because angle iron usually is -- and the one listing sold by
-        # the branch would then be wrong by its own weight, silently, because the number
-        # would look exactly like every other number in the column.
-        reasons.append("row states no pricing unit")
+    # An omitted unit is retained as unknown source evidence. Unit-sensitive project
+    # calculations remain unresolved until the commercial pricing basis is known.
 
     attributes = {}
     for column in attribute_columns:

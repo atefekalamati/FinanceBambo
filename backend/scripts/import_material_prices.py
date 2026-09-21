@@ -34,7 +34,7 @@ from app.finance.repositories.material_prices import PsycopgMaterialPriceReposit
 from app.finance.services.material_price_import import (MaterialPriceImportError,
                                                         MaterialPriceImportService)
 from app.finance.services.material_price_sheet import read_workbook, workbook_from_xlsx
-from app.finance.services.google_sheet import fetch_sheet_as_xlsx
+from app.finance.services.google_sheet import fetch_workbook_as_xlsx
 
 #: Never, on any host, for any reason. The production database is named here so that
 #: pointing this script at it is not a typo away.
@@ -75,7 +75,7 @@ def refuse_protected(dsn):
 
 
 async def dry_run(link):
-    content = await fetch_sheet_as_xlsx(link)
+    content = await fetch_workbook_as_xlsx(link)
     workbook = read_workbook(await asyncio.to_thread(workbook_from_xlsx, content))
     print("  worksheets read    : %d" % sum(1 for w in workbook.worksheets if w.read))
     print("  refused            : %s" % ([w.reason for w in workbook.refused] or "none"))

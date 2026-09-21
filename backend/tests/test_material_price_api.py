@@ -82,8 +82,11 @@ class FakeRepository:
     async def mapped_resource_units(self, _scope):
         return self._finance_units
 
-    async def latest_observations(self, _scope, *, category=None, only_active=True):
+    async def latest_observations(self, _scope, *, category=None, only_active=True,
+                                  provider_item_id=None):
         rows = self.rows
+        if provider_item_id is not None:
+            rows = [r for r in rows if r["provider_item_id"] == provider_item_id]
         if category is not None:
             rows = [r for r in rows if r["category"] == category]
         if only_active:
@@ -128,6 +131,14 @@ class ServiceShapeTests(unittest.IsolatedAsyncioTestCase):
     async def current(self, **kwargs):
         items, total = await service(**kwargs).current(self.Scope())
         return items, total
+
+    async def test_latest_by_provider_item_identity_does_not_return_a_neighbour(self):
+        other = UUID("00000000-0000-4000-8000-000000000099")
+        rows = [observation(provider_item_id=other), observation()]
+        items, total = await service(rows=rows).current(
+            self.Scope(), provider_item_id=ITEM, page_size=1)
+        self.assertEqual(1, total)
+        self.assertEqual(ITEM, items[0]["provider_item_id"])
 
     async def test_a_readable_price_is_resolved_and_carries_its_provenance(self):
         items, total = await self.current(rows=[observation()])
@@ -202,7 +213,8 @@ class PermissionTests(unittest.TestCase):
     def test_reading_material_prices_requires_authorisation(self):
         for path in ("/material-prices/categories", "/material-prices/current",
                      "/material-prices/runs", "/material-prices/invalid-rows",
-                     "/material-prices/unit-settings"):
+                     "/material-prices/unit-settings",
+                     "/material-prices/00000000-0000-4000-8000-000000000001/latest"):
             with self.subTest(path=path):
                 response = self.client.get(BASE + path)
                 self.assertIn(response.status_code, (401, 403, 404),
@@ -227,7 +239,7 @@ class ContractTests(unittest.TestCase):
     def test_every_material_price_endpoint_is_published(self):
         paths = self.contract["paths"]
         for suffix in ("categories", "current", "runs", "invalid-rows", "unit-settings",
-                       "{providerItemId}/history"):
+                       "{providerItemId}/history", "{providerItemId}/latest"):
             with self.subTest(suffix=suffix):
                 # `/api` is the prefix the exported contract carries; the router's own
                 # paths do not, and the test had the router's spelling.
@@ -241,6 +253,10 @@ class ContractTests(unittest.TestCase):
         text = str(field)
         self.assertIn("null", text,
                       "currentPriceIrr must be nullable: a missing price is not a zero")
+
+    def test_history_exposes_the_observed_pricing_unit(self):
+        schema = self.contract["components"]["schemas"]["MaterialPriceHistoryResponse"]
+        self.assertIn("sourceUnit", schema["properties"])
 
 
 if __name__ == "__main__":

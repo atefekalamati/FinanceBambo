@@ -56,8 +56,8 @@ RAW_TEXT_KEY = "rawText"
 #: plain dicts; `ExtractionFieldDto.extracted_value` is `Any`, so no schema change is
 #: needed to carry them.
 STRUCTURED_KEYS = ("invoiceNumber", "invoiceDate", "supplierName", "buyerName",
-                   "items", "totalAmount", "currency", "validationStatus",
-                   "parserWarnings")
+                   "items", "totalAmount", "taxAmount", "discountAmount", "currency",
+                   "validationStatus", "parserWarnings")
 
 #: What the parser's certainty is worth as a confidence number. The recogniser's own
 #: confidence is about characters; this is about the reading of them, and the two are
@@ -100,13 +100,9 @@ def _as_contract(result):
     else: `ApiModel` forbids extra keys, so `text`, `provider` and `language` cannot simply
     be passed along -- the service would reject the whole payload as off-contract.
 
-    Empty text yields NO fields rather than one empty field. "The model read nothing" and
-    "the model read an empty string" are the same fact, and a blank field in a review form
-    invites someone to type a number into it that no document ever contained.
+    Empty OCR output is still evidence: it remains visible as rawText with a warning.
     """
-    text = str(result.get("text") or "").strip()
-    if not text:
-        return {"fields": []}
+    text = "" if result.get("text") is None else str(result["text"])
     confidence = result.get("confidence")
     try:
         confidence = float(confidence)
@@ -117,11 +113,40 @@ def _as_contract(result):
     confidence = min(1.0, max(0.0, confidence))
     fields = [{"key": RAW_TEXT_KEY, "extractedValue": text,
                "confidence": confidence, "editedByUser": False}]
+    if not text.strip():
+        fields.append({"key": "ocrWarnings", "extractedValue": ["no text recognized"],
+                       "confidence": 0.0, "editedByUser": False})
+        return {"fields": fields}
     fields.extend(_structured_fields(text, confidence))
     fields.extend(_ai_fields(text, {field["key"] for field in fields},
                              transcript=result.get("transcript"),
                              metadata=result.get("metadata")))
-    return {"fields": fields}
+    return {"fields": _first_wins(fields)}
+
+
+def _first_wins(fields):
+    """One field per key, and the earliest one is the one that stays.
+
+    "The parser beats the model" was true because `_ai_fields` skips keys it was told are
+    taken -- a single `continue`, inside the function that has every reason to want to
+    answer. Nothing downstream re-checked it, so a provider that ignored `already_emitted`
+    would put two `supplierName` entries in this list, and the value a reader ends up with
+    would depend on whether they scanned the list forwards or built a dict from it (a dict
+    keeps the LAST). That is not a difference anybody should have to know about.
+
+    Order in this list is parser-then-model by construction, so keeping the first entry
+    states the precedence rule where it can be relied on rather than where it happens to
+    hold.
+    """
+    seen, kept = set(), []
+    for field in fields:
+        if field["key"] in seen:
+            LOG.warning("extraction produced a second %r; the earlier one was kept",
+                        field["key"])
+            continue
+        seen.add(field["key"])
+        kept.append(field)
+    return kept
 
 
 #: How much of the model's stated confidence survives into the draft. A model's own number
@@ -145,24 +170,37 @@ def _ai_fields(text, already_emitted, transcript=None, metadata=None):
     already in `fields`, and losing them because a second opinion was unavailable would
     make the pipeline less reliable for having gained a provider.
     """
+    if (os.environ.get("FINANCE_AI_EXTRACTION_ENABLED") or "").strip().lower() not in (
+            "1", "true", "yes", "on"):
+        return []
+
+    def warning(message):
+        return [{"key": "aiWarnings", "extractedValue": [message],
+                 "confidence": 0.0, "editedByUser": False}]
+
+    provider_name = (os.environ.get("FINANCE_AI_PROVIDER") or "avalai").strip().lower()
+    if provider_name != "avalai":
+        return warning("provider unavailable: unsupported FINANCE_AI_PROVIDER")
+    key = (os.environ.get("FINANCE_AI_API_KEY") or "").strip()
+    if not key:
+        return warning("provider unavailable: FINANCE_AI_API_KEY is not configured")
+
     try:
         from extraction.providers.avalai import (AvalAIProvider, ProviderResponseInvalid,
                                                  ProviderUnavailable)
     except ImportError:                                        # noqa: BLE001
-        return []
-    provider = AvalAIProvider()
-    if not provider.configured:
-        return []
+        return warning("provider unavailable: AI adapter could not be loaded")
+    provider = AvalAIProvider(key=key, model=os.environ.get("FINANCE_AI_MODEL") or None)
     try:
         candidates = provider.extract(text, transcript=transcript, metadata=metadata)
     except (ProviderUnavailable, ProviderResponseInvalid) as error:
         # Named, not swallowed: "the AI was unavailable" and "the AI answered nonsense"
         # send a reader to different places.
         LOG.warning("avalai extraction skipped: %s", error)
-        return []
+        return warning("provider unavailable: %s" % type(error).__name__)
     except Exception:                                          # noqa: BLE001
         LOG.exception("avalai extraction failed; the rest of the extraction stands")
-        return []
+        return warning("provider unavailable: AI extraction failed")
 
     emitted = []
     for key, (value, confidence) in sorted(candidates.items()):
@@ -209,9 +247,11 @@ def _structured_fields(text, ocr_confidence):
                            ("currency", parsed.currency)):
         if candidate.found:
             add(key, candidate.value, candidate.certainty)
-    if parsed.total_amount.found:
-        add("totalAmount", _decimal_text(parsed.total_amount.value),
-            parsed.total_amount.certainty)
+    for key, candidate in (("totalAmount", parsed.total_amount),
+                           ("taxAmount", parsed.tax_amount),
+                           ("discountAmount", parsed.discount_amount)):
+        if candidate.found:
+            add(key, _decimal_text(candidate.value), candidate.certainty)
     if parsed.items:
         add("items", [{"name": item.name,
                        "quantity": _decimal_text(item.quantity),

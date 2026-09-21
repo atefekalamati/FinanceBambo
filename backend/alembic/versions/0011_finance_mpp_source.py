@@ -130,8 +130,8 @@ CREATE INDEX ix_finance_mpp_rows_scope
 CREATE INDEX ix_finance_mpp_rows_resource
     ON finance_mpp_rows (source_version_id, source_resource_uid);
 
--- Obsolete with the coupling it was built for. Forward-only: 0010 stays as applied.
-DROP TABLE IF EXISTS msp_task_metrics;
+-- Core-safe deployment: do not DROP public/Core tables from the Finance migration.
+-- msp_task_metrics is intentionally left untouched.
 """
 
 

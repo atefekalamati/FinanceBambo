@@ -175,14 +175,11 @@ def resolve(observation, *, display_unit=None, product_factor=None, as_of=None,
     note = None
     origin = None
 
+    if source is None:
+        return Resolution(status=UNRESOLVED_UNIT, target_unit=target,
+                          reason="منبع واحدی برای این قیمت اعلام نکرده است؛ قیمت در محاسبه قابل استفاده نیست")
+
     if target is not None:
-        if source is None:
-            # The sheet states no unit for six of its seven categories. That is not
-            # permission to assume the price is per anything.
-            return Resolution(status=UNRESOLVED_UNIT, target_unit=target,
-                              reason="منبع واحدی برای این قیمت اعلام نکرده است؛ تا وقتی "
-                                     "مبنای قیمت ثبت نشود، نمایش بر حسب %s ممکن نیست"
-                                     % unit_label(target))
         if source != target:
             if can_convert(source, target):
                 factor = quantity_factor(source, target)

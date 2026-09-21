@@ -48,7 +48,11 @@ _VENDOR_WORDS = ("فروشنده", "تامین کننده", "تأمین کنند
 _DATE_WORDS = ("تاریخ", "تاريخ")
 _NUMBER_WORDS = ("شماره فاکتور", "شماره", "سریال")
 
-_NUMBER = re.compile(r"\d[\d,٬\.٫]*")
+#: U+060C ARABIC COMMA is in here beside U+066C. They are different characters that look
+#: alike, and the recogniser emits the first one: a real invoice came back with 29 of them
+#: and not one U+066C, so a token rule that knew only U+066C stopped at the first group and
+#: read `170` out of `170،000،000`.
+_NUMBER = re.compile(r"\d[\d,٬،\.٫]*")
 _JALALI = re.compile(r"\b(1[34]\d{2})[/\-](\d{1,2})[/\-](\d{1,2})\b")
 
 
@@ -77,7 +81,7 @@ def to_decimal(token: str):
     """
     if token is None:
         return None
-    cleaned = normalize(str(token)).strip().rstrip(".,")
+    cleaned = normalize(str(token)).strip().rstrip(".,،")
     cleaned = cleaned.replace(",", "").replace("٬", "").replace("٫", ".")
     if not cleaned or not any(ch.isdigit() for ch in cleaned):
         return None

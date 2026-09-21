@@ -117,6 +117,7 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/material-prices/unit-settings", "get"),
                 ("/api/projects/{projectId}/finance/material-prices/unit-settings", "post"),
                 ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/history", "get"),
+                ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/latest", "get"),
                 # Labels and factors, stage twenty-two. Reading is finance.view;
                 # writing a label, a mapping approval or a measured factor is
                 # finance.edit, the same permission a price version already needs.

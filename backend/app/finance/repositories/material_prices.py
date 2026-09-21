@@ -517,7 +517,8 @@ class PsycopgMaterialPriceRepository:
                 (s.organization_id, s.project_id, provider_id, external_id))
             return await c.fetchone() or {}
 
-    async def latest_observations(self, s, *, category=None, only_active=True):
+    async def latest_observations(self, s, *, category=None, only_active=True,
+                                  provider_item_id=None):
         """The newest VALID observation for each listing, and why that word matters.
 
         The ordering has three keys and the first one is the fix:
@@ -552,6 +553,9 @@ class PsycopgMaterialPriceRepository:
         if category is not None:
             where.append(" AND i.category=%s")
             args.append(category)
+        if provider_item_id is not None:
+            where.append(" AND o.provider_item_id=%s")
+            args.append(provider_item_id)
         if only_active:
             where.append(" AND i.active")
         async with self.db.cursor(row_factory=dict_row) as c:

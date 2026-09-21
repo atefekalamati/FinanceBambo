@@ -49,29 +49,68 @@ TOTAL_UNVERIFIABLE = "TOTAL_UNVERIFIABLE"
 #: else -- `135,00,0` -- is a misread, not a number.
 _WELL_GROUPED = re.compile(r"^\d{1,3}(,\d{3})*$")
 _PLAIN_DIGITS = re.compile(r"^\d+$")
-_NUMBER_TOKEN = re.compile(r"\d[\d,]*")
+#: Both thousands separators an Iranian invoice actually uses, not just the one that has
+#: "thousands separator" in its Unicode name. See `strict_amount`.
+_NUMBER_TOKEN = re.compile(r"\d[\d,٬،]*")
 
 #: Column headers as Iranian invoices write them, mapped to the role each column plays.
 #: Matched by containment because OCR glues neighbours together ("مبلغ كلريال").
 _HEADERS = (
     ("قیمت واحد", "unit_price"),
     ("بهای واحد", "unit_price"),
+    ("قیمت", "unit_price"),
     ("مبلغ کل", "amount"),
     ("جمع مبلغ", "amount"),
+    ("مبلغ", "amount"),
+    ("جمع", "amount"),
     ("شرح کالا", "name"),
     ("شرح", "name"),
+    ("کالا", "name"),
+    ("محصول", "name"),
     ("تعداد", "quantity"),
     ("مقدار", "quantity"),
     ("واحد", "unit"),
 )
 
+#: Labels, by role. Two rules govern what may go in here.
+#:
+#: FIRST: no variant that differs only in Arabic vs Persian ي/ك. `normalize` folds those
+#: before any comparison, so "تاريخ" and "تاریخ" are the same string by the time a label is
+#: tried. The pairs that used to be listed here were dead weight that read as coverage.
+#:
+#: SECOND: no label so short that it names something else on the same document. A bare
+#: "شماره" was asked for and is NOT here: the real invoice this was tested against
+#: carries "شماره تماس", "شماره حساب" and "شماره شبا", and the bare label lifts a
+#: PHONE NUMBER into `invoiceNumber` -- a wrong value that looks exactly like a right one
+#: once it is sitting in a review form. The specific wordings are listed instead.
+#:
+#: Order does not matter here: `_label_value` tries the longest first, so "تاریخ فاکتور"
+#: is never shadowed by "تاریخ".
 _LABELS = {
-    "invoice_number": ("invoice no", "invoice number", "شماره فاکتور", "شماره فاكتور",
-                       "سریال فاکتور"),
-    "invoice_date": ("date", "تاریخ", "تاريخ"),
-    "supplier_name": ("فروشنده", "تامین کننده", "تأمین کننده", "seller", "supplier"),
-    "buyer_name": ("خریدار", "خريدار", "buyer", "customer"),
-    "total": ("total", "جمع کل", "مبلغ کل", "قابل پرداخت", "مبلغ نهایی", "جمع"),
+    "invoice_number": ("invoice no", "invoice number", "invoice #", "شماره فاکتور",
+                       "شماره صورتحساب", "شماره صورت حساب", "سریال فاکتور",
+                       "شماره سند"),
+    "invoice_date": ("تاریخ فاکتور", "تاریخ صدور", "تاریخ صورتحساب", "invoice date",
+                     "date", "تاریخ"),
+    # A bare "شرکت" was asked for here and is NOT included, for the same reason a bare
+    # "شماره" is not included above, and this one was measured rather than guessed at:
+    # adding it made the letterhead invoice report "شرکت توسعه بنا کیان" as the SUPPLIER,
+    # and that company is the BUYER -- the parser's own `buyer_name` reads it from a real
+    # label two lines away. "شرکت" heads the letterhead, the bank block and the signature
+    # block, so it names whichever company printed the page rather than the one that sold
+    # anything. A supplier nobody labelled stays empty; see
+    # `test_a_seller_with_no_label_is_a_miss_not_a_guess`.
+    "supplier_name": ("نام فروشنده", "نام تامین کننده", "تامین کننده", "تأمین کننده",
+                      "فروشنده", "فروشگاه", "seller", "supplier", "vendor"),
+    "buyer_name": ("نام خریدار", "طرف حساب", "خریدار", "مشتری", "buyer", "customer"),
+    "total": ("مبلغ قابل پرداخت", "جمع قابل پرداخت", "قابل پرداخت",
+              "جمع کل پس از تخفیف", "مبلغ نهایی", "grand total", "total",
+              "جمع کل", "مبلغ کل", "جمع مبلغ", "جمع"),
+    # New roles. The document states them and the contract names them; until now they were
+    # read by nobody, so a reviewer retyped a tax figure that was sitting in the text.
+    "tax": ("مالیات بر ارزش افزوده", "ارزش افزوده", "مالیات و عوارض", "مالیات",
+            "vat", "tax"),
+    "discount": ("تخفیف", "discount"),
 }
 
 _JALALI_DATE = re.compile(r"\b(1[34]\d{2})[/\-](\d{1,2})[/\-](\d{1,2})\b")
@@ -109,6 +148,11 @@ class StructuredInvoiceParseResult:
     buyer_name: ParsedValue = field(default_factory=ParsedValue)
     items: list = field(default_factory=list)
     total_amount: ParsedValue = field(default_factory=ParsedValue)
+    #: Stated on the document and, until now, read by nobody -- so a reviewer retyped a
+    #: figure that was already in the text. Read by the same strict rule as every other
+    #: money field: a malformed group is refused rather than repaired.
+    tax_amount: ParsedValue = field(default_factory=ParsedValue)
+    discount_amount: ParsedValue = field(default_factory=ParsedValue)
     currency: ParsedValue = field(default_factory=ParsedValue)
     warnings: list = field(default_factory=list)
     validation_status: str = TOTAL_UNVERIFIABLE
@@ -130,8 +174,14 @@ def strict_amount(token):
     """
     if token is None:
         return None, "empty"
-    cleaned = normalize(str(token)).strip().rstrip(".,")
-    cleaned = cleaned.replace("٬", ",").replace(" ", "")
+    cleaned = normalize(str(token)).strip().rstrip(".,،")
+    # U+060C ARABIC COMMA and U+066C ARABIC THOUSANDS SEPARATOR both group digits on an
+    # Iranian invoice and look identical in most fonts. Only the second was mapped, and the
+    # recogniser emits the first -- so every grouped figure on a real invoice reached
+    # `_WELL_GROUPED` still carrying a character it does not accept and was rejected as
+    # malformed. Mapping happens BEFORE the grouping rule, never instead of it: `135,00,0`
+    # is still refused, which is the whole reason this function is not `to_decimal`.
+    cleaned = cleaned.replace("٬", ",").replace("،", ",").replace(" ", "")
     if not cleaned:
         return None, "empty"
     if _PLAIN_DIGITS.match(cleaned):
@@ -152,7 +202,11 @@ def _first_number_token(line):
 def _label_value(line, labels):
     """The text after a label on this line, or None. The label proves the role."""
     lowered = normalize(line).lower()
-    for label in labels:
+    # Longest first. "تاریخ" is a prefix of "تاریخ فاکتور", and trying the short one first
+    # matched it and handed back "فاکتور: 1404/06/22" -- the rest of the LABEL, read as the
+    # value. Sorting here rather than asking every caller to order its own tuple correctly:
+    # the requirement belongs to the matching, not to the vocabulary.
+    for label in sorted(labels, key=len, reverse=True):
         position = lowered.find(label.lower())
         if position < 0:
             continue
@@ -166,7 +220,7 @@ def _label_value(line, labels):
 #: A line that is nothing but a number -- the shape a table cell has once OCR has put it
 #: on a line of its own. Deliberately strict: a line with any other word on it is not a
 #: bare value and must not be read as one.
-_BARE_NUMBER_LINE = re.compile(r"^[\d][\d,٬.‏ ]*$")
+_BARE_NUMBER_LINE = re.compile(r"^[\d][\d,٬،.‏ ]*$")
 
 
 def _labelled(lines, labels):
@@ -441,6 +495,52 @@ def _find_total(lines, result):
     return ParsedValue(value, line, EXACT), line
 
 
+def _labelled_amount(lines, labels, result, code):
+    """One labelled money figure, or nothing. Never a repaired number.
+
+    Deliberately simpler than `_find_total`: a tax line is not cross-checked against
+    anything, so an unreadable one is reported and dropped rather than argued about. What
+    it shares with the total is the rule that matters -- `strict_amount`, so a group the
+    recogniser mangled into `20،55،000` is refused instead of becoming 20,550,000.
+
+    More than one candidate means the document says it twice and this does not guess which:
+    a tax figure chosen by position is a tax figure chosen by luck.
+    """
+    found = []
+    for index, line in enumerate(lines):
+        lowered = normalize(line).lower()
+        if not any(label in lowered for label in labels):
+            continue
+        token = _first_number_token(line)
+        evidence = line.strip()
+        if token is None:
+            if not _line_is_only_a_label(line, labels):
+                continue
+            following = lines[index + 1].strip() if index + 1 < len(lines) else ""
+            if not (following and _BARE_NUMBER_LINE.match(normalize(following))):
+                continue
+            token = _first_number_token(following)
+            if token is None:
+                continue
+            evidence = "%s | %s" % (line.strip(), following)
+        value, problem = strict_amount(token)
+        if value is None:
+            result.warn(code + "_UNREADABLE",
+                        "A %s line was found but its digits do not form a number (%s); "
+                        "it was not used." % (code.lower().replace("invoice_", ""), problem),
+                        evidence=evidence)
+            continue
+        found.append((value, evidence))
+    if not found:
+        return ParsedValue()
+    if len({value for value, _ in found}) > 1:
+        result.warn(code + "_AMBIGUOUS",
+                    "The document states more than one such amount; none was chosen.",
+                    evidence=" | ".join(line for _v, line in found))
+        return ParsedValue(None, " | ".join(line for _v, line in found), AMBIGUOUS)
+    return ParsedValue(found[0][0], found[0][1], EXACT)
+
+
 # ------------------------------------------------------------------------------ parse
 def parse_invoice(raw_text: str) -> StructuredInvoiceParseResult:
     """Structured candidates from recognised text. Pure: no IO, no clock, no randomness."""
@@ -480,6 +580,9 @@ def parse_invoice(raw_text: str) -> StructuredInvoiceParseResult:
                     "recognised text is preserved for review.")
 
     result.total_amount, total_line = _find_total(lines, result)
+    result.tax_amount = _labelled_amount(lines, _LABELS["tax"], result, "INVOICE_TAX")
+    result.discount_amount = _labelled_amount(lines, _LABELS["discount"], result,
+                                              "INVOICE_DISCOUNT")
     result.currency, other_currencies = _find_currency(lines, total_line)
     for code in other_currencies:
         result.warn("INVOICE_CURRENCY_ALTERNATIVE",
