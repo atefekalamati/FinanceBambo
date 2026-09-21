@@ -33,14 +33,33 @@ test("a reader has every capability except the ones that write", () => {
     // Reading what the project cost says nothing about being trusted to record
     // what it spent. Two grants, and a reader holds neither.
     manageInvoice: false,
+    // Nor about being trusted to state something for every project the tenant runs.
+    manageSettings: false,
     viewReport: true,
     issueReport: false,
     exportReport: false,
   });
   const admin = capabilitiesFor({ permissionCodes: FINANCE_PERMISSIONS.map((permission) => permission.code) });
-  assert.deepEqual(Object.values(admin), [true, true, true, true, true, true]);
+  assert.deepEqual(Object.values(admin), Array(FINANCE_PERMISSIONS.length).fill(true));
+  // Counted from the catalogue rather than written out: the two lists must stay the same
+  // length, and a capability added to one and forgotten in the other fails right here.
+  assert.equal(Object.keys(admin).length, FINANCE_PERMISSIONS.length);
   // An absent context is not an account with rights.
-  assert.deepEqual(Object.values(capabilitiesFor(null)), [false, false, false, false, false, false]);
+  assert.deepEqual(Object.values(capabilitiesFor(null)),
+                   Array(FINANCE_PERMISSIONS.length).fill(false));
+});
+
+test("stating something beyond this project is its own right", () => {
+  /* The services check `finance.manage_settings` and the routes never do -- the route asks
+     for `finance.edit` and only the WIDER scope is refused. So an editor who is offered the
+     organization-level choices fills in a whole form to be told no at the end. */
+  const editor = capabilitiesFor({ permissionCodes: ["finance.view", "finance.edit"] });
+  assert.equal(editor.manageSettings, false, "finance.edit leaked into tenant-wide settings");
+
+  const settings = capabilitiesFor({
+    permissionCodes: ["finance.view", "finance.edit", "finance.manage_settings"],
+  });
+  assert.equal(settings.manageSettings, true);
 });
 
 test("editing the cost model and managing invoices are separate rights", () => {

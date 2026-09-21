@@ -147,9 +147,11 @@ class MaterialPriceResponse(ApiModel):
     height_value: Decimal | None = None
     thickness_value: Decimal | None = None
     diameter_value: Decimal | None = None
-    #: Always kilograms. The `weightValue`/`weightUnit` pair it replaced is gone: a reader
-    #: had to combine two fields to know what a product weighed, and a reader who forgot
-    #: read 1100 grams of brick as 1100 kilograms.
+    #: The numeric source attribute, in the sheet's own unit. It is retained even when
+    #: that unit is unknown and no normalized weight can safely be calculated.
+    weight_value: Decimal | None = None
+    #: Always kilograms when the source unit is evidenced; never inferred from a bare
+    #: number. This is derived and must not replace weightValue.
     weight_kg: Decimal | None = None
     weight_basis: str | None = None
     branch_count: Decimal | None = None

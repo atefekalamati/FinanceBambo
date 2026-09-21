@@ -1,216 +1,296 @@
 # -*- coding: utf-8 -*-
-"""The provider path the running host actually takes, pinned.
+"""Production invoice extraction flow up to a reviewable draft.
 
-WHY THIS FILE EXISTS
-
-There are two PaddleOCR providers in this repository and two Whisper providers:
-
-    extraction/paddle_ocr.py            extraction/providers/paddle_ocr.py
-    extraction/whisper_voice.py         extraction/providers/whisper_voice.py
-
-`tests/test_extraction_providers.py` imports the LEFT pair. `ImageExtractionAdapter` and
-`VoiceExtractionAdapter` -- the objects `devhost.app.extraction_providers()` hands to
-`FinanceExtractionService` -- import the RIGHT pair. The two have diverged: the left ones
-return an `ExtractionResult` of `ExtractedField`s, the right ones return a plain
-`{"text", "confidence", "provider"}` dict. So a green provider suite said nothing about the
-code a real upload runs through.
-
-This file tests the right-hand pair and the adapter that loads it, and it fails if the
-production wiring ever moves to a different module. No model is loaded anywhere here: the
-providers take an injectable engine, and the adapters take an injectable provider.
+No network and no database are used here. The point is the contract boundary:
+OCR text is preserved, the deterministic parser runs first, the configurable LLM fills
+only the gaps when enabled, and nothing in this path confirms a financial invoice.
 """
 
-import asyncio
-import io
+import json
 import os
 import sys
 import unittest
+from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
+from uuid import UUID, uuid4
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from extraction.adapters import (RAW_TEXT_KEY, ImageExtractionAdapter,
-                                 VoiceExtractionAdapter)
+from fastapi.testclient import TestClient
+
+from app.main import create_app
+from app.finance.domain.attachments import FinanceAttachment
+from app.finance.domain.extractions import ExtractionDraft, ExtractionField
+from app.finance.schemas.extractions import ProviderExtractionResult
+from app.finance.security.context import AuthContext
+from extraction.adapters import RAW_TEXT_KEY, _as_contract
+from extraction.providers.llm_invoice import (ExtractionProviderResponseInvalid,
+                                              LLMInvoiceExtractionProvider, parse_candidate)
 
 
-class WiringTests(unittest.TestCase):
-    """Which module the host would import, asserted by importing it the same way."""
+def keys(payload):
+    return [field["key"] for field in payload["fields"]]
 
-    def test_the_image_adapter_loads_the_providers_package_not_the_legacy_module(self):
-        adapter = ImageExtractionAdapter()
-        provider = adapter._load()
-        self.assertEqual("extraction.providers.paddle_ocr", type(provider).__module__,
-                         "production loads extraction/providers/paddle_ocr.py; a test that "
-                         "exercises extraction/paddle_ocr.py proves nothing about it")
-        self.assertEqual("paddleocr-local", adapter.adapter_name)
 
-    def test_the_voice_adapter_loads_the_providers_package_not_the_legacy_module(self):
-        adapter = VoiceExtractionAdapter()
-        provider = adapter._load()
-        self.assertEqual("extraction.providers.whisper_voice", type(provider).__module__)
-        self.assertEqual("whisper-local", adapter.adapter_name)
+class FlexibleExtractionPathTests(unittest.TestCase):
+    def setUp(self):
+        self.saved = {name: os.environ.get(name) for name in (
+            "FINANCE_AI_EXTRACTION_ENABLED",
+            "FINANCE_AI_PROVIDER",
+            "FINANCE_AI_API_KEY",
+            "FINANCE_AI_MODEL",
+        )}
+        from extraction import adapters
+        self._adapters = adapters
+        self._original_build_provider = adapters.build_extraction_provider
+        os.environ.pop("AVALAI_API_KEY", None)
 
-    def test_the_host_hands_the_service_these_two_adapters(self):
-        """`extraction_providers()` under EXTRACTION_PROVIDER=self_hosted.
-
-        Asserted by type rather than by reading the source, so moving the construction
-        somewhere else does not quietly stop this from being checked.
-        """
-        import os
-
-        from devhost import app as host
-
-        previous = os.environ.get("EXTRACTION_PROVIDER")
-        os.environ["EXTRACTION_PROVIDER"] = "self_hosted"
-        try:
-            image, voice = host.extraction_providers()
-        finally:
-            if previous is None:
-                os.environ.pop("EXTRACTION_PROVIDER", None)
+    def tearDown(self):
+        self._adapters.build_extraction_provider = self._original_build_provider
+        for name, value in self.saved.items():
+            if value is None:
+                os.environ.pop(name, None)
             else:
-                os.environ["EXTRACTION_PROVIDER"] = previous
-        self.assertIsInstance(image, ImageExtractionAdapter)
-        self.assertIsInstance(voice, VoiceExtractionAdapter)
+                os.environ[name] = value
+
+    def enable_ai(self, answer):
+        os.environ["FINANCE_AI_EXTRACTION_ENABLED"] = "true"
+        os.environ["FINANCE_AI_PROVIDER"] = "openai"
+        os.environ["FINANCE_AI_API_KEY"] = "test-key"
+        os.environ["FINANCE_AI_MODEL"] = "test-model"
+
+        body = {"choices": [{"message": {"content": json.dumps(answer, ensure_ascii=False)}}]}
+
+        def post(*_a):
+            return 200, json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+        self._adapters.build_extraction_provider = lambda: LLMInvoiceExtractionProvider(
+            key="test-key", model="test-model", post=post, sleep=lambda _s: None)
+
+    def result(self, text, confidence=0.9):
+        payload = _as_contract({"text": text, "confidence": confidence})
+        ProviderExtractionResult.model_validate(payload)
+        return payload
+
+    def test_a_standard_table_invoice_uses_rule_parser_first(self):
+        text = "\n".join([
+            "شماره فاکتور: F-100",
+            "تاریخ: 1403/08/15",
+            "مبلغ کل",
+            "قیمت واحد",
+            "واحد",
+            "تعداد",
+            "شرح کالا",
+            "120000000",
+            "1200000",
+            "پاکت",
+            "100",
+            "سیمان تیپ 2 پاکتی",
+            "جمع کل: 120000000 ریال",
+        ])
+        payload = self.result(text)
+        values = {field["key"]: field["extractedValue"] for field in payload["fields"]}
+        self.assertIn(RAW_TEXT_KEY, values)
+        self.assertEqual("F-100", values["invoiceNumber"])
+        self.assertEqual("120000000", values["totalAmount"])
+        self.assertEqual(1, len(values["items"]))
+        self.assertNotIn("extractionSource", values, "AI is not called when parser succeeds")
+
+    def test_different_headers_fall_back_to_ai_when_enabled(self):
+        self.enable_ai({
+            "invoice": {"supplier": "فراز سازه پارس", "customer": None,
+                        "invoice_number": "1403/1125", "invoice_date": "1403/08/15",
+                        "currency": "IRR", "total_amount": "566500000"},
+            "items": [{"description": "میلگرد آجدار 14", "quantity": "5000",
+                       "unit": "کیلوگرم", "unit_price": "72000",
+                       "total_price": "360000000"}],
+            "confidence": 0.91,
+            "warnings": [],
+        })
+        # Intentionally uses labels the old fixed header detector does not fully accept.
+        payload = self.result("کالا\nمقدار\nفی\nجمع\nمیلگرد آجدار 14\n5000\n72000\n360000000")
+        values = {field["key"]: field["extractedValue"] for field in payload["fields"]}
+        self.assertEqual("openai", values["extractionSource"])
+        self.assertEqual("1403/1125", values["invoiceNumber"])
+        self.assertEqual("میلگرد آجدار 14", values["items"][0]["description"])
+
+    def test_no_table_invoice_can_become_review_warning_draft(self):
+        self.enable_ai({
+            "invoice": {"supplier": "شرکت بتن نمونه", "customer": None,
+                        "invoice_number": None, "invoice_date": "1403/08/20",
+                        "currency": "IRR", "total_amount": "85000000"},
+            "items": [],
+            "confidence": 0.74,
+            "warnings": ["No item table was visible."],
+        })
+        payload = self.result("پرداخت بابت بتن آماده پروژه. مبلغ کل 85000000 ریال")
+        values = {field["key"]: field["extractedValue"] for field in payload["fields"]}
+        self.assertEqual("85000000", values["totalAmount"])
+        self.assertIn("aiWarnings", values)
+        self.assertNotIn("items", values)
+
+    def test_corrupted_ocr_with_low_ai_confidence_preserves_raw_text_only(self):
+        self.enable_ai({"invoice": {"supplier": "حدس اشتباه"}, "items": [],
+                        "confidence": 0.31, "warnings": ["OCR text is corrupted."]})
+        payload = self.result("سـمـن ؟؟ ۱۲abc مبلغ x")
+        values = {field["key"]: field["extractedValue"] for field in payload["fields"]}
+        self.assertIn(RAW_TEXT_KEY, values)
+        self.assertIn("aiWarnings", values)
+        self.assertNotIn("supplierName", values)
+
+    def test_manual_draft_is_allowed_when_ai_is_disabled_and_no_lines_are_read(self):
+        os.environ["FINANCE_AI_EXTRACTION_ENABLED"] = "false"
+        payload = self.result("رسید دستی خوانا نیست. کاربر بعداً خطوط را وارد می‌کند.")
+        self.assertEqual([RAW_TEXT_KEY, "validationStatus", "parserWarnings"], keys(payload))
+
+    def test_ai_disabled_fallback_never_calls_the_llm(self):
+        os.environ["FINANCE_AI_EXTRACTION_ENABLED"] = "false"
+        os.environ["FINANCE_AI_PROVIDER"] = "openai"
+        os.environ["FINANCE_AI_API_KEY"] = "test-key"
+        payload = self.result("کالا\nمقدار\nفی\nآجر\n10\n100")
+        self.assertNotIn("extractionSource", keys(payload))
+
+    def test_ai_response_missing_fields_uses_null_semantics_without_invention(self):
+        candidate = parse_candidate({"invoice": {"supplier": None}, "items": [],
+                                     "confidence": 0.88, "warnings": []})
+        self.assertIsNone(candidate.invoice["supplier"])
+        self.assertEqual([], candidate.items)
+
+    def test_ai_invalid_json_is_reported_as_provider_response_error(self):
+        body = {"choices": [{"message": {"content": "not json"}}]}
+
+        def post(*_a):
+            return 200, json.dumps(body).encode("utf-8")
+
+        provider = LLMInvoiceExtractionProvider(key="test-key", model="test", post=post)
+        with self.assertRaises(ExtractionProviderResponseInvalid):
+            provider.extract_invoice("جمع کل 1000")
 
 
-class _Recogniser:
-    """Stands in for the model. The adapter's contract is what is under test, not paddle."""
-
-    def __init__(self, text, confidence=0.9):
-        self._text, self._confidence = text, confidence
-        self.paths = []
-
-    def read(self, path):
-        self.paths.append(path)
-        return {"text": self._text, "confidence": self._confidence,
-                "provider": "paddleocr"}
-
-    def transcribe(self, path):
-        self.paths.append(path)
-        return {"text": self._text, "confidence": self._confidence, "provider": "whisper"}
+ORG = UUID("11111111-1111-4111-8111-111111111111")
+ACTOR = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1")
+PROJECT = "sample_site_01"
 
 
-INVOICE = "\n".join([
-    "فاکتور فروش",
-    "شماره صورتحساب: 8842",
-    "تاریخ صدور: 1404/06/22",
-    "فروشنده: شرکت نمونه",
-    "مشتری: پروژه مسکونی آفتاب",
-    "مبلغ قابل پرداخت: 5,280,000 ریال",
-])
+class _Auth:
+    async def current(self, _request):
+        return AuthContext(
+            user_id=ACTOR,
+            organization_id=ORG,
+            project_id=PROJECT,
+            organization_role="finance_manager",
+            project_role="manager",
+            permission_codes=("finance.view", "finance.manage_invoice"),
+            timezone="Asia/Tehran",
+        )
 
 
-class ProductionContractTests(unittest.TestCase):
-    """One upload, end to end through the real adapter, with the model stubbed out."""
+class _Scope:
+    async def require_organization(self, _context, organization_id):
+        if str(organization_id) != str(ORG):
+            raise PermissionError("organization denied")
 
-    def _fields(self, adapter):
-        answer = asyncio.run(adapter.extract(INVOICE.encode("utf-8")))
-        return {field["key"]: field for field in answer["fields"]}
-
-    def test_the_adapter_delivers_raw_text_and_the_parser_candidates_beside_it(self):
-        fields = self._fields(ImageExtractionAdapter(provider=_Recogniser(INVOICE)))
-        self.assertIn(RAW_TEXT_KEY, fields, "the reviewer must always see what was read")
-        self.assertEqual(INVOICE, fields[RAW_TEXT_KEY]["extractedValue"])
-        self.assertEqual("8842", fields["invoiceNumber"]["extractedValue"])
-        self.assertEqual("1404/06/22", fields["invoiceDate"]["extractedValue"])
-        self.assertEqual("شرکت نمونه", fields["supplierName"]["extractedValue"])
-        self.assertEqual("5280000", fields["totalAmount"]["extractedValue"])
-
-    def test_a_field_the_text_does_not_state_is_absent_rather_than_blank(self):
-        """A blank field in a review form invites somebody to type a number into it."""
-        fields = self._fields(ImageExtractionAdapter(provider=_Recogniser("سلام")))
-        for key in ("invoiceNumber", "totalAmount", "supplierName", "taxAmount"):
-            self.assertNotIn(key, fields)
-
-    def test_empty_ocr_output_still_creates_reviewable_evidence(self):
-        fields = self._fields(ImageExtractionAdapter(provider=_Recogniser("   ")))
-        self.assertEqual("   ", fields[RAW_TEXT_KEY]["extractedValue"])
-        self.assertIn("ocrWarnings", fields)
-
-    def test_every_confidence_the_adapter_emits_is_inside_the_column_it_is_stored_in(self):
-        """The schema enforces 0..1; a provider outside it must be clamped, not fatal."""
-        fields = self._fields(
-            ImageExtractionAdapter(provider=_Recogniser(INVOICE, confidence=4.2)))
-        for key, field in fields.items():
-            self.assertGreaterEqual(field["confidence"], 0.0, key)
-            self.assertLessEqual(field["confidence"], 1.0, key)
-
-    def test_the_voice_adapter_runs_the_same_parser_over_a_transcript(self):
-        fields = self._fields(VoiceExtractionAdapter(provider=_Recogniser(INVOICE)))
-        self.assertEqual("8842", fields["invoiceNumber"]["extractedValue"])
-        self.assertEqual(INVOICE, fields[RAW_TEXT_KEY]["extractedValue"])
-
-    def test_disabled_ai_never_constructs_a_provider(self):
-        with patch.dict(os.environ, {"FINANCE_AI_EXTRACTION_ENABLED": "false",
-                                  "AVALAI_API_KEY": "legacy-key"}):
-            with patch("extraction.providers.avalai.AvalAIProvider") as provider:
-                fields = self._fields(ImageExtractionAdapter(provider=_Recogniser(INVOICE)))
-        provider.assert_not_called()
-        self.assertNotIn("aiWarnings", fields)
-
-    def test_enabled_ai_without_key_keeps_rule_fields_and_names_unavailability(self):
-        with patch.dict(os.environ, {"FINANCE_AI_EXTRACTION_ENABLED": "true",
-                                  "FINANCE_AI_API_KEY": ""}):
-            fields = self._fields(ImageExtractionAdapter(provider=_Recogniser(INVOICE)))
-        self.assertEqual(INVOICE, fields[RAW_TEXT_KEY]["extractedValue"])
-        self.assertEqual("8842", fields["invoiceNumber"]["extractedValue"])
-        self.assertIn("provider unavailable", fields["aiWarnings"]["extractedValue"][0])
-
-    def test_enabled_ai_uses_configured_key_and_preserves_unknown_fields(self):
-        with patch.dict(os.environ, {"FINANCE_AI_EXTRACTION_ENABLED": "true",
-                                  "FINANCE_AI_PROVIDER": "avalai",
-                                  "FINANCE_AI_API_KEY": "test-key",
-                                  "FINANCE_AI_MODEL": "test-model"}):
-            with patch("extraction.providers.avalai.AvalAIProvider") as provider:
-                provider.return_value.extract.return_value = {
-                    "supplierName": ("wrong supplier", 0.99),
-                    "customInvoiceField": ("source evidence", 0.8)}
-                fields = self._fields(ImageExtractionAdapter(provider=_Recogniser(INVOICE)))
-        provider.assert_called_once_with(key="test-key", model="test-model")
-        self.assertEqual("شرکت نمونه", fields["supplierName"]["extractedValue"])
-        self.assertEqual("source evidence", fields["customInvoiceField"]["extractedValue"])
+    async def require_project(self, _context, organization_id, project_id):
+        if str(organization_id) != str(ORG) or project_id != PROJECT:
+            raise PermissionError("project denied")
 
 
-class DeterministicPrecedenceTests(unittest.TestCase):
-    """The rule the whole design rests on: a model may fill a gap, never overwrite."""
+class _Permission:
+    async def require(self, context, permission):
+        if permission not in context.permission_codes:
+            raise PermissionError("permission denied")
 
-    def test_the_model_is_never_asked_for_a_field_the_parser_read(self):
-        import extraction.adapters as adapters
 
-        asked = {}
+class _AttachmentService:
+    def __init__(self):
+        self.file = None
 
-        def _spy(text, already_emitted, transcript=None, metadata=None):
-            asked["already_emitted"] = set(already_emitted)
-            # What a model would answer if it were allowed to contradict the document.
-            return [{"key": "supplierName", "extractedValue": "شرکت دیگری",
-                     "confidence": 0.99, "editedByUser": False},
-                    # A field this text genuinely does not state, so it is the model's to
-                    # offer. `buyerName` would NOT do here: the parser reads it from
-                    # «مشتری», which is the point of the first assertion, not the second.
-                    {"key": "taxAmount", "extractedValue": "480000",
-                     "confidence": 0.7, "editedByUser": False}]
+    async def upload(self, scope, logical_type, original_name, mime_type, content):
+        self.file = FinanceAttachment(
+            file_id=uuid4(),
+            organization_id=scope.organization_id,
+            project_id=scope.project_id,
+            logical_type=logical_type,
+            original_name_safe=original_name,
+            stored_name="stored-%s" % original_name,
+            mime_type=mime_type,
+            size_bytes=len(content),
+            sha256="0" * 64,
+            uploaded_by=scope.actor_user_id,
+            uploaded_at=datetime(2026, 9, 19, tzinfo=timezone.utc),
+            processing_status="ready",
+        )
+        return self.file
 
-        original = adapters._ai_fields
-        adapters._ai_fields = _spy
-        try:
-            fields = {f["key"]: f for f in asyncio.run(
-                ImageExtractionAdapter(provider=_Recogniser(INVOICE)).extract(b"x"))["fields"]}
-        finally:
-            adapters._ai_fields = original
 
-        self.assertIn("supplierName", asked["already_emitted"],
-                      "the parser found it, so the model must be told it is taken")
-        # And the value that survives is the parser's, even though this spy deliberately
-        # ignored `already_emitted` the way a misbehaving provider would. `_first_wins`
-        # is what makes that structural rather than a courtesy of the AI function.
-        self.assertEqual("شرکت نمونه", fields["supplierName"]["extractedValue"],
-                         "a rule that can be read beats a model that cannot")
-        self.assertEqual("480000", fields["taxAmount"]["extractedValue"],
-                         "but a field the parser could not read is the model's to offer")
-        self.assertNotIn("taxAmount", asked["already_emitted"],
-                         "and it was offered precisely because nothing had claimed it")
+class _ExtractionService:
+    def __init__(self, attachments):
+        self.attachments = attachments
+        self.draft = None
+
+    async def start(self, scope, file_id, hints):
+        assert self.attachments.file.file_id == file_id
+        fields = [
+            ExtractionField(RAW_TEXT_KEY, "جمع کل 1000 ریال", None, 0.9),
+            ExtractionField("totalAmount", "1000", None, 0.9),
+            ExtractionField("extractionSource", "rule-parser", None, 1.0),
+        ]
+        self.draft = ExtractionDraft(
+            draft_id=uuid4(),
+            organization_id=scope.organization_id,
+            project_id=scope.project_id,
+            file=self.attachments.file,
+            version=1,
+            review_status="awaitingReview",
+            invoice_status="draft",
+            provider_adapter="paddleocr-local",
+            fields=fields,
+            submitted_by=scope.actor_user_id,
+            created_at=datetime(2026, 9, 19, tzinfo=timezone.utc),
+            financial_effect_irr=Decimal(0),
+        )
+        return self.draft
+
+    async def get(self, _scope, draft_id):
+        assert self.draft.draft_id == draft_id
+        return self.draft
+
+
+class SwaggerExtractionRouteTests(unittest.TestCase):
+    def test_upload_extract_get_returns_reviewable_draft_without_financial_effect(self):
+        app = create_app()
+        attachments = _AttachmentService()
+        app.state.auth_context_provider = _Auth()
+        app.state.scope_authorizer = _Scope()
+        app.state.permission_authorizer = _Permission()
+        app.state.finance_attachment_service = attachments
+        app.state.finance_extraction_service = _ExtractionService(attachments)
+
+        with TestClient(app) as api:
+            upload = api.post(
+                f"/api/projects/{PROJECT}/finance/files",
+                data={"logicalType": "invoice_image"},
+                files={"file": ("invoice.png", b"\x89PNG\r\n\x1a\n" + b"0" * 20, "image/png")},
+            )
+            self.assertEqual(201, upload.status_code, upload.text)
+            file_id = upload.json()["fileId"]
+
+            extraction = api.post(
+                f"/api/projects/{PROJECT}/finance/files/{file_id}/extractions",
+                json={"hints": {"locale": "fa-IR"}},
+            )
+            self.assertEqual(201, extraction.status_code, extraction.text)
+            draft = extraction.json()
+            self.assertEqual("awaitingReview", draft["reviewStatus"])
+            self.assertEqual("draft", draft["invoiceStatus"])
+            self.assertEqual("0", draft["financialEffectIRR"])
+            self.assertIn(RAW_TEXT_KEY, [field["key"] for field in draft["fields"]])
+
+            fetched = api.get(f"/api/projects/{PROJECT}/finance/extractions/{draft['draftId']}")
+            self.assertEqual(200, fetched.status_code, fetched.text)
+            self.assertEqual(draft["draftId"], fetched.json()["draftId"])
 
 
 if __name__ == "__main__":

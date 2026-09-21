@@ -17,10 +17,18 @@ function estimateTarget(id, wbsCode, stageTitle = null) {
 
 const GENERAL = { targetId: "general-permit", targetType: "general_cost", label: "مجوز", wbsCode: null };
 
-test("a stage is the first segment of the activity's code, not the whole path", () => {
-  assert.equal(stageCodeOf("3.2.1"), "3");
-  assert.equal(stageCodeOf("3"), "3");
-  assert.equal(stageCodeOf(" 12.4 "), "12");
+test("a stage is what the level-one chart draws, not the whole path", () => {
+  /* Measured on the audited project: the chart's stages are «۱.۱» … «۱.۱۸» and an
+     activity's code is the full path beneath one of them, four to six segments deep.
+     Reading only the FIRST segment made every one of 835 lines «۱» -- one group, which is
+     the flat list this module exists to break up, wearing a stage's name. */
+  assert.equal(stageCodeOf("1.11.1.2"), "1.11");
+  assert.equal(stageCodeOf("1.5.3.7.2"), "1.5");
+  assert.equal(stageCodeOf("1.5"), "1.5");
+  /* Shallower than a stage IS its own stage. «۱.۳» carries one real estimate line, and a
+     rule about depth must not drop a row that exists. */
+  assert.equal(stageCodeOf("1"), "1");
+  assert.equal(stageCodeOf(" 1.6 "), "1.6");
   assert.equal(stageCodeOf(""), null);
   assert.equal(stageCodeOf(null), null);
 });
@@ -30,38 +38,39 @@ test("the stages read in structural order, not string order", () => {
      orders them structurally and this picker has to agree with it, or the same project
      reads in two different orders on two screens. */
   const stages = buildStageIndex([
-    estimateTarget("a", "10.1"),
-    estimateTarget("b", "2.1"),
-    estimateTarget("c", "1.4"),
+    estimateTarget("a", "1.10.2"),
+    estimateTarget("b", "1.2.1"),
+    estimateTarget("c", "1.9.4"),
   ]);
-  assert.deepEqual(stages.map((stage) => stage.value), ["1", "2", "10"]);
+  assert.deepEqual(stages.map((stage) => stage.value), ["1.2", "1.9", "1.10"],
+                   "«۱.۱۰» after «۱.۹», which string order would reverse");
 });
 
 test("the two groups that are not stages come last, and in that order", () => {
-  const stages = buildStageIndex([GENERAL, estimateTarget("a", null), estimateTarget("b", "4.1")]);
-  assert.deepEqual(stages.map((stage) => stage.value), ["4", UNSTAGED, GENERAL_COST_STAGE]);
+  const stages = buildStageIndex([GENERAL, estimateTarget("a", null), estimateTarget("b", "1.4.1")]);
+  assert.deepEqual(stages.map((stage) => stage.value), ["1.4", UNSTAGED, GENERAL_COST_STAGE]);
 });
 
 test("only stages that have something to bill against are offered", () => {
   /* A stage with no estimate line is a choice that leads to an empty list. The picker is
      built from the targets themselves, so such a stage cannot appear. */
-  const stages = buildStageIndex([estimateTarget("a", "7.1")]);
-  assert.deepEqual(stages.map((stage) => stage.value), ["7"]);
+  const stages = buildStageIndex([estimateTarget("a", "1.7.1")]);
+  assert.deepEqual(stages.map((stage) => stage.value), ["1.7"]);
 });
 
 test("each stage carries its name and how many rows it holds", () => {
   const stages = buildStageIndex([
-    estimateTarget("a", "3.1", "سفت‌کاری"),
-    estimateTarget("b", "3.2", "سفت‌کاری"),
-    estimateTarget("c", "4.1"),
+    estimateTarget("a", "1.5.1", "اجرای عملیات سیویل"),
+    estimateTarget("b", "1.5.2", "اجرای عملیات سیویل"),
+    estimateTarget("c", "1.6.1"),
   ]);
-  assert.deepEqual(stages[0], { value: "3", title: "سفت‌کاری", count: 2, kind: "stage" });
+  assert.deepEqual(stages[0], { value: "1.5", title: "اجرای عملیات سیویل", count: 2, kind: "stage" });
   assert.equal(stages[1].title, null, "a stage the catalogue did not name still appears");
   assert.equal(stages[1].count, 1);
 });
 
 test("every target lands in exactly one group", () => {
-  const targets = [estimateTarget("a", "3.1"), estimateTarget("b", "3.9"), estimateTarget("c", null), GENERAL];
+  const targets = [estimateTarget("a", "1.5.1"), estimateTarget("b", "1.5.9"), estimateTarget("c", null), GENERAL];
   const counted = buildStageIndex(targets).reduce((sum, stage) => sum + stage.count, 0);
   assert.equal(counted, targets.length);
   assert.equal(stageOf(GENERAL), GENERAL_COST_STAGE);
@@ -69,8 +78,8 @@ test("every target lands in exactly one group", () => {
 });
 
 test("choosing a stage narrows the list to that stage alone", () => {
-  const targets = [estimateTarget("a", "3.1"), estimateTarget("b", "4.1"), GENERAL];
-  assert.deepEqual(targetsInStage(targets, "3").map((target) => target.targetId), ["a"]);
+  const targets = [estimateTarget("a", "1.5.1"), estimateTarget("b", "1.6.1"), GENERAL];
+  assert.deepEqual(targetsInStage(targets, "1.5").map((target) => target.targetId), ["a"]);
   assert.deepEqual(targetsInStage(targets, GENERAL_COST_STAGE).map((target) => target.targetId),
                    ["general-permit"]);
   assert.deepEqual(targetsInStage(targets, ""), [], "nothing chosen offers nothing");
@@ -85,4 +94,19 @@ test("the stage never becomes part of what is saved", () => {
   const text = readFileSync(source, "utf8");
   assert.ok(!/\bfetch\b|client\.request|createDraft|POST/.test(text),
             "invoice-stages.js must stay a pure filter over targets already in hand");
+});
+
+test("a stage code reads as a code, so «۱.۱۰» is not «۱.۱»", async () => {
+  /* `formatDisplayNumber` reads «1.10» as one and a tenth: it strips the trailing zero and
+     writes the decimal separator. Stage «۱.۱ شروع» and stage «۱.۱۰ اجرای خط کشی» both came
+     out «۱٫۱» -- two different stages of the project wearing one label, in the menu where
+     somebody chooses which one an invoice is for. Caught by driving the real picker against
+     the real project, not by reading the code. */
+  const { toPersianCode } = await import("../../src/shared/formatters/display.js");
+  const { formatDisplayNumber } = await import("../../src/shared/formatters/display.js");
+  assert.equal(toPersianCode("1.10"), "۱.۱۰");
+  assert.equal(toPersianCode("1.1"), "۱.۱");
+  assert.notEqual(toPersianCode("1.10"), toPersianCode("1.1"));
+  assert.equal(formatDisplayNumber("1.10"), formatDisplayNumber("1.1"),
+               "which is exactly why the code may not go through the number formatter");
 });

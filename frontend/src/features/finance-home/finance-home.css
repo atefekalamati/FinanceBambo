@@ -2713,6 +2713,15 @@ a.breakdown-donut:focus-visible {
   display: none;
 }
 
+.finance-board :is(
+  .finance-managerial-comparison .finance-analysis-card__heading h2,
+  .finance-curve-card .overview-card__title
+) > .rc-info {
+  display: inline-grid;
+  margin-inline-start: .35rem;
+  vertical-align: middle;
+}
+
 .finance-board .finance-analysis-card__heading {
   align-items: center;
 }

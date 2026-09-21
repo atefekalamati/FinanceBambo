@@ -94,7 +94,7 @@ class TypedAttributeTests(unittest.TestCase):
         for column in ("product_code", "manufacturer", "grade", "product_type",
                        "dimensions_text", "length_value", "length_m",
                        "width_value", "height_value", "thickness_value", "diameter_value",
-                       "weight_kg", "weight_basis", "branch_count",
+                       "weight_value", "weight_kg", "weight_basis", "branch_count",
                        "pieces_per_package", "coverage_m2", "volume_m3"):
             self.assertIsNone(row[column], column)
 

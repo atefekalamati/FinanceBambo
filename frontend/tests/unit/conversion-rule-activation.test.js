@@ -162,3 +162,25 @@ test("the factor's origin is named, and an origin nobody planned for is reported
      happened, which is a different fact from one this page has no word for yet. */
   assert.match(factorSourceLabel("density_table") ?? "", /density_table/);
 });
+
+test("a scope that outlives this project is offered only to an account that may state one", () => {
+  /* `finance.manage_settings` is checked in the service and never at a route, so the
+     dialog cannot learn about it from a failed request. It has to be told before it offers
+     the choice, or it offers one whose only possible answer is 403. */
+  const denied = createConversionRuleDialog({
+    context: PRODUCT_DEPENDENT, adapter: recordingAdapter(), canManageSettings: false, onSaved: () => {} });
+  const scope = denied.element.querySelector("select");
+  const state = Object.fromEntries([...scope.querySelectorAll("option")]
+    .map((o) => [o.value, Boolean(o.disabled)]));
+  assert.equal(state.provider_item, false);
+  assert.equal(state.category, false);
+  assert.equal(state.project, false);
+  assert.equal(state.organization, true);
+  assert.equal(state.global, true);
+  assert.match(scope.textContent, /مدیریت تنظیمات مالی/);
+
+  const allowed = createConversionRuleDialog({
+    context: PRODUCT_DEPENDENT, adapter: recordingAdapter(), canManageSettings: true, onSaved: () => {} });
+  assert.deepEqual([...allowed.element.querySelector("select").querySelectorAll("option")]
+    .map((o) => Boolean(o.disabled)), [false, false, false, false, false, false]);
+});

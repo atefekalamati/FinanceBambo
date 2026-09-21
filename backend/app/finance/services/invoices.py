@@ -63,8 +63,6 @@ class FinanceInvoiceService:
   return await self.repo.create(s,invoice,self.ids(),c.duplicate_reason,action)
  async def _calculate_lines(self,s,c):
   if not await self.repo.valid_line_links(s,c.lines):raise InvoiceValidationError("each line must reference a matching estimate line or a general_cost resource")
-  direct_amount_resource_ids=[x.resource_id for x in c.lines if x.line_amount_irr is not None]
-  if direct_amount_resource_ids and not await self.repo.are_general_costs(s,direct_amount_resource_ids):raise InvoiceValidationError("direct line amount requires a general_cost resource")
   targets={x.kind:x.general_cost_line_index for x in c.direct_adjustment_allocations}
   if targets:
    resource_ids=[c.lines[i].resource_id for i in targets.values()]

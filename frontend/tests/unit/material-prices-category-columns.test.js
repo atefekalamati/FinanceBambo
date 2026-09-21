@@ -21,7 +21,7 @@ import { installDom } from "../helpers/dom.js";
 
 installDom();
 
-const { columnsFor, presentedColumns, cellValue, renderMaterialPrices } =
+const { columnsFor, presentedColumns, cellValue, originLabel, renderMaterialPrices } =
   await import("../../src/features/prices/material-prices-section.js");
 
 const SECTION_SOURCE = readFileSync(
@@ -147,8 +147,12 @@ test("the page holds no per-category column list of its own", () => {
 
 test("with no category chosen, only what every worksheet supplies is shown", () => {
   // A mixed table cannot show per-category measurements without inventing empty cells.
+  // «منشأ» sits among them although no worksheet supplies it: it says whether an import
+  // read the price or a person typed it, which is true of every row whatever category it
+  // is in — and is precisely what the all-categories view needs, because that is the view
+  // where a typed price and a sheet price sit next to each other.
   assert.deepEqual(labels(null),
-    ["منبع", "محصول", "دسته", "قیمت", "تاریخ آپدیت ورک فلو", "productId"]);
+    ["منبع", "محصول", "دسته", "قیمت", "تاریخ آپدیت ورک فلو", "منشأ", "productId"]);
 });
 
 /* ------------------------------------------------------------------------ the values */
@@ -219,9 +223,11 @@ test("the rendered header row is the chosen category's", () => {
     categories: CATEGORIES, selectedCategory: "angle", onSelectCategory: () => {},
   });
   const headers = [...section.querySelectorAll("th")].map((th) => th.textContent);
+  /* The worksheet's own columns, plus «منشأ» — which no worksheet declares and which this
+     surface adds to every category. See the test that pins why it must survive a chip. */
   assert.deepEqual(headers, [
     "منبع", "محصول", "ضخامت", "وزن", "طول", "تعداد شاخه",
-    "قیمت", "آخرین آپدیت", "productId",
+    "قیمت", "آخرین آپدیت", "منشأ", "productId",
   ]);
 });
 
@@ -299,4 +305,43 @@ test("the date column is relabelled on both surfaces, and only its label moves",
     assert.equal(column.label, "آخرین آپدیت");
     assert.equal(column.key, "workflowDate", "the key is what every value lookup matches on");
   }
+});
+
+/* ------------------------------------------------------ where a price came from */
+
+test("«منشأ» survives picking a category, because that is where it matters", () => {
+  /* The per-category schema comes from the worksheet's own keys and cannot declare it. If
+     it were only added to the shared set, it would show in the all-categories view and
+     vanish the moment somebody picked a chip — and a chip is how you look at one kind of
+     thing and compare its prices, which is exactly when knowing that one of them was typed
+     by hand matters. */
+  for (const category of ["angle", "brick", "ibeam", "pipe", null]) {
+    const shown = presentedColumns(columnsFor(category, CATEGORIES)).map((c) => c.key);
+    assert.ok(shown.includes("origin"), `${category ?? "all"} must say where a price came from`);
+    assert.equal(shown.filter((key) => key === "origin").length, 1, "and say it once");
+    assert.ok(shown.indexOf("origin") < shown.indexOf("productId"),
+              "it belongs before the sheet's own key, which reads as the end of the row");
+  }
+});
+
+test("the report surface is never told which prices were typed", () => {
+  /* A reader of گزارش مالی is asking what things cost. Showing that half the prices were
+     entered by hand invites them to weigh the report's own numbers against each other,
+     which is not the question a cost report answers — and it is the same reason «منبع» and
+     «productId» are withheld there. */
+  for (const category of ["angle", null]) {
+    const shown = presentedColumns(columnsFor(category, CATEGORIES), { readOnly: true })
+      .map((c) => c.key);
+    assert.ok(!shown.includes("origin"));
+    assert.ok(!shown.includes("source") && !shown.includes("productId"));
+  }
+});
+
+test("a row says which it is, and an origin nobody planned for is printed", () => {
+  assert.equal(originLabel({ origin: "manual" }), "ثبت دستی");
+  assert.equal(originLabel({ origin: "sheet" }), "برگهٔ مصالح");
+  /* A service that sends nothing reads as the sheet, which is what every row was before
+     anybody could type one. */
+  assert.equal(originLabel({}), "برگهٔ مصالح");
+  assert.equal(originLabel({ origin: "api_feed" }), "api_feed");
 });

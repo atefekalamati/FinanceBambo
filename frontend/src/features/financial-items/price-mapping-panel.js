@@ -106,7 +106,7 @@ function specList(candidate) {
   return list;
 }
 
-export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSaved, onClose }) {
+export function createPriceMappingPanel({ line, resource, adapter, canEdit, canManageSettings = true, onSaved, onClose }) {
   /* A real <dialog>, not a <section> with role="dialog". `showAccessibleDialog` requires
      one and throws otherwise -- which it did, on every open, so the panel appeared with no
      focus trap, no Escape and no backdrop while an uncaught TypeError went to the console.
@@ -316,6 +316,9 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, onSa
     open.addEventListener("click", () => {
       const dialog = createConversionRuleDialog({
         adapter,
+        /* Passed through rather than read here: a feature may not name a permission code,
+           and the page above already asked the one place that translates them. */
+        canManageSettings,
         context: {
           fromUnit: component.sourceUnit,
           toUnit: component.selectedUnit,

@@ -94,6 +94,7 @@ class ExtractionTests(unittest.TestCase):
         # angle listings in the database are exactly this case. Reading it as 27 kg because
         # the neighbouring worksheets use kilograms is the guess this model exists to
         # refuse; the number is reported as a conflict instead.
+        self.assertEqual(Decimal("27.0"), values["weight_value"])
         self.assertNotIn("weight_kg", values)
         self.assertEqual([{"field": "weight", "raw": "27.0", "unit": None,
                            "reason": "weight has no unit, so it cannot be stated in kilograms"}],

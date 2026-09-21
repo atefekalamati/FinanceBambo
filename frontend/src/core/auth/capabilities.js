@@ -33,6 +33,12 @@ export function capabilitiesFor(context) {
     // code above because a receipt is not one of the plan's numbers, and an
     // account may be trusted with either without the other.
     manageInvoice: hasPermission(context, "finance.manage_invoice"),
+    // Stating something that outlives this project: a conversion rule for the whole
+    // organization, a price category the other projects will see. The services check it,
+    // never the routes -- the route asks for `finance.edit` and only the WIDER scope is
+    // refused -- so it is not a door the interface can find by watching for 403s. It has
+    // to ask, or it offers choices whose only possible answer is one.
+    manageSettings: hasPermission(context, "finance.manage_settings"),
     viewReport: hasPermission(context, "finance_report.view"),
     // Freezing a report into an immutable record, and taking a copy away.
     issueReport: hasPermission(context, "finance_report.issue"),
@@ -41,14 +47,19 @@ export function capabilitiesFor(context) {
 }
 
 /**
- * The six codes the host can grant, in the order the settings page lists them.
+ * Every code the host can grant, in the order the settings page lists them.
  * Kept beside the mapping above so a code cannot be added to one and forgotten
  * in the other.
+ *
+ * `finance.manage_settings` was missing from both for as long as it existed. An account
+ * could not see whether it held it, and no screen could ask -- so the scope choices it
+ * gates were offered to everybody and refused at the end of the form.
  */
 export const FINANCE_PERMISSIONS = Object.freeze([
   Object.freeze({ code: "finance.view", label: "مشاهده اطلاعات مالی" }),
   Object.freeze({ code: "finance.edit", label: "ویرایش اطلاعات و تنظیمات مالی" }),
   Object.freeze({ code: "finance.manage_invoice", label: "مدیریت فاکتورها" }),
+  Object.freeze({ code: "finance.manage_settings", label: "مدیریت تنظیمات مالی" }),
   Object.freeze({ code: "finance_report.view", label: "مشاهده گزارش‌های مالی" }),
   Object.freeze({ code: "finance_report.issue", label: "ثبت گزارش دوره‌ای" }),
   Object.freeze({ code: "finance_report.export", label: "دریافت خروجی گزارش‌ها" }),

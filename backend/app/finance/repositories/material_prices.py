@@ -571,7 +571,7 @@ class PsycopgMaterialPriceRepository:
                           i.dimensions_text, i.length_value, i.length_m,
                           i.width_value, i.height_value,
                           i.thickness_value, i.diameter_value,
-                          i.weight_kg, i.weight_basis,
+                          i.weight_value, i.weight_kg, i.weight_basis,
                           i.branch_count, i.pieces_per_package, i.coverage_m2,
                           i.volume_m3, i.spec_source, i.spec_conflicts,
                           later.workflow_date_gregorian AS rejected_after_date,

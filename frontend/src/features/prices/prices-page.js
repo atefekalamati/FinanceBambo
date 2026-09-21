@@ -2,6 +2,7 @@ import { createFinancePageHeader } from "../../shared/components/finance-page-he
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { SURFACES } from "../../core/config/routes.js";
 import { renderMaterialPrices } from "./material-prices-section.js";
+import { createManualMarketPriceDialog } from "./manual-market-price-dialog.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
@@ -580,6 +581,9 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
   const root = element("div", "prices-page");
   const readOnly = surface === SURFACES.REPORT;
   const canEdit = !readOnly && capabilitiesFor(context).writeFinance;
+  /* A category above project level is checked in the service and never at the route, so a
+     request cannot reveal it in advance. The dialog is told before it offers the levels. */
+  const canManageSettings = capabilitiesFor(context).manageSettings;
   let state = createRequestState(REQUEST_STATUS.LOADING);
   /* One page number per table on this page. Held here rather than inside the
      component because `paint()` rebuilds the whole tree: a component that
@@ -668,6 +672,29 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
       const conversions = element("a", "button button--ghost", "مدیریت تبدیل واحد");
       conversions.href = "#finance/settings";
       toolbarActions.append(conversions, importPrices, add);
+
+      /* A price for something the worksheet will never carry.
+         Offered only where the market table itself is — a host with no material-prices
+         adapter has no table for the row to appear in, and a button that writes somewhere
+         invisible is worse than no button. Saving reloads through `loadMarketPrices`, which
+         fetches the rows AND the categories in one pass: a chip made here has to be on
+         screen straight away, or the person who just made it will make it again. */
+      if (materialPricesAdapter) {
+        const manual = element("button", "button button--ghost", "ثبت دستی قیمت بازار");
+        manual.type = "button";
+        manual.dataset.action = "manual-market-price";
+        manual.addEventListener("click", () => {
+          const dialog = createManualMarketPriceDialog({
+            categories: marketCategories,
+            adapter: materialPricesAdapter,
+            canManageSettings,
+            onSaved: () => { marketPaging = { ...marketPaging, page: 1 }; loadMarketPrices(); },
+            onClose: () => dialog.element.remove(),
+          });
+          dialog.open();
+        });
+        toolbarActions.append(manual);
+      }
     }
     /* «قیمت روز اقلام» -- a row per cost item and its price version -- stood here.
        It listed ITEMS, not prices: every cost item got a row whether or not anybody had

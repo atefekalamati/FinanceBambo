@@ -1,5 +1,10 @@
 import { ApiError } from "../../core/api/api-error.js";
 import { financeBase, jsonOptions, mapResource } from "./api-utils.js";
+/* The one rule for what a stage is. Counting dots here instead would be a second answer
+   for the picker to disagree with. */
+import { stageCodeOf } from "../../features/invoices/invoice-stages.js";
+/* And the one rule for which shape a line states its amount in. */
+import { statesTotal } from "../../features/invoices/invoices-validation.js";
 
 /**
  * InvoiceLineResponse carries estimateLineId and resourceId but no human
@@ -65,7 +70,7 @@ function mapInvoice(value, targets = []) {
 
 function exactPreview(lines, adjustments) {
   const prepared = lines.map((line) => {
-    if (line.targetType === "general_cost") return { ...line, lineAmountIRR: line.lineAmountIRR };
+    if (statesTotal(line)) return { ...line, lineAmountIRR: line.lineAmountIRR };
     const [integer, fraction = ""] = line.quantity.split(".");
     const scaled = BigInt(`${integer}${fraction.padEnd(4, "0")}`);
     return { ...line, lineAmountIRR: ((scaled * BigInt(line.unitPriceIRR) + 5000n) / 10000n).toString() };
@@ -85,7 +90,9 @@ export function createApiInvoicesAdapter(context, client) {
    * name. The activity catalogue holds one row per distinct WBS code, summary tasks
    * included, which is where «۳ · سفت‌کاری» comes from.
    *
-   * Only codes with no dot are kept: those are the stages the level-one report draws.
+   * A stage is whatever `stageCodeOf` says it is, and only codes that ARE a whole stage are
+   * kept -- `1.5` yes, `1.5.3` no. Asking that function rather than counting dots here is
+   * the point: the depth is one rule and this file is not where it lives.
    */
   async function stageTitles() {
     const titles = new Map();
@@ -96,7 +103,7 @@ export function createApiInvoicesAdapter(context, client) {
       const payload = await client.request(`${base}/activities?page=${page}&pageSize=200`);
       for (const item of payload?.items ?? []) {
         const code = String(item.wbsCode ?? "").trim();
-        if (code && !code.includes(".") && item.title) titles.set(code, item.title);
+        if (code && item.title && stageCodeOf(code) === code) titles.set(code, item.title);
       }
       if (page >= Number(payload?.totalPages ?? 1)) break;
     }
@@ -115,8 +122,11 @@ export function createApiInvoicesAdapter(context, client) {
     const resources = resourcePayload.map(mapResource);
     const estimateTargets = linePayload.map((line) => {
       const resource = resources.find((item) => item.resourceId === line.resourceId);
+      /* `wbsCode` first, the activity's own id second. On the audited project the service
+         leaves `wbsCode` null and the id IS the full path -- «۱.۱۱.۱.۲» -- so a reader of
+         one field alone would find nothing to group by. */
       const wbsCode = line.wbsCode ?? line.activityExternalId ?? null;
-      const stageCode = String(wbsCode ?? "").trim().split(".")[0].trim() || null;
+      const stageCode = stageCodeOf(wbsCode);
       return {
         targetId: line.id,
         targetType: "estimate_line",
@@ -163,7 +173,21 @@ export function createApiInvoicesAdapter(context, client) {
     return lines.map((line) => {
       const target = targetCache.find((item) => item.targetId === line.targetId);
       if (!target) throw new ApiError({ status: 422, code: "INVOICE_TARGET_INVALID", message: "اتصال خط فاکتور به قلم مالی معتبر نیست." });
-      return { estimateLineId: target.estimateLineId, resourceId: target.resourceId, quantity: line.targetType === "general_cost" ? null : line.quantity, unit: line.targetType === "general_cost" ? null : line.unit, unitPriceIrr: line.targetType === "general_cost" ? null : line.unitPriceIRR, lineAmountIrr: line.targetType === "general_cost" ? line.lineAmountIRR : null, description: line.description || null };
+      /* WHAT THE LINE STATES, not what its target usually states. An estimate line may be
+         billed either way -- a quantity and a rate, or one figure off the document -- and
+         reading the TYPE would send a general cost's shape for one and an estimate line's
+         for the other regardless of what somebody typed. The service refuses an amount
+         sent beside a quantity, so the two shapes are exclusive here as well. */
+      const total = statesTotal(line);
+      return {
+        estimateLineId: target.estimateLineId,
+        resourceId: target.resourceId,
+        quantity: total ? null : line.quantity,
+        unit: total ? null : line.unit,
+        unitPriceIrr: total ? null : line.unitPriceIRR,
+        lineAmountIrr: total ? line.lineAmountIRR : null,
+        description: line.description || null,
+      };
     });
   }
   async function createDraft({ header, lines, adjustments, duplicateOverrideReason, idempotencyKey }) {

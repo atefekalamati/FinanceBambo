@@ -1,7 +1,7 @@
 import { createFinancePageHeader } from "../../shared/components/finance-page-header.js";
 import { createRequestState, REQUEST_STATUS } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
-import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime, formatUnitLabel, toPersianCode } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, irrToDisplayValue, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-preference.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
@@ -12,7 +12,7 @@ import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { createPermissionNotice } from "../../shared/components/permission-notice.js";
 import { createReportHeader, projectFacts } from "../../shared/reports/report-header.js";
-import { validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
+import { AMOUNT_MODES, amountModesFor, availableAmountModes, statesTotal, validateInvoiceAdjustments, validateInvoiceHeader, validateInvoiceLine } from "./invoices-validation.js";
 import { GENERAL_COST_STAGE, UNSTAGED, buildStageIndex, targetsInStage } from "./invoice-stages.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { actorLabel } from "../../shared/formatters/actor.js";
@@ -131,7 +131,7 @@ function stageOptionLabel(stage) {
   const count = `${formatDisplayNumber(String(stage.count))} ردیف`;
   if (stage.value === GENERAL_COST_STAGE) return `هزینه‌های عمومی پروژه · ${count}`;
   if (stage.value === UNSTAGED) return `بدون مرحله در فایل زمان‌بندی · ${count}`;
-  const number = formatDisplayNumber(stage.value);
+  const number = toPersianCode(stage.value);
   return `${stage.title ? `${number} · ${stage.title}` : `مرحله ${number}`} · ${count}`;
 }
 
@@ -176,15 +176,19 @@ export function editableLines(invoice, targets) {
         ? targets.find((item) => item.targetType === "general_cost" && item.resourceId === line.resourceId)
         : null);
     if (!target) return null;
-    const general = target.targetType === "general_cost";
+    /* A SAVED line already says which shape it was billed in: a quantity, or no quantity.
+       Reading the target's type instead would reopen an estimate line billed as one figure
+       with empty quantity boxes and the amount thrown away -- the edit silently changing
+       what the invoice said. */
+    const total = line.quantity === null || line.quantity === undefined;
     return {
       targetId: target.targetId,
       targetType: target.targetType,
       targetLabel: target.label,
-      quantity: general ? null : line.quantity,
-      unit: general ? null : (line.unit ?? target.unit ?? null),
-      unitPriceIRR: general ? null : line.unitPriceIRR,
-      lineAmountIRR: general ? (line.rawAmountIRR ?? line.lineAmountIRR) : "",
+      quantity: total ? null : line.quantity,
+      unit: total ? null : (line.unit ?? target.unit ?? null),
+      unitPriceIRR: total ? null : line.unitPriceIRR,
+      lineAmountIRR: total ? (line.rawAmountIRR ?? line.lineAmountIRR) : "",
       description: line.description ?? "",
     };
   }).filter(Boolean);
@@ -329,6 +333,21 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
        general-cost item's own baseline, which pools unattached lines up to its revised
        amount and warns when they pass it. Saying only the first half would send somebody
        hunting for a stage that does not apply to a building permit. */
+
+    /* WHICH OF THE TWO WAYS THIS LINE SAYS WHAT IT COST.
+       A delivery note states a quantity and a rate; a contractor's bill for the same
+       activity states one number and no breakdown, and the person holding it should not
+       have to invent a rate so the form will accept it. The service has always taken
+       either -- it refuses only the combination -- so this is a question the form was not
+       asking, not a capability that was missing.
+       Offered only where there is a choice: a general cost has no quantity to state. */
+    const modeField = element("label", "form-field");
+    modeField.append(element("span", "form-label", "روش ثبت مبلغ"));
+    const modeSelect = element("select", "app-select");
+    modeSelect.name = "amountMode";
+    const MODE_LABELS = { [AMOUNT_MODES.COMPUTED]: "مقدار × قیمت واحد", [AMOUNT_MODES.TOTAL]: "فقط مبلغ کل" };
+    modeField.append(modeSelect);
+
     const generalWarning = element("p", "invoice-warning",
       "هزینه عمومی به هیچ مرحله‌ای وصل نمی‌شود، پس در نمودار «گزارش مالی سطح ۱» دیده نمی‌شود. در هزینه واقعی پروژه، روند ماهانه و تفکیک هزینه‌ها کامل حساب می‌شود. اگر این خرید برای مرحله مشخصی است، همان مرحله را انتخاب کنید.");
 
@@ -339,12 +358,8 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
         ...inStage.map((target) => option(target.targetId, `${target.label} · ${target.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : formatUnitLabel(target.unit)}`)));
       targetSelect.disabled = inStage.length === 0;
       generalWarning.hidden = selectedStage !== GENERAL_COST_STAGE;
-      // Nothing is selected yet, so neither amount shape applies. Both stay hidden rather
-      // than one of them guessing: the quantity boxes belong to an estimate line and the
-      // single amount box to a general cost, and which it is has not been said.
-      quantity.field.hidden = true;
-      unitPrice.field.hidden = true;
-      amount.field.hidden = true;
+      // Nothing is selected yet, so no amount shape applies and none is guessed at.
+      paintAmountFields();
     }
 
     stageSelect.value = selectedStage;
@@ -352,32 +367,57 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
       selectedStage = stageSelect.value;
       paintTargets();
     });
-    targetSelect.addEventListener("change", () => {
+    function paintAmountFields() {
       const target = targets.find((item) => item.targetId === targetSelect.value);
-      const chosen = Boolean(target);
-      const general = target?.targetType === "general_cost";
-      quantity.field.hidden = !chosen || general;
-      unitPrice.field.hidden = !chosen || general;
-      amount.field.hidden = !chosen || !general;
-    });
+      const choices = amountModesFor(target);
+      /* Rebuilt per target, because which shapes exist AND which are usable both depend on
+         it. A shape the service will refuse is shown disabled with the reason on it rather
+         than dropped: somebody billing a contractor's lump sum needs to see that the shape
+         exists and what stands in its way, which is not the same message as the form not
+         having it. */
+      modeSelect.replaceChildren(...choices.map((choice) => {
+        const node = option(choice.value, choice.available
+          ? MODE_LABELS[choice.value]
+          : `${MODE_LABELS[choice.value]} — ${choice.reason}`);
+        node.disabled = !choice.available;
+        return node;
+      }));
+      /* The control appears only when there is something to choose. On a general cost the
+         single amount box IS the only shape, and a menu with one option in it is a question
+         with one answer. */
+      modeField.hidden = !target || choices.length < 2;
+      const usable = availableAmountModes(target);
+      if (!usable.includes(modeSelect.value)) modeSelect.value = usable[0];
+      const total = !target || modeSelect.value === AMOUNT_MODES.TOTAL;
+      quantity.field.hidden = !target || total;
+      unitPrice.field.hidden = !target || total;
+      amount.field.hidden = !target || !total;
+      /* Hidden boxes are emptied. A quantity left behind a switched-away field would be
+         read back by the validator and sent beside an amount, which the service refuses --
+         and the reader would have no idea which number it was talking about. */
+      if (total) { quantity.input.value = ""; unitPrice.input.value = ""; }
+      else { amount.input.value = ""; }
+    }
+    targetSelect.addEventListener("change", paintAmountFields);
+    modeSelect.addEventListener("change", paintAmountFields);
     paintTargets();
     const lineDescription = inputField("توضیح خط", "lineDescription");
     const add = element("button", "button button--ghost", "افزودن خط");
     add.type = "button";
     add.addEventListener("click", () => {
       const target = targets.find((item) => item.targetId === targetSelect.value);
-      const validation = validateInvoiceLine({ quantity: quantity.input.value, unitPriceIRR: tomanInputToIrr(unitPrice.input.value), amountIRR: tomanInputToIrr(amount.input.value), description: lineDescription.input.value }, target);
+      const validation = validateInvoiceLine({ quantity: quantity.input.value, unitPriceIRR: tomanInputToIrr(unitPrice.input.value), amountIRR: tomanInputToIrr(amount.input.value), description: lineDescription.input.value }, target, modeSelect.value);
       if (!validation.valid) { showMessage(Object.values(validation.errors).join(" "), true); return; }
       lines.push(validation.values);
       showMessage("خط به پیش‌نویس اضافه شد.");
       paintStep();
     });
     const editor = element("div", "invoice-line-entry");
-    editor.append(stageField, targetField, generalWarning, quantity.field, unitPrice.field, amount.field, lineDescription.field, add);
+    editor.append(stageField, targetField, generalWarning, modeField, quantity.field, unitPrice.field, amount.field, lineDescription.field, add);
     const list = element("div", "invoice-draft-lines");
     lines.forEach((line, index) => {
       const card = element("article", "invoice-draft-line");
-      card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", line.targetType === "general_cost" ? formatTomanFromIrr(line.lineAmountIRR) : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)} × ${formatTomanFromIrr(line.unitPriceIRR)}`));
+      card.append(element("strong", "", `${formatDisplayNumber(String(index + 1))}. ${line.targetLabel}`), element("span", "numeric", statesTotal(line) ? formatTomanFromIrr(line.lineAmountIRR) : `${formatDisplayNumber(line.quantity)} ${formatUnitLabel(line.unit)} × ${formatTomanFromIrr(line.unitPriceIRR)}`));
       const remove = element("button", "button button--ghost", "حذف خط");
       remove.type = "button";
       remove.addEventListener("click", () => { lines.splice(index, 1); paintStep(); });

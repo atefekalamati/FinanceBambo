@@ -75,6 +75,7 @@ const ALL_CATEGORIES_COLUMNS = Object.freeze([
   { key: "categoryLabel", label: "دسته", kind: "base" },
   { key: "price", label: "قیمت", kind: "base", numeric: true },
   { key: "workflowDate", label: "تاریخ آپدیت ورک فلو", kind: "base" },
+  { key: "origin", label: "منشأ", kind: "base" },
   { key: "productId", label: "productId", kind: "base" },
 ]);
 
@@ -96,11 +97,15 @@ export function columnsFor(selectedCategory, categories) {
   return declared?.columns?.length ? declared.columns : [...ALL_CATEGORIES_COLUMNS];
 }
 
-/* The supplier and the worksheet's own product id. Useful to somebody maintaining the
-   sheet -- they are how a row is found in it -- and noise to somebody reading the
-   financial report, who is asking what things cost rather than where the quote came
-   from. Dropped on the report surface only; امور مالی keeps both. */
-const MAINTENANCE_ONLY_COLUMNS = Object.freeze(new Set(["source", "productId"]));
+/* The supplier, the worksheet's own product id, and whether a person typed this price.
+   All three are how somebody MAINTAINING the sheet finds and judges a row, and all three
+   are noise to somebody reading the financial report, who is asking what things cost
+   rather than where the quote came from. «منشأ» belongs with them for a sharper reason
+   than the other two: a reader who can see that half the prices were typed by hand is
+   being invited to weigh the report's numbers against each other, which is not the
+   question a cost report answers. Dropped on the report surface only; امور مالی keeps
+   all three. */
+const MAINTENANCE_ONLY_COLUMNS = Object.freeze(new Set(["source", "productId", "origin"]));
 
 /* «تاریخ آپدیت ورک فلو» is the sheet's own phrase for it and it reads as jargon in a
    table of prices. The key is what everything else matches on, so only the label moves. */
@@ -114,11 +119,34 @@ const COLUMN_LABEL_OVERRIDES = Object.freeze({ workflowDate: "آخرین آپد�
  * them from the all-categories view and leave them in every category's own.
  */
 export function presentedColumns(columns, { readOnly = false } = {}) {
-  return columns
+  const shown = withOrigin(columns, { readOnly })
     .filter((column) => !(readOnly && MAINTENANCE_ONLY_COLUMNS.has(column.key)))
     .map((column) => (COLUMN_LABEL_OVERRIDES[column.key]
       ? { ...column, label: COLUMN_LABEL_OVERRIDES[column.key] }
       : column));
+  return shown;
+}
+
+/* «منشأ» is not a worksheet column, so no category declares it.
+ *
+ * Every other column here comes from the Backend's per-category schema, derived from the
+ * keys that worksheet actually has — and that is the rule this page keeps, because a
+ * hardcoded list is how one sheet's column ends up over another sheet's rows. But whether
+ * a person TYPED this price is true of every row in every category and is stated by no
+ * worksheet at all, so it would appear in the all-categories view and then vanish the
+ * moment somebody picked a chip — exactly where it matters most, since a chip is how you
+ * look at one kind of thing and compare its prices.
+ *
+ * Added once, here, where the surface's own presentation decisions already live. Never on
+ * the report surface, and never twice if the schema ever does declare it.
+ */
+function withOrigin(columns, { readOnly }) {
+  if (readOnly || columns.some((column) => column.key === "origin")) return columns;
+  const origin = { key: "origin", label: "منشأ", kind: "base" };
+  /* Before `productId`, which is the sheet's own key and reads as the end of the row. */
+  const at = columns.findIndex((column) => column.key === "productId");
+  if (at < 0) return [...columns, origin];
+  return [...columns.slice(0, at), origin, ...columns.slice(at)];
 }
 
 /** One cell's text, by where the column says its value lives. */
@@ -147,9 +175,21 @@ export function cellValue(column, row, categoryLabels = {}) {
     case "categoryLabel": return categoryLabels[row.category] ?? row.category ?? "—";
     case "price": return priceCell(row);
     case "workflowDate": return sheetDateLabel(row);
+    case "origin": return originLabel(row);
     case "productId": return row.externalId ?? "—";
     default: return "—";
   }
+}
+
+/** Whether an import read this price off a worksheet, or a person typed it. */
+export function originLabel(row) {
+  /* `sheet` is the default in the adapter, so a service that sends nothing reads as the
+     sheet -- which is what every row was before anybody could type one. A value this page
+     has no word for is printed rather than swallowed: a blank would read as "from the
+     sheet", which is the one thing it is not known to be. */
+  if (row?.origin === "manual") return "ثبت دستی";
+  if (!row?.origin || row.origin === "sheet") return "برگهٔ مصالح";
+  return row.origin;
 }
 
 /** The date a reader recognises: the sheet's own Jalali text when it stated one. */

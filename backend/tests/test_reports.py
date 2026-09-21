@@ -41,6 +41,25 @@ def estimate(line_id, resource_id, kind, quantity, revised, original_price, curr
 
 
 class LiveReportDomainTests(unittest.TestCase):
+    def test_linked_total_increases_actual_without_inventing_purchased_quantity(self):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-m")
+        invoices = [
+            {"estimate_line_id": MATERIAL_LINE, "resource_id": MATERIAL,
+             "quantity": "2", "unit": "each", "base_unit": "each", "dimension": "count",
+             "final_line_amount_irr": "200", "financial_effect_sign": 1, "resource_type": "material"},
+            {"estimate_line_id": MATERIAL_LINE, "resource_id": MATERIAL,
+             "quantity": None, "unit": None, "base_unit": "each", "dimension": "count",
+             "final_line_amount_irr": "300", "financial_effect_sign": 1, "resource_type": "material"},
+        ]
+        report = calculate_live_report([row], invoices,
+                                       [{"assignmentExternalId": "a-m", "actualQuantity": "0", "task": {}}],
+                                       [], None)
+        self.assertEqual(Decimal("500"), report.metrics["actualCostIrr"])
+        # 10 planned minus only the two units explicitly purchased; the amount-only
+        # line has no quantity and therefore cannot reduce the required eight units.
+        self.assertEqual(Decimal("800"), report.metrics["moneyRequiredToContinueIrr"])
+        self.assertEqual(Decimal("500"), report.price_variances[0]["actualCostIrr"])
+
     def test_calculates_eight_prd_metrics_and_charts(self):
         estimates = [
             estimate(MATERIAL_LINE, MATERIAL, "material", "10", "12", "100", "150", "a-m"),

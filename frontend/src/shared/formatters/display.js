@@ -50,6 +50,19 @@ function toPersianDigits(value) {
   return String(value).replace(/\d/g, (digit) => PERSIAN_DIGITS[Number(digit)]);
 }
 
+/**
+ * Persian digits with nothing else touched. For a CODE rather than a quantity.
+ *
+ * «۱.۱۰» is a WBS path, and `formatDisplayNumber` reads it as one and a tenth: it strips
+ * the trailing zero and writes the decimal separator, so stage «۱.۱۰» and stage «۱.۱»
+ * both came out «۱٫۱» -- two different stages of the project wearing one label, in the
+ * menu where somebody chooses which one an invoice is for.
+ */
+export function toPersianCode(value) {
+  if (value === null || value === undefined || value === "") return "";
+  return toPersianDigits(String(value));
+}
+
 export function formatDisplayNumber(value) {
   if (value === null || value === undefined || value === "") return "—";
   const [rawInteger, rawFraction = ""] = String(value).split(".");

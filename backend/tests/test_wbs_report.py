@@ -252,6 +252,16 @@ class WbsTreeTests(unittest.TestCase):
 
 
 class WbsReportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_linked_amount_only_line_lands_on_its_estimate_stage(self):
+        amount_only = invoice(line(1), CONCRETE, "material", "345", quantity=None)
+        amount_only["unit"] = None
+        repository = Repository(estimates=[ESTIMATES[0]], invoices=[amount_only])
+        result = await build(repository).by_wbs(SCOPE, WHEN, parent_wbs_code="1.8")
+        formwork = next(item for item in result["items"] if item["wbs_code"] == "1.8.1")
+        self.assertEqual(Decimal("345"), formwork["actual_cost_irr"])
+        self.assertEqual(Decimal(0), result["unattributed_actual_irr"])
+        self.assertEqual(Decimal(0), result["unmapped_wbs_actual_irr"])
+
     async def test_level_one_returns_root_stages_with_rolled_up_money(self):
         result = await build().by_wbs(SCOPE, WHEN, level=1)
         codes = [item["wbs_code"] for item in result["items"]]

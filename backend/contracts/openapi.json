@@ -7324,6 +7324,18 @@
             ],
             "title": "Weightkg"
           },
+          "weightValue": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weightvalue"
+          },
           "widthValue": {
             "anyOf": [
               {

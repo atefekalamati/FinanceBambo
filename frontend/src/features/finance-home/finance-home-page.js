@@ -175,10 +175,13 @@ function createManagerialComparisonPanel(
   heading.className = "finance-analysis-card__heading";
   const headingCopy = document.createElement("div");
   const headingTitle = document.createElement("h2");
-  headingTitle.textContent = ANALYSIS_CHARTS.managerial.title;
-  const headingDescription = document.createElement("p");
-  headingDescription.textContent = ANALYSIS_CHARTS.managerial.description;
-  headingCopy.append(headingTitle, headingDescription);
+  const headingTitleText = document.createTextNode(ANALYSIS_CHARTS.managerial.title);
+  const headingInfo = element("span", "rc-info", "i");
+  headingInfo.setAttribute("role", "img");
+  headingInfo.setAttribute("aria-label", "راهنما");
+  headingInfo.title = ANALYSIS_CHARTS.managerial.description;
+  headingTitle.append(headingTitleText, headingInfo);
+  headingCopy.append(headingTitle);
   heading.append(headingCopy);
 
   const chart = document.createElement("div");
@@ -376,8 +379,8 @@ function createManagerialComparisonPanel(
       button.setAttribute("aria-pressed", String(name === key));
       button.className = `button button--small ${name === key ? "button--primary" : "button--ghost"}`;
     });
-    headingTitle.textContent = ANALYSIS_CHARTS[key].title;
-    headingDescription.textContent =
+    headingTitleText.textContent = ANALYSIS_CHARTS[key].title;
+    headingInfo.title =
       key === "monthly"
         ? monthly.description
         : ANALYSIS_CHARTS[key].description;
@@ -528,14 +531,27 @@ function renderFinanceHome(
     },
   });
   const rowSecond = element("div", "finance-grid finance-grid--pair");
-  rowSecond.append(createLevelOneSection(levelOne ?? {}), builder);
+  const levelOneSection = createLevelOneSection(levelOne ?? {});
+  const levelOneInfo = levelOneSection.querySelector(".rc-info");
+  const levelOneNotes = Array.from(levelOneSection.querySelectorAll(".level-one-section__note"));
+  if (levelOneInfo && levelOneNotes.length) {
+    levelOneInfo.title = [levelOneInfo.title, ...levelOneNotes.map((note) => note.textContent)].join(" ");
+    levelOneNotes.forEach((note) => note.remove());
+  }
+  rowSecond.append(levelOneSection, builder);
 
   // ── row 3 — the cumulative curve beside the three insight cards ────────
   const rowThird = element("div", "finance-grid finance-grid--insights");
   const curvePanel = element("section", "overview-card finance-curve-card");
   curvePanel.setAttribute("aria-label", "روند تجمعی هزینه پروژه");
   const curveHead = element("header", "overview-card__head");
-  curveHead.append(element("h2", "overview-card__title", "روند تجمعی هزینه"));
+  const curveTitle = element("h2", "overview-card__title", "روند تجمعی هزینه");
+  const curveInfo = element("span", "rc-info", "i");
+  curveInfo.setAttribute("role", "img");
+  curveInfo.setAttribute("aria-label", "راهنما");
+  curveInfo.title = cumulative?.description ?? "منحنی تجمعی هزینه واقعی در برابر برآورد دوره‌ای";
+  curveTitle.append(curveInfo);
+  curveHead.append(curveTitle);
   curvePanel.append(curveHead);
   if (cumulative?.panel) {
     cumulative.panel.hidden = false;
@@ -575,6 +591,17 @@ function summaryRow(tone, text) {
   return row;
 }
 
+export function summarizeReportWarnings(warnings) {
+  const counts = new Map();
+  for (const warning of warnings) {
+    const message = reportWarningText(warning);
+    counts.set(message, (counts.get(message) ?? 0) + 1);
+  }
+  return [...counts].map(([message, count]) =>
+    count > 1 ? `${message} (برای ${formatDisplayNumber(count)} مورد)` : message,
+  );
+}
+
 /** هشدارهای کیفیت محاسبه, as one of the three equal insight cards. */
 function buildWarningsCard(data) {
   const warnings = document.createElement("section");
@@ -593,10 +620,11 @@ function buildWarningsCard(data) {
   const title = document.createElement("h2");
   title.textContent = "هشدارهای کیفیت محاسبه";
   warnings.append(title);
-  if (reportWarnings.length) {
+  const warningMessages = summarizeReportWarnings(reportWarnings);
+  if (warningMessages.length) {
     const list = document.createElement("ul");
-    reportWarnings.forEach((warning) => {
-      list.append(summaryRow("warn", reportWarningText(warning)));
+    warningMessages.forEach((message) => {
+      list.append(summaryRow("warn", message));
     });
     warnings.append(list);
   } else {
@@ -744,6 +772,18 @@ function trimmedWindowNotice(trendWindow) {
   return notice;
 }
 
+/* A rendered chart keeps its existing explanatory wording, but the wording
+   lives in the heading's help tooltip instead of taking a row below the plot.
+   Error and empty-state notices return before this helper and stay visible. */
+function collectChartNotices(panel) {
+  const notices = Array.from(panel.children).filter(
+    (child) => child.tagName === "P" && child.classList.contains("inline-notice"),
+  );
+  const messages = notices.map((notice) => notice.textContent);
+  notices.forEach((notice) => notice.remove());
+  return messages;
+}
+
 function trendLegend() {
   const legend = element("ul", "breakdown-legend monthly-trend-legend");
   [
@@ -835,7 +875,14 @@ function createCostCurvePanel({ trend, trendError, trendWindow }) {
       ),
     );
   }
-  return { panel, chart };
+  return {
+    panel,
+    chart,
+    description: [
+      "منحنی تجمعی هزینه واقعی در برابر برآورد دوره‌ای",
+      ...collectChartNotices(panel),
+    ].join(" "),
+  };
 }
 
 /** Green fill for what was spent, dashed blue for what was planned. */
@@ -945,9 +992,10 @@ function createMonthlyTrendPanel({ trend, trendError, trendWindow }) {
   return {
     panel,
     chart,
-    description: axisScale
-      ? `${description} ارقام محور بر حسب ${axisScale.unit} است.`
-      : description,
+    description: [
+      axisScale ? `${description} ارقام محور بر حسب ${axisScale.unit} است.` : description,
+      ...collectChartNotices(panel),
+    ].join(" "),
   };
 }
 
