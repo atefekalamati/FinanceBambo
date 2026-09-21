@@ -266,7 +266,11 @@ class CompositionTests(unittest.TestCase):
         avalai.AvalAIProvider = Stub
         try:
             from extraction.adapters import _ai_fields as real
-            fields = real("some text", {"rawText"})
+            import os
+            from unittest.mock import patch
+            with patch.dict(os.environ, {"FINANCE_AI_EXTRACTION_ENABLED": "true",
+                                      "FINANCE_AI_API_KEY": "test-key"}):
+                fields = real("some text", {"rawText"})
         finally:
             avalai.AvalAIProvider = original
         self.assertEqual(["supplierName"], [f["key"] for f in fields],
@@ -283,11 +287,16 @@ class CompositionTests(unittest.TestCase):
         avalai.AvalAIProvider = Stub
         try:
             from extraction.adapters import _as_contract
-            answer = _as_contract({"text": "جمع کل: 1350000", "confidence": 0.9})
+            import os
+            from unittest.mock import patch
+            with patch.dict(os.environ, {"FINANCE_AI_EXTRACTION_ENABLED": "true",
+                                      "FINANCE_AI_API_KEY": "test-key"}):
+                answer = _as_contract({"text": "جمع کل: 1350000", "confidence": 0.9})
         finally:
             avalai.AvalAIProvider = original
         keys = [f["key"] for f in answer["fields"]]
         self.assertIn("rawText", keys, "the OCR text survives a failed second opinion")
+        self.assertIn("aiWarnings", keys)
 
     def test_ai_candidates_arrive_less_certain_than_a_parsed_field(self):
         from extraction.adapters import AI_CONFIDENCE_WEIGHT

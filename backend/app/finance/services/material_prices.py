@@ -243,7 +243,7 @@ class MaterialPriceService:
         return await self.repository.unresolved_items(scope, page=page, page_size=page_size)
 
     async def current(self, scope, *, category=None, as_of=None, page=1, page_size=50,
-                      only_active=True):
+                      only_active=True, provider_item_id=None):
         """The newest observation per listing, resolved, paged.
 
         Paged in memory after resolution rather than in SQL, and deliberately: the status a
@@ -252,8 +252,10 @@ class MaterialPriceService:
         is one project's provider listings -- hundreds, not millions -- and correctness is
         worth more than the query here.
         """
-        observations = await self.repository.latest_observations(
-            scope, category=category, only_active=only_active)
+        options = {"category": category, "only_active": only_active}
+        if provider_item_id is not None:
+            options["provider_item_id"] = provider_item_id
+        observations = await self.repository.latest_observations(scope, **options)
         settings = {row["category"]: row["display_unit"]
                     for row in await self.repository.unit_settings(scope)
                     if row.get("resource_id") is None and row.get("provider_item_id") is None}

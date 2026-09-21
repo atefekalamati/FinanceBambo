@@ -14,6 +14,7 @@ from app.finance.services.google_sheet import (
     MAX_BYTES,
     export_url,
     fetch_sheet_as_xlsx,
+    fetch_workbook_as_xlsx,
     parse_sheet_link,
 )
 
@@ -91,6 +92,16 @@ class NotAnOpenProxyTests(unittest.TestCase):
 
 
 class FetchFailureTests(unittest.TestCase):
+    def test_workbook_import_ignores_selected_tab(self):
+        asked = []
+
+        def download(url):
+            asked.append(url)
+            return XLSX
+
+        self.assertEqual(run(fetch_workbook_as_xlsx(SHEET + "#gid=1842", download=download)), XLSX)
+        self.assertEqual(asked, [export_url("1AbCdEfGhIjKlMnOpQrStUvWxYz", None)])
+
     def test_a_workbook_comes_back_as_bytes(self):
         self.assertEqual(run(fetch_sheet_as_xlsx(SHEET, download=lambda url: XLSX)), XLSX)
 

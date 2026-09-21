@@ -150,3 +150,19 @@ async def fetch_sheet_as_xlsx(link: str, download=_download) -> bytes:
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise GoogleSheetError("the server could not reach Google Sheets") from exc
     return _judge(content)
+
+
+async def fetch_workbook_as_xlsx(link: str, download=_download) -> bytes:
+    """Fetch every tab for importers that validate a whole workbook."""
+    document_id, _gid = parse_sheet_link(link)
+    try:
+        content = await asyncio.to_thread(download, export_url(document_id, None))
+    except GoogleSheetError:
+        raise
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise GoogleSheetError("this sheet is not public") from exc
+        raise GoogleSheetError(f"Google refused the link (status {exc.code})") from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise GoogleSheetError("the server could not reach Google Sheets") from exc
+    return _judge(content)

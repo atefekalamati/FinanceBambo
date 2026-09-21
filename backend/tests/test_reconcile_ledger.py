@@ -64,7 +64,7 @@ class DataMigrationTests(unittest.TestCase):
         # 0034 joins them, and must. It converts 232 brick weights from grams to kilograms
         # and copies every original pair into `metadata._legacyWeight` -- rows whose values
         # CHANGE, which is precisely what a schema-fingerprint comparison cannot vouch for.
-        self.assertEqual(["0020", "0025", "0030", "0034"],
+        self.assertEqual(["0020", "0025", "0030", "0034", "0035"],
                          [revision for revision, _name, _moved in data])
         _revision, _name, moved = data[0]
         self.assertEqual(["INSERT INTO", "UPDATE INVOICES AS TARGET SET"], moved)

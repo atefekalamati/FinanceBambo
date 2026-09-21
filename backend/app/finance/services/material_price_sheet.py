@@ -35,6 +35,13 @@ from ..domain.material_price_rows import (SOURCE_UNIT_HEADERS, RowStatus,
 #: without the date column there is nothing to order two observations by.
 REQUIRED_HEADERS = ("source", "محصول", "قیمت", "تاریخ آپدیت ورک فلو", "productId")
 
+HEADER_ALIASES = {
+    "productName": "محصول",
+    "price": "قیمت",
+    "workflowUpdateDate": "تاریخ آپدیت ورک فلو",
+    "unit": "واحد",
+}
+
 
 #: Category-specific columns, kept verbatim as attributes. All optional: brick states no
 #: weight on 94 of its 213 rows and channel none on 38 of 56, and an absent attribute is
@@ -68,6 +75,8 @@ class WorksheetResult:
     title: str
     read: bool
     reason: str | None = None
+    source_title: str | None = None
+    gid: str | None = None
     headers: tuple = ()
     rows: tuple = ()
 
@@ -129,7 +138,7 @@ def check_headers(title: str, headers) -> str | None:
     Duplicates are refused too: two columns both called `قیمت` make the row dictionary
     depend on which one is read last, which is a coin toss deciding a price.
     """
-    named = [h for h in headers if h]
+    named = [HEADER_ALIASES.get(h, h) for h in headers if h]
     if not named:
         return "worksheet %r has no header row" % title
     duplicates = sorted({h for h in named if named.count(h) > 1})
@@ -139,20 +148,16 @@ def check_headers(title: str, headers) -> str | None:
     if missing:
         return ("worksheet %r is missing the required column(s) %s"
                 % (title, ", ".join(missing)))
-    # Exactly one pricing-unit column, named either way. Zero is a worksheet whose prices
-    # have no denominator; two would make the unit depend on which column is read last,
-    # which is the same coin toss the duplicate check above refuses for a price.
+    # The unit is optional source evidence. An absent unit must survive as an unknown
+    # basis; downstream calculation refuses to convert it to a project unit.
     present = [h for h in SOURCE_UNIT_HEADERS if h in named]
-    if not present:
-        return ("worksheet %r states no pricing unit column (expected one of %s)"
-                % (title, ", ".join(SOURCE_UNIT_HEADERS)))
     if len(present) > 1:
         return ("worksheet %r states the pricing unit twice (%s)"
                 % (title, ", ".join(present)))
     return None
 
 
-def read_worksheet(title: str, rows) -> WorksheetResult:
+def read_worksheet(title: str, rows, *, source_title=None, gid=None) -> WorksheetResult:
     """One worksheet's rows, decided -- or one refusal covering all of them."""
     body = [row for row in rows]
     while body and all(c is None or str(c).strip() == "" for c in body[-1]):
@@ -165,18 +170,22 @@ def read_worksheet(title: str, rows) -> WorksheetResult:
     if problem:
         return WorksheetResult(title=title, read=False, reason=problem, headers=headers)
 
+    internal_headers = tuple(HEADER_ALIASES.get(h, h) for h in headers)
+    attribute_headers = tuple(h for h in internal_headers if h and h not in
+                              set(REQUIRED_HEADERS) | set(SOURCE_UNIT_HEADERS))
     decided = []
     for number, raw in enumerate(body[1:], start=2):
         if all(c is None or str(c).strip() == "" for c in raw):
             continue  # a blank spacer row is not a rejected row
         cells = {h: (raw[i] if i < len(raw) else None)
-                 for i, h in enumerate(headers) if h}
+                 for i, h in enumerate(internal_headers) if h}
         decided.append(decide_row(worksheet=title, row_number=number, cells=cells,
-                                  attribute_columns=ATTRIBUTE_HEADERS))
+                                  attribute_columns=attribute_headers))
     if not decided:
         return WorksheetResult(title=title, read=False, headers=headers,
                                reason="worksheet %r has a header but no data rows" % title)
-    return WorksheetResult(title=title, read=True, headers=headers, rows=tuple(decided))
+    return WorksheetResult(title=title, read=True, source_title=source_title or title,
+                           gid=gid, headers=headers, rows=tuple(decided))
 
 
 def read_workbook(sheets: dict) -> WorkbookResult:

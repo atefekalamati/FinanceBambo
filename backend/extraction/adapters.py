@@ -107,9 +107,7 @@ def _as_contract(result):
     "the model read an empty string" are the same fact, and a blank field in a review form
     invites someone to type a number into it that no document ever contained.
     """
-    text = str(result.get("text") or "").strip()
-    if not text:
-        return {"fields": []}
+    text = "" if result.get("text") is None else str(result["text"])
     confidence = result.get("confidence")
     try:
         confidence = float(confidence)
@@ -120,6 +118,9 @@ def _as_contract(result):
     confidence = min(1.0, max(0.0, confidence))
     fields = [{"key": RAW_TEXT_KEY, "extractedValue": text,
                "confidence": confidence, "editedByUser": False}]
+    if not text.strip():
+        fields.extend(_warning_fields("ocrWarnings", ["no text recognized"], "ocr-empty"))
+        return {"fields": fields}
     structured = _structured_fields(text, confidence)
     fields.extend(structured)
     fields.extend(_ai_fields(text, {field["key"] for field in fields},
@@ -219,10 +220,10 @@ def _legacy_avalai_fields(text, already_emitted, transcript=None, metadata=None)
         candidates = provider.extract(text, transcript=transcript, metadata=metadata)
     except (ProviderUnavailable, ProviderResponseInvalid) as error:
         LOG.warning("legacy avalai extraction skipped: %s", error)
-        return []
+        return _warning_fields("aiWarnings", [str(error)], "ai-unavailable")
     except Exception:                                          # noqa: BLE001
         LOG.exception("legacy avalai extraction failed; the rest of the extraction stands")
-        return []
+        return _warning_fields("aiWarnings", ["AI extraction failed"], "ai-failed")
 
     emitted = []
     for key, (value, confidence) in sorted(candidates.items()):

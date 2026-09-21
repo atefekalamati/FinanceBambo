@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 from ..domain.material_price_rows import PIPE_FITTING_CATEGORY, RowStatus
 from ..repositories.material_prices import RunAlreadyRunning, row_fingerprint
 from ..domain.errors import FinanceDomainError
-from .google_sheet import GoogleSheetError, export_url, fetch_sheet_as_xlsx, parse_sheet_link
+from .google_sheet import GoogleSheetError, export_url, fetch_workbook_as_xlsx, parse_sheet_link
 from .material_price_sheet import WORKSHEET_ALLOWLIST, read_workbook, workbook_from_xlsx
 from ..domain.material_specs import FROM_COLUMN, conflicts_with, extract_specs
 
@@ -107,7 +107,7 @@ class MaterialPriceImportService:
     #: development host, and reaching into `devhost` for a number would end that.
     DEFAULT_INTERVAL_MINUTES = 1440
 
-    def __init__(self, repository, *, sheet_link, fetch=fetch_sheet_as_xlsx, clock=None,
+    def __init__(self, repository, *, sheet_link, fetch=fetch_workbook_as_xlsx, clock=None,
                  interval_minutes=None):
         self.repository = repository
         self.sheet_link = sheet_link

@@ -338,6 +338,7 @@ class MaterialPriceHistoryResponse(ApiModel):
 
     normalized_price_irr: Decimal | None = None
     raw_price: str | None = None
+    source_unit: str | None = None
     source_currency: Literal["IRR", "TOMAN"]
     workflow_date_raw: str | None = None
     workflow_date_jalali: str | None = None

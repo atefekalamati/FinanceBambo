@@ -128,7 +128,7 @@ class ExtractionTests(unittest.TestCase):
         values, _ = extract_specs("angle", {"وزن": "27.0"})
         self.assertEqual(Decimal("27.0"), values["weight_value"])
         self.assertNotIn("weight_kg", values)
-        self.assertNotIn("weight_basis", values)
+        self.assertEqual("unknown", values["weight_basis"])
         self.assertEqual("weight", values["spec_conflicts"][0]["field"])
 
     def test_an_origin_in_the_weight_column_becomes_a_manufacturer(self):

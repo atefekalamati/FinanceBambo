@@ -6522,6 +6522,17 @@
             ],
             "title": "Sourcerownumber"
           },
+          "sourceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceunit"
+          },
           "sourceWorksheet": {
             "anyOf": [
               {
@@ -19913,6 +19924,59 @@
           }
         },
         "summary": "Save Material Item Label",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/material-prices/{providerItemId}/latest": {
+      "get": {
+        "description": "One provider listing's newest usable observation in the authorized project scope.",
+        "operationId": "material_price_latest_api_projects__projectId__finance_material_prices__providerItemId__latest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerItemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provideritemid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialPriceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Price Latest",
         "tags": [
           "finance"
         ]

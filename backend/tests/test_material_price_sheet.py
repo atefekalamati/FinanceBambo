@@ -44,10 +44,17 @@ class HeaderTests(unittest.TestCase):
                 self.assertIsNotNone(problem, "%r must stop the worksheet" % missing)
                 self.assertIn(missing, problem)
 
-    def test_a_renamed_price_column_is_a_missing_price_column(self):
+    def test_current_sheet_price_alias_is_accepted(self):
         headers = tuple("price" if h == "قیمت" else h for h in HEADER)
-        problem = check_headers("steel -Rebar", headers)
-        self.assertIn("قیمت", problem)
+        self.assertIsNone(check_headers("steel -Rebar", headers))
+
+    def test_both_price_names_are_refused_as_a_duplicate(self):
+        self.assertIn("repeats", check_headers("steel -Rebar", HEADER + ("price",)))
+
+    def test_unknown_attribute_remains_in_row_metadata(self):
+        header = HEADER + ("customSheetAttribute",)
+        result = read_worksheet("steel -Rebar", [header, ROW + ("original value",)])
+        self.assertEqual("original value", result.rows[0].attributes["customSheetAttribute"])
 
     def test_a_new_column_does_not_stop_the_worksheet(self):
         problem = check_headers("steel -Rebar", HEADER + ("یک ستون تازه",))
@@ -63,15 +70,15 @@ class HeaderTests(unittest.TestCase):
         self.assertIsNone(check_headers("steel -Rebar", HEADER + ("وزن",)))
         self.assertIsNone(check_headers("steel -Rebar", HEADER))
 
-    def test_a_worksheet_that_states_no_pricing_unit_is_refused(self):
-        """Six of the seven worksheets spell this column «واحد» and only Rebar spells it
-        «واحد - وزن». Reading one name only is why six imported with no unit at all, so
-        both are accepted -- and a worksheet with neither is refused rather than read as a
-        list of prices per nothing."""
+    def test_a_worksheet_without_pricing_unit_keeps_its_rows(self):
+        """Unknown commercial unit is preserved; project costing must resolve it later."""
         headers = tuple(h for h in HEADER if h != "واحد - وزن")
-        problem = check_headers("steel -Rebar", headers)
-        self.assertIn("states no pricing unit column", problem)
+        self.assertIsNone(check_headers("steel -Rebar", headers))
         self.assertIsNone(check_headers("Pipe-table", headers + ("واحد",)))
+        row = tuple(value for index, value in enumerate(ROW) if HEADER[index] != "واحد - وزن")
+        result = read_worksheet("steel -Rebar", [headers, row])
+        self.assertEqual(1, len(result.accepted))
+        self.assertIsNone(result.accepted[0].source_unit)
 
     def test_stating_the_pricing_unit_twice_is_refused_like_any_other_repeat(self):
         problem = check_headers("steel -Rebar", HEADER + ("واحد",))
