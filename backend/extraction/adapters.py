@@ -123,6 +123,11 @@ def _as_contract(result):
         return {"fields": fields}
     structured = _structured_fields(text, confidence)
     fields.extend(structured)
+    # The page's own geometry, read only where the text-only parser found no table. It is
+    # a SECOND reading of the same page, not a replacement: everything above still stands,
+    # and this adds `tableRows` where a table could be reconstructed from positions that
+    # the flattened text no longer contains.
+    fields.extend(_layout_fields(result.get("lines"), {f["key"] for f in fields}))
     fields.extend(_ai_fields(text, {field["key"] for field in fields},
                              transcript=result.get("transcript"),
                              metadata=result.get("metadata"),
@@ -272,6 +277,85 @@ def _candidate_fields(candidate):
 def _decimal_text(value):
     """A parsed number as an exact string. Never a float: these are money."""
     return None if value is None else format(value, "f")
+
+
+#: The keys the layout reading contributes. Named so the set is visible in one place and
+#: so `_first_wins` can be reasoned about: none of these collide with a parser key.
+LAYOUT_KEYS = ("tableRows", "tablePageKind", "tableConfidence", "tableColumnSource")
+
+
+def _layout_fields(raw_lines, already_emitted):
+    """Line items rebuilt from where the words sit, when the text alone could not.
+
+    WHY THIS RUNS ONLY AS A FALLBACK
+
+    `invoice_parser` reads a table out of the text when the recogniser emitted it in
+    reading order, which is the common case and is well tested. Geometry is the answer for
+    the pages where that fails -- a detector that returns cells column-first leaves text
+    with no table left in it, and no amount of parsing recovers an order that is gone.
+
+    Running it second means no page that works today changes: `items` from the parser is
+    already in `already_emitted`, and this never replaces it.
+
+    WHAT IT REFUSES TO DO
+
+    A reconstruction whose cells are mostly unreadable is kept as a diagnosis and NOT
+    offered as values. On the audited three-page invoice the recogniser returned `'ld'bdd`
+    and `xl` where product names and amounts belong; turning those into line items would
+    put invented-looking data on a financial draft, which is worse than reporting that the
+    table could not be read. The structural rule in `layout._is_line_item` and the
+    confidence band both have to pass.
+    """
+    if not raw_lines:
+        return []
+    try:
+        from extraction import layout
+    except ImportError:                                        # noqa: BLE001
+        return []
+    try:
+        table = layout.reconstruct(raw_lines)
+    except Exception:                                          # noqa: BLE001
+        LOG.exception("layout reconstruction failed; the rest of the extraction stands")
+        return []
+    if table is None:
+        # A page that yielded no items still says what it was and why. "This is a summary
+        # page" and "this table could not be read" are different answers, and a reviewer
+        # looking at an empty item list cannot tell them apart from silence.
+        try:
+            kind, reason = layout.diagnose(raw_lines)
+        except Exception:                                      # noqa: BLE001
+            return []
+        if reason == layout.NO_TABLE_EMPTY:
+            return []
+        return [{"key": "tablePageKind", "extractedValue": kind,
+                 "confidence": 1.0, "editedByUser": False}] + _warning_fields(
+            "layoutWarnings", ["no line items were read from this page (%s)" % reason],
+            "layout-" + reason.replace("_", "-"))
+
+    emitted = [{"key": "tablePageKind", "extractedValue": table.page_kind,
+                "confidence": 1.0, "editedByUser": False},
+               {"key": "tableConfidence", "extractedValue": round(table.confidence, 4),
+                "confidence": 1.0, "editedByUser": False},
+               {"key": "tableColumnSource", "extractedValue": table.column_source,
+                "confidence": 1.0, "editedByUser": False}]
+    if not table.trustworthy:
+        # Said out loud rather than silently dropped, so a reviewer knows a table WAS
+        # found and why its contents are not being offered.
+        emitted.extend(_warning_fields(
+            "layoutWarnings",
+            ["a table of %d rows was reconstructed from the page layout, but its cells "
+             "average %.2f confidence and were not used" % (len(table.rows),
+                                                            table.confidence)],
+            "layout-low-confidence"))
+        return emitted
+    if "items" in already_emitted:
+        # The parser already read this table. The geometry agreed enough to rebuild it,
+        # and the parser's reading is the tested one.
+        return emitted
+    emitted.append({"key": "tableRows", "extractedValue": table.rows,
+                    "confidence": min(1.0, max(0.0, table.confidence)),
+                    "editedByUser": False})
+    return emitted
 
 
 def _structured_fields(text, ocr_confidence):
