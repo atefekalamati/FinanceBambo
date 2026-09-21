@@ -14,6 +14,7 @@ image never pays for it and never needs the package installed.
 """
 
 import inspect
+import threading
 import time
 from pathlib import Path
 
@@ -23,6 +24,23 @@ from pathlib import Path
 DEFAULT_LANGUAGE = "fa"
 
 PROVIDER = "paddleocr"
+
+#: One recognition at a time, per process.
+#:
+#: The engine is built once and reused, and `ImageExtractionAdapter` calls it through
+#: `asyncio.to_thread` -- so two extractions in a row run on two DIFFERENT threads of the
+#: default executor pool against the SAME predictor. PaddleOCR's predictor is not
+#: re-entrant, and what comes back from that is a bare "Unknown exception" from the
+#: native layer, surfaced to the caller as 503.
+#:
+#: Measured before this lock: three sequential extractions through the real endpoint took
+#: five attempts -- files two and three each failed once and succeeded on retry. Nothing
+#: was corrupted, because the failure happens inside recognition and no draft is written,
+#: but a person pressing "extract" saw an error more often than not.
+#:
+#: Module level, not per instance: the adapter builds its own provider objects, and a lock
+#: that each of them owned separately would not serialise anything.
+_ENGINE_LOCK = threading.Lock()
 
 
 class ProviderUnavailable(RuntimeError):
@@ -195,10 +213,15 @@ class PaddleOCRProvider:
         if not path.is_file():
             raise ProviderUnavailable("image file is missing: %s" % path.name)
 
-        engine = self._load()
         started = time.monotonic()
+        # Loading and recognising are both inside the lock. Loading because two threads
+        # arriving at once would otherwise each build an engine, and recognising because
+        # the predictor cannot be re-entered -- see `_ENGINE_LOCK`.
         try:
-            raw = self._run(engine, path)
+            with _ENGINE_LOCK:
+                raw = self._run(self._load(), path)
+        except ProviderUnavailable:
+            raise
         except Exception as error:                       # noqa: BLE001
             raise ProviderUnavailable(
                 "PaddleOCR failed to read the image: %s" % error) from error
