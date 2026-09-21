@@ -192,6 +192,26 @@ class TotalTests(unittest.TestCase):
         self.assertEqual(Decimal("135000000"), parsed.total_amount.value)
         self.assertIn("INVOICE_TOTAL_UNREADABLE", [w["code"] for w in parsed.warnings])
 
+    def test_a_zero_total_is_refused_rather_than_offered(self):
+        """The summary page of the audited invoice, verbatim.
+
+        The recogniser mangled the label band into one run of letters with a lone Arabic
+        zero inside it. That zero satisfied both rules the total had -- a total label on
+        the line, and digits that form a number -- so it reached the reviewer as the
+        document's payable total at the page's own 0.79 confidence.
+        """
+        parsed = parse_invoice("فاكتور فروش\nباكسر٠جمع كل١ريال\n")
+        self.assertFalse(parsed.total_amount.found, "zero is not a total")
+        self.assertIn("INVOICE_TOTAL_NOT_POSITIVE", [w["code"] for w in parsed.warnings])
+        self.assertEqual(TOTAL_UNVERIFIABLE, parsed.validation_status)
+
+    def test_the_guard_does_not_cost_a_legible_page_its_total(self):
+        parsed = parse_invoice(table(["50,000,000", "5,000,000", "مترمکعب", "10",
+                                      "بتن آماده"]) + "\nجمع کل: 50,000,000 ریال")
+        self.assertEqual(Decimal("50000000"), parsed.total_amount.value)
+        self.assertNotIn("INVOICE_TOTAL_NOT_POSITIVE",
+                         [w["code"] for w in parsed.warnings])
+
     def test_a_total_that_disagrees_with_the_items_is_reported_not_reconciled(self):
         parsed = parse_invoice(table(["50,000,000", "5,000,000", "مترمکعب", "10",
                                       "بتن آماده"]) + "\nTOTAL: 90,000,000 IRR")

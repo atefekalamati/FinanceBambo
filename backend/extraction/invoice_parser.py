@@ -477,12 +477,23 @@ def _find_total(lines, result):
             evidence = "%s | %s" % (line.strip(), following)
         value, problem = strict_amount(token)
         candidates.append((value, problem, evidence))
-    clean = [(value, line) for value, problem, line in candidates if value is not None]
+    clean = [(value, line) for value, problem, line in candidates
+             if value is not None and value > 0]
     for value, problem, line in candidates:
         if value is None:
             result.warn("INVOICE_TOTAL_UNREADABLE",
                         "A total line was found but its digits do not form a number "
                         "(%s); it was not used." % problem, evidence=line)
+        elif value <= 0:
+            # What a stray digit inside mangled label text looks like. On the audited
+            # summary page `باكسر٠جمع كل١ريال` carries the total label and a lone `٠`
+            # sitting between the words, and that zero was being offered as the payable
+            # total at the recogniser's own confidence. No invoice this module prices is
+            # payable at zero, so the figure is refused rather than shown to a reviewer
+            # as a number the document stated.
+            result.warn("INVOICE_TOTAL_NOT_POSITIVE",
+                        "A total line was found but its amount reads as %s; it was not "
+                        "used." % value, evidence=line)
     if not clean:
         return ParsedValue(), None
     distinct = {value for value, _line in clean}
