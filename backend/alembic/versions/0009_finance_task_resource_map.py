@@ -1,4 +1,4 @@
-"""link Core schedule tasks to Finance resources, one row per pair
+﻿"""link Core schedule tasks to Finance resources, one row per pair
 
 Revision ID: 0009
 Revises: 0008
@@ -61,9 +61,9 @@ BEGIN
     IF to_regclass('msp_tasks') IS NULL THEN
         RAISE EXCEPTION USING
             ERRCODE = '42P01',
-            MESSAGE = '0009 requires the Core table msp_tasks to exist: '
-                      'finance_task_resource_map declares FOREIGN KEY (task_id) '
-                      'REFERENCES msp_tasks (id). On the shared BAMBO database Core '
+            MESSAGE = '0009 requires the Core table msp_tasks to exist because the Finance mapping guard validates task/project scope: '
+                      'finance_task_resource_map_guard resolves task_id through '
+                      'msp_tasks and msp_snapshots. On the shared BAMBO database Core '
                       'creates it; on any other database create a compatible '
                       'msp_tasks (and msp_snapshots for the trigger) first, or do '
                       'not run this revision there.';
@@ -108,7 +108,11 @@ CREATE TABLE finance_task_resource_map (
     task_id bigint NOT NULL,
     resource_id uuid NOT NULL,
     UNIQUE (task_id, resource_id),
-    FOREIGN KEY (task_id) REFERENCES msp_tasks (id) ON DELETE CASCADE,
+    -- Intentionally no FK into Core msp_tasks.
+    -- The shared BAMBO deployment role must not require REFERENCES/DDL privileges
+    -- on Core-owned tables. finance_task_resource_map_guard() below validates
+    -- that task_id resolves through msp_tasks -> msp_snapshots and belongs to
+    -- the same project as the Finance resource.
     FOREIGN KEY (resource_id) REFERENCES finance_resources (id) ON DELETE RESTRICT
 );
 

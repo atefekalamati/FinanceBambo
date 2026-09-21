@@ -105,6 +105,19 @@ class FetchFailureTests(unittest.TestCase):
     def test_a_workbook_comes_back_as_bytes(self):
         self.assertEqual(run(fetch_sheet_as_xlsx(SHEET, download=lambda url: XLSX)), XLSX)
 
+    def test_material_price_fetch_can_read_the_whole_workbook_from_a_tab_link(self):
+        asked = []
+
+        def download(url):
+            asked.append(url)
+            return XLSX
+
+        self.assertEqual(run(fetch_workbook_as_xlsx(SHEET + "#gid=77", download=download)), XLSX)
+        self.assertEqual(
+            asked,
+            ["https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz"
+             "/export?format=xlsx"])
+
     def test_a_private_sheet_is_named_as_one(self):
         def refused(url):
             raise urllib.error.HTTPError(url, 403, "Forbidden", {}, None)

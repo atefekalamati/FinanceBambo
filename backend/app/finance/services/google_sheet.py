@@ -153,7 +153,12 @@ async def fetch_sheet_as_xlsx(link: str, download=_download) -> bytes:
 
 
 async def fetch_workbook_as_xlsx(link: str, download=_download) -> bytes:
-    """Fetch every tab for importers that validate a whole workbook."""
+    """Fetch the whole spreadsheet workbook, even when the shared URL names one tab.
+
+    Some importers, such as Material Price, validate their own fixed worksheet allowlist
+    and must see all tabs. The link is still parsed and validated by the same SSRF-safe
+    path, but the optional gid is deliberately ignored for the export request.
+    """
     document_id, _gid = parse_sheet_link(link)
     try:
         content = await asyncio.to_thread(download, export_url(document_id, None))
@@ -161,7 +166,10 @@ async def fetch_workbook_as_xlsx(link: str, download=_download) -> bytes:
         raise
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
-            raise GoogleSheetError("this sheet is not public") from exc
+            raise GoogleSheetError(
+                "this sheet is not public. In Google Sheets set access to "
+                "'anyone with the link can view'."
+            ) from exc
         raise GoogleSheetError(f"Google refused the link (status {exc.code})") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise GoogleSheetError("the server could not reach Google Sheets") from exc
