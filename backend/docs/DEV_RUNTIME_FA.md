@@ -129,6 +129,28 @@ EXTRACTION_PROVIDER=self_hosted
 
 ---
 
+## JRE برای اجرای کامل آزمون‌ها
+
+مفسر canonical همهٔ بسته‌های پایتون را دارد، ولی MPXJ روی JVM اجرا می‌شود و JRE جزء
+محیط پایتون نیست. بدون آن، یازده آزمونِ فایل واقعی MPP با `JavaRuntimeNotAvailable`
+**خطا می‌دهند** — نه skip:
+
+```cmd
+set MPP_JAVA_HOME=E:\bamboo\jre\jdk-17.0.20.1+1-jre
+```
+
+این خطا عمدی است. `tests/test_mpp_reader_real_file.py` در سرآمد خودش نوشته که ماشینِ
+بدون JRE باید **بلند** شکست بخورد نه بی‌صدا رد شود، چون آزمونی که خاموش از پارس‌کردنِ
+فایل واقعی دست بکشد دقیقاً همان پوششی را از دست داده که برای آن نوشته شده.
+
+JRE باید **کامل** باشد نه jlink‌شدهٔ کمینه: runtime بدون `jdk.charsets` داخل
+charset initializer خود MPXJ و پیش از باز شدن هیچ فایلی می‌میرد.
+
+بدون این متغیر:  `2105 passed, 11 errors`
+با این متغیر:    `2116 passed, 0 failures`
+
+---
+
 ## عیب‌یابی سریع
 
 ```cmd
