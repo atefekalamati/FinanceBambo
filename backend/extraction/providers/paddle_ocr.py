@@ -80,14 +80,59 @@ class PaddleOCRProvider:
 
     # ------------------------------------------------------------------- reading a result
     @staticmethod
-    def _flatten(raw):
-        """PaddleOCR's output as `(text, confidence)` pairs, whichever major produced it.
+    def _box(polygon):
+        """A quadrilateral as `(left, top, right, bottom)`, or None if it is unreadable.
+
+        PaddleOCR returns four corner points, and a line on a scanned page is never quite
+        axis-aligned. The bounding rectangle is what the layout work needs: rows are found
+        by comparing vertical centres and columns by horizontal ones, and neither question
+        is made more accurate by the skew.
+
+        None rather than a guess when the shape is not what was expected. A box invented
+        for a line would place that line somewhere it never was, and the whole point of
+        keeping geometry is that the position is evidence.
+        """
+        try:
+            points = [(float(point[0]), float(point[1])) for point in polygon]
+        except (TypeError, IndexError, ValueError):
+            # 3.x `rec_boxes` is already a flat [x0, y0, x1, y1] rather than four points.
+            try:
+                flat = [float(value) for value in polygon]
+            except (TypeError, ValueError):
+                return None
+            if len(flat) != 4:
+                return None
+            return (min(flat[0], flat[2]), min(flat[1], flat[3]),
+                    max(flat[0], flat[2]), max(flat[1], flat[3]))
+        if not points:
+            return None
+        xs = [x for x, _y in points]
+        ys = [y for _x, y in points]
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    @classmethod
+    def _flatten(cls, raw):
+        """PaddleOCR's output as `(text, confidence, box)` triples, whichever major produced it.
 
           2.x  `[[[box, (text, score)], ...]]`                  one tuple per line
-          3.x  `[{"rec_texts": [...], "rec_scores": [...]}]`    parallel arrays
+          3.x  `[{"rec_texts": [...], "rec_scores": [...],
+                  "rec_polys": [...]}]`                         parallel arrays
 
         Detecting the shape is cheaper than pinning a version and is the only way one
         provider serves an existing 2.x deployment and a fresh 3.x one.
+
+        THE BOX IS NEW AND IT IS THE POINT
+
+        Both majors have always returned where each line sits, and this method used to
+        read past it -- 2.x's `entry[0]` was skipped to reach `entry[1]`, and 3.x's
+        `rec_polys` was never asked for. So an invoice arrived as 72 strings joined by
+        newlines, and a table became a column of fragments in reading order with no way to
+        tell which price belonged to which product. `INVOICE_TABLE_NOT_RECOGNISED` was the
+        honest answer to text that genuinely had no table left in it.
+
+        `box` may be None for a line whose geometry could not be read. Callers must treat
+        that as "position unknown" rather than as (0, 0): a line placed at the origin would
+        sort to the top-left and silently join the wrong row.
         """
         if not raw:
             return []
@@ -96,19 +141,35 @@ class PaddleOCRProvider:
             texts = page.get("rec_texts") if hasattr(page, "get") else None
             if texts is not None:                                  # 3.x
                 scores = page.get("rec_scores") or []
+                # `rec_polys` is the recognised line's own quadrilateral. `rec_boxes` is
+                # the same thing as a rectangle and is accepted as a fallback, because
+                # which of the two a build populates has varied across 3.x point releases.
+                polygons = page.get("rec_polys")
+                if polygons is None or len(polygons) == 0:
+                    polygons = page.get("rec_boxes")
                 for index, text in enumerate(texts):
                     if text is None:
                         continue
+                    box = None
+                    if polygons is not None and index < len(polygons):
+                        box = cls._box(polygons[index])
                     out.append((str(text),
-                                float(scores[index]) if index < len(scores) else 0.0))
+                                float(scores[index]) if index < len(scores) else 0.0,
+                                box))
                 continue
             for entry in page or []:                               # 2.x
                 try:
                     text, score = entry[1]
                 except (TypeError, IndexError, ValueError, KeyError):
                     continue
-                if text is not None:
-                    out.append((str(text), float(score)))
+                if text is None:
+                    continue
+                box = None
+                try:
+                    box = cls._box(entry[0])
+                except (TypeError, IndexError, KeyError):
+                    box = None
+                out.append((str(text), float(score), box))
         return out
 
     def _run(self, engine, path):
@@ -144,11 +205,12 @@ class PaddleOCRProvider:
         elapsed = round(time.monotonic() - started, 3)
 
         lines = self._flatten(raw)
-        text = "\n".join(item for item, _ in lines)
+        text = "\n".join(item for item, _score, _box in lines)
         # The page confidence is the mean of the line confidences. Low-confidence lines are
         # KEPT, not dropped: dropping one would leave a reader with text that silently has
         # a hole in it.
-        confidence = round(sum(score for _, score in lines) / len(lines), 4) if lines else 0.0
+        confidence = (round(sum(score for _t, score, _b in lines) / len(lines), 4)
+                      if lines else 0.0)
         return {
             "text": text,
             "confidence": confidence,
@@ -156,4 +218,10 @@ class PaddleOCRProvider:
             "language": self._language,
             "lineCount": len(lines),
             "processingSeconds": elapsed,
+            # ADDITIVE. Every key above means exactly what it meant before, so a caller
+            # that only wants the text is unaffected. This one carries each recognised
+            # line with its own confidence and its place on the page, which is what
+            # `extraction.layout` reconstructs a table from.
+            "lines": [{"text": item, "confidence": score, "box": box}
+                      for item, score, box in lines],
         }
