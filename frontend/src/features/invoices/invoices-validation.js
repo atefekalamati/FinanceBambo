@@ -44,21 +44,19 @@ export function statesTotal(line) {
   return amount !== "" && amount !== "0";
 }
 
-/* WHETHER THE SERVICE WILL TAKE A TOTAL ON AN ESTIMATE LINE. It will not, yet.
+/* WHETHER THE SERVICE WILL TAKE A TOTAL ON AN ESTIMATE LINE. It does.
  *
- * `InvoiceLineCreate` accepts the shape -- it refuses only an amount sent BESIDE a
- * quantity -- and the report engine already handles a line with no quantity: it adds the
- * cost to the line and skips the quantity arithmetic. But `services/invoices.py:67` gates
- * it separately, and refuses a stated amount unless every such line's resource is a
- * `general_cost`:
+ * `InvoiceLineCreate` always accepted the shape -- it refuses only an amount sent BESIDE
+ * a quantity -- and the report engine always handled a line with no quantity: it adds the
+ * cost to the line and skips the quantity arithmetic. What refused it was a separate gate
+ * in `services/invoices.py`, which demanded a `general_cost` resource for any stated
+ * amount. That gate is gone; `are_general_costs` now guards only the target of a direct
+ * adjustment allocation, which is the question it was right about.
  *
- *     direct line amount requires a general_cost resource
- *
- * So the choice is BUILT and OFFERED and marked unavailable, with that reason on it. A
- * person billing a contractor's lump sum needs to see that the shape exists and what is
- * standing in its way -- which is a different message from the form not having it. When
- * the service takes it, this becomes `true` and nothing else here changes. */
-export const ESTIMATE_LINE_TOTAL_SUPPORTED = false;
+ * Kept as a named constant rather than deleted. It is the one place that says WHICH
+ * shapes the service takes, `amountModesFor` and the validator both read it, and a future
+ * service that narrows this again has somewhere to be recorded. */
+export const ESTIMATE_LINE_TOTAL_SUPPORTED = true;
 
 /** The shapes a target may be billed in, and whether each can be used today. */
 export function amountModesFor(target) {
