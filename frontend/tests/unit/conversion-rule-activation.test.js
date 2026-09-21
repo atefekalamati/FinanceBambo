@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { installDom } from "../helpers/dom.js";
 
@@ -9,6 +10,20 @@ const { createConversionRuleDialog } =
   await import("../../src/features/financial-items/conversion-rule-dialog.js");
 const { factorSourceLabel } =
   await import("../../src/features/financial-items/financial-items-presentation.js");
+
+test("conversion dialog is displayed only while open and removed after closing", () => {
+  const css = readFileSync(new URL("../../src/features/financial-items/financial-items.css", import.meta.url), "utf8");
+  assert.match(css, /\.conversion-rule-dialog\[open\]\s*\{[^}]*display:\s*grid/s);
+  assert.doesNotMatch(css, /\.conversion-rule-dialog\s*\{[^}]*display:/s);
+
+  const modal = createConversionRuleDialog({ context: { fromUnit: "kg", toUnit: "branch" }, adapter: recordingAdapter() });
+  document.body.append(modal.element);
+  const cancel = [...modal.element.querySelectorAll("button")].find((button) => button.textContent === "انصراف");
+  assert.ok(cancel);
+  cancel.click();
+  modal.element.dispatch("close"); // The DOM stub does not dispatch native dialog events.
+  assert.equal(modal.element.parentNode, null);
+});
 
 /* Writing a conversion rule has to end in a NUMBER CHANGING.
  *

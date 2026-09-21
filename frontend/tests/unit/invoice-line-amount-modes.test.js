@@ -170,3 +170,23 @@ test("the control exists before anything paints with it", () => {
   assert.ok(declared < firstPaint,
             "the amount-mode control must be declared before the first paint reads it");
 });
+
+test("rebuilding the mode options never throws the choice away", () => {
+  /* `paintAmountFields` runs ON the change event it is reacting to. It used to rebuild the
+     `<select>`'s children every time, and replacing a select's children resets its value to
+     the first option -- so picking «فقط مبلغ کل» selected it, repainted, lost it, and left
+     the quantity boxes showing. It looked correct while that option was disabled, because a
+     disabled option could not be chosen for it to lose; enabling it exposed the bug.
+
+     Two things keep it away and both are read here: the options are rebuilt only when the
+     option SET changes, and whatever was selected is put back after a rebuild. */
+  const source = readFileSync(
+    fileURLToPath(new URL("../../src/features/invoices/invoices-page.js", import.meta.url)), "utf8");
+  const paint = source.split("function paintAmountFields()")[1].split(chr10 + "    }")[0];
+  assert.match(paint, /dataset\.choices !== signature/,
+               "the options must be rebuilt only when the option set actually changes");
+  const rebuild = paint.indexOf("replaceChildren");
+  const restore = paint.indexOf("modeSelect.value = wanted");
+  assert.ok(rebuild > 0 && restore > rebuild,
+            "the selection must be put back after the rebuild, not before it");
+});

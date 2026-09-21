@@ -91,6 +91,7 @@ function field(labelText, control, hint = null) {
  */
 export function createConversionRuleDialog({ context, adapter, canManageSettings = true, onSaved, onClose }) {
   const dialog = element("dialog", "conversion-rule-dialog");
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
   dialog.setAttribute("aria-label", "تعریف قانون تبدیل واحد");
 
   const fromLabel = formatUnitLabel(context.fromUnit) ?? context.fromUnit ?? "—";
