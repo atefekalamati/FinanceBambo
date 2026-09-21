@@ -181,9 +181,11 @@ class UnitConversionRuleService:
         # index cannot see this: to the database the two rows have different unit pairs.
         #
         # Refused here rather than at the constraint so the message can name the rule that
-        # is in the way, its number and its direction, in Persian. Replacing it is the
-        # supported move and `supersedes_rule_id` is how -- which the message says, because
-        # "already exists" without a way forward is where a person gets stuck.
+        # is in the way, its number and its direction, in Persian. It says replacing the
+        # existing rule is the way forward, because "already exists" with no way forward is
+        # where a person gets stuck -- but it says so in words. The request field that
+        # carries the replacement is an API detail, and a reader of this message is looking
+        # at a screen, not at the payload.
         if method == "factor" and not payload.supersedes_rule_id:
             opposite = await self._opposite_direction_rule(
                 scope, scope_type=scope_type, from_unit=from_unit, to_unit=to_unit,
@@ -194,8 +196,7 @@ class UnitConversionRuleService:
                 raise UnitConversionRuleRefused(
                     "برای همین عبور، قانونی در جهت معکوس از قبل فعال است: «۱ %s = %s %s» "
                     "(نسخهٔ %s). همان قانون هر دو جهت را پاسخ می‌دهد، پس ثبت این یکی دو "
-                    "پاسخ ناسازگار می‌سازد. برای تغییر، آن را با supersedes_rule_id "
-                    "جایگزین کنید."
+                    "پاسخ ناسازگار می‌سازد. برای تغییر، قانون موجود را جایگزین کنید."
                     % (opposite["from_unit"], _plain(opposite.get("factor_value")),
                        opposite["to_unit"], opposite.get("version")))
 
