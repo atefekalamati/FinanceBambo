@@ -38,6 +38,12 @@ class ItemPriceStatusResponse(ApiModel):
     selected_unit: str | None = None
     source_unit: str | None = None
     conversion_factor: str | None = None
+    #: WHICH evidence produced `conversionFactor`: `provider_item` when somebody weighed
+    #: this listing, `conversion_rule` when a rule from the scope ladder answered, and
+    #: `registry` when the two units share a dimension and it is plain arithmetic. The
+    #: number alone cannot say, and the table needs to write «قانون تبدیل» beside a price
+    #: that came from one.
+    factor_source: str | None = None
     quantity: str | None = None
 
     provider_item_id: str | None = None
@@ -162,6 +168,12 @@ class ConvertedPricePreviewResponse(ApiModel):
     daily_item_cost_irr: str | None = None
     conversion_factor: str | None = None
     conversion_factor_id: str | None = None
+    #: WHICH evidence produced `conversionFactor`: `provider_item` when somebody weighed
+    #: this listing, `conversion_rule` when a rule from the scope ladder answered, and
+    #: `registry` when the two units share a dimension and it is plain arithmetic. The
+    #: number alone cannot say, and the table needs to write «قانون تبدیل» beside a price
+    #: that came from one.
+    factor_source: str | None = None
     quantity: str | None = None
     workflow_date_jalali: str | None = None
 

@@ -81,19 +81,25 @@ class ItemPriceMappingService:
         prices = await self.repository.latest_prices_for_items(scope, item_ids)
         factors = await self.repository.approved_factors_for_items(scope, item_ids)
         quantities = await self.repository.line_quantities(scope)
+        # Every crossing this table needs, in ONE query. Asking per row would be a query
+        # per line on a page that renders hundreds at once -- the N+1 that nobody notices
+        # until the project is big. Only the rows a listing measurement does not already
+        # answer are asked about, because the rule is a fallback.
+        rules = await self._rule_candidates(scope, mappings, prices, factors)
 
         answers = {}
         for mapping in mappings:
             line_id = mapping["estimate_line_id"]
             observation = prices.get(mapping["provider_item_id"]) or {}
             source_unit = _source_unit(observation)
-            factor = _factor_for(factors, mapping, source_unit)
+            factor, factor_source = self._factor_and_source(
+                mapping, observation, factors, rules, source_unit)
             priced = price_item(
                 mapping=mapping,
                 price_irr=observation.get("normalized_price_irr"),
                 source_unit=source_unit,
                 quantity=quantities.get(line_id),
-                factor=(factor or {}).get("factor"))
+                factor=factor, factor_source=factor_source)
             answers[str(line_id)] = dict(
                 priced.as_dict(),
                 estimate_line_id=str(line_id),
@@ -129,7 +135,18 @@ class ItemPriceMappingService:
         source_unit = _source_unit(observation)
         factors = await self.repository.approved_factors_for_items(scope, [provider_item_id])
         trial = {"provider_item_id": provider_item_id, "selected_unit": selected_unit}
-        factor = _factor_for(factors, trial, source_unit)
+        # The same ladder the table uses, for this one row. `_daily_estimate` below already
+        # consults the rules, so without this the preview's headline number and the daily
+        # estimate under it could come from different factors and disagree on one screen.
+        rules = await self._rule_candidates(scope, [trial], {provider_item_id: observation},
+                                            factors)
+        # Kept separately from the resolved pair below. `_daily_estimate` takes the
+        # LISTING's own measurement and resolves the rule itself; handing it the already
+        # resolved factor would both mislabel a rule factor as a measurement and pass a
+        # Decimal where it expects the stored row.
+        listing_factor = _factor_for(factors, trial, source_unit)
+        factor, factor_source = self._factor_and_source(
+            trial, observation, factors, rules, source_unit)
         quantity = None
         # The line's own facts, read once: the estimate's quantity and rate, what the
         # schedule says today, and the file's own assignment cost. The daily estimate needs
@@ -143,14 +160,20 @@ class ItemPriceMappingService:
         priced = price_item(mapping=trial,
                             price_irr=observation.get("normalized_price_irr"),
                             source_unit=source_unit, quantity=quantity,
-                            factor=(factor or {}).get("factor"))
+                            factor=factor, factor_source=factor_source)
         body = dict(priced.as_dict(),
                     provider_item_id=str(provider_item_id),
                     product_name=observation.get("external_name"),
                     provider_name=observation.get("provider_name"),
                     source_price_irr=_text(observation.get("normalized_price_irr")),
                     workflow_date_jalali=observation.get("workflow_date_jalali"),
-                    conversion_factor_id=(str(factor["id"]) if factor else None))
+                    # The LISTING measurement's id, and null when a rule answered
+                    # instead. A rule lives in `finance_unit_conversion_rules`, a different
+                    # table with different ids, and putting one here would send a reader
+                    # following the reference to the wrong place. `factorSource` is what
+                    # says a rule answered; this field names the measurement or nothing.
+                    conversion_factor_id=(str(listing_factor["id"])
+                                          if listing_factor else None))
         body["daily_estimate"] = await self._daily_estimate(
             scope, context=context, observation=observation, source_unit=source_unit,
             selected_unit=selected_unit, provider_item_id=provider_item_id,
@@ -158,7 +181,13 @@ class ItemPriceMappingService:
             # The measurement this method already looked up for the converted price it
             # shows above. Passing it on is what stops the panel quoting one number and
             # the daily estimate beneath it quoting another for the same row.
-            listing_factor=factor)
+            #
+            # The LISTING factor, not the resolved one. Both sides then run the same
+            # ladder -- `choose_conversion` first, `resolve_rule` behind it -- so they
+            # reach the same factor by the same route. Passing the resolved number instead
+            # would short-circuit the rule lookup here and make the estimate call a rule
+            # factor a product measurement.
+            listing_factor=listing_factor)
         return body
 
     async def _daily_estimate(self, scope, *, context, observation, source_unit,
@@ -266,6 +295,48 @@ class ItemPriceMappingService:
         """
         return await self.repository.listing_exists(scope, provider_item_id)
 
+    async def _rule_candidates(self, scope, mappings, prices, factors):
+        """Approved rules for every crossing this table needs, fetched once.
+
+        Only pairs that a listing measurement does not already answer are asked for -- the
+        rule sits BEHIND the measurement, so a crossing already covered costs nothing to
+        look up. Same shape as `ItemPriceComponentService._rule_candidates`, deliberately:
+        two pricing paths that resolved rules differently would price one product two ways.
+        """
+        if self.conversion_rules is None:
+            return {}
+        pairs = set()
+        for mapping in mappings:
+            observation = prices.get(mapping.get("provider_item_id")) or {}
+            source_unit = _source_unit(observation)
+            selected = mapping.get("selected_unit")
+            if not source_unit or not selected or source_unit == selected:
+                continue
+            if _factor_for(factors, mapping, source_unit) is not None:
+                continue
+            pairs.add((source_unit, selected))
+        if not pairs:
+            return {}
+        return await self.conversion_rules.candidates_by_pair(scope, pairs)
+
+    def _factor_and_source(self, mapping, observation, factors, rules, source_unit):
+        """`(factor, factor_source)` for one row: its own measurement, then the ladder.
+
+        `choose_conversion` owns the order and every pricing path in this module goes
+        through it, so the guarantee it documents holds here too: a row that prices today
+        keeps its number, because a rule is consulted only where a listing factor is absent
+        -- which is exactly where the row says `needs_factor` now.
+        """
+        listing_factor = _factor_for(factors, mapping, source_unit)
+        rule = None
+        if listing_factor is None and rules and self.conversion_rules is not None:
+            rule = self.conversion_rules.rule_from(
+                rules, from_unit=source_unit, to_unit=mapping.get("selected_unit"),
+                provider_item_id=mapping.get("provider_item_id"),
+                provider_id=observation.get("provider_id"),
+                category=mapping.get("category") or observation.get("category"))
+        return choose_conversion(listing_factor, rule)
+
     async def _conversion_for(self, scope, provider_item_id, source_unit, selected_unit):
         """Which kind of crossing this mapping needs, and the factor when it needs one.
 
@@ -281,9 +352,24 @@ class ItemPriceMappingService:
                                        "selected_unit": selected_unit}, source_unit)
         if factor is not None:
             return "factor", factor["id"]
-        # No approved measurement. Recorded as unknown rather than refused: the mapping
-        # itself is still a true statement about which product this is, and the row reports
-        # «ضریب تبدیل لازم است» until somebody measures it.
+        # No measurement of this listing, but the ladder may still answer. Recorded as
+        # `conversion_rule` rather than `unknown`, because those are different situations:
+        # one means nobody can price this row, the other means it prices from a rule and a
+        # reader should be able to see which. The three existing values are untouched --
+        # this is a fourth, and only reached where `unknown` used to be the answer.
+        if self.conversion_rules is not None:
+            candidates = await self.conversion_rules.candidates_by_pair(
+                scope, {(source_unit, selected_unit)})
+            rule = self.conversion_rules.rule_from(
+                candidates, from_unit=source_unit, to_unit=selected_unit,
+                provider_item_id=provider_item_id)
+            if rule is not None and rule.get("factor"):
+                # The rule's own id, not a factor id: the two are different tables and a
+                # reader following this needs the one that actually decided.
+                return "conversion_rule", rule.get("id")
+        # Nothing at all. The mapping itself is still a true statement about which product
+        # this is, and the row reports «ضریب تبدیل لازم است» until somebody measures it or
+        # writes a rule.
         return "unknown", None
 
 

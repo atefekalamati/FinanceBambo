@@ -179,9 +179,10 @@ class PricedComponent:
 #:                            a category or a supplier rather than about this listing
 #:     REGISTRY_FACTOR        the unit registry's own ratio: arithmetic, true of every
 #:                            product, and never a judgement about any of them
-PROVIDER_ITEM_FACTOR = "provider_item"
-CONVERSION_RULE_FACTOR = "conversion_rule"
-REGISTRY_FACTOR = "registry"
+#: Re-exported from `conversion_rules`, which owns them, so the two pricing paths cannot
+#: drift into spelling the same provenance differently.
+from .conversion_rules import (CONVERSION_RULE_FACTOR, PROVIDER_ITEM_FACTOR,  # noqa: E402
+                               REGISTRY_FACTOR)
 
 
 def price_component(*, component, price_irr, source_unit, msp_quantity, factor=None,

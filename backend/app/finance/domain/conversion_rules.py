@@ -43,6 +43,8 @@ and each has its own branch weight, so a rule at that scope would be right for o
 silently wrong for eleven.
 """
 
+from decimal import Decimal, InvalidOperation
+
 from .unit_conversion import can_convert
 from .unit_registry import UNIT_REGISTRY
 
@@ -171,6 +173,34 @@ def rank_of(rule, *, provider_id=None, category=None):
         return None
 
 
+def invert_factor(value):
+    """`1/value` as an exact Decimal, or None when there is nothing to invert.
+
+    Decimal throughout, never float: these numbers multiply prices in rials, and a rule
+    read backwards must give back exactly what the same rule stated forwards. `1/22` as a
+    float and as a Decimal differ, and the difference lands in money.
+
+    Zero and None both mean "no usable factor" rather than an error. A rule stating a
+    factor of zero says a branch weighs nothing, which is not a conversion anybody can
+    price from -- treating it as absent is the same choice `choose_conversion` makes.
+    """
+    if value is None:
+        return None
+    try:
+        number = value if isinstance(value, Decimal) else Decimal(str(value))
+        if number == 0:
+            return None
+        return Decimal(1) / number
+    except (ArithmeticError, InvalidOperation, TypeError, ValueError):
+        return None
+
+
+#: How a resolved rule was read. Stored on the returned row so a caller -- and a reader --
+#: can tell a rule that was written for this crossing from one written for its opposite.
+DIRECTION_DIRECT = "direct"
+DIRECTION_REVERSE = "reverse"
+
+
 def resolve_rule(rules, *, from_unit, to_unit, provider_id=None, provider_item_id=None,
                  category=None, on_date=None):
     """The one rule that applies, out of everything approved for this crossing.
@@ -179,14 +209,37 @@ def resolve_rule(rules, *, from_unit, to_unit, provider_id=None, provider_item_i
     filtering by status is the repository's job, because a draft must never reach here at
     all. What this does is choose between the ones that survived.
 
-    Ties cannot happen: the database permits one active rule per exact scope and unit pair,
-    so two candidates always differ in scope and the ranking separates them.
+    EITHER DIRECTION, BECAUSE A PERSON KNOWS IT ONE WAY ROUND
+
+    Somebody knows "one branch is 22 kg". Asking them for kg->branch makes them type
+    0.0454545..., which is not what the supplier's docket says, cannot be checked against
+    it, and keeps its rounding forever. So the rule is stored exactly as stated and the
+    inversion happens here, per calculation, at full Decimal precision.
+
+    A rule written the other way round is therefore a candidate for this crossing, with its
+    factor inverted. Two things about how it competes:
+
+      * Scope ranking is untouched. A narrow reverse rule still beats a broad direct one,
+        because which rule is more SPECIFIC has nothing to do with which way somebody
+        happened to write it.
+      * Direction is only the tiebreak. Two rules at the SAME rank -- which means somebody
+        wrote both directions into one scope -- resolve to the direct one, so the reading
+        is at least deterministic. The service refuses to create that second rule in the
+        first place; this is what happens to rows that predate the refusal.
+
+    The returned row is a COPY when it was read backwards: `factor` is the inverted number
+    and `applied_direction` says so. Nothing mutates the caller's candidates.
     """
-    best, best_rank = None, len(SCOPE_PRECEDENCE)
+    best, best_key = None, None
     for rule in rules or ():
-        if rule.get("from_unit") != from_unit or rule.get("to_unit") != to_unit:
-            continue
         if rule.get("status") != "approved":
+            continue
+        stated = (rule.get("from_unit"), rule.get("to_unit"))
+        if stated == (from_unit, to_unit):
+            direction = DIRECTION_DIRECT
+        elif stated == (to_unit, from_unit) and from_unit != to_unit:
+            direction = DIRECTION_REVERSE
+        else:
             continue
         if not _in_effect(rule, on_date):
             continue
@@ -195,8 +248,32 @@ def resolve_rule(rules, *, from_unit, to_unit, provider_id=None, provider_item_i
         rank = rank_of(rule, provider_id=provider_id, category=category)
         if rank is None:
             continue
-        if rank < best_rank:
-            best, best_rank = rule, rank
+        factor = rule.get("factor")
+        if direction == DIRECTION_REVERSE:
+            factor = invert_factor(factor)
+            if factor is None:
+                # Nothing to read backwards. Skipped rather than returned with a null
+                # factor, so a broader rule that DOES state one can still answer.
+                continue
+        # Rank first, direction second: specificity decides, and direction only separates
+        # two rules that are equally specific.
+        key = (rank, 0 if direction == DIRECTION_DIRECT else 1)
+        if best_key is None or key < best_key:
+            best_key = key
+            # BOTH factor keys are inverted, not just one. `choose_conversion` reads
+            # `factor` and `daily_estimate` reads `factor_value`, and a copy that inverted
+            # only one would price the table from 1/22 and the estimate beneath it from 22
+            # -- the same row, two numbers, differing by the square of the factor.
+            best = (rule if direction == DIRECTION_DIRECT
+                    else dict(rule, factor=factor, factor_value=factor,
+                              from_unit=from_unit, to_unit=to_unit,
+                              applied_direction=DIRECTION_REVERSE,
+                              stated_from_unit=rule.get("from_unit"),
+                              stated_to_unit=rule.get("to_unit"),
+                              stated_factor=rule.get("factor"),
+                              stated_factor_value=rule.get("factor_value")))
+            if best is rule:
+                best = dict(rule, applied_direction=DIRECTION_DIRECT)
     return best
 
 
@@ -237,6 +314,10 @@ def _in_effect(rule, on_date):
 #: same order. Two screens deciding a row's price differently is worse than either answer.
 PROVIDER_ITEM_FACTOR = "provider_item"
 CONVERSION_RULE_FACTOR = "conversion_rule"
+#: The unit registry's own ratio -- «کیلوگرم» to «تن» -- which is arithmetic true of every
+#: product and nobody's judgement about any of them. Defined here beside the other two so
+#: the three names have one home; `item_price_components` re-exports the same strings.
+REGISTRY_FACTOR = "registry"
 
 
 def choose_conversion(listing_factor, rule):

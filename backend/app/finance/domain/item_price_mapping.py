@@ -31,6 +31,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from .unit_conversion import (ConversionRefused, PRICE_PRECISION, apply_product_factor,
                               can_convert, convert_unit_price)
 from .unit_registry import UNIT_REGISTRY
+from .conversion_rules import (PROVIDER_ITEM_FACTOR, REGISTRY_FACTOR)
 
 #: Money leaves this module whole. See `_priced` for why -- both the system's own rule and
 #: the one the page can actually render.
@@ -74,10 +75,11 @@ class ItemPrice:
     """One item's answer: a status, a reason, and the figures when there are any."""
 
     __slots__ = ("status", "reason", "unit_price_irr", "item_cost_irr", "selected_unit",
-                 "source_unit", "factor_applied", "quantity")
+                 "source_unit", "factor_applied", "factor_source", "quantity")
 
     def __init__(self, status, *, reason=None, unit_price_irr=None, item_cost_irr=None,
-                 selected_unit=None, source_unit=None, factor_applied=None, quantity=None):
+                 selected_unit=None, source_unit=None, factor_applied=None,
+                 factor_source=None, quantity=None):
         self.status = status
         self.reason = STATUS_REASONS[status] if reason is None else reason
         self.unit_price_irr = unit_price_irr
@@ -85,6 +87,13 @@ class ItemPrice:
         self.selected_unit = selected_unit
         self.source_unit = source_unit
         self.factor_applied = factor_applied
+        #: WHERE the factor came from -- a measurement of this listing, or a rule from the
+        #: scope ladder. The number alone cannot say, and a reader deciding whether to
+        #: trust a converted price needs to know whether somebody weighed this product or
+        #: whether a project-wide rule answered for it. `price_component` has carried this
+        #: since components were added; the item path reported the number and not its
+        #: provenance, so the table could not write «قانون تبدیل» beside it.
+        self.factor_source = factor_source
         self.quantity = quantity
 
     @property
@@ -108,6 +117,7 @@ class ItemPrice:
             "selected_unit": self.selected_unit,
             "source_unit": self.source_unit,
             "conversion_factor": _text(self.factor_applied),
+            "factor_source": self.factor_source,
             "quantity": _text(self.quantity),
         }
 
@@ -128,7 +138,8 @@ def _decimal(value):
         return None
 
 
-def price_item(*, mapping, price_irr, source_unit, quantity, factor=None):
+def price_item(*, mapping, price_irr, source_unit, quantity, factor=None,
+               factor_source=None):
     """What one item costs per day, or which answer is missing.
 
     `mapping` is the stored row (or None when nobody has mapped this item). `price_irr` and
@@ -139,6 +150,10 @@ def price_item(*, mapping, price_irr, source_unit, quantity, factor=None):
     `quantity` is the schedule's own quantity for this item. Missing quantity is not a
     failure of pricing: the unit price is still stated and the item cost is null, because a
     cost nobody can compute must not become zero.
+
+    `factor_source` travels with `factor` and says which kind of evidence it is. It is
+    carried, never derived: this function has no way to know where a number came from, and
+    guessing would put a label on somebody else's decision.
     """
     if mapping is None or not mapping.get("provider_item_id"):
         return ItemPrice(NEEDS_PRODUCT)
@@ -163,12 +178,16 @@ def price_item(*, mapping, price_irr, source_unit, quantity, factor=None):
     quantity_value = _decimal(quantity)
 
     if source == selected:
+        # No crossing at all, so no factor and nothing to attribute.
         return _priced(price, quantity_value, selected, source, None)
 
     if can_convert(source, selected):
         # Same dimension: the registry's exact ratio, inverted because this is a price.
+        # `REGISTRY_FACTOR` rather than None -- «کیلوگرم» to «تن» IS a conversion and a
+        # reader asking where the number came from deserves the true answer, which is
+        # arithmetic rather than anybody's judgement.
         converted = convert_unit_price(price, source, selected)
-        return _priced(converted, quantity_value, selected, source, None)
+        return _priced(converted, quantity_value, selected, source, None, REGISTRY_FACTOR)
 
     # Different dimensions. Only a measurement of THIS product can cross them, and only if
     # somebody approved one -- see `provider_item_unit_factors`.
@@ -182,7 +201,8 @@ def price_item(*, mapping, price_irr, source_unit, quantity, factor=None):
         converted = apply_product_factor(price, measured)
     except (ConversionRefused, ArithmeticError):
         return ItemPrice(INCOMPATIBLE, selected_unit=selected, source_unit=source)
-    return _priced(converted, quantity_value, selected, source, measured)
+    return _priced(converted, quantity_value, selected, source, measured,
+                   factor_source or PROVIDER_ITEM_FACTOR)
 
 
 def _crossable(source, selected):
@@ -201,7 +221,7 @@ def _crossable(source, selected):
     return (left.dimension in timeish) == (right.dimension in timeish)
 
 
-def _priced(unit_price, quantity, selected, source, factor):
+def _priced(unit_price, quantity, selected, source, factor, factor_source=None):
     """Both figures as WHOLE RIALS, which is what money is everywhere else in Finance.
 
     The conversion itself keeps full precision -- the cost is computed from the exact
@@ -224,7 +244,7 @@ def _priced(unit_price, quantity, selected, source, factor):
     if unit_price is None:
         return ItemPrice(READY, unit_price_irr=None, item_cost_irr=None,
                          selected_unit=selected, source_unit=source, factor_applied=factor,
-                         quantity=quantity)
+                         factor_source=factor_source, quantity=quantity)
     exact_cost = None if quantity is None else quantity * unit_price
     return ItemPrice(READY,
                      unit_price_irr=unit_price.quantize(WHOLE_RIAL, rounding=ROUND_HALF_UP),
@@ -232,4 +252,4 @@ def _priced(unit_price, quantity, selected, source, factor):
                                     else exact_cost.quantize(WHOLE_RIAL,
                                                              rounding=ROUND_HALF_UP)),
                      selected_unit=selected, source_unit=source, factor_applied=factor,
-                     quantity=quantity)
+                     factor_source=factor_source, quantity=quantity)

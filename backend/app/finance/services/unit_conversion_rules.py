@@ -174,6 +174,31 @@ class UnitConversionRuleService:
         else:
             raise UnitConversionRuleRefused("روش تبدیل باید «factor» یا «formula» باشد")
 
+        # ---------------------------------------- one crossing, one rule, either spelling
+        # Now that a rule is read from either side, `branch->kg` and `kg->branch` in the
+        # SAME scope are two live answers to one question -- and nothing stops them
+        # disagreeing, because 22 and 0.05 are not each other's inverse. The partial unique
+        # index cannot see this: to the database the two rows have different unit pairs.
+        #
+        # Refused here rather than at the constraint so the message can name the rule that
+        # is in the way, its number and its direction, in Persian. Replacing it is the
+        # supported move and `supersedes_rule_id` is how -- which the message says, because
+        # "already exists" without a way forward is where a person gets stuck.
+        if method == "factor" and not payload.supersedes_rule_id:
+            opposite = await self._opposite_direction_rule(
+                scope, scope_type=scope_type, from_unit=from_unit, to_unit=to_unit,
+                project_id=scope.project_id if scope_type == "project" else None,
+                provider_item_id=payload.provider_item_id,
+                provider_id=payload.provider_id, category=payload.category)
+            if opposite is not None:
+                raise UnitConversionRuleRefused(
+                    "برای همین عبور، قانونی در جهت معکوس از قبل فعال است: «۱ %s = %s %s» "
+                    "(نسخهٔ %s). همان قانون هر دو جهت را پاسخ می‌دهد، پس ثبت این یکی دو "
+                    "پاسخ ناسازگار می‌سازد. برای تغییر، آن را با supersedes_rule_id "
+                    "جایگزین کنید."
+                    % (opposite["from_unit"], _plain(opposite.get("factor_value")),
+                       opposite["to_unit"], opposite.get("version")))
+
         values = {
             # A project rule is scoped to THIS project, never to one named in the body: a
             # caller choosing its own project_id would be choosing its own tenant.
@@ -283,6 +308,44 @@ class UnitConversionRuleService:
             "error_code": error_code,
         })
 
+    async def _opposite_direction_rule(self, scope, *, scope_type, from_unit, to_unit,
+                                       project_id, provider_item_id, provider_id,
+                                       category):
+        """An active rule for the SAME scope stating the same crossing backwards, or None.
+
+        Same scope is the whole test. A `kg->branch` rule at global level and a
+        `branch->kg` rule on one listing are not in conflict -- the narrow one wins and
+        that is the ladder working. Two at the same rank are the problem, because then
+        only the direct/reverse tiebreak separates them and the number a row gets depends
+        on which way somebody typed.
+        """
+        # `list_rules` rather than `candidates_for`, because that one returns only
+        # APPROVED rules and a draft is exactly what this has to catch. Two drafts in
+        # opposite directions are a conflict waiting for somebody to approve both, and the
+        # moment to say so is while there is still one rule, not after there are two.
+        candidates = await self.repository.list_rules(
+            scope, from_unit=to_unit, to_unit=from_unit)
+        for rule in candidates or ():
+            if rule.get("from_unit") != to_unit or rule.get("to_unit") != from_unit:
+                continue
+            if rule.get("scope_type") != scope_type:
+                continue
+            if rule.get("project_id") != project_id:
+                continue
+            if rule.get("provider_item_id") != provider_item_id:
+                continue
+            if rule.get("provider_id") != provider_id:
+                continue
+            if rule.get("category") != category:
+                continue
+            if rule.get("superseded_at") is not None:
+                continue
+            # A rule somebody already withdrew is not in the way.
+            if rule.get("status") in ("superseded", "rejected", "withdrawn"):
+                continue
+            return rule
+        return None
+
     @staticmethod
     def _require_tenant_permission(permissions, action):
         if APPROVE_TENANT_RULE_PERMISSION not in set(permissions or ()):
@@ -290,6 +353,14 @@ class UnitConversionRuleService:
                 "قانونی که فراتر از این پروژه است تنها با دسترسی «%s» قابل %s است"
                 % (APPROVE_TENANT_RULE_PERMISSION,
                    {"write": "ثبت", "approve": "تأیید", "supersede": "بستن"}[action]))
+
+
+def _plain(value):
+    """A factor as a person wrote it: no exponent, no trailing zeros, never a float."""
+    if value is None:
+        return "-"
+    text = format(value, "f") if hasattr(value, "is_finite") else str(value)
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
 
 def registry_units():

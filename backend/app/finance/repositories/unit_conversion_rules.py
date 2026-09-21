@@ -44,19 +44,26 @@ class PsycopgUnitConversionRuleRepository:
     # ------------------------------------------------------------------------ rules
 
     async def candidates_for(self, s, *, from_unit, to_unit):
-        """Every approved rule for this tenant that crosses these two units.
+        """Every approved rule for this tenant that crosses these two units, EITHER WAY.
 
         Not filtered by scope: which scope wins is the domain's decision, and a query that
         pre-selected one would make the precedence invisible. A tenant has a handful of
         these, so the width costs nothing.
+
+        Both directions are fetched for the same reason `_factor_for` reads a listing
+        measurement both ways: "one branch is 22 kg" and "one kg is 0.045 branches" are the
+        same statement, and which one somebody wrote down is an accident of how they think
+        about the material. `resolve_rule` inverts the reverse one at full precision and
+        decides which wins; returning only the direct match here would hide the other from
+        it entirely.
         """
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute(
                 "SELECT " + _RULE_COLUMNS + " FROM finance_unit_conversion_rules"
                 " WHERE organization_id=%s AND status='approved'"
-                "   AND from_unit=%s AND to_unit=%s"
+                "   AND ((from_unit=%s AND to_unit=%s) OR (from_unit=%s AND to_unit=%s))"
                 "   AND (project_id IS NULL OR project_id=%s)",
-                (s.organization_id, from_unit, to_unit, s.project_id))
+                (s.organization_id, from_unit, to_unit, to_unit, from_unit, s.project_id))
             return await c.fetchall()
 
     async def candidates_for_pairs(self, s, pairs):
@@ -73,6 +80,10 @@ class PsycopgUnitConversionRuleRepository:
         wanted = [(a, b) for a, b in {tuple(pair) for pair in pairs} if a and b and a != b]
         if not wanted:
             return {}
+        # Each wanted crossing is asked for in both directions, for the reason
+        # `candidates_for` gives. The reverse spellings go into the query alongside the
+        # direct ones, so this is still ONE round trip however many pairs a table needs.
+        asked = {pair for pair in wanted} | {(b, a) for a, b in wanted}
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute(
                 "SELECT " + _RULE_COLUMNS + " FROM finance_unit_conversion_rules"
@@ -80,11 +91,18 @@ class PsycopgUnitConversionRuleRepository:
                 "   AND (project_id IS NULL OR project_id=%s)"
                 "   AND (from_unit, to_unit) IN (SELECT * FROM unnest(%s::text[], %s::text[]))",
                 (s.organization_id, s.project_id,
-                 [a for a, _b in wanted], [b for _a, b in wanted]))
+                 [a for a, _b in asked], [b for _a, b in asked]))
             rows = await c.fetchall()
+        # Grouped under the REQUESTED pair, not the stored one: the caller asks for the
+        # crossing it needs and `resolve_rule` sorts out which way each candidate was
+        # written. A rule stored kg->branch therefore appears under ('branch','kg') when
+        # that is what was asked for, which is exactly where the resolver looks.
         grouped = {pair: [] for pair in wanted}
         for row in rows:
-            grouped.setdefault((row["from_unit"], row["to_unit"]), []).append(row)
+            stated = (row["from_unit"], row["to_unit"])
+            for pair in wanted:
+                if stated == pair or stated == (pair[1], pair[0]):
+                    grouped[pair].append(row)
         return grouped
 
     async def list_rules(self, s, *, scope_type=None, status=None, from_unit=None,
@@ -153,6 +171,21 @@ class PsycopgUnitConversionRuleRepository:
         The version is chosen inside the INSERT so two writers cannot both pick the same
         next number; the partial unique index then refuses a second ACTIVE row rather than
         quietly producing two.
+
+        THE ACKNOWLEDGEMENT IS PART OF THE ROW
+
+        `product_dependent_acknowledged` and its two companions are written here because
+        the service REFUSES a tenant-wide rule about a product-dependent crossing without
+        one. Leaving them out of the INSERT meant every stored rule read as `false` with
+        nobody named against it -- so the one record that would show a person had been
+        warned and had accepted the consequence did not exist, while the gate that asked
+        for it went on working. A gate whose answer is not kept is a gate nobody can audit.
+
+        The time is the database's `now()` rather than a value the caller passes, for the
+        same reason the version is: it is a fact about when the write happened, and a
+        client clock has no standing to state it. It is NULL when nothing was acknowledged,
+        which the table's own CHECK requires -- a timestamp with no acknowledgement would
+        claim somebody accepted something.
         """
         rule_id = uuid4()
         async with self.db.cursor(row_factory=dict_row) as c:
@@ -162,10 +195,16 @@ class PsycopgUnitConversionRuleRepository:
                         category, scope_type, from_unit, to_unit, conversion_method,
                         factor_value, formula_definition, formula_schema_version,
                         direction_definition, status, version, effective_from,
-                        supersedes_rule_id, evidence_source, reason, created_by)
+                        supersedes_rule_id, evidence_source, reason, created_by,
+                        product_dependent_acknowledged,
+                        product_dependent_acknowledged_by,
+                        product_dependent_acknowledged_at)
                    SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                           coalesce(%s, 'one_from_unit_equals_factor_to_unit'),
-                          'draft', coalesce(max(r.version), 0) + 1, %s, %s, %s, %s, %s
+                          'draft', coalesce(max(r.version), 0) + 1, %s, %s, %s, %s, %s,
+                          coalesce(%s, false),
+                          CASE WHEN coalesce(%s, false) THEN %s::uuid ELSE NULL END,
+                          CASE WHEN coalesce(%s, false) THEN now() ELSE NULL END
                      FROM finance_unit_conversion_rules r
                     WHERE r.organization_id=%s AND r.scope_type=%s
                       AND r.from_unit=%s AND r.to_unit=%s
@@ -183,6 +222,13 @@ class PsycopgUnitConversionRuleRepository:
                  values.get("direction_definition"),
                  values["effective_from"], values.get("supersedes_rule_id"),
                  values.get("evidence_source"), values["reason"], created_by,
+                 # The acknowledgement, its author and its moment. The author is
+                 # `created_by` rather than a separate field: the person writing the rule
+                 # is the person making the claim, and a second name here would invite a
+                 # caller to attribute the acknowledgement to somebody who never saw it.
+                 values.get("product_dependent_acknowledged"),
+                 values.get("product_dependent_acknowledged"), created_by,
+                 values.get("product_dependent_acknowledged"),
                  s.organization_id, values["scope_type"], values["from_unit"],
                  values["to_unit"], values.get("project_id"),
                  values.get("provider_item_id"), values.get("provider_id"),
