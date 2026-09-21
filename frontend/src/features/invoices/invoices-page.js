@@ -375,13 +375,24 @@ function createInvoiceWizard({ adapter, onSaved, mode = "manual", originalInvoic
          than dropped: somebody billing a contractor's lump sum needs to see that the shape
          exists and what stands in its way, which is not the same message as the form not
          having it. */
-      modeSelect.replaceChildren(...choices.map((choice) => {
-        const node = option(choice.value, choice.available
-          ? MODE_LABELS[choice.value]
-          : `${MODE_LABELS[choice.value]} — ${choice.reason}`);
-        node.disabled = !choice.available;
-        return node;
-      }));
+      /* REBUILT ONLY WHEN THE OPTIONS THEMSELVES CHANGE, and the selection put back after.
+         Replacing a `<select>`'s children resets its value to the first option -- so this
+         ran on the `change` event it was reacting to, threw the choice away, and left the
+         quantity boxes showing. It looked correct for as long as «فقط مبلغ کل» was
+         disabled, because a disabled option could not be chosen for it to lose. */
+      const signature = choices.map((choice) => `${choice.value}:${choice.available}`).join("|");
+      if (modeSelect.dataset.choices !== signature) {
+        const wanted = modeSelect.value;
+        modeSelect.replaceChildren(...choices.map((choice) => {
+          const node = option(choice.value, choice.available
+            ? MODE_LABELS[choice.value]
+            : `${MODE_LABELS[choice.value]} — ${choice.reason}`);
+          node.disabled = !choice.available;
+          return node;
+        }));
+        modeSelect.dataset.choices = signature;
+        if (wanted) modeSelect.value = wanted;
+      }
       /* The control appears only when there is something to choose. On a general cost the
          single amount box IS the only shape, and a menu with one option in it is a question
          with one answer. */
