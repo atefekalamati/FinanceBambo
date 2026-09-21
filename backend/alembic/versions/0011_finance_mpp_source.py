@@ -1,4 +1,4 @@
-"""Finance's own record of what a schedule file said
+﻿"""Finance's own record of what a schedule file said
 
 Revision ID: 0011
 Revises: 0010
@@ -32,12 +32,11 @@ from a duration, or from a custom column that merely contains a number would be 
 an empty one: nobody can tell an invented quantity from a measured one once it is a number
 in a report.
 
-WHY msp_task_metrics GOES
-It was created to carry these same values on the Core side so the Finance feed could join
-to them. Finance no longer joins to anything, and nothing on the MSP side reads the table:
-it has a writer and no reader. Its data is the file's, and the file is still there, so
-dropping it loses nothing that a re-import cannot restate. The drop is forward-only -- 0010
-is left exactly as it was applied.
+WHY msp_task_metrics STAYS
+Revision 0010 created this table, but it belongs to the shared Core/MPP surface and a
+Finance migration must not remove a Core-owned table. The Finance-owned source tables below
+do not depend on it; 0011 therefore leaves it untouched while keeping 0010 in migration
+history.
 """
 
 from alembic import op
@@ -130,8 +129,8 @@ CREATE INDEX ix_finance_mpp_rows_scope
 CREATE INDEX ix_finance_mpp_rows_resource
     ON finance_mpp_rows (source_version_id, source_resource_uid);
 
--- Core-safe deployment: do not DROP public/Core tables from the Finance migration.
--- msp_task_metrics is intentionally left untouched.
+-- Core-safe deployment: msp_task_metrics and every other public/Core table remain
+-- untouched. Finance migrations only create or remove Finance-owned objects.
 """
 
 

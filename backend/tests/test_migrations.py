@@ -494,17 +494,25 @@ class TaskResourceMapRevisionTests(unittest.TestCase):
         self.assertIsNotNone(match)
         body = match.group(1)
         columns = [line.strip() for line in body.splitlines()
-                   if line.strip() and not line.strip().upper().startswith(
+                   if line.strip()
+                   and not line.strip().startswith("--")
+                   and not line.strip().upper().startswith(
                        ("UNIQUE", "FOREIGN", "PRIMARY", "CHECK", "CONSTRAINT"))]
         self.assertEqual(3, len(columns), columns)
         self.assertRegex(columns[0], r"(?i)^id\s+uuid\s+primary\s+key")
         self.assertRegex(columns[1], r"(?i)^task_id\s+bigint\s+not\s+null")
         self.assertRegex(columns[2], r"(?i)^resource_id\s+uuid\s+not\s+null")
 
-    def test_task_id_references_the_database_identity_and_cascades(self):
-        # msp_tasks.id, the row identity -- NEVER the file's display Task ID.
-        self.assertRegex(self.UP, r"(?i)foreign\s+key\s*\(task_id\)\s*references\s+"
-                                  r"msp_tasks\s*\(id\)\s*on\s+delete\s+cascade")
+    def test_task_id_does_not_create_a_foreign_key_into_core(self):
+        # Core ownership boundary: Finance stores msp_tasks.id as a logical
+        # reference but must not require REFERENCES privileges on Core.
+        self.assertNotRegex(
+            self.UP,
+            r"(?i)foreign\s+key\s*\(task_id\)\s*references\s+msp_tasks"
+        )
+        self.assertIn("finance_task_resource_map_guard", self.UP)
+        self.assertIn("msp_tasks", self.UP)
+        self.assertIn("msp_snapshots", self.UP)
 
     def test_a_mapped_finance_resource_cannot_be_deleted(self):
         self.assertRegex(self.UP, r"(?i)foreign\s+key\s*\(resource_id\)\s*references\s+"

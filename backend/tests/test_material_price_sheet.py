@@ -56,6 +56,16 @@ class HeaderTests(unittest.TestCase):
         result = read_worksheet("steel -Rebar", [header, ROW + ("original value",)])
         self.assertEqual("original value", result.rows[0].attributes["customSheetAttribute"])
 
+    def test_an_unsupported_price_column_is_a_missing_price_column(self):
+        headers = tuple("amount" if h == "قیمت" else h for h in HEADER)
+        problem = check_headers("steel -Rebar", headers)
+        self.assertIn("قیمت", problem)
+
+    def test_english_contract_headers_are_accepted_as_aliases(self):
+        headers = ("source", "productName", "unit", "price", "workflowUpdateDate", "productId")
+        problem = check_headers("steel -Rebar", headers)
+        self.assertIsNone(problem)
+
     def test_a_new_column_does_not_stop_the_worksheet(self):
         problem = check_headers("steel -Rebar", HEADER + ("یک ستون تازه",))
         self.assertIsNone(problem, "an extra column is not a reason to refuse a sheet")
@@ -125,6 +135,24 @@ class WorksheetTests(unittest.TestCase):
         result = read_worksheet("steel -Rebar", sheet(HEADER, ROW, ROW))
         self.assertEqual([2, 3], [row.row_number for row in result.rows])
 
+    def test_english_contract_headers_are_mapped_before_row_decision(self):
+        result = read_worksheet("steel -Rebar", [
+            ("source", "productName", "unit", "price", "workflowUpdateDate", "productId"),
+            ("Mashhad Foolad", "Rebar 8 A3", "kg", 95500.0, "1405-06-22", "REBAR-1"),
+        ])
+        self.assertTrue(result.read, result.reason)
+        self.assertEqual(1, len(result.accepted))
+        self.assertEqual("Rebar 8 A3", result.accepted[0].product_name)
+        self.assertEqual("kg", result.accepted[0].source_unit)
+
+    def test_unknown_columns_are_preserved_as_metadata_attributes(self):
+        result = read_worksheet("steel -Rebar", [
+            ("source", "productName", "unit", "price", "workflowUpdateDate", "productId", "customSpec"),
+            ("Mashhad Foolad", "Rebar 8 A3", "kg", 95500.0, "1405-06-22", "REBAR-1", "A3"),
+        ])
+        self.assertTrue(result.read, result.reason)
+        self.assertEqual("A3", result.accepted[0].attributes["customSpec"])
+
 
 class WorkbookTests(unittest.TestCase):
     def full(self, **overrides):
@@ -140,6 +168,15 @@ class WorkbookTests(unittest.TestCase):
         result = read_workbook(self.full())
         self.assertTrue(result.complete, [w.reason for w in result.refused])
         self.assertEqual((), result.missing_titles)
+
+    def test_allowed_worksheet_alias_is_read_as_the_canonical_sheet(self):
+        book = self.full()
+        book["Pipe"] = book.pop("Pipe-table")
+        result = read_workbook(book)
+        self.assertTrue(result.complete, [w.reason for w in result.refused])
+        pipe = [w for w in result.worksheets if w.title == "Pipe-table"][0]
+        self.assertEqual("Pipe", pipe.source_title)
+        self.assertEqual(WORKSHEET_ALLOWLIST["Pipe-table"], pipe.gid)
 
     def test_a_worksheet_that_disappeared_makes_the_workbook_incomplete(self):
         book = self.full()
