@@ -780,6 +780,7 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
         categories: marketCategories,
         selectedCategory: marketCategory,
         readOnly,
+        priceHistories: marketPriceHistories,
         /* Back to the first page whenever the category changes. Staying on page four of
            «لوله» while switching to «نبشی» -- which has twelve products -- would ask the
            server for a page that does not exist and show an empty table for a category
@@ -809,13 +810,41 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
   let marketCategory = null;
   let marketLoading = false;
   let marketError = null;
+  let marketPriceHistories = new Map();
+  let marketHistoryRequest = 0;
   /* SERVER paging, not a slice of something already fetched. The sheet holds 992 pipes in
      one category alone; asking for all of them to show fifty is the request this avoids,
      and it is the whole reason the page state carries a page number at all. */
   let marketPaging = { page: 1, pageSize: 50 };
 
+  async function loadMarketPriceHistories(rows, requestId) {
+    const pending = [...(rows ?? [])];
+    const histories = new Map();
+    /* A full page may contain fifty listings. Six workers avoid a fifty-request burst,
+       while each request transfers only the five points the sparkline can display. */
+    const worker = async () => {
+      while (pending.length) {
+        const row = pending.shift();
+        if (!row?.providerItemId) continue;
+        try {
+          const result = await materialPricesAdapter.listPriceHistory(
+            row.providerItemId, { page: 1, pageSize: 5 });
+          histories.set(row.providerItemId, result.items ?? []);
+        } catch {
+          /* A secondary visualization failing must not hide a valid current price. */
+          histories.set(row.providerItemId, []);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, pending.length) }, worker));
+    if (requestId !== marketHistoryRequest) return;
+    marketPriceHistories = histories;
+    paint();
+  }
+
   async function loadMarketPrices() {
     if (!materialPricesAdapter) return;
+    const requestId = ++marketHistoryRequest;
     marketLoading = true;
     marketError = null;
     paint();
@@ -832,6 +861,9 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
       ]);
       marketPrices = page;
       marketCategories = categories;
+      marketPriceHistories = new Map();
+      /* Render current prices first; their small trends arrive independently. */
+      void loadMarketPriceHistories(page.items, requestId);
     } catch (error) {
       marketError = error;
       /* The rows already on screen are kept. A failed refresh must not empty a table that

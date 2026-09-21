@@ -184,6 +184,16 @@
   color: var(--color-text-muted);
 }
 
+.material-prices__table :is(th, td)[data-col="trend"] {
+  inline-size: 7rem;
+  min-inline-size: 7rem;
+  text-align: center;
+}
+
+.material-prices__table .price-trend {
+  margin-inline: auto;
+}
+
 .price-history-table :is(th, td)[data-col="scope"] {
   inline-size: 15%;
 }

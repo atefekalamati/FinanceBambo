@@ -5,7 +5,7 @@ import { installDom } from "../helpers/dom.js";
 
 installDom();
 
-const { alignmentCell, priceCell, renderMaterialPrices, sheetDateLabel, statusText,
+const { alignmentCell, materialPriceTrend, priceCell, renderMaterialPrices, sheetDateLabel, statusText,
         unitCell } =
   await import("../../src/features/prices/material-prices-section.js");
 
@@ -51,6 +51,27 @@ function row(changes = {}) {
     ...changes,
   };
 }
+
+test("material price trend uses the five newest observations in chronological order", () => {
+  const history = [6, 5, 4, 3, 2, 1].map((price) => ({
+    priceIRR: String(price * 1000),
+    workflowDate: `2026-09-${String(price).padStart(2, "0")}`,
+  }));
+  const item = materialPriceTrend(row(), history);
+  assert.deepEqual(item.trend.trendPoints.map((point) => point.unitPriceIrr),
+    ["2000", "3000", "4000", "5000", "6000"]);
+  assert.equal(item.trend.trendDirection, "up");
+});
+
+test("material price trend ignores unusable observations and detects a decrease", () => {
+  const item = materialPriceTrend(row(), [
+    { priceIRR: "900", workflowDate: "2026-09-03" },
+    { priceIRR: null, workflowDate: "2026-09-02" },
+    { priceIRR: "1100", workflowDate: "2026-09-01" },
+  ]);
+  assert.deepEqual(item.trend.trendPoints.map((point) => point.unitPriceIrr), ["1100", "900"]);
+  assert.equal(item.trend.trendDirection, "down");
+});
 
 test("a missing price is an em dash, and never a zero", () => {
   for (const missing of [null, undefined]) {
@@ -178,7 +199,7 @@ test("a row whose price is unusable still appears, with its reason", () => {
      typed it, and it is withheld from the report surface. See
      material-prices-category-columns.test.js. */
   const cells = [...section.querySelectorAll("tbody tr td")].map((td) => td.textContent);
-  assert.equal(cells.length, 7);
+  assert.equal(cells.length, 8);
   assert.ok(cells.some((text) => text.includes("—")), "the price cell is an em dash");
   assert.match(section.textContent, /قیمت خوانا نیست/);
   assert.match(section.textContent, /price is blank/);

@@ -227,7 +227,7 @@ test("the rendered header row is the chosen category's", () => {
      surface adds to every category. See the test that pins why it must survive a chip. */
   assert.deepEqual(headers, [
     "منبع", "محصول", "ضخامت", "وزن", "طول", "تعداد شاخه",
-    "قیمت", "آخرین آپدیت", "منشأ", "productId",
+    "قیمت", "روند", "آخرین آپدیت", "منشأ", "productId",
   ]);
 });
 
