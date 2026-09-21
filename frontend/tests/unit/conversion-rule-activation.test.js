@@ -62,21 +62,34 @@ function recordingAdapter({ approveFails = false } = {}) {
 function open(context, adapter, onSaved = () => {}) {
   const dialog = createConversionRuleDialog({ context, adapter, onSaved });
   const root = dialog.element;
+  const directions = [...root.querySelectorAll('input[type="radio"]')];
   return {
     root,
     scope: root.querySelector("select"),
+    directions,
+    forward: directions.find((input) => input.value === "forward"),
+    reverse: directions.find((input) => input.value === "reverse"),
     factor: root.querySelector('input[name="factorValue"]'),
     reason: root.querySelector("textarea"),
     acknowledge: root.querySelector('input[name="productDependentAcknowledged"]'),
     save: [...root.querySelectorAll("button")].find((b) => /ثبت و اعمال|تأیید و اعمال/.test(b.textContent)),
     note: [...root.querySelectorAll("p")].find((p) => p.className === "table-note" && p.textContent.includes("پیش‌نویس")),
+    sentence: root.querySelector(".conversion-rule-dialog__sentence"),
     feedback: root.querySelector(".form-feedback"),
   };
 }
 
-function fill(ui, { scope = "project", factor = "22", reason = "وزن یک شاخه از برگهٔ فروشنده" } = {}) {
+/** Picks a direction the way a person does: the browser checks it, then fires `change`. */
+function choose(ui, which) {
+  ui[which].checked = true;
+  ui[which].dispatch("change");
+}
+
+function fill(ui, { scope = "project", factor = "22", reason = "وزن یک شاخه از برگهٔ فروشنده",
+                    direction = "forward" } = {}) {
   ui.scope.value = scope;
   ui.scope.dispatch("change");   // the stub fires one listener type directly; see tests/helpers/dom.js
+  if (direction) choose(ui, direction);
   ui.factor.value = factor;
   ui.reason.value = reason;
 }
@@ -198,4 +211,91 @@ test("a scope that outlives this project is offered only to an account that may 
     context: PRODUCT_DEPENDENT, adapter: recordingAdapter(), canManageSettings: true, onSaved: () => {} });
   assert.deepEqual([...allowed.element.querySelector("select").querySelectorAll("option")]
     .map((o) => Boolean(o.disabled)), [false, false, false, false, false, false]);
+});
+
+/* WHICH SIDE IS THE ONE.
+ *
+ * The pricing path asks kilogram->branch, because the price is per kilogram and the line
+ * is measured in branches. Nobody knows that number. What a person knows is that a branch
+ * weighs twenty-two kilograms, and forcing them to state the crossing in the direction the
+ * resolver happens to ask in means typing 0.0454545… -- a number they cannot check against
+ * the seller's sheet, rounded once and then rounded into every price the rule produces.
+ *
+ * So both questions are offered, the answer is stored exactly as it was said, and the
+ * server reads the rule from either side.
+ */
+
+test("neither direction is preselected, and nothing can be typed until one is", () => {
+  const ui = open(CONTEXT, recordingAdapter());
+  assert.deepEqual(ui.directions.map((input) => Boolean(input.checked)), [false, false],
+                   "a default would be silently wrong half the time");
+  assert.equal(ui.factor.disabled, true,
+               "a number typed before the question is picked is an answer to nothing");
+  assert.match(ui.sentence.textContent, /کدام طرف را می‌دانید/);
+});
+
+test("the two questions name the two real units, one each way round", () => {
+  const ui = open(PRODUCT_DEPENDENT, recordingAdapter());   // each -> kg
+  const asked = ui.directions.map((input) => input.parentNode.textContent);
+  assert.equal(asked.length, 2);
+  assert.ok(asked.some((text) => /۱ عدد چند کیلوگرم است/.test(text)), asked.join(" | "));
+  assert.ok(asked.some((text) => /۱ کیلوگرم چند عدد است/.test(text)), asked.join(" | "));
+});
+
+test("choosing a direction rewrites the sentence and opens the number", () => {
+  const ui = open(PRODUCT_DEPENDENT, recordingAdapter());
+  choose(ui, "reverse");
+  assert.equal(ui.factor.disabled, false);
+  ui.factor.value = "22";
+  ui.factor.dispatch("input");
+  /* The typed characters, echoed verbatim rather than prettified into Persian
+     digits: the sentence exists to show what is about to be SENT. */
+  assert.equal(ui.sentence.textContent, "۱ کیلوگرم = 22 عدد");
+
+  choose(ui, "forward");
+  ui.factor.dispatch("input");
+  assert.equal(ui.sentence.textContent, "۱ عدد = 22 کیلوگرم",
+               "the same number against the other question is a different claim, and the "
+               + "sentence is the only place that difference is visible");
+});
+
+test("the reverse direction is sent as stated, with the units swapped and the number intact", async () => {
+  /* Not inverted here. 1/22 is 0.045454545454… and any inversion this dialog performed
+     would round it, put a number nobody can verify into the audit record, and then apply
+     that rounding to every price. The server inverts at full precision when it resolves. */
+  const adapter = recordingAdapter();
+  const ui = open(PRODUCT_DEPENDENT, adapter);              // fromUnit each, toUnit kg
+  fill(ui, { scope: "provider_item", direction: "reverse", factor: "22" });
+  ui.save.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const payload = adapter.calls[0][1];
+  assert.equal(payload.fromUnit, "kg");
+  assert.equal(payload.toUnit, "each");
+  assert.equal(payload.factorValue, "22");
+});
+
+test("the forward direction sends the row's own crossing, untouched", async () => {
+  const adapter = recordingAdapter();
+  const ui = open(PRODUCT_DEPENDENT, adapter);
+  fill(ui, { scope: "provider_item", direction: "forward", factor: "22" });
+  ui.save.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const payload = adapter.calls[0][1];
+  assert.equal(payload.fromUnit, "each");
+  assert.equal(payload.toUnit, "kg");
+});
+
+test("saving with no direction picked writes nothing and says what is missing", async () => {
+  const adapter = recordingAdapter();
+  const ui = open(PRODUCT_DEPENDENT, adapter);
+  fill(ui, { scope: "provider_item", direction: null });
+  ui.factor.disabled = false;   // a person cannot reach this; a stale DOM could
+  ui.factor.value = "22";
+  ui.save.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(adapter.calls, [], "a factor with no direction must not reach the server");
+  assert.match(ui.feedback.textContent, /کدام طرف/);
 });

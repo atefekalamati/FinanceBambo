@@ -795,7 +795,12 @@ function sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resou
   if (UNIT_TROUBLE.has(priced.status)) {
     cell.append(element("span", "cell-secondary", priced.statusLabel ?? ""));
     if (canEdit && onMapPrice) {
-      const fix = element("button", "table-action table-action--map-price", "تبدیل واحد");
+      /* The button says which of the two questions this row is actually stuck on.
+         «تبدیل واحد» on a row whose SHEET never stated a unit promises a crossing whose
+         near side is missing -- there is nothing to convert from yet, and the panel behind
+         it opens on a different question. */
+      const fix = element("button", "table-action table-action--map-price",
+        priced.status === "unknown_source_unit" ? "مشخص‌کردن واحد قیمت" : "تبدیل واحد");
       fix.type = "button";
       fix.dataset.action = "fix-unit";
       fix.addEventListener("click", () => onMapPrice(line, resource));
@@ -987,7 +992,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
  * administrator reading the report gets the read-only table too. One mode per
  * route is a thing you can reason about; one mode per account is not.
  */
-export function createFinancialItemsPage({ context, adapter, priceMappingAdapter = null, pricesAdapter = null, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
+export function createFinancialItemsPage({ context, adapter, priceMappingAdapter = null, pricesAdapter = null, materialPricesAdapter = null, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
   const root = element("div", "financial-items-page");
   const readOnly = surface === SURFACES.REPORT;
   /* Which market listing prices each line, and what that makes it cost today.
@@ -1211,6 +1216,9 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
       onMapPrice: !readOnly && priceMappingAdapter ? (line, resource) => {
         const panel = createPriceMappingPanel({
           line, resource, adapter: priceMappingAdapter, canEdit, canManageSettings,
+          /* Whose endpoint records what a sheet listing's price is a price OF. A host that
+             did not wire the material-prices module simply does not offer that step. */
+          materialPricesAdapter,
           /* The panel STAYS OPEN after a material is saved. A line is priced from a list,
              and closing after the first entry would make adding the second a fresh trip
              through the table. The row behind it refreshes so the total stays honest. */

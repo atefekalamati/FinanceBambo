@@ -2,6 +2,7 @@ import { element } from "../../shared/dom/elements.js";
 import { formatDisplayNumber, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { createConversionRuleDialog } from "./conversion-rule-dialog.js";
+import { createSourceUnitDialog } from "./source-unit-dialog.js";
 
 /* The materials one schedule item consumes, and what they cost at today's prices.
  *
@@ -106,7 +107,7 @@ function specList(candidate) {
   return list;
 }
 
-export function createPriceMappingPanel({ line, resource, adapter, canEdit, canManageSettings = true, onSaved, onClose }) {
+export function createPriceMappingPanel({ line, resource, adapter, materialPricesAdapter = null, canEdit, canManageSettings = true, onSaved, onClose }) {
   /* A real <dialog>, not a <section> with role="dialog". `showAccessibleDialog` requires
      one and throws otherwise -- which it did, on every open, so the panel appeared with no
      focus trap, no Escape and no backdrop while an uncaught TypeError went to the console.
@@ -245,6 +246,13 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, canM
         retire.dataset.action = "deactivate-component";
         retire.addEventListener("click", () => askToRetire(component, card));
         actions.append(edit, retire);
+        /* THE WAY OUT SITS ON THE SAVED CARD, not only on a draft being edited.
+           These prompts used to render from `refreshPreview` alone -- so a line that was
+           already linked and stuck showed its problem and no way to answer it, and the
+           person had to press «تغییر محصول» and re-enter a form they were not changing to
+           reach the button. The row being blocked is the state they came here about. */
+        const way = unitPromptFor(component);
+        if (way) actions.append(way);
         card.append(actions);
       }
       if (!component.active) {
@@ -304,12 +312,64 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, canM
   /* Where «نیازمند ضریب تبدیل» stops being a dead end. Empty for every other status. */
   const conversionPrompt = element("div", "price-component-form__conversion");
 
-  /* The button is offered only for the one status a conversion rule answers. A missing
-     price or an unchosen unit are different problems and this dialog would not fix them,
-     so offering it there would send somebody to write a rule nobody needed. */
+  /* TWO WALLS, TWO DOORS, AND THEY ARE NOT THE SAME DOOR.
+   *
+   * `needs_factor` means both units are known and do not meet: «۱ کیسه چند کیلوگرم است»,
+   * which a conversion rule answers and which may be stated for this project, the whole
+   * organization, or all of BAMBO.
+   *
+   * `unknown_source_unit` means the SHEET never said what its price is a price of. There
+   * is nothing to convert from, and a conversion dialog opened there asks somebody to
+   * bridge a gap whose near side is missing. Measured on this project that is where the
+   * linked rows actually stop: five read «واحد قیمت مبدأ مشخص نیست» and none reads
+   * «نیازمند ضریب تبدیل» -- and this panel used to answer that by opening and offering
+   * nothing at all.
+   *
+   * Any other status -- no price today, no unit chosen -- is a third thing again, and
+   * neither door helps, so neither is shown. */
+  /* The way out of «واحد قیمت مبدأ مشخص نیست».
+   *
+   * Offered only when this host wired the material-prices module, because that is whose
+   * endpoint writes the label. A host without it has no way to record the answer, and a
+   * button that cannot save is worse than the plain statement of the problem. */
+  function sourceUnitButton(component) {
+    const providerItemId = component.providerItemId ?? chosen?.providerItemId ?? null;
+    if (!materialPricesAdapter?.saveLabel || !providerItemId) return null;
+    const open = element("button", "button button--ghost", "مشخص‌کردن واحد قیمت");
+    open.type = "button";
+    open.dataset.action = "define-source-unit";
+    open.addEventListener("click", () => {
+      const dialog = createSourceUnitDialog({
+        adapter: materialPricesAdapter,
+        context: {
+          providerItemId,
+          productName: component.productName ?? chosen?.name ?? null,
+          providerName: component.providerName ?? chosen?.providerName ?? null,
+          rawPrice: chosen?.rawPrice ?? null,
+          selectedUnit: component.selectedUnit ?? null,
+        },
+        /* The same two refreshes the conversion dialog does, for the same reason: the
+           preview so this row answers, and the page's own reload because a listing's unit
+           can unblock every other line pointing at the same product. */
+        onSaved: () => { refreshPreview(); onSaved?.(); },
+        onClose: () => dialog.element.remove(),
+      });
+      dialog.open();
+    });
+    return open;
+  }
+
   function renderConversionPrompt(component) {
     conversionPrompt.replaceChildren();
-    if (!canEdit || component?.status !== "needs_factor") return;
+    const way = unitPromptFor(component);
+    if (way) conversionPrompt.append(way);
+  }
+
+  /** The one button that answers whatever this component is stuck on, or null. */
+  function unitPromptFor(component) {
+    if (!canEdit) return null;
+    if (component?.status === "unknown_source_unit") return sourceUnitButton(component);
+    if (component?.status !== "needs_factor") return null;
     const open = element("button", "button button--ghost", "تعریف قانون تبدیل واحد");
     open.type = "button";
     open.dataset.action = "define-conversion-rule";
@@ -342,7 +402,7 @@ export function createPriceMappingPanel({ line, resource, adapter, canEdit, canM
       });
       dialog.open();
     });
-    conversionPrompt.append(open);
+    return open;
   }
   const save = element("button", "button button--primary", "ثبت اتصال");
   save.type = "button";

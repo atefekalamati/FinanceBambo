@@ -17,11 +17,18 @@ import { getUnitDefinition } from "../prices/unit-conversions-validation.js";
  * anything: it collects what a person measured, with their reason, and sends it to the
  * server to be stored and approved. There is no suggested factor and no arithmetic here.
  *
- * DIRECTION IS STATED, NEVER INFERRED
- * The rule reads «۱ <from> = factor <to>» and the sentence is on screen above the input,
- * built from the two real unit names. Read the other way round, «۱ شاخه = ۲۲ کیلوگرم»
- * becomes a claim that a kilogram weighs twenty-two branches, and the price that came out
- * of it would be wrong by a factor of 484 while looking entirely plausible.
+ * DIRECTION IS CHOSEN, NEVER INFERRED
+ * The rule reads «۱ <from> = factor <to>», and WHICH unit is the one is the person's
+ * choice, because only one of the two directions is a thing anybody knows. Somebody knows
+ * that a branch of angle weighs twenty-two kilograms; nobody knows offhand that a kilogram
+ * is 0.0454545… of a branch, and made to type that they would round it and bake the
+ * rounding into every price the rule ever produces. So both questions are offered, the
+ * answer is stored exactly as stated, and the resolver reads the rule from either side.
+ *
+ * Neither direction is preselected. Read the wrong way round, «۱ شاخه = ۲۲ کیلوگرم»
+ * becomes a claim that a kilogram weighs twenty-two branches — a price wrong by a factor
+ * of 484 while looking entirely plausible. A default would be right about half the time
+ * and silently wrong the rest, so the sentence has to be one somebody actually picked.
  */
 
 /* The scopes the server stores, widest last. `provider_category` is a precedence step the
@@ -138,20 +145,79 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
   });
   const scopeHint = element("p", "table-note", SCOPES[0].hint);
 
+  /* The two ways the same crossing can be stated. `forward` is the direction the pricing
+     path asks in -- price unit to line unit -- and `reverse` is the same measurement read
+     backwards. Both are stored as they are said: the row's own `from_unit`/`to_unit`
+     ordering IS the direction, which is why neither needs converting before it is sent. */
+  const DIRECTIONS = Object.freeze([
+    { value: "forward", from: context.fromUnit, to: context.toUnit,
+      fromLabel, toLabel },
+    { value: "reverse", from: context.toUnit, to: context.fromUnit,
+      fromLabel: toLabel, toLabel: fromLabel },
+  ]);
+
   const factorInput = element("input", "app-input");
   factorInput.type = "text";
   factorInput.name = "factorValue";
   factorInput.inputMode = "decimal";
   factorInput.autocomplete = "off";
+  factorInput.id = `conversion-factor-${Math.random().toString(36).slice(2, 9)}`;
+
+  /* Nothing is preselected, and `chosen` stays null until somebody picks. Read from here
+     rather than from the inputs' `checked`, so the answer does not depend on the browser
+     enforcing radio-group exclusivity. */
+  let chosen = null;
+  const directionInputs = new Map();
+  const directionGroup = element("fieldset", "conversion-rule-dialog__direction");
+  directionGroup.append(element("legend", "form-label", "کدام طرف را می‌دانید؟"));
+  const groupName = `conversion-direction-${Math.random().toString(36).slice(2, 9)}`;
+  DIRECTIONS.forEach((direction) => {
+    const input = element("input", "");
+    input.type = "radio";
+    input.name = groupName;
+    input.value = direction.value;
+    const row = element("label", "conversion-rule-dialog__direction-row");
+    row.append(input, element("span", "",
+      `۱ ${direction.fromLabel} چند ${direction.toLabel} است؟`));
+    input.addEventListener("change", () => {
+      if (!input.checked) return;
+      chosen = direction;
+      /* Unchecked explicitly rather than left to the group: the same line then behaves in
+         the test DOM, which has no notion of a radio group, as it does in a browser. */
+      directionInputs.forEach((other, value) => {
+        if (value !== direction.value) other.checked = false;
+      });
+      feedback.textContent = "";
+      renderSentence();
+    });
+    directionInputs.set(direction.value, input);
+    directionGroup.append(row);
+  });
+
+  const factorField = element("div", "form-field");
+  const factorLabel = element("label", "form-label", "");
+  factorLabel.htmlFor = factorInput.id;
+  factorField.append(factorLabel, factorInput);
 
   /* The sentence the number completes, written out with the real unit names so nobody has
-     to work out which way round it goes. */
+     to work out which way round it goes -- and, before a direction is picked, saying that
+     there is nothing to read yet rather than showing one of the two and inviting the
+     number to be typed against it. */
   const sentence = element("p", "conversion-rule-dialog__sentence", "");
   function renderSentence() {
+    if (!chosen) {
+      factorLabel.textContent = "ضریب تبدیل";
+      factorInput.disabled = true;
+      sentence.textContent = "ابتدا مشخص کنید کدام طرف را می‌دانید.";
+      return;
+    }
+    factorLabel.textContent =
+      `ضریب تبدیل — یک ${chosen.fromLabel} چند ${chosen.toLabel} است؟`;
+    factorInput.disabled = false;
     const value = factorInput.value.trim();
-    sentence.textContent = `۱ ${fromLabel} = ${value === "" ? "…" : value} ${toLabel}`;
+    sentence.textContent =
+      `۱ ${chosen.fromLabel} = ${value === "" ? "…" : value} ${chosen.toLabel}`;
   }
-  renderSentence();
 
   const reason = element("textarea", "app-textarea");
   reason.name = "reason";
@@ -213,7 +279,8 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
   form.append(
     field("دامنهٔ اعمال", scopeSelect),
     scopeHint,
-    field(`ضریب تبدیل — یک ${fromLabel} چند ${toLabel} است؟`, factorInput),
+    directionGroup,
+    factorField,
     sentence,
     field("دلیل و مبنا", reason),
     acknowledgeRow,
@@ -229,12 +296,19 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
     syncAcknowledge();
   });
   syncAcknowledge();
+  renderSentence();
   factorInput.addEventListener("input", renderSentence);
 
   save.addEventListener("click", async () => {
     feedback.textContent = "";
     const scopeType = scopeSelect.value;
     const factor = factorInput.value.trim();
+
+    /* Before the number, because a number with no direction is not half an answer -- it is
+       an answer to a question nobody asked. */
+    if (!chosen) {
+      feedback.textContent = "مشخص کنید کدام طرف را می‌دانید."; return;
+    }
 
     /* Checked here only to keep a person from waiting on a round trip for an empty box.
        Whether the number is ALLOWED at this scope is the server's judgement, and this
@@ -266,8 +340,12 @@ export function createConversionRuleDialog({ context, adapter, canManageSettings
          the rule says who stated it and who let it count, even when that is one person. */
       const created = saved ?? await adapter.createConversionRule({
         scopeType,
-        fromUnit: context.fromUnit,
-        toUnit: context.toUnit,
+        /* The direction the person chose, sent as they said it. Inverting here would put a
+           number nobody can check against the seller's sheet into the audit record, and
+           would round once and for all -- the resolver inverts at full precision instead,
+           at the moment of calculation. */
+        fromUnit: chosen.from,
+        toUnit: chosen.to,
         conversionMethod: "factor",
         factorValue: factor,
         reason: reason.value.trim(),

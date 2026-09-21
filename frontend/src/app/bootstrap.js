@@ -221,6 +221,9 @@ function renderRoute(route, context, adapters, routeQuery = new URLSearchParams(
          a price version on the cost item -- the same record the prices page manages. Null
          in the preview, and the button is then simply not offered. */
       pricesAdapter: adapters.prices ?? null,
+      /* Saying what a sheet listing's price is a price of is the material-prices
+         module's own record, so its adapter is what writes it. */
+      materialPricesAdapter: adapters.materialPrices ?? null,
       surface: route.surface,
       focusResourceId: routeQuery.get("resourceId") ?? "",
       focusEstimateLineId: routeQuery.get("estimateLineId") ?? "",
