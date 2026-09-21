@@ -741,12 +741,24 @@ function mspUnitCell(line, resource, isGeneralCost) {
   const unit = line.mppUnit ?? null;
   if (unit) return formatUnitLabel(unit);
   const cell = document.createDocumentFragment();
-  cell.append(element("span", "missing-value", "در فایل ثبت نشده"));
-  /* The catalogue's own unit, offered as context rather than as a substitute: somebody
-     choosing the official unit needs to know what the item is normally measured in. */
+  cell.append(element("span", "missing-value", "فایل واحدی نگفته"));
+  /* The catalogue's unit, as CONTEXT and never as a substitute.
+   *
+   * The two lines are two different statements and the cell used to read as one sentence
+   * contradicting itself -- «واحد در فایل وجود ندارد / واحد ساعت». Somebody reasonably
+   * asked why it does not just say «ساعت».
+   *
+   * Because the file's number would then be read in that unit, and it is not a quantity at
+   * all. Measured on this project: every one of the 426 equipment lines states units of 1
+   * with `unitConfidence: low` and no unit -- an ALLOCATION, one machine assigned
+   * full-time, which MPXJ reports as 1.0 for 100%. «۱ ساعت بیل مکانیکی» would be a
+   * sentence this page made up, and the machine may be on site for three hundred.
+   *
+   * So the catalogue's unit is worded as the habit it is -- what this item is USUALLY
+   * measured in -- rather than as this line's unit. */
   if (resource?.baseUnit) {
     cell.append(element("span", "cell-secondary",
-      `واحد قلم: ${formatUnitLabel(resource.baseUnit)}`));
+      `این قلم معمولاً: ${formatUnitLabel(resource.baseUnit)}`));
   }
   return cell;
 }
