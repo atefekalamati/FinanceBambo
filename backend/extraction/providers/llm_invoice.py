@@ -8,6 +8,7 @@ candidate fields. A low-confidence or malformed answer never creates financial e
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -21,6 +22,16 @@ LOG = logging.getLogger(__name__)
 
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-4o-mini"
+
+#: The model used when a PAGE is sent rather than a transcription.
+#:
+#: Separate from DEFAULT_MODEL because the right answer differs by task. Measured
+#: on the audited invoices: gpt-4o scored highest overall accuracy, was the only
+#: model to read currency correctly every time, and cost 1,512 prompt tokens a page
+#: against gpt-4o-mini's 37,045 -- 24x more for the same image, because "mini"
+#: describes the text model and not the vision tiling. Overridable for the same
+#: reason every other setting is: the benchmark was three pages of one supplier.
+DEFAULT_VISION_MODEL = "gpt-4o"
 MAX_RESPONSE_BYTES = 512 * 1024
 TIMEOUT_SECONDS = 45
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
@@ -227,27 +238,55 @@ class LLMInvoiceExtractionProvider:
         post=_post,
         sleep=time.sleep,
         provider: str | None = None,
+        vision_model: str | None = None,
     ):
         if provider:
             self.provider = provider
         self._key = key or (os.environ.get("FINANCE_AI_API_KEY") or "").strip()
         self._model = model or os.environ.get("FINANCE_AI_MODEL") or DEFAULT_MODEL
+        self._vision_model = (vision_model
+                              or os.environ.get("FINANCE_AI_VISION_MODEL")
+                              or DEFAULT_VISION_MODEL)
         self._base_url = (base_url or os.environ.get("FINANCE_AI_BASE_URL") or DEFAULT_OPENAI_BASE_URL).rstrip("/")
         self._timeout = timeout
         self._post = post
         self._sleep = sleep
 
-    def extract_invoice(self, text: str, hints: Mapping[str, Any] | None = None) -> InvoiceCandidate:
+    def extract_invoice(self, text: str, hints: Mapping[str, Any] | None = None,
+                        image: bytes | None = None,
+                        media_type: str = "image/jpeg") -> InvoiceCandidate:
+        """Candidate fields from the recognised text, and from the PAGE when given one.
+
+        `image` is optional and everything about the text path is unchanged without it:
+        same prompt, same model, same schema, same parsing. That matters because the text
+        path is the fallback, and a fallback that drifts from the thing it is backing up
+        is not one.
+
+        WHY THE IMAGE IS WORTH SENDING
+
+        Reading OCR output is reading a transcription. On the audited invoices PaddleOCR
+        scores 0.47 and 0.45 -- `تعداد: ۲۰` arrives as `تعداد١` -- and no reader,
+        model or human, reconstructs a price from that. A vision model reads the page.
+
+        It is still not an accounting authority. Measured against ground truth, the best
+        model reproduced 3 of 9 prices exactly and the errors were single digits:
+        544,322,000 for 544,222,000, which is a hundred million rial and looks right.
+        That is what `fusion` and the validation checks exist for, and why nothing here
+        writes a number anywhere near money.
+        """
         if not self._key:
             raise ExtractionProviderUnavailable("FINANCE_AI_API_KEY is not set")
-        if not (text or "").strip():
+        if not (text or "").strip() and not image:
             return InvoiceCandidate(provider=self.provider)
 
+        model = self._vision_model if image else self._model
         payload = {
-            "model": self._model,
+            "model": model,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": self._user_prompt(text, hints or {})},
+                {"role": "user",
+                 "content": self._vision_content(text, hints or {}, image, media_type)
+                 if image else self._user_prompt(text, hints or {})},
             ],
             "temperature": 0,
             "response_format": {"type": "json_object"},
@@ -272,6 +311,81 @@ class LLMInvoiceExtractionProvider:
             if attempt < len(BACKOFF_SECONDS):
                 self._sleep(BACKOFF_SECONDS[attempt])
         raise ExtractionProviderUnavailable("AI extraction provider did not answer (%s)" % (last or "unknown"))
+
+    @classmethod
+    def _vision_content(cls, text, hints, image, media_type):
+        """The multimodal message: the instruction, the page, and the OCR beside it.
+
+        The OCR text is included rather than withheld. It is a second witness -- often a
+        poor one -- and a model that can see both can say "the page says 544,222,000 and
+        the transcription agrees" where otherwise it could only assert. `fusion` compares
+        the two answers afterwards regardless; this just means the model is not reading
+        blind when the transcription happens to be good.
+        """
+        parts = [{"type": "text", "text": cls._vision_prompt(text, hints)},
+                 {"type": "image_url",
+                  "image_url": {"url": "data:%s;base64,%s"
+                                       % (media_type, base64.b64encode(image).decode())}}]
+        return parts
+
+    @staticmethod
+    def _vision_prompt(text: str, hints: Mapping[str, Any]) -> str:
+        """What the model is asked of the page. Every rule here was earned by a failure.
+
+        The measured failures, on real BAMBO invoices:
+
+          * every model invented an invoice number on every page, 9 times out of 9, where
+            the documents carry only a PROJECT number. Hence the explicit instruction that
+            a project number is not an invoice number;
+          * every model produced line items for a summary page that has no item table,
+            assembling one from a descriptive paragraph and the floor area;
+          * two models read the document's own title, «پیش فاکتور», as the supplier;
+          * one produced Jalali year 1442, which is 2063.
+
+        And the rule that looks wrong and is not: item names on these invoices really are
+        «آیتم ۱» … «آیتم ۱۵». That is printed in the عنوان column. A model told to avoid
+        placeholder-looking names would discard the correct answer, so the instruction is
+        to copy what is printed and to withhold only what cannot be read.
+        """
+        language = (hints or {}).get("locale") or "fa-IR"
+        # The SAME shape the text path asks for. `parse_candidate` and `_candidate_fields`
+        # already know how to read it, so a vision answer lands in the draft through the
+        # identical route -- no second mapping, no second set of key names to keep in step.
+        # Asking for camelCase here cost an entire run: `quantity` and `unit` happened to
+        # match and survived, while `name`, `unitPrice` and `totalPrice` were silently
+        # dropped and the draft showed eight items with no names and no money.
+        return (
+            "Extract the invoice in this image. Language: %s.\n\n"
+            "Return ONLY this JSON object, using null for anything missing:\n"
+            '{"invoice":{"supplier":null,"customer":null,"invoice_number":null,'
+            '"invoice_date":null,"currency":null,"total_amount":null},'
+            '"items":[{"description":null,"quantity":null,"unit":null,'
+            '"unit_price":null,"total_price":null}],'
+            '"confidence":0,"warnings":[]}\n\n'
+            "RULES\n"
+            "- Read only what is visibly printed. Never guess, infer or calculate.\n"
+            "- Anything you cannot read clearly is null. null is a correct answer.\n"
+            "- Copy item descriptions EXACTLY as printed. If the document prints 'آیتم ۱' or\n"
+            "  'آیتم ۲' as the description, that IS it -- return it unchanged, not as a placeholder.\n"
+            "- Only invent nothing: no invoice number, no date, no supplier, no total\n"
+            "  that is not on the page.\n"
+            "- A project number (شماره پروژه) is NOT an invoice number. If the page shows\n"
+            "  only a project number, invoice_number is null.\n"
+            "- The document's own title -- 'پیش فاکتور', 'فاکتور' -- is NOT the supplier.\n"
+            "- If the page has no item table, items is an empty list. Do not assemble\n"
+            "  items from prose, totals, areas or unit counts.\n"
+            "- Do not compute total_amount by adding rows. Return it only if it is printed.\n"
+            "- Convert Persian and Arabic digits to ASCII. No thousands separators.\n"
+            "- currency must be exactly 'IRR', 'TOMAN', or null.\n"
+            "- 'warnings' may list anything you found unclear.\n"
+            "- confidence is your honest confidence, 0 to 1.\n\n"
+            "This feeds financial software and every value is reviewed by a person. A null "
+            "costs them a moment; a confident wrong number costs them the audit.\n\n"
+            "For reference, an OCR transcription of the same page is below. It is often "
+            "unreliable -- trust the image over this text, and ignore it where they "
+            "disagree.\n\n--- OCR ---\n%s\n--- end OCR ---"
+            % (language, (text or "")[:4000])
+        )
 
     @staticmethod
     def _user_prompt(text: str, hints: Mapping[str, Any]) -> str:
