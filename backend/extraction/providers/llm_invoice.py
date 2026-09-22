@@ -137,7 +137,12 @@ def build_extraction_provider() -> ExtractionProvider | None:
     return LLMInvoiceExtractionProvider(
         key=key,
         model=_first_set(settings["model"]),
-        base_url=_first_set(settings["base_url"]) or settings["default_base_url"])
+        base_url=_first_set(settings["base_url"]) or settings["default_base_url"],
+        # The gateway that actually answered, so `extractionSource` on the draft names it.
+        # The class default is "openai" because the WIRE FORMAT is OpenAI's, but a format
+        # is not a counterparty: a draft saying `openai` when AvalAI read the page
+        # misdirects anyone auditing where a number came from.
+        provider=provider)
 
 
 def _post(url: str, payload: dict[str, Any], key: str, timeout: int):
@@ -208,6 +213,9 @@ def parse_candidate(payload: Mapping[str, Any], provider: str = "llm") -> Invoic
 class LLMInvoiceExtractionProvider:
     """OpenAI-compatible chat-completions provider for invoice structure extraction."""
 
+    #: The default names the WIRE FORMAT, which is OpenAI's chat-completions API. It is
+    #: overridden per instance by `build_extraction_provider` with the gateway that was
+    #: actually configured, because that is what a draft's `extractionSource` has to say.
     provider = "openai"
 
     def __init__(
@@ -218,7 +226,10 @@ class LLMInvoiceExtractionProvider:
         timeout: int = TIMEOUT_SECONDS,
         post=_post,
         sleep=time.sleep,
+        provider: str | None = None,
     ):
+        if provider:
+            self.provider = provider
         self._key = key or (os.environ.get("FINANCE_AI_API_KEY") or "").strip()
         self._model = model or os.environ.get("FINANCE_AI_MODEL") or DEFAULT_MODEL
         self._base_url = (base_url or os.environ.get("FINANCE_AI_BASE_URL") or DEFAULT_OPENAI_BASE_URL).rstrip("/")

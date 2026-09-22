@@ -42,8 +42,21 @@ def load_env_file(path: Path | None = None) -> dict[str, str]:
 
 
 def setting(name: str, default: str | None = None) -> str | None:
+    """One setting, from the process environment first and the file behind it.
+
+    BOTH SOURCES ARE STRIPPED, and the asymmetry that existed here cost real time.
+    `load_env_file` has always trimmed its values; this path returned `os.environ` raw.
+    A `.env` with CRLF endings sourced into a shell -- `eval "$(grep ... .env)"` -- puts
+    the carriage return INTO the variable, and the value then travels as far as whatever
+    consumes it before failing somewhere that says nothing about where it came from. For
+    the AI key that was `ValueError: Invalid header value` from inside urllib, three
+    layers below the `.env` line that caused it.
+
+    No setting this host reads wants leading or trailing whitespace: they are DSNs, ids,
+    paths, ports and flags. Trimming them is what the file already assumed.
+    """
     if name in os.environ:
-        return os.environ[name]
+        return os.environ[name].strip()
     return load_env_file().get(name, default)
 
 
