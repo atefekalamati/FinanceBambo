@@ -18,6 +18,7 @@ carries `factor_value` and never `factor`, exactly as `PsycopgUnitConversionRule
 returns it. If a change makes these fail, the change is reading the wrong column.
 """
 
+import re
 import sys
 import unittest
 from datetime import date
@@ -163,6 +164,45 @@ class ListingMeasurementTests(unittest.TestCase):
         self.assertEqual(Decimal("20"), factor,
                          "the narrow evidence wins; 22 is the broader statement")
         self.assertEqual(PROVIDER_ITEM_FACTOR, source)
+
+
+class StoredStatusVocabularyTests(unittest.TestCase):
+    """What a mapping row is allowed to SAY about its crossing.
+
+    `finance_item_price_mappings` constrains `conversion_status` to four values and points
+    `conversion_factor_id` at `provider_item_unit_factors(id)` with a foreign key, with a
+    third check tying the two together. A conversion rule lives in a different table, so
+    its id cannot go in that column and "conversion_rule" is not one of the four.
+
+    A previous attempt to record the rule there passed every unit test and failed against
+    the real schema with a CheckViolation, because nothing in the test suite knew what the
+    column would accept. This pins the vocabulary next to the code that must respect it.
+    """
+
+    PERMITTED = ("automatic", "factor", "incompatible", "unknown")
+
+    def test_the_service_only_ever_returns_a_permitted_status(self):
+        import inspect
+
+        from app.finance.services import item_price_mappings
+
+        source = inspect.getsource(item_price_mappings.ItemPriceMappingService._conversion_for)
+        returned = re.findall(r'return\s+"([a-z_]+)"', source)
+        self.assertTrue(returned, "the method must return literal statuses")
+        for status in returned:
+            self.assertIn(status, self.PERMITTED,
+                          "%r is not in the column's CHECK vocabulary %s -- writing it "
+                          "fails with a CheckViolation" % (status, self.PERMITTED))
+
+    def test_a_rule_priced_row_still_reports_its_source_in_the_response(self):
+        """Not recording the rule in the stored column must not hide it from a reader."""
+        rows = [rule(from_unit="kg", to_unit="branch", factor_value=Decimal("1.2"))]
+        factor, source = choose_conversion(
+            None, resolve_rule(rows, from_unit="kg", to_unit="branch"))
+        self.assertEqual(Decimal("1.2"), factor)
+        self.assertEqual(CONVERSION_RULE_FACTOR, source,
+                         "the API still says a rule decided, even though the stored "
+                         "status cannot")
 
 
 class NoUsableFactorTests(unittest.TestCase):

@@ -232,14 +232,39 @@ class TableSeesTheRuleTests(unittest.TestCase):
                              "headline and estimate must be the same number")
         self.assertEqual(CONVERSION_RULE_FACTOR, body["factor_source"])
 
-    def test_the_stored_status_says_the_factor_came_from_a_rule(self):
-        """`unknown` and «a rule answers this» are different situations."""
+    def test_a_rule_priced_row_stores_a_status_the_column_accepts(self):
+        """What the row may SAY is limited by the schema, and this is that limit.
+
+        `conversion_status` is CHECKed to (automatic | factor | incompatible | unknown),
+        `conversion_factor_id` is a foreign key into `provider_item_unit_factors`, and a
+        third check ties the two together. A conversion rule is a row of a different
+        table, so neither column can carry it.
+
+        This test used to assert `("conversion_rule", <rule id>)`. Nothing here knew what
+        the column would accept, so it passed while `append_mapping` failed against the
+        real database with a CheckViolation -- reproduced before this was changed.
+
+        `unknown` means "no approved measurement of THIS listing". It does not mean the
+        row cannot be priced: the test below shows the rule still decides the number.
+        """
         repo = Repo(prices=priced_per_kg())
         service = ItemPriceMappingService(repo, clock=lambda: date(2026, 9, 14),
                                           conversion_rules=Rules([BRANCH_TO_KG]))
         status, reference = run(service._conversion_for(Scope(), ITEM, "kg", "branch"))
-        self.assertEqual("conversion_rule", status)
-        self.assertEqual(BRANCH_TO_KG["id"], reference)
+        self.assertIn(status, ("automatic", "factor", "incompatible", "unknown"),
+                      "the column refuses anything outside its vocabulary")
+        self.assertEqual("unknown", status)
+        self.assertIsNone(reference,
+                          "a rule id in a column keyed to the factors table breaks its "
+                          "foreign key")
+
+    def test_the_rule_still_decides_the_number_it_could_not_be_credited_for(self):
+        """The price is the part that matters, and the response still names the source."""
+        service, _repo = self.service(rules=Rules([BRANCH_TO_KG]))
+        body = run(service.preview(Scope(), provider_item_id=ITEM, selected_unit="branch",
+                                   estimate_line_id=LINE))
+        self.assertEqual(CONVERSION_RULE_FACTOR, body["factor_source"])
+        self.assertEqual("22000", body["converted_daily_unit_price_irr"])
 
     def test_with_neither_measurement_nor_rule_the_status_is_still_unknown(self):
         """The existing vocabulary is not broken by the new value."""

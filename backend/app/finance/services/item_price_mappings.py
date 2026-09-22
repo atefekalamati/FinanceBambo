@@ -352,28 +352,26 @@ class ItemPriceMappingService:
                                        "selected_unit": selected_unit}, source_unit)
         if factor is not None:
             return "factor", factor["id"]
-        # No measurement of this listing, but the ladder may still answer. Recorded as
-        # `conversion_rule` rather than `unknown`, because those are different situations:
-        # one means nobody can price this row, the other means it prices from a rule and a
-        # reader should be able to see which. The three existing values are untouched --
-        # this is a fourth, and only reached where `unknown` used to be the answer.
-        if self.conversion_rules is not None:
-            candidates = await self.conversion_rules.candidates_by_pair(
-                scope, {(source_unit, selected_unit)})
-            rule = self.conversion_rules.rule_from(
-                candidates, from_unit=source_unit, to_unit=selected_unit,
-                provider_item_id=provider_item_id)
-            if rule is not None and rule.get("factor_value"):
-                # `factor_value`, not `factor`: this is a row of the rules table, whose
-                # column is `factor_value`. Asking a stored rule for `factor` found
-                # nothing, so every crossing a rule could answer reported «unknown».
-                #
-                # The rule's own id, not a factor id: the two are different tables and a
-                # reader following this needs the one that actually decided.
-                return "conversion_rule", rule.get("id")
-        # Nothing at all. The mapping itself is still a true statement about which product
-        # this is, and the row reports «ضریب تبدیل لازم است» until somebody measures it or
-        # writes a rule.
+        # No measurement of THIS listing. A conversion rule may still price the row, and
+        # it does -- `_factor_and_source` consults the ladder and the response carries
+        # `factorSource: conversion_rule` plus the rule's id in `dailyEstimate`.
+        #
+        # It is deliberately NOT recorded in these two columns, and the database is the
+        # reason:
+        #
+        #   conversion_status    CHECK (automatic | factor | incompatible | unknown)
+        #   conversion_factor_id FOREIGN KEY -> provider_item_unit_factors(id)
+        #   ...                  CHECK ((status = 'factor') = (factor_id IS NOT NULL))
+        #
+        # A rule is a row of `finance_unit_conversion_rules`. Its id is not in the table
+        # the foreign key points at, and "conversion_rule" is not in the permitted
+        # vocabulary, so returning the pair this branch once returned made `append_mapping`
+        # fail with a CheckViolation -- reproduced against the real schema. Saying it
+        # properly needs a migration, which is a decision to take deliberately rather than
+        # as a side effect of a bug fix.
+        #
+        # `unknown` here means exactly what it says: no approved measurement of this
+        # listing. It does not mean the row cannot be priced, and the row is priced.
         return "unknown", None
 
 
