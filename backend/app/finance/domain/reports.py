@@ -94,6 +94,11 @@ class LiveReport:
     excluded_estimate_line_count: int
     excluded_estimate_line_ids: list[str]
     progress_quality: dict
+    #: Lines the published figures actually rest on, and lines the project has. The
+    #: metrics are sums over the first; the second is what says how much of the project
+    #: that is. Equal counts mean the figures are whole.
+    computed_line_count: int = 0
+    total_line_count: int = 0
 
 
 def _calculation_status(missing_price_count, missing_conversion_count, progress_quality):
@@ -167,6 +172,13 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     general_revised = ZERO;general_required = ZERO;missing_price_count=0
     excluded_estimate_line_ids=[];resource_purchase_remaining=dict(purchased_by_resource);resource_actual_remaining=dict(actual_by_resource)
     excluded_lines_by_type={kind:0 for kind in actual_by_type}
+    # A line can be excluded twice over -- no price AND no measurement. It is one excluded
+    # line either way, and counting it twice would make `excludedEstimateLineCount` exceed
+    # the number of lines that exist.
+    excluded_ids_seen=set()
+    # How many lines the published figures actually rest on, against how many there are.
+    # Without this pair a sum over 2 of 715 lines and a sum over 715 of 715 look identical.
+    computed_line_count=0;total_line_count=0
     # missingCount counts lines that DID match an assignment but had no usable quantity on
     # it. Lines that matched nothing are unmappedLineCount instead: the two need different
     # work from different people, so one number for both told the reader nothing.
@@ -181,6 +193,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     missing_estimate_by_type = {kind: 0 for kind in actual_by_type}
     progress_quality={"complete":True,"manualOverrideCount":0,"taskFallbackCount":0,"missingCount":0,"assignmentActualCount":0,"assignmentPercentFallbackCount":0,"mappedLineCount":0,"unmappedLineCount":0,"generalCostLineCount":0,"workAsQuantityCount":0,"unmappedAssignmentCount":0,"unmappedActivityCount":0}
     for row in estimate_rows:
+        total_line_count += 1
         kind = row["resource_type"]
         # Detected, not coerced. `or 0` read a line that states no price as a line
         # priced at nothing, and 715 of this project's 835 lines state neither a price nor
@@ -261,10 +274,10 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         if _source in ("missing","unmapped"):
             progress_quality["complete"] = False
             if _source == "unmapped":
-                warnings.append(_line_warning(row,"PROGRESS_UNMAPPED","This estimate line is not linked to any assignment in the selected progress snapshot.",affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
+                warnings.append(_line_warning(row,"PROGRESS_UNMAPPED","This estimate line is not linked to any assignment in the selected progress snapshot.",excluded=True,affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
             else:
                 progress_quality["missingCount"] += 1
-                warnings.append(_line_warning(row,"PROGRESS_MISSING","The linked assignment carries no usable progress quantity for this estimate line.",affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
+                warnings.append(_line_warning(row,"PROGRESS_MISSING","The linked assignment carries no usable progress quantity for this estimate line.",excluded=True,affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
         elif _source == "manual_override": progress_quality["manualOverrideCount"] += 1
         elif _source == "task_progress_fallback": progress_quality["taskFallbackCount"] += 1;progress_quality["complete"] = False
         elif _source == "assignment_work_percent": progress_quality["assignmentPercentFallbackCount"] += 1;progress_quality["complete"] = False
@@ -278,6 +291,12 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             # those actuals was effort.
             progress_quality["workAsQuantityCount"] += 1;progress_quality["complete"] = False
             warnings.append(_line_warning(row,"PROGRESS_WORK_NOT_QUANTITY","Executed quantity was taken from reported work effort, whose unit the progress source does not state.",affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
+        # Whether anybody actually MEASURED this line. `executed` is ZERO in both the
+        # measured-nothing case and the measured-nothing-because-nobody-looked case, and
+        # those are not the same fact: the second one makes `remaining` the line's whole
+        # revised quantity, so an unmeasured line quietly reported its full value as work
+        # still to pay for. The number was indistinguishable from a real one.
+        progress_known = _source not in ("missing", "unmapped")
         remaining = max(revised_quantity - executed, ZERO)
         if executed > revised_quantity:
             deviation=executed-revised_quantity
@@ -289,23 +308,41 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         has_price = current_price is not None
         if current_price is None:
             missing_price_count += 1
-            excluded_estimate_line_ids.append(str(row["id"]))
+            excluded_estimate_line_ids.append(str(row["id"]));excluded_ids_seen.add(str(row["id"]))
             excluded_lines_by_type[kind] += 1
             warnings.append(_line_warning(row,"CURRENT_PRICE_MISSING","Current price is missing; live-value metrics exclude this line.",excluded=True,
                 affected=("currentExecutedValueIrr","remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr","forecastPerSquareMeterIrr")))
             current = ZERO
         else: current = Decimal(current_price)
+        if not progress_known and str(row["id"]) not in excluded_ids_seen:
+            excluded_estimate_line_ids.append(str(row["id"]));excluded_ids_seen.add(str(row["id"]))
+            excluded_lines_by_type[kind] += 1
         executed_value = money(executed * current); remaining_cost = money(remaining * current)
-        current_executed += executed_value;remaining_physical_cost += remaining_cost
+        # Both sums rest on `executed`, so both need a price AND a measurement. Adding a
+        # priced-but-unmeasured line here is what produced the old behaviour: zero executed
+        # value and the full quantity outstanding, stated as confidently as a real line.
+        if has_price and progress_known:
+            current_executed += executed_value;remaining_physical_cost += remaining_cost
         line_bought = purchased_by_line.get(row["id"], ZERO)
         resource_remaining_purchase = resource_purchase_remaining.get(row["resource_id"], ZERO)
         resource_allocated_purchase = min(max(revised_quantity - line_bought, ZERO), resource_remaining_purchase) if resource_remaining_purchase > 0 else ZERO
         resource_purchase_remaining[row["resource_id"]] = resource_remaining_purchase - resource_allocated_purchase
         bought = line_bought + resource_allocated_purchase
         required_quantity = max(revised_quantity - bought, ZERO) if kind == "material" else remaining
-        required = money(required_quantity * current);money_required += required
-        if has_price:
-            breakdown[kind]["remainingPhysicalCostIrr"] += remaining_cost;breakdown[kind]["forecastFinalIrr"] += required
+        required = money(required_quantity * current)
+        # What a material line still needs is what has not been BOUGHT, which the purchase
+        # ledger states whether or not anyone measured site progress. So an unmeasured
+        # material line still contributes here, and only here -- the purchased-quantity
+        # rule is untouched. Every other kind derives its requirement from `remaining`, so
+        # it needs the measurement like the two sums above do.
+        required_is_known = has_price and (kind == "material" or progress_known)
+        if required_is_known: money_required += required
+        if has_price and progress_known:
+            breakdown[kind]["remainingPhysicalCostIrr"] += remaining_cost
+        if required_is_known:
+            breakdown[kind]["forecastFinalIrr"] += required
+        # A line counts as computed when every figure the forecast asks of it is knowable.
+        if has_price and progress_known: computed_line_count += 1
         price_variance = remaining_cost - money(remaining * original_price) if has_price else ZERO
         quantity_variance = revised_quantity - original_quantity
         linked_actual_line = actual_by_line.get(row["id"], ZERO)
@@ -373,13 +410,22 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     # way to reach the number, while the lines it was missing were equipment the file
     # states no price for anywhere. A flagged subtotal is usable and honest; a blank is
     # only honest.
+    # Published, not withheld. These are sums over the lines that could be computed, and
+    # the lines that could not are gone from them rather than entered as zero -- which is
+    # what makes publishing safe, and is why the exclusions above had to come first.
+    # Removing this condition on its own would have replaced an em dash with a confident
+    # 0 on a project where 715 of 715 lines resolve no price.
+    #
+    # `computedLineCount` against `totalLineCount` is what keeps the figure honest: a sum
+    # over 2 of 715 lines and a sum over 715 of 715 are both numbers, and only the pair
+    # tells them apart. `incompleteMetricKeys` still names every figure a gap touched.
     metrics = {"initialEstimateIrr":money(initial_total),"actualCostIrr":money(actual_total),
-        "currentExecutedValueIrr":None if missing_price_count or progress_unknown else money(current_executed),
-        "remainingPhysicalCostIrr":None if missing_price_count or progress_unknown else money(remaining_physical_cost),
-        "moneyRequiredToContinueIrr":None if missing_price_count or missing_conversion_count or progress_unknown else money(money_required),
-        "forecastFinalCostIrr":None if missing_price_count or missing_conversion_count or progress_unknown else money(forecast),
+        "currentExecutedValueIrr":money(current_executed),
+        "remainingPhysicalCostIrr":money(remaining_physical_cost),
+        "moneyRequiredToContinueIrr":money(money_required),
+        "forecastFinalCostIrr":money(forecast),
         "actualCostPerSquareMeterIrr":actual_per_area,
-        "forecastPerSquareMeterIrr":None if missing_price_count or missing_conversion_count or progress_unknown else forecast_per_area}
+        "forecastPerSquareMeterIrr":forecast_per_area}
     price_variances.sort(key=lambda item:abs(item["varianceIrr"]),reverse=True)
     quantity_variances.sort(key=lambda item:abs(item["varianceQuantity"]),reverse=True)
     total_impact = sum(abs(item["varianceIrr"]) for item in price_variances) + sum(abs(item["remainingPhysicalCostIrr"] or ZERO) for item in quantity_variances)
@@ -387,4 +433,4 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         item["impactSharePercent"] = None if total_impact == 0 or not item["priceAvailable"] else (abs(item["varianceIrr"]) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     for item in quantity_variances:
         item["impactSharePercent"] = None if total_impact == 0 or not item["priceAvailable"] else (abs(item["remainingPhysicalCostIrr"] or ZERO) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-    return LiveReport(metrics,list(breakdown.values()),price_variances[:10],quantity_variances[:10],price_variances,quantity_variances,warnings,_calculation_status(missing_price_count,missing_conversion_count,progress_quality),incomplete_metric_keys,missing_price_count,missing_estimate_count,len(excluded_estimate_line_ids),excluded_estimate_line_ids,progress_quality)
+    return LiveReport(metrics,list(breakdown.values()),price_variances[:10],quantity_variances[:10],price_variances,quantity_variances,warnings,_calculation_status(missing_price_count,missing_conversion_count,progress_quality),incomplete_metric_keys,missing_price_count,missing_estimate_count,len(excluded_estimate_line_ids),excluded_estimate_line_ids,progress_quality,computed_line_count,total_line_count)
