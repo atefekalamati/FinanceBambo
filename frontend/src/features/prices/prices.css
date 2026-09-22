@@ -184,6 +184,16 @@
   color: var(--color-text-muted);
 }
 
+.material-prices__table :is(th, td)[data-col="trend"] {
+  inline-size: 7rem;
+  min-inline-size: 7rem;
+  text-align: center;
+}
+
+.material-prices__table .price-trend {
+  margin-inline: auto;
+}
+
 .price-history-table :is(th, td)[data-col="scope"] {
   inline-size: 15%;
 }
@@ -583,8 +593,47 @@ html[data-theme="light"] .price-form select {
 .material-prices__filters {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-sm);
   margin-block: var(--space-md);
+}
+
+.material-prices__more {
+  position: relative;
+}
+
+.material-prices__more-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 2.5rem;
+  list-style: none;
+}
+
+.material-prices__more-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.material-prices__more-menu {
+  position: absolute;
+  z-index: 20;
+  inset-block-start: calc(100% + var(--space-sm));
+  inset-inline-start: 0;
+  display: grid;
+  gap: var(--space-xs);
+  min-inline-size: 12rem;
+  max-block-size: 18rem;
+  overflow-y: auto;
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--dash-card-grad);
+  box-shadow: var(--dash-shadow);
+}
+
+.material-prices__more-menu .app-chip {
+  inline-size: 100%;
+  text-align: start;
 }
 
 .app-chip {

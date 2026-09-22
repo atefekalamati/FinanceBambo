@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { formatBusinessDate, formatSystemDateTime } from "../../src/shared/formatters/display.js";
+import { formatBusinessDate, formatJalaliBusinessDate, formatSystemDateTime } from "../../src/shared/formatters/display.js";
 import { presentApiError } from "../../src/shared/errors/error-presentation.js";
 import { ApiError } from "../../src/core/api/api-error.js";
 
@@ -14,6 +14,10 @@ test("a date-only business date still formats as it always did", () => {
   // the formatter had no time zone and the machine that wrote this sits west of
   // UTC; in Tehran the same call has always returned 30.
   assert.equal(formatBusinessDate("2026-10-22"), "۳۰ مهر ۱۴۰۵");
+});
+
+test("a Jalali sheet date uses the same Persian business-date presentation", () => {
+  assert.equal(formatJalaliBusinessDate("1405/06/23"), "۲۳ شهریور ۱۴۰۵");
 });
 
 test("a business date carrying a time formats instead of throwing", () => {

@@ -282,31 +282,6 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
     return wrapper;
   }
 
-  /** What the money in one phase was spent on, by kind of item. */
-  function renderBreakdown(row) {
-    const section = element("section", "level-one-breakdown");
-    section.append(element("h2", "", "ترکیب هزینه این مرحله"));
-    if (!row?.breakdown?.length) {
-      section.append(element("p", "inline-notice", "تفکیک اقلام این مرحله ثبت نشده است."));
-      return section;
-    }
-    const list = element("div", "level-one-breakdown__list");
-    row.breakdown.forEach((entry) => {
-      const item = element("article", "level-one-breakdown__item");
-      const head = element("div", "level-one-breakdown__head");
-      head.append(element("h3", "", entry.label), element("strong", "numeric", formatCompactMoneyFromIrr(entry.amountIrr)));
-      const track = element("div", "level-one-breakdown__track");
-      const bar = element("span", "level-one-breakdown__bar chart-mark");
-      bar.style.setProperty("--bar-width", `${entry.magnitude}%`);
-      bar.title = formatTomanFromIrr(entry.amountIrr);
-      track.append(bar);
-      item.append(head, track, element("span", "level-one-breakdown__share", `${percent(entry.sharePercent)} از هزینه این مرحله`));
-      list.append(item);
-    });
-    section.append(list);
-    return section;
-  }
-
   function renderContent(data) {
     const fragment = document.createDocumentFragment();
     const provenance = renderProvenance(data);
@@ -375,7 +350,6 @@ export function createLevelOnePage({ context, adapters, wbsCode = null }) {
     }
     fragment.append(childCard);
     if (!childView.isEmpty) fragment.append(renderTable(childView, { caption: `زیرمجموعه‌های مرحله ${wbsCode}`, linked: false }));
-    fragment.append(renderBreakdown(parent));
     return fragment;
   }
 

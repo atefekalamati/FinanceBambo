@@ -834,20 +834,47 @@ export function createTablePagination({
  * that happens to a list, never the first: slicing before filtering would search
  * one page and report the rest as absent.
  */
+/**
+ * Slice ordinary tables by rows and grouped tables by parents. A group is indivisible:
+ * once its parent belongs to a page, every child belonging to it follows that parent.
+ */
+export function pagedRows(rows, group, start, size) {
+  if (!group?.key) {
+    return { rows: rows.slice(start, start + size), total: rows.length };
+  }
+  const keys = [];
+  const seen = new Set();
+  rows.forEach((row) => {
+    const key = String(group.key(row));
+    if (seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  });
+  const selected = new Set(keys.slice(start, start + size));
+  return {
+    rows: rows.filter((row) => selected.has(String(group.key(row)))),
+    total: keys.length,
+  };
+}
+
 export function createPagedDataTable({ name, rows, page = 1, pageSize, onChange, paginationLabel, ...config }) {
   const chosen = pageSize ?? getRowsPerPage(name);
-  const size = resolveSize(chosen, rows.length);
-  const current = clampPage(page, rows.length, size);
+  const groupedTotal = config.group?.key
+    ? new Set(rows.map((row) => String(config.group.key(row)))).size
+    : rows.length;
+  const size = resolveSize(chosen, groupedTotal);
+  const current = clampPage(page, groupedTotal, size);
   const start = (current - 1) * size;
+  const selected = pagedRows(rows, config.group, start, size);
 
   const fragment = document.createDocumentFragment();
-  fragment.append(createDataTable({ ...config, rows: rows.slice(start, start + size) }));
+  fragment.append(createDataTable({ ...config, rows: selected.rows }));
   // A list that fits on one page has nothing to turn, but it still has a size to
   // choose -- that is how a reader gets back from ten rows to a hundred.
   fragment.append(createTablePagination({
     name,
     page: current,
-    total: rows.length,
+    total: selected.total,
     pageSize: chosen,
     label: paginationLabel,
     onPageChange: (next) => onChange?.({ page: next, pageSize: chosen }),

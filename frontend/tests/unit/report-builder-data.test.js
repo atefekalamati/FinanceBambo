@@ -8,6 +8,7 @@ const month = (persianMonth, actualCostIrr, estimateIrr = null) => ({ persianYea
 
 test("cumulative costs stay exact above Number precision and retain reversals", () => {
   const view = buildCumulativeSeries([month(2, "-20", "5"), month(1, "90071992547409931", "10")]);
+  assert.equal(view.rows[0].label, "فروردین ۱۴۰۵");
   assert.equal(view.rows[1].actualCumulativeIrr, "90071992547409911");
   assert.equal(view.rows[1].plannedCumulativeIrr, "15");
   assert.equal(view.hasPlan, true);
@@ -71,6 +72,27 @@ test("independent invoice and S reports require neither progress nor overview", 
   assert.deepEqual(calls, [{ reportingDate: "2026-09-08" }]);
   assert.equal(data.snapshot, null);
   assert.equal(data.overview, null);
+});
+
+test("the S report reuses the schedule estimate when the monthly service has no plan", async () => {
+  const feed = { assignments: [{
+    assignmentExternalId: "a-1",
+    task: { taskExternalId: "t-1", wbsCode: "1.1", taskStart: "2026-08-01", metrics: { taskCost: "500" } },
+  }] };
+  const data = await loadReportData({
+    selection: ["sCurve"], today: "2026-09-08",
+    adapters: {
+      progress: {
+        getSnapshots: async () => [{ status: "ready", reportingDate: "2026-08-01", progressSnapshotId: "s-1", sourceFileVersionId: "v-1" }],
+        getFeed: async () => feed,
+      },
+      reports: { getMonthlyTrend: async () => ({
+        estimateSource: "unavailable",
+        months: [{ persianYear: 1405, persianMonth: 5, actualCostIrr: "200", estimateIrr: null }],
+      }) },
+    },
+  });
+  assert.equal(data.monthly.months[0].estimateIrr, "500");
 });
 
 test("overview and WBS share the snapshot the screen showed, and failed requests propagate", async () => {

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { IDENTITY, PRIMARY, SECONDARY, defaultVisibleColumns, repeatedGroupColumnLabel }
+import { IDENTITY, PRIMARY, SECONDARY, defaultVisibleColumns, pagedRows, repeatedGroupColumnLabel }
   from "../../src/shared/components/data-table.js";
 
 /** A matchMedia that answers for one viewport width, in rem at a 16px root. */
@@ -55,4 +55,22 @@ test("an open group may repeat labels only in its otherwise-empty cells", () => 
   assert.equal(repeatedGroupColumnLabel(amount, "100", true), "");
   assert.equal(repeatedGroupColumnLabel(columns[0], undefined, true), "");
   assert.equal(repeatedGroupColumnLabel(amount, undefined, false), "");
+});
+
+test("a grouped page counts parents and keeps every child of its selected parents", () => {
+  const rows = [
+    { parent: "A", child: 1 },
+    { parent: "A", child: 2 },
+    { parent: "B", child: 3 },
+    { parent: "C", child: 4 },
+    { parent: "C", child: 5 },
+    { parent: "C", child: 6 },
+  ];
+  const first = pagedRows(rows, { key: (row) => row.parent }, 0, 2);
+  assert.equal(first.total, 3, "the total is three parent rows, not six children");
+  assert.deepEqual(first.rows.map((row) => row.child), [1, 2, 3]);
+
+  const second = pagedRows(rows, { key: (row) => row.parent }, 2, 2);
+  assert.deepEqual(second.rows.map((row) => row.child), [4, 5, 6],
+    "all children of the parent on page two stay with it");
 });

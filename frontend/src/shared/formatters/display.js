@@ -1,4 +1,5 @@
 import { CURRENCY_LABELS } from "../constants/currency.js";
+import { persianToGregorianIso } from "../dates/persian-date.js";
 
 const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 /* Pinned to Tehran, like persianDateTime below it. Without a zone this read the
@@ -100,6 +101,14 @@ export function formatBusinessDate(value) {
   if (!value) return "—";
   const date = toDate(String(value));
   return date ? persianDate.format(date) : "—";
+}
+
+/** A Jalali business date supplied by sources such as the market-price sheets. */
+export function formatJalaliBusinessDate(value) {
+  const match = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/.exec(String(value ?? "").trim());
+  if (!match) return "—";
+  const iso = persianToGregorianIso(Number(match[1]), Number(match[2]), Number(match[3]));
+  return iso ? formatBusinessDate(iso) : "—";
 }
 
 export function formatSystemDateTime(value) {

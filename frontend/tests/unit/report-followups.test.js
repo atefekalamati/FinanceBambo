@@ -4,9 +4,9 @@ import { readFileSync } from "node:fs";
 import { changedEstimateRows, supplierDocumentRows } from "../../src/features/report-builder/report-followups.js";
 import { REPORTS, featuredReports, datasetsFor } from "../../src/features/report-builder/report-catalog.js";
 
-test("the catalogue keeps the six shortcuts and shares existing datasets", () => {
-  assert.equal(REPORTS.length, 22);
-  assert.equal(featuredReports().length, 6);
+test("the catalogue keeps the featured shortcuts and shares existing datasets", () => {
+  assert.equal(REPORTS.length, 21);
+  assert.equal(featuredReports().length, 5);
   assert.deepEqual(datasetsFor(["supplierDocuments", "pendingDocuments", "correctiveDocuments"]), ["invoices"]);
   assert.deepEqual(datasetsFor(["completionBudget", "areaCosts"]), ["overview"]);
   // The two that replaced the period report read the project at two dates, and

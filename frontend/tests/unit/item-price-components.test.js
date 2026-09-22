@@ -26,11 +26,14 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { installDom } from "../helpers/dom.js";
+import { formatTomanFromIrr } from "../../src/shared/formatters/money.js";
 
 installDom();
 
 const { statusChip, createPriceMappingPanel } =
   await import("../../src/features/financial-items/price-mapping-panel.js");
+const { groupDailyPriceCell } =
+  await import("../../src/features/financial-items/financial-items-page.js");
 
 const PAGE_SOURCE = readFileSync(
   fileURLToPath(new URL("../../src/features/financial-items/financial-items-page.js", import.meta.url)),
@@ -67,6 +70,26 @@ test("the row's «قیمت روز» cell shows the TOTAL, not one material's pri
   assert.ok(cell.includes("priced.dailyItemCostIRR"), "the total is what the cell prints");
   assert.ok(!cell.includes("convertedDailyUnitPriceIRR"),
             "a per-unit price of one material must not stand in for the row");
+});
+
+test("the activity row sums exact current costs from its child rows", () => {
+  const rows = [{ lineId: "line-1" }, { lineId: "line-2" }];
+  const statuses = new Map([
+    ["line-1", { dailyItemCostIRR: "9007199254740993" }],
+    ["line-2", { dailyItemCostIRR: "7" }],
+  ]);
+  const cell = groupDailyPriceCell(rows, statuses);
+  assert.ok(cell.textContent.includes(formatTomanFromIrr("9007199254741000", { withCurrency: false })),
+    "the total remains exact above Number precision when formatted for display");
+  assert.doesNotMatch(cell.textContent, /از/, "a complete total needs no partial warning");
+});
+
+test("an incomplete activity current-cost total states its coverage", () => {
+  const cell = groupDailyPriceCell(
+    [{ lineId: "line-1" }, { lineId: "line-2" }],
+    new Map([["line-1", { dailyItemCostIRR: "1000" }]]),
+  );
+  assert.match(cell.textContent, /1.*از.*2|۱.*از.*۲/);
 });
 
 test("an open panel survives the refresh that follows saving a material", () => {
