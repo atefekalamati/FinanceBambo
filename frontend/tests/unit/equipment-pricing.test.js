@@ -193,3 +193,50 @@ test("only the hourly machines need it", () => {
   assert.equal(needsWorkingDayRule([{ unit: null }]), false);
   assert.equal(needsWorkingDayRule([]), false);
 });
+
+/* WHAT HAPPENED TO THIS MACHINE'S RATE, AND WHO CHANGED IT.
+ *
+ * A material price is a market fact and the prices page shows the project's movements
+ * together. A machine's rate is an AGREEMENT — it changed because somebody renegotiated
+ * it — so the question is never «what happened to prices» but «what happened to this
+ * one». Answering that from a project-wide list means reading past every other machine.
+ */
+
+const { historyFor } = await import("../../src/features/settings/equipment-pricing-model.js");
+
+const VERSIONS = [
+  { priceId: "v1", resourceId: "r-truck", sequence: 1, unitPriceIRR: "28000000",
+    scope: "project", effectiveFrom: "2026-06-01", actorName: "کاربر الف", reason: null },
+  { priceId: "v2", resourceId: "r-truck", sequence: 2, unitPriceIRR: "32000000",
+    scope: "project", effectiveFrom: "2026-09-01", actorName: "کاربر ب", reason: "تمدید قرارداد" },
+  { priceId: "v9", resourceId: "r-crane", sequence: 1, unitPriceIRR: "52100000",
+    scope: "organization", effectiveFrom: "2026-08-01", actorName: "کاربر ج", reason: null },
+];
+
+test("a machine's history is only its own", () => {
+  assert.deepEqual(historyFor(VERSIONS, "r-truck").map((v) => v.priceId), ["v2", "v1"]);
+  assert.deepEqual(historyFor(VERSIONS, "r-crane").map((v) => v.priceId), ["v9"]);
+});
+
+test("the newest revision comes first, by version and not by date", () => {
+  /* Two revisions can share an effective date — a correction made the same day — and
+     only the version the service assigned separates them. */
+  const sameDay = [
+    { resourceId: "r", sequence: 1, effectiveFrom: "2026-09-01", priceId: "a" },
+    { resourceId: "r", sequence: 2, effectiveFrom: "2026-09-01", priceId: "b" },
+  ];
+  assert.deepEqual(historyFor(sameDay, "r").map((v) => v.priceId), ["b", "a"]);
+});
+
+test("a machine with no revisions, and no machine at all, answer empty", () => {
+  assert.deepEqual(historyFor(VERSIONS, "r-unknown"), []);
+  assert.deepEqual(historyFor(VERSIONS, null), []);
+  assert.deepEqual(historyFor(null, "r-truck"), []);
+});
+
+test("the stored list is not reordered under the caller", () => {
+  /* `sort` mutates, and this reads a list the page holds and reuses for every machine. */
+  const copy = [...VERSIONS];
+  historyFor(copy, "r-truck");
+  assert.deepEqual(copy.map((v) => v.priceId), VERSIONS.map((v) => v.priceId));
+});

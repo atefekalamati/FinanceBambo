@@ -266,3 +266,44 @@ test("the module reaches no external address", async () => {
   assert.doesNotMatch(source, /\bfetch\s*\(/,
     "this module renders; fetching belongs to the adapter");
 });
+
+/* MACHINES GET A CHIP TOO — THE DAY THE SERVICE HAS THEM.
+ *
+ * A machine is a kind of priced thing a reader looks for by name, not one they hunt for
+ * in the overflow menu. But the service does not publish an `equipment` category yet, and
+ * an unconditional chip would render with no count and filter to an empty table on every
+ * project until it does.
+ */
+
+test("تجهیزات is not offered while the service publishes no such category", () => {
+  const section = renderMaterialPrices([row()], {
+    categories: [{ category: "rebar", activeCount: 590, itemCount: 590, inactiveCount: 0 }],
+    selectedCategory: null,
+    onSelectCategory: () => {},
+  });
+  const labels = [...section.querySelector(".material-prices__filters").children]
+    .map((chip) => chip.textContent);
+  assert.ok(!labels.some((label) => label.includes("تجهیزات")),
+            `a chip that filters to nothing is worse than no chip: ${labels.join(" | ")}`);
+});
+
+test("and joins the primary chips as soon as it does", () => {
+  const chosen = [];
+  const section = renderMaterialPrices([row()], {
+    categories: [
+      { category: "rebar", activeCount: 590, itemCount: 590, inactiveCount: 0 },
+      { category: "equipment", label: "تجهیزات", activeCount: 19, itemCount: 19, inactiveCount: 0 },
+    ],
+    selectedCategory: null,
+    onSelectCategory: (value) => chosen.push(value),
+  });
+  const filter = section.querySelector(".material-prices__filters");
+  const labels = [...filter.children].map((chip) => chip.textContent);
+  assert.ok(labels.includes("تجهیزات (19)"),
+            `expected a counted تجهیزات chip among: ${labels.join(" | ")}`);
+  /* Beside the other primaries, not behind «…» — which is the whole point of adding it. */
+  const chip = [...filter.children].find((node) => node.textContent === "تجهیزات (19)");
+  assert.equal(chip.tagName, "BUTTON");
+  chip.click();
+  assert.deepEqual(chosen, ["equipment"]);
+});

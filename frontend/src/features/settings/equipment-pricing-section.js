@@ -6,8 +6,9 @@ import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { validatePriceVersion } from "../prices/prices-validation.js";
-import { FILTERS, equipmentRows, groupByUnit, isPriced, needsWorkingDayRule, pricingProgress,
-         selectRows, workingDayRule } from "./equipment-pricing-model.js";
+import { FILTERS, equipmentRows, groupByUnit, historyFor, isPriced, needsWorkingDayRule,
+         pricingProgress, selectRows, workingDayRule } from "./equipment-pricing-model.js";
+import { actorLabel } from "../../shared/formatters/actor.js";
 
 /* Pricing the project's machines, in one place, by hand.
  *
@@ -90,6 +91,13 @@ export function createEquipmentPricingSection({ workspace, adapter, canEdit = tr
   let search = "";
   let filter = "all";
   let editingId = null;
+  /* Which machine's revisions are open, and the project's versions once they have been
+     asked for. The service publishes every version at once, so the first machine opened
+     pays for the request and none of the others do. */
+  let historyId = null;
+  let history = null;
+  let historyError = null;
+  let historyLoading = false;
 
   const head = element("div", "settings-card__head settings-card__head--actions");
   const copy = element("div", "settings-card__head-copy");
@@ -243,6 +251,76 @@ export function createEquipmentPricingSection({ workspace, adapter, canEdit = tr
     return editor;
   }
 
+  /**
+   * What happened to THIS machine's rate, and who changed it.
+   *
+   * A machine's price is an agreement rather than a market fact, so the useful question is
+   * never «what happened to prices» but «what happened to this one». The prices page shows
+   * the project's revisions together, which answers the first and buries the second.
+   */
+  function historyFor_(row) {
+    const panel = element("div", "equipment-history");
+    if (historyLoading) {
+      panel.append(element("p", "table-note", "در حال خواندن تاریخچه…"));
+      return panel;
+    }
+    if (historyError) {
+      panel.append(element("p", "inline-notice",
+        formatApiErrorMessage(historyError, "خواندن تاریخچهٔ قیمت انجام نشد.")));
+      return panel;
+    }
+    const versions = historyFor(history, row.resourceId);
+    if (!versions.length) {
+      /* The row is priced and the list is empty only when the service published no
+         versions at all — said plainly rather than drawn as an empty table. */
+      panel.append(element("p", "table-note", "بازنگری‌ای برای این دستگاه ثبت نشده است."));
+      return panel;
+    }
+    const list = element("ol", "equipment-history__list");
+    versions.forEach((version, index) => {
+      const item = element("li", "equipment-history__item");
+      if (index === 0) item.dataset.current = "true";
+      const figure = element("div", "equipment-history__figure");
+      figure.append(element("strong", "numeric", formatTomanFromIrr(version.unitPriceIRR)));
+      const per = perUnit(row.unit);
+      if (per) figure.append(element("span", "equipment-price__per", `به ازای ${per}`));
+      /* Which of the two is in force is the thing a reader scanning this list is looking
+         for, and version order alone does not say it. */
+      if (index === 0) figure.append(element("span", "equipment-history__badge", "در حال اعمال"));
+      const meta = [
+        SCOPE_LABELS[version.scope] ?? version.scope,
+        version.effectiveFrom ? `از ${formatBusinessDate(version.effectiveFrom)}` : null,
+        `ثبت: ${actorLabel(version.actorName, version.actorId)}`,
+      ].filter(Boolean);
+      item.append(figure, element("p", "table-note", meta.join(" · ")));
+      /* A reason is optional by design — the service stopped requiring one because
+         requiring it produced placeholders. Shown when somebody wrote one, absent when
+         they did not, and never replaced by an invented sentence. */
+      if (version.reason) item.append(element("p", "equipment-history__reason", version.reason));
+      list.append(item);
+    });
+    panel.append(list);
+    return panel;
+  }
+
+  async function openHistory(resourceId) {
+    historyId = historyId === resourceId ? null : resourceId;
+    if (historyId === null) { paintList(); return; }
+    if (history !== null || typeof adapter.getPriceHistory !== "function") { paintList(); return; }
+    historyLoading = true;
+    historyError = null;
+    paintList();
+    try {
+      history = await adapter.getPriceHistory();
+      historyError = null;
+    } catch (error) {
+      historyError = error;
+    } finally {
+      historyLoading = false;
+      paintList();
+    }
+  }
+
   // --------------------------------------------------------------------------- the list
 
   function paintList() {
@@ -338,8 +416,23 @@ export function createEquipmentPricingSection({ workspace, adapter, canEdit = tr
           item.append(actions);
         }
 
+        /* Offered only on a machine that HAS a rate: there is no history of a price
+           nobody has set, and a button promising one would open on nothing. Shown to
+           readers as well as editors — seeing who changed a rate is not an edit. */
+        if (isPriced(row)) {
+          const seen = element("button", "button button--ghost", "تاریخچهٔ قیمت");
+          seen.type = "button";
+          seen.dataset.action = "equipment-history";
+          seen.setAttribute("aria-expanded", String(historyId === row.resourceId));
+          seen.addEventListener("click", () => openHistory(row.resourceId));
+          const holder = item.querySelector(".equipment-row__actions")
+            ?? item.appendChild(element("div", "equipment-row__actions"));
+          holder.append(seen);
+        }
+
         groupNode.append(item);
         if (editingId === row.resourceId) groupNode.append(editorFor(row));
+        if (historyId === row.resourceId) groupNode.append(historyFor_(row));
       });
       list.append(groupNode);
     });

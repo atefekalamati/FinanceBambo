@@ -156,3 +156,29 @@ export function workingDayRule(workspace) {
 export function needsWorkingDayRule(rows) {
   return (rows ?? []).some((row) => row?.unit === "hour");
 }
+
+
+/* ------------------------------------------------------ price revisions */
+
+/**
+ * One machine's price revisions, newest first.
+ *
+ * WHY A MACHINE NEEDS ITS OWN HISTORY AND A MATERIAL LESS SO
+ * A material price is a market fact: it moved because the market moved, and the prices
+ * page shows the whole project's movements together. A machine's rate is an AGREEMENT —
+ * it changed because somebody renegotiated it — so the question is never «what happened
+ * to prices» but «what happened to THIS one, and who changed it». Answering that from a
+ * project-wide list means reading past every other machine.
+ *
+ * The service publishes every version for the project at once, so this is a filter rather
+ * than a request: opening one machine's history costs nothing after the first.
+ *
+ * Ordered by the version the service assigned, not by date. Two revisions can share an
+ * effective date — a correction made the same day — and only the version separates them.
+ */
+export function historyFor(history, resourceId) {
+  if (!resourceId) return [];
+  return (history ?? [])
+    .filter((entry) => entry?.resourceId === resourceId)
+    .sort((a, b) => Number(b?.sequence ?? 0) - Number(a?.sequence ?? 0));
+}

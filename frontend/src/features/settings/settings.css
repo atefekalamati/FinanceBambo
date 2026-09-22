@@ -1068,3 +1068,62 @@ html[data-theme="light"] .form-field textarea {
     inline-size: 100%;
   }
 }
+
+/* One machine's revisions, opened under its own row. A machine's rate is an
+   agreement rather than a market fact, so the question is «what happened to
+   THIS one» — which the project-wide history on the prices page buries. */
+.equipment-history {
+  margin-block-start: calc(var(--space-sm) * -1);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface-page) 55%, transparent);
+}
+
+.equipment-history__list {
+  display: grid;
+  gap: var(--space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.equipment-history__item {
+  display: grid;
+  gap: 0.15rem;
+  padding-inline-start: var(--space-md);
+  border-inline-start: 2px solid var(--color-border);
+}
+
+/* The one in force. A list ordered by version does not say which that is, and it
+   is the thing a reader scanning the list is looking for. */
+.equipment-history__item[data-current="true"] {
+  border-inline-start-color: var(--dash-actual);
+}
+
+.equipment-history__figure {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.equipment-history__badge {
+  padding: .05rem .4rem;
+  border-radius: var(--radius-pill);
+  background: rgb(0 172 88 / 14%);
+  color: var(--dash-actual);
+  font-size: var(--font-size-2xs);
+}
+
+.equipment-history__reason {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.equipment-history .table-note {
+  margin: 0;
+}
