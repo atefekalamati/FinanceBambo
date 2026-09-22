@@ -117,7 +117,8 @@ test("the backend's reason is shown beside the label, not instead of it", () => 
 });
 
 test("the sheet's own Jalali date is what the reader sees", () => {
-  assert.equal(sheetDateLabel(row()), "1405/06/22");
+  assert.equal(sheetDateLabel(row()), "۲۲ شهریور ۱۴۰۵");
+  assert.equal(sheetDateLabel(row({ workflowDateJalali: "1405/06/23" })), "۲۳ شهریور ۱۴۰۵");
 });
 
 test("a date that could not be read says so rather than showing today", () => {

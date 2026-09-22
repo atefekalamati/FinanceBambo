@@ -36,7 +36,11 @@ export function createInvoicesEntry({ href = "#finance/invoices" } = {}) {
 
   const tags = element("ul", "invoices-entry__tags");
   ["ثبت فاکتور", "فهرست و وضعیت", "تأیید و ابطال"].forEach((label) => {
-    tags.append(element("li", "", label));
+    const item = element("li");
+    const link = element("a", "invoices-entry__tag-link", label);
+    link.href = href;
+    item.append(link);
+    tags.append(item);
   });
   card.append(tags);
 
@@ -60,7 +64,7 @@ export function createInvoicesEntry({ href = "#finance/invoices" } = {}) {
     "invoice_registration",
     "ثبت با تصویر یا صدا",
   );
-  invoice_registration.href = "#finance/invoice-files";
+  invoice_registration.href = href;
   action_buttons.append(invoice_registration);
 
   return card;

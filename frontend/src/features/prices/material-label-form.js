@@ -1,4 +1,5 @@
 import { element } from "../../shared/dom/elements.js";
+import { formatJalaliBusinessDate } from "../../shared/formatters/display.js";
 
 /* The form where a person says what a listing is.
  *
@@ -116,7 +117,10 @@ export function renderLabelForm(row, { units = [], resources = [], current = nul
    ["دستهٔ برگه", row.category],
    ["منبع", row.providerName],
    ["واحد اعلامی برگه", row.sourceUnit ?? "اعلام نشده"],
-   ["تاریخ برگه", row.workflowDateJalali ?? row.workflowDateRaw ?? "بدون تاریخ"]]
+   ["تاریخ برگه", row.workflowDateJalali
+     ? (formatJalaliBusinessDate(row.workflowDateJalali) === "—"
+       ? row.workflowDateJalali : formatJalaliBusinessDate(row.workflowDateJalali))
+     : row.workflowDateRaw ?? "بدون تاریخ"]]
     .forEach(([term, value]) => {
       source.append(element("dt", "", term), element("dd", "", String(value)));
     });

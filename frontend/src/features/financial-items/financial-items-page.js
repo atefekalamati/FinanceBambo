@@ -851,6 +851,29 @@ function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, r
   return cell;
 }
 
+/**
+ * The activity row's current cost is the exact sum of its priced child rows.
+ * Missing children do not become zero: a visible subtotal is labelled with its coverage,
+ * and a group with no usable child price states that no total is available yet.
+ */
+export function groupDailyPriceCell(rows, priceStatuses) {
+  const amounts = (rows ?? []).map((line) => {
+    const value = priceStatuses.get(line.lineId)?.dailyItemCostIRR;
+    return /^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : null;
+  });
+  const known = amounts.filter((value) => value !== null);
+  if (!known.length) return element("span", "missing-value", "هنوز قیمت روز ندارد");
+
+  const cell = document.createDocumentFragment();
+  const total = known.reduce((sum, value) => sum + value, 0n).toString();
+  cell.append(element("strong", "", formatTomanFromIrr(total, { withCurrency: false })));
+  if (known.length !== amounts.length) {
+    cell.append(element("span", "cell-secondary",
+      `${formatDisplayNumber(String(known.length))} از ${formatDisplayNumber(String(amounts.length))} ردیف قیمت‌گذاری شده`));
+  }
+  return cell;
+}
+
 /* Entering the price by hand, on every row.
  *
  * Some items will never be on the sheet. «برچیدن جدول» is 3,538 metres of demolition and
@@ -905,7 +928,9 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
     group: {
       key: (line) => canonicalWbs(line) + "|" + activityLabel(line),
       countLabel: "قلم",
-      showColumnLabelsWhenOpen: true,
+      /* The real header stays visible while the table passes the viewport, so repeating
+         its labels inside every opened parent would be duplicate visual noise. */
+      showColumnLabelsWhenOpen: false,
       cells: (rows) => {
         const first = rows[0];
         const name = document.createDocumentFragment();
@@ -916,6 +941,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
           // The schedule's figure belongs to the activity, so it is written on
           // the activity's own row rather than repeated down its items.
           scheduleCost: formatTomanFromIrr(scheduleCostOf(first), { withCurrency: false }),
+          currentPrice: groupDailyPriceCell(rows, priceStatuses),
         };
       },
     },
@@ -983,6 +1009,69 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
   return fragment;
 }
 
+/* The table's horizontal scroll region is necessarily an overflow container. That makes
+   CSS sticky resolve against the region instead of the page, so a thead inside it cannot
+   follow window scrolling. A visual copy of the real header is fixed only after the real
+   one leaves the viewport, width-matched to it, and removed again at the table's end. */
+export function installEstimateStickyHeader(root) {
+  if (typeof window === "undefined" || typeof requestAnimationFrame !== "function") return () => {};
+  const table = root.querySelector(".estimate-lines-table");
+  const scroll = table?.parentElement;
+  const head = table?.querySelector("thead");
+  if (!table || !scroll || !head || typeof table.cloneNode !== "function") return () => {};
+
+  const floating = element("div", "estimate-lines-sticky-header");
+  floating.hidden = true;
+  floating.setAttribute("aria-hidden", "true");
+  const copy = table.cloneNode(false);
+  copy.classList.add("estimate-lines-table--sticky-copy");
+  const copiedHead = head.cloneNode(true);
+  copy.append(copiedHead);
+  floating.append(copy);
+  root.append(floating);
+
+  let frame = 0;
+  const update = () => {
+    frame = 0;
+    if (!table.isConnected) return;
+    const headRect = head.getBoundingClientRect();
+    const tableRect = table.getBoundingClientRect();
+    const scrollRect = scroll.getBoundingClientRect();
+    const height = headRect.height;
+    const active = headRect.top < 0 && tableRect.bottom > height;
+    floating.hidden = !active;
+    if (!active) return;
+
+    floating.style.left = `${scrollRect.left}px`;
+    floating.style.width = `${scrollRect.width}px`;
+    copy.style.width = `${table.scrollWidth}px`;
+    [...head.querySelectorAll("th")].forEach((cell) => {
+      const clone = copiedHead.querySelector(`th[data-col="${cell.dataset.col}"]`);
+      if (!clone || cell.hidden) return;
+      const width = cell.getBoundingClientRect().width;
+      clone.style.width = `${width}px`;
+      clone.style.minWidth = `${width}px`;
+      clone.style.maxWidth = `${width}px`;
+    });
+    floating.scrollLeft = scroll.scrollLeft;
+  };
+  const requestUpdate = () => {
+    if (!frame) frame = requestAnimationFrame(update);
+  };
+  window.addEventListener("scroll", requestUpdate, { passive: true });
+  window.addEventListener("resize", requestUpdate);
+  scroll.addEventListener("scroll", requestUpdate, { passive: true });
+  requestUpdate();
+
+  return () => {
+    if (frame) cancelAnimationFrame(frame);
+    window.removeEventListener("scroll", requestUpdate);
+    window.removeEventListener("resize", requestUpdate);
+    scroll.removeEventListener("scroll", requestUpdate);
+    floating.remove();
+  };
+}
+
 /**
  * Items and the estimate, on both surfaces.
  *
@@ -994,6 +1083,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
  */
 export function createFinancialItemsPage({ context, adapter, priceMappingAdapter = null, pricesAdapter = null, materialPricesAdapter = null, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
   const root = element("div", "financial-items-page");
+  let disposeStickyHeader = () => {};
   const readOnly = surface === SURFACES.REPORT;
   /* Which market listing prices each line, and what that makes it cost today.
      Kept beside the workspace rather than inside it: the estimate is one module's data
@@ -1248,7 +1338,9 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
   }
 
   function paint() {
+    disposeStickyHeader();
     root.replaceChildren(renderHeader(), renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    queueMicrotask(() => { disposeStickyHeader = installEstimateStickyHeader(root); });
     /* Re-SHOWN, not merely re-appended: a dialog removed from the document leaves the top
        layer, and putting the node back gives a panel with no backdrop and no focus trap. */
     if (openPricePanel) {

@@ -575,10 +575,11 @@ export function renderDetail(invoice, { canEdit, project, onSubmit, onConfirm, o
   close.addEventListener("click", () => dialog.close());
   titleRow.append(title, close);
   const metaRow = element("div", "invoice-detail-dialog__head-row");
+  const actionModalInvoices = element("div", "invoice-buttons-modal");
   const print = element("button", "button button--ghost invoice-print-button", "چاپ فاکتور");
   print.type = "button";
   print.addEventListener("click", () => window.print());
-  metaRow.append(element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "وضعیت نامشخص"), print);
+  actionModalInvoices.append(print);
 
   /* THE WAY BACK IN, BESIDE THE WAY TO PAPER.
      Until the confirmation locks it, an invoice is a draft of a claim about money, and a
@@ -594,8 +595,12 @@ export function renderDetail(invoice, { canEdit, project, onSubmit, onConfirm, o
     edit.type = "button";
     edit.dataset.action = "edit-invoice";
     edit.addEventListener("click", () => onEdit(invoice, dialog));
-    metaRow.append(edit);
+    actionModalInvoices.append(edit);
   }
+  metaRow.append(
+    element("span", `invoice-status invoice-status--${invoice.invoiceStatus}`, STATUS_LABELS[invoice.invoiceStatus] ?? "وضعیت نامشخص"),
+    actionModalInvoices,
+  );
   head.append(titleRow, metaRow);
 
   const metadata = element("dl", "invoice-detail-grid");

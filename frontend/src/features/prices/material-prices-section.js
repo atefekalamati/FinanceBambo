@@ -1,6 +1,6 @@
 import { element } from "../../shared/dom/elements.js";
 import { createDataTable, createTablePagination } from "../../shared/components/data-table.js";
-import { formatBusinessDate, formatDisplayNumber, formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatBusinessDate, formatDisplayNumber, formatJalaliBusinessDate, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { createPriceTrend } from "../../shared/components/price-trend.js";
 
@@ -230,7 +230,10 @@ export function originLabel(row) {
 
 /** The date a reader recognises: the sheet's own Jalali text when it stated one. */
 export function sheetDateLabel(row) {
-  if (row.workflowDateJalali) return row.workflowDateJalali;
+  if (row.workflowDateJalali) {
+    const formatted = formatJalaliBusinessDate(row.workflowDateJalali);
+    return formatted === "—" ? row.workflowDateJalali : formatted;
+  }
   if (row.workflowDate) return formatBusinessDate(row.workflowDate);
   /* The cell was there and could not be read. Saying so is more useful than a blank,
      and far more useful than substituting today. */

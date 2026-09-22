@@ -59,6 +59,7 @@ test("WBS renders unavailable and null values honestly with allocation details",
   assert.match(text(nodes), /قابل محاسبه نیست/);
   assert.match(text(nodes), /هزینه ردیف‌های فاقد نگاشت معتبر WBS/);
   assert.match(text(nodes), /ناقص/);
+  assert.doesNotMatch(text(nodes), /تفکیک هزینه واقعی هر مرحله به نوع قلم/);
   assert.ok(!flatten(nodes).some((node) => node.tag === "img"), "untrusted titles stay text");
 }));
 
@@ -88,16 +89,6 @@ test("new report renderers have explanatory empty states", () => withDocument(()
   for (const key of ["sCurve", "levelOne", "warnings", "invoices", "completionBudget", "areaCosts", "unpricedItems", "supplierDocuments", "pendingDocuments", "correctiveDocuments", "estimateChanges"]) {
     assert.ok(text(REPORT_SECTIONS[key]({})).length > 20);
   }
-}));
-
-test("breakdown does not print chart-helper zero defaults as missing forecast or actual", () => withDocument(() => {
-  const nodes = REPORT_SECTIONS.breakdown({ overview: { breakdown: [{
-    resourceType: "material", initialEstimateIrr: "100", actualCostIrr: null, forecastFinalIrr: null,
-  }] } });
-  const cells = flatten(nodes).filter((node) => node.tag === "td");
-  assert.equal(cells[2].textContent, "قابل محاسبه نیست");
-  assert.equal(cells[3].textContent, "قابل مقایسه نیست");
-  assert.equal(cells[4].textContent, "قابل محاسبه نیست");
 }));
 
 /**

@@ -1,5 +1,5 @@
 import { element } from "../../shared/dom/elements.js";
-import { formatDisplayNumber, formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatDisplayNumber, formatJalaliBusinessDate, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { createConversionRuleDialog } from "./conversion-rule-dialog.js";
 import { createSourceUnitDialog } from "./source-unit-dialog.js";
@@ -475,7 +475,7 @@ export function createPriceMappingPanel({ line, resource, adapter, materialPrice
       element("dt", "", `قیمت روز محصول${component.sourceUnit ? ` (به ازای ${formatUnitLabel(component.sourceUnit)})` : ""}`),
       element("dd", "numeric", priceText(component.sourcePriceIRR)),
       element("dt", "", "تاریخ قیمت"),
-      element("dd", "", component.workflowDateJalali ?? "—"));
+      element("dd", "", formatJalaliBusinessDate(component.workflowDateJalali)));
     preview.append(figures);
   }
 

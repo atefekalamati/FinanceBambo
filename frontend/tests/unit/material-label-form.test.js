@@ -64,7 +64,7 @@ test("the form shows what the sheet said beside what a person may decide", () =>
   assert.match(form.textContent, /لوله پلی اتیلن ۱۱۰/);
   assert.match(form.textContent, /Sivanland/);
   assert.match(form.textContent, /کیلو/);
-  assert.match(form.textContent, /1405\/06\/23/);
+  assert.match(form.textContent, /۲۳ شهریور ۱۴۰۵/);
 });
 
 test("a sheet that declared no unit says so rather than showing a blank", () => {

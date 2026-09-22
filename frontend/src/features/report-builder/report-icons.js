@@ -19,8 +19,6 @@ const PATHS = Object.freeze({
   overview: ["M6 3h9l4 4v14H6z", "M15 3v4h4"],
   /* انحراف پیش‌بینی — a needle off centre */
   deviation: ["M12 3v4", "M12 17v4", "M3 12h4", "M17 12h4", "M15.5 8.5 9 15"],
-  /* ترکیب هزینه — a ring divided */
-  breakdown: ["M12 3a9 9 0 1 0 9 9h-9z", "M14 3.3A9 9 0 0 1 20.7 10H14z"],
   /* روند ماهانه — bars rising to a baseline */
   monthly: ["M4 20V10", "M10 20V4", "M16 20v-7", "M21 20H3"],
   /* انحراف قیمت — a price tag */

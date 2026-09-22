@@ -49,15 +49,6 @@ export const REPORTS = Object.freeze([
     featured: false,
   },
   {
-    key: "breakdown",
-    category: "cost",
-    title: "ترکیب هزینه به تفکیک نوع قلم",
-    summary: "برآورد و هزینه واقعی مصالح، نیروی انسانی، تجهیزات و هزینه‌های عمومی",
-    needs: ["overview"],
-    period: false,
-    featured: true,
-  },
-  {
     key: "monthly",
     category: "cost",
     title: "روند ماهانه هزینه",
@@ -132,7 +123,7 @@ export const REPORTS = Object.freeze([
     category: "cost",
     title: "منحنی S مالی",
     summary: "روند تجمعی هزینه واقعی در بازه موجود؛ مقایسه با برنامه فقط در صورت وجود مبنای کامل",
-    needs: ["monthly"],
+    needs: ["monthly", "schedule"],
     period: false,
     featured: true,
   },
@@ -203,9 +194,9 @@ export function findReport(key) {
   return REPORTS.find((report) => report.key === key) ?? null;
 }
 
-/** The six shortcuts; the full catalogue remains available in the chooser. */
+/** The featured shortcuts; the full catalogue remains available in the chooser. */
 export function featuredReports() {
-  return ["overview", "breakdown", "levelOne", "sCurve", "warnings", "invoices"]
+  return ["overview", "levelOne", "sCurve", "warnings", "invoices"]
     .map(findReport).filter((report) => report.featured && !report.unavailable);
 }
 

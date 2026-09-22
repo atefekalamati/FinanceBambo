@@ -2,7 +2,6 @@ import { element } from "../../shared/dom/elements.js";
 import { formatBusinessDate, formatDisplayNumber, formatSystemDateTime } from "../../shared/formatters/display.js";
 import { compactMoneyScale, formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { reportComparisonChart, reportFigures, reportTable } from "./report-document.js";
-import { buildBulletPresentation } from "../../shared/reports/report-presentation.js";
 import { buildMonthlyTrend, TREND_MODES } from "../../shared/reports/monthly-trend.js";
 import { rollupPriceVariances, rollupQuantityVariances } from "../../shared/variances/variance-rollup.js";
 import { isWithinPeriod } from "../../shared/dates/reporting-periods.js";
@@ -171,52 +170,6 @@ export const REPORT_SECTIONS = Object.freeze({
         { label: `انحراف — ${direction}`, value: money(String(absolute)) },
       ]),
       element("p", "report-doc__note", "انحراف، فاصله پیش‌بینی هزینه نهایی از برآورد اولیه است؛ نه هزینه‌ای که تا امروز خرج شده."),
-    ];
-  },
-
-  breakdown(data) {
-    const source = data.overview?.breakdown ?? [];
-    const view = buildBulletPresentation(source);
-    // The shared chart helper has legacy zero defaults. Tables must retain the
-    // authoritative missing values, not print those drawing defaults as money.
-    const rows = view.rows.map((row, index) => ({
-      ...row,
-      initialEstimateIrr: source[index].initialEstimateIrr,
-      actualCostIrr: source[index].actualCostIrr,
-      forecastFinalIrr: source[index].forecastFinalIrr,
-      actualMagnitude: source[index].actualCostIrr == null ? null : row.actualMagnitude,
-      consumedPercent: source[index].actualCostIrr == null ? null : row.consumedPercent,
-    }));
-    return [
-      element("p", "report-doc__note", "آبی: برآورد اولیه · سبز: هزینه واقعی ثبت‌شده. مقیاس هر دو سری و همه دسته‌ها یکسان است؛ مبلغ دقیق و پیش‌بینی نهایی در جدول آمده است."),
-      reportComparisonChart({
-        ariaLabel: "نمودار هزینه واقعی هر نوع قلم در برابر برآورد همان نوع",
-        rows: rows.map((row) => ({
-          label: row.label,
-          planMagnitude: row.estimateMagnitude,
-          actualMagnitude: row.actualBelowZero ? null : row.actualMagnitude,
-          valueText: money(row.actualCostIrr),
-        })),
-      }),
-      reportTable({
-        caption: "جدول ترکیب هزینه به تفکیک نوع قلم هزینه",
-        columns: [
-          { label: "نوع قلم" },
-          { label: "برآورد اولیه", numeric: true },
-          { label: "هزینه واقعی", numeric: true },
-          { label: "نسبت به برآورد", numeric: true },
-          { label: "پیش‌بینی نهایی", numeric: true },
-        ],
-        rows: rows.map((row) => [
-          row.label,
-          money(row.initialEstimateIrr),
-          money(row.actualCostIrr),
-          row.consumedPercent === null
-            ? (row.actualCostIrr == null ? "قابل مقایسه نیست" : row.actualCostIrr === "0" ? "—" : "برآورد ثبت نشده")
-            : `${formatDisplayNumber(String(Math.round(row.consumedPercent)))}٪`,
-          money(row.forecastFinalIrr),
-        ]),
-      }),
     ];
   },
 

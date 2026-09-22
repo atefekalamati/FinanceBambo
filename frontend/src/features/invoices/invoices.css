@@ -372,6 +372,15 @@
   margin: 0;
 }
 
+.invoice-buttons-modal {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
 .invoice-detail-dialog__head h2 {
   margin: 0 0 var(--space-sm);
 }
@@ -688,6 +697,21 @@
 
   .invoice-detail-dialog[open]::backdrop {
     display: none;
+  }
+
+  .invoice-detail-dialog[open] .report-header--print-only,
+  .invoice-detail-dialog[open] .report-header--print-only * {
+    color: #fff;
+  }
+
+  #finance-module-root .invoice-detail-dialog[open] .report-header--print-only :is(
+    .report-header__title,
+    .report-header__wordmark strong,
+    .report-header__wordmark small,
+    .report-header__facts dt,
+    .report-header__facts dd
+  ) {
+    color: #fff;
   }
 
   .invoice-detail-dialog__head {

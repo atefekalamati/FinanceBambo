@@ -207,7 +207,7 @@ test("the base cells read the row's own fields", () => {
   assert.equal(cellValue(by("source"), row()), "Mashhad Foolad");
   assert.equal(cellValue(by("product"), row()), "نبشی10*100*100 شکفته");
   assert.equal(cellValue(by("productId"), row()), "ANGLE-1YCN7SX0GRHC1A");
-  assert.equal(cellValue(by("workflowDate"), row()), "1405/06/23");
+  assert.equal(cellValue(by("workflowDate"), row()), "۲۳ شهریور ۱۴۰۵");
 });
 
 test("a price the backend could not resolve shows no number", () => {
