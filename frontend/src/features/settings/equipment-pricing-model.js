@@ -123,3 +123,36 @@ export function pricingProgress(rows) {
   const total = (rows ?? []).length;
   return { total, priced: (rows ?? []).filter(isPriced).length };
 }
+
+
+/* ------------------------------------------------------- the working day */
+
+/**
+ * What this project says a machine-day is worth in hours, or null when nobody has said.
+ *
+ * WHY THIS SECTION CARES
+ * A price per hour is half a cost; the other half is how many hours. The schedule states
+ * a machine's span in days, so for every machine the file measures in HOURS the two only
+ * meet through one number: «ساعت هر روز دستگاه». Eighteen of this project's nineteen
+ * machines are hourly, so without that number the entire section produces prices that
+ * multiply by nothing.
+ *
+ * It is a project's decision and not a fact — a working day is not twenty-four hours and
+ * not eight either — which is why it lives in the project's own conversion rules beside
+ * «نفرروز», and why `unit_conversion.py` says in as many words that day↔hour "stays in
+ * `unit_conversions`, where a project records its own with a reason and a date".
+ *
+ * Read from the workspace this section already has, so knowing costs no request.
+ */
+export function workingDayRule(workspace) {
+  const entry = (workspace?.currentConversions ?? []).find(
+    (item) => item?.sourceUnit === "day" && item?.targetUnit === "hour");
+  const applied = entry?.currentConversion ?? null;
+  if (!applied || !applied.factor) return null;
+  return { factor: String(applied.factor), scope: applied.scope ?? entry.scope ?? null };
+}
+
+/** Whether any machine on screen is measured in a unit that needs that rule. */
+export function needsWorkingDayRule(rows) {
+  return (rows ?? []).some((row) => row?.unit === "hour");
+}

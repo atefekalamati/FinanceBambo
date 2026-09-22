@@ -140,3 +140,56 @@ test("a project price standing over an organization one carries both", () => {
   assert.equal(row.priceScope, "project");
   assert.equal(row.organizationPrice.unitPriceIRR, "52100000");
 });
+
+/* THE OTHER HALF OF A COST.
+ *
+ * A price per hour multiplies by hours, and the schedule states a machine's span in DAYS.
+ * For every machine the file measures hourly — eighteen of this project's nineteen — the
+ * two only meet through one number: how many hours a machine-day is worth.
+ *
+ * That number is a project's decision, not a fact: a working day is neither twenty-four
+ * hours nor eight. It lives in the project's own conversion rules, beside «نفرروز», which
+ * is what `unit_conversion.py` means when it says day↔hour "stays in `unit_conversions`".
+ */
+
+const { needsWorkingDayRule, workingDayRule } =
+  await import("../../src/features/settings/equipment-pricing-model.js");
+
+const conversions = (entries) => ({ currentConversions: entries });
+
+test("the project's own working day is read from the rules it already has", () => {
+  const rule = workingDayRule(conversions([
+    { sourceUnit: "day", targetUnit: "hour", scope: "project",
+      currentConversion: { scope: "project", factor: "8.00000000" } },
+  ]));
+  assert.equal(rule.factor, "8.00000000");
+  assert.equal(rule.scope, "project");
+});
+
+test("no rule is null, not a guessed eight", () => {
+  /* Eight is the commonest answer and still a guess. A section that assumed it would
+     produce quantities nobody agreed to, on every machine, invisibly. */
+  assert.equal(workingDayRule(conversions([])), null);
+  assert.equal(workingDayRule(conversions([
+    { sourceUnit: "kg", targetUnit: "ton", currentConversion: { factor: "1000" } },
+  ])), null);
+  assert.equal(workingDayRule(null), null);
+});
+
+test("a rule that states no factor is no rule", () => {
+  assert.equal(workingDayRule(conversions([
+    { sourceUnit: "day", targetUnit: "hour", currentConversion: { factor: null } },
+  ])), null);
+  assert.equal(workingDayRule(conversions([
+    { sourceUnit: "day", targetUnit: "hour", currentConversion: null },
+  ])), null);
+});
+
+test("only the hourly machines need it", () => {
+  /* جرثقیل is assigned by the day: its price per day multiplies by days, and no working
+     day has to be agreed for it at all. */
+  assert.equal(needsWorkingDayRule([{ unit: "hour" }, { unit: "day" }]), true);
+  assert.equal(needsWorkingDayRule([{ unit: "day" }]), false);
+  assert.equal(needsWorkingDayRule([{ unit: null }]), false);
+  assert.equal(needsWorkingDayRule([]), false);
+});

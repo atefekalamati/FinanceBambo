@@ -328,3 +328,21 @@ export function assignmentCostOf(line) {
   const value = line?.mppAssignmentCostIrr;
   return value === null || value === undefined || value === "" ? null : value;
 }
+
+
+/**
+ * Whether this row's price was typed rather than linked to a sheet listing.
+ *
+ * A manual price is a `price_versions` row — the same record the prices page writes for a
+ * material and the settings page writes for a machine — and the project's live report
+ * counts it in full. What it is not is a component mapping, so the mapping status has
+ * nothing good to say about it and says «نیازمند افزودن مصالح».
+ *
+ * Read together, those two facts are what tells this column that the row has a price and
+ * that no amount of adding materials is what produced it.
+ */
+export function isManualPrice(line, priced) {
+  const price = line?.currentUnitPriceIRR;
+  if (price === null || price === undefined) return false;
+  return priced?.dailyItemCostIRR === null || priced?.dailyItemCostIRR === undefined;
+}

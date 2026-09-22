@@ -23,7 +23,7 @@ import { element } from "../../shared/dom/elements.js";
 import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
 import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTableWithControl, createPagedDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
-import { ABSENT, activityBlockStarts, activityLabel, assignmentCostOf, canonicalWbs, factorSourceLabel, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
+import { ABSENT, activityBlockStarts, activityLabel, assignmentCostOf, canonicalWbs, factorSourceLabel, isManualPrice, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
   const wrapper = element("div", "form-field");
@@ -773,7 +773,7 @@ function mspUnitCell(line, resource, isGeneralCost) {
  * When both units are known and do not meet, the button to define the crossing is IN THIS
  * CELL. It is where the person is looking when they find out, and sending them to a
  * settings page means asking them to carry two unit codes and a product in their head. */
-function sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resource }) {
+function sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resource, methodNotes = true }) {
   if (isGeneralCost) return ABSENT;
   if (!priced || !priced.componentCount) {
     return element("span", "missing-value", "هنوز به قیمت روز وصل نشده");
@@ -786,7 +786,7 @@ function sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resou
      same kind of number and deserve different amounts of trust; from the cost alone a
      reader cannot tell which they are being shown. Said here rather than in «منبع», which
      answers a different question -- that column names the PRODUCT, this one the units. */
-  const crossed = factorSourceLabel(priced.factorSource);
+  const crossed = methodNotes ? factorSourceLabel(priced.factorSource) : null;
   if (crossed) cell.append(element("span", "cell-secondary", crossed));
 
   /* Only the statuses a unit decision can answer. «قیمت روز معتبر نیست» is a different
@@ -822,7 +822,7 @@ function sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resou
  * A PARTLY priced row shows both -- the total of what resolved AND how much of the list it
  * came from. The total is real and incomplete, and a sum presented without that count
  * looks finished, which is the more dangerous of the two mistakes. */
-function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, resource } = {}) {
+function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, resource, methodNotes = true } = {}) {
   const fallback = formatTomanFromIrr(line.currentUnitPriceIRR, { withCurrency: false });
   if (!priced || isGeneralCost) return fallback;
   const cell = document.createDocumentFragment();
@@ -831,7 +831,16 @@ function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, r
      vocabularies for the same state, so the wording is corrected here until the service
      changes it. Everything else passes through as it arrives. */
   const UNLINKED = "needs_components";
-  if (priced.status !== "ready") {
+  /* A row whose price was typed rather than linked. «برچیدن جدول» is 3,538 metres of
+     demolition and no supplier quotes it, so somebody states the rate — and that rate is a
+     `price_versions` row, the same thing the prices page and the equipment settings write,
+     and the same thing the project's live report already counts. It is not a lesser price.
+
+     It used to be drawn muted, under a chip reading «وصل نشده», which is how a valid
+     figure came to look like a failure: true that the row is not linked to the sheet, but
+     that is not the headline when the row has a price. */
+  const manualOnly = isManualPrice(line, priced);
+  if (priced.status !== "ready" && !manualOnly) {
     cell.append(statusChip(priced.status,
       priced.status === UNLINKED ? "وصل نشده" : priced.statusLabel));
   }
@@ -843,9 +852,10 @@ function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, r
         `${formatDisplayNumber(priced.readyComponentCount)} از ${formatDisplayNumber(priced.componentCount)} قلم مصالح`));
     }
   } else if (line.currentUnitPriceIRR !== null && line.currentUnitPriceIRR !== undefined) {
-    /* The line's own Finance price still shows when it has one: the daily-price link is
-       unresolved, which says nothing about the price somebody entered by hand. */
-    cell.append(element("span", "cell-secondary", fallback));
+    /* Full weight, like any other figure in this column, and named so a reader knows where
+       it came from rather than wondering why it looks different. */
+    cell.append(element("span", "", fallback));
+    if (methodNotes) cell.append(element("span", "cell-secondary", "قیمت دستی"));
   }
   cell.append(manualPriceButton(line, isGeneralCost, { canEdit, onManualPrice, resource }));
   return cell;
@@ -856,20 +866,37 @@ function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, r
  * Missing children do not become zero: a visible subtotal is labelled with its coverage,
  * and a group with no usable child price states that no total is available yet.
  */
-export function groupDailyPriceCell(rows, priceStatuses) {
+export function groupDailyPriceCell(rows, priceStatuses, { methodNotes = true } = {}) {
   const amounts = (rows ?? []).map((line) => {
     const value = priceStatuses.get(line.lineId)?.dailyItemCostIRR;
     return /^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : null;
   });
   const known = amounts.filter((value) => value !== null);
-  if (!known.length) return element("span", "missing-value", "هنوز قیمت روز ندارد");
+  /* Rows priced by hand rather than by a component mapping. The service states no daily
+     cost for them, so they cannot join this sum — but they are priced, and counting them
+     among the rows that are not is how «۳ از ۵ ردیف قیمت‌گذاری شده» came to report two
+     rows as having no price when both had one. */
+  const manual = (rows ?? []).filter((line, index) =>
+    amounts[index] === null && isManualPrice(line, priceStatuses.get(line.lineId))).length;
+  if (!known.length) {
+    /* On the report surface the reason is not the reader's question and «هنوز قیمت روز
+       ندارد» would be false when every row has one — so it says only that the sum is not
+       there, which is the part that concerns them. */
+    if (!manual) return element("span", "missing-value", "هنوز قیمت روز ندارد");
+    return element("span", "missing-value", methodNotes
+      ? "قیمت دستی دارد؛ جمع این فعالیت هنوز ساخته نمی‌شود"
+      : "جمع این فعالیت هنوز محاسبه نشده");
+  }
 
   const cell = document.createDocumentFragment();
   const total = known.reduce((sum, value) => sum + value, 0n).toString();
   cell.append(element("strong", "", formatTomanFromIrr(total, { withCurrency: false })));
   if (known.length !== amounts.length) {
-    cell.append(element("span", "cell-secondary",
-      `${formatDisplayNumber(String(known.length))} از ${formatDisplayNumber(String(amounts.length))} ردیف قیمت‌گذاری شده`));
+    const missing = amounts.length - known.length - manual;
+    const parts = [`${formatDisplayNumber(String(known.length))} از ${formatDisplayNumber(String(amounts.length))} ردیف در این جمع`];
+    if (manual && methodNotes) parts.push(`${formatDisplayNumber(String(manual))} ردیف قیمت دستی`);
+    if (missing > 0 && methodNotes) parts.push(`${formatDisplayNumber(String(missing))} ردیف بدون قیمت`);
+    cell.append(element("span", "cell-secondary", parts.join(" · ")));
   }
   return cell;
 }
@@ -895,7 +922,7 @@ function manualPriceButton(line, isGeneralCost, { canEdit, onManualPrice, resour
   return button;
 }
 
-function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible, paging, priceStatuses = new Map(), onMapPrice = null, onManualPrice = null }) {
+function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible, paging, priceStatuses = new Map(), onMapPrice = null, onManualPrice = null, methodNotes = true }) {
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
   const fragment = document.createDocumentFragment();
   if (withheld) fragment.append(element("p", "table-note", withheld));
@@ -941,7 +968,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
           // The schedule's figure belongs to the activity, so it is written on
           // the activity's own row rather than repeated down its items.
           scheduleCost: formatTomanFromIrr(scheduleCostOf(first), { withCurrency: false }),
-          currentPrice: groupDailyPriceCell(rows, priceStatuses),
+          currentPrice: groupDailyPriceCell(rows, priceStatuses, { methodNotes }),
         };
       },
     },
@@ -989,12 +1016,12 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
       return {
         identity,
         mspUnit: mspUnitCell(line, resource, isGeneralCost),
-        sheetUnit: sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resource }),
+        sheetUnit: sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resource, methodNotes }),
         revisedQuantity: revisedCell,
         scheduleCost: formatTomanFromIrr(assignmentCostOf(line), { withCurrency: false }),
         originalPrice: formatTomanFromIrr(line.originalUnitPriceIRR, { withCurrency: false }),
         currentPrice: dailyPriceCell(line, priced, isGeneralCost,
-                                     { canEdit, onManualPrice, resource }),
+                                     { canEdit, onManualPrice, resource, methodNotes }),
         /* One material names its product; several say how many there are. Listing three
            product names in a table cell is unreadable, and naming only the first would be
            a lie about what priced the row. */
@@ -1264,6 +1291,16 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
     linesHead.append(element("div", "", ""), linesMeta);
     linesHead.firstElementChild.append(element("h2", "", "ریز برآورد پروژه"), element("p", "", "هر ردیف، مقدار برآوردشده یک قلم هزینه را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا برآورد، اصلاحات و پیشرفت هر فعالیت مستقل و قابل پیگیری بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت روز و فاکتورهای تأییدشده محاسبه می‌شوند."));
     linesSection.append(linesHead, renderEstimateLineTable(workspace.estimateLines, workspace.resources, {
+      /* HOW a number came to be is an operations question, not a reader's.
+         «قیمت دستی» and «قانون تبدیل» answer «چطور ثبت شد» — which is the working half of
+         this table, and belongs on امور مالی where somebody can act on it. On گزارش مالی
+         the reader wants the figure; a note explaining the method is furniture at best and
+         at worst reads as a caveat about a number that has none.
+
+         Not `canEdit`: an operations user without the write permission is still reading
+         امور مالی and still needs to see how a row was priced. The surface decides this,
+         and only the surface. */
+      methodNotes: !readOnly,
       paging: { ...linePaging, onChange: (next) => { linePaging = next; paint(); } },
       canEdit,
       withheld: linesWithheld,

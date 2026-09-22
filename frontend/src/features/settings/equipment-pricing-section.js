@@ -6,8 +6,8 @@ import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { createPersianDatePicker } from "../../shared/components/persian-date-picker.js";
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { validatePriceVersion } from "../prices/prices-validation.js";
-import { FILTERS, equipmentRows, groupByUnit, isPriced, pricingProgress, selectRows }
-  from "./equipment-pricing-model.js";
+import { FILTERS, equipmentRows, groupByUnit, isPriced, needsWorkingDayRule, pricingProgress,
+         selectRows, workingDayRule } from "./equipment-pricing-model.js";
 
 /* Pricing the project's machines, in one place, by hand.
  *
@@ -79,6 +79,11 @@ export function createEquipmentPricingSection({ workspace, adapter, canEdit = tr
 
   const rows = equipmentRows(workspace);
   const progress = pricingProgress(rows);
+  /* A price per hour is half a cost. The schedule measures a machine's span in DAYS, so
+     for every hourly machine the two halves meet only through «ساعت هر روز دستگاه» — and
+     eighteen of this project's nineteen are hourly. Without it, pricing all of them
+     produces nothing, and nothing on this screen would have said why. */
+  const workingDay = workingDayRule(workspace);
 
   /* Held here rather than rebuilt: repainting the list must not throw away what somebody
      typed into the search box or which filter they chose. */
@@ -218,14 +223,11 @@ export function createEquipmentPricingSection({ workspace, adapter, canEdit = tr
         /* No reason is asked for. A price revision is a fact with an author and a date,
            and demanding a sentence for each of nineteen machines is how a form gets
            filled with «تست». The service records who and when regardless. */
-        const fresh = await adapter.createPriceVersion({
-          ...validation.values,
-          /* Not asked for, but not left blank either. The adapter's own fallback says only
-             «از رابط مالی», which in the audit history is indistinguishable from a material
-             price typed on the prices page. This says which screen wrote it, so a reader of
-             «تاریخچه تغییرات مالی» can tell a machine's rate from a market price. */
-          reason: `قیمت‌گذاری دستی تجهیزات — ${row.title}`,
-        });
+        /* No reason, not even a generated one. The service now accepts its absence, and
+           a sentence this screen wrote is still a sentence nobody wrote: in the history it
+           is indistinguishable from one a person meant. What identifies a machine's rate
+           is the resource it is against, which the row already carries. */
+        const fresh = await adapter.createPriceVersion(validation.values);
         editingId = null;
         onSaved?.(fresh);
       } catch (error) {
@@ -278,6 +280,24 @@ export function createEquipmentPricingSection({ workspace, adapter, canEdit = tr
         `${formatDisplayNumber(String(group.pricedCount))} از ${formatDisplayNumber(String(group.rows.length))}`);
       heading.append(count);
       groupNode.append(heading);
+
+      /* The hourly machines and the rule their cost depends on. Stated quietly when it
+         exists — a person pricing in hours should know which day the hours are counted
+         against — and as the blocking fact when it does not. */
+      if (group.unit === "hour" && needsWorkingDayRule(group.rows)) {
+        if (workingDay) {
+          groupNode.append(element("p", "table-note",
+            `در این پروژه هر روز دستگاه ${formatDisplayNumber(workingDay.factor)} ساعت حساب می‌شود.`
+            + " مقدار ساعت هر دستگاه از مدت فعالیت‌های آن و همین قاعده به دست می‌آید."));
+        } else {
+          const notice = element("p", "inline-notice",
+            "برای این دستگاه‌ها هنوز مشخص نشده هر روز دستگاه چند ساعت است. تا وقتی این قاعده "
+            + "در بخش «قواعد تبدیل واحد پروژه» ثبت نشود، قیمت ساعتی در هیچ مقداری ضرب نمی‌شود "
+            + "و هزینه‌ای ساخته نمی‌شود.");
+          notice.setAttribute("role", "status");
+          groupNode.append(notice);
+        }
+      }
 
       /* The group the file left unanswered. Priced here it would be a number per nothing,
          so the section says what has to happen first instead of offering a box. */

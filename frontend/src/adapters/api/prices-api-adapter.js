@@ -142,7 +142,12 @@ export function createApiPricesAdapter(context, client) {
     return (await everyPageOf(`${base}/price-history`)).map(mapPrice).sort(compareVersion);
   }
   async function createPriceVersion(values) {
-    await client.request(`${base}/resources/${encodeURIComponent(values.resourceId)}/prices`, jsonOptions("POST", { scopeKind: values.scope, unitPriceIrr: values.unitPriceIRR, effectiveFrom: values.effectiveFrom, reason: values.reason || "ثبت نسخه قیمت از رابط مالی" }));
+    await client.request(`${base}/resources/${encodeURIComponent(values.resourceId)}/prices`, /* Only what somebody actually wrote. The service stopped requiring a reason
+       because requiring one produced less: a client that MUST send something sends
+       something, and this adapter's own «ثبت نسخه قیمت از رابط مالی» filled the
+       history with sentences that read like recorded reasons and recorded nothing.
+       The row already carries who and when, which is the evidence a reader needs. */
+    jsonOptions("POST", { scopeKind: values.scope, unitPriceIrr: values.unitPriceIRR, effectiveFrom: values.effectiveFrom, ...(values.reason ? { reason: values.reason } : {}) }));
     return getPrices();
   }
   async function previewPriceImport(file) {

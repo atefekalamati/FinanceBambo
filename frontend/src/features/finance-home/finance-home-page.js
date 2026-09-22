@@ -3,8 +3,14 @@ import {
   REQUEST_STATUS,
 } from "../../core/state/request-state.js";
 import { renderPageState } from "../../shared/components/page-state.js";
-import { defaultSnapshot, reportableSnapshots } from "../../shared/progress/project-snapshot.js";
-import { getTehranTodayIso, gregorianIsoToPersian } from "../../shared/dates/persian-date.js";
+import {
+  defaultSnapshot,
+  reportableSnapshots,
+} from "../../shared/progress/project-snapshot.js";
+import {
+  getTehranTodayIso,
+  gregorianIsoToPersian,
+} from "../../shared/dates/persian-date.js";
 import {
   formatBusinessDate,
   formatDisplayNumber,
@@ -69,7 +75,7 @@ const SUMMARY_ITEMS = Object.freeze([
   ],
   [
     "remainingPhysicalCostIrr",
-    "هزینه کار باقی‌مانده",
+    "هزینه به روز باقیمانده",
     "کار باقیمانده با قیمت روز",
   ],
   [
@@ -191,7 +197,9 @@ function createManagerialComparisonPanel(
   heading.className = "finance-analysis-card__heading";
   const headingCopy = document.createElement("div");
   const headingTitle = document.createElement("h2");
-  const headingTitleText = document.createTextNode(ANALYSIS_CHARTS.managerial.title);
+  const headingTitleText = document.createTextNode(
+    ANALYSIS_CHARTS.managerial.title,
+  );
   const headingInfo = element("span", "rc-info", "i");
   headingInfo.setAttribute("role", "img");
   headingInfo.setAttribute("aria-label", "راهنما");
@@ -289,7 +297,11 @@ function createManagerialComparisonPanel(
     // lands it in that strip on the same line as the figures — aligned because
     // it is measured against the row it reads with, not offset until it looks
     // right at one width.
-    const unit = element("span", "managerial-combo-chart__scale-unit", tickScale.unit);
+    const unit = element(
+      "span",
+      "managerial-combo-chart__scale-unit",
+      tickScale.unit,
+    );
     unit.setAttribute("aria-hidden", "true");
     valuesBand.append(unit);
     ticks.forEach((tick) => {
@@ -433,7 +445,6 @@ function createManagerialComparisonPanel(
   return section;
 }
 
-
 /**
  * Say so when the service answered from a different snapshot than the one the
  * reader picked.
@@ -483,7 +494,6 @@ export function warnOnSnapshotMismatch({ selected, report }) {
   return null;
 }
 
-
 function renderFinanceHome(
   data,
   monthly = null,
@@ -513,9 +523,7 @@ function renderFinanceHome(
   BOARD_FIGURE_KEYS.forEach((key) => {
     const item = SUMMARY_ITEMS.find(([itemKey]) => itemKey === key);
     if (item)
-      figures.append(
-        createSummaryCard(item[0], item[1], item[2], data),
-      );
+      figures.append(createSummaryCard(item[0], item[1], item[2], data));
   });
 
   // The figures and the way into فاکتورها share one half of the row, so the
@@ -549,9 +557,14 @@ function renderFinanceHome(
   const rowSecond = element("div", "finance-grid finance-grid--pair");
   const levelOneSection = createLevelOneSection(levelOne ?? {});
   const levelOneInfo = levelOneSection.querySelector(".rc-info");
-  const levelOneNotes = Array.from(levelOneSection.querySelectorAll(".level-one-section__note"));
+  const levelOneNotes = Array.from(
+    levelOneSection.querySelectorAll(".level-one-section__note"),
+  );
   if (levelOneInfo && levelOneNotes.length) {
-    levelOneInfo.title = [levelOneInfo.title, ...levelOneNotes.map((note) => note.textContent)].join(" ");
+    levelOneInfo.title = [
+      levelOneInfo.title,
+      ...levelOneNotes.map((note) => note.textContent),
+    ].join(" ");
     levelOneNotes.forEach((note) => note.remove());
   }
   rowSecond.append(levelOneSection, builder);
@@ -565,7 +578,9 @@ function renderFinanceHome(
   const curveInfo = element("span", "rc-info", "i");
   curveInfo.setAttribute("role", "img");
   curveInfo.setAttribute("aria-label", "راهنما");
-  curveInfo.title = cumulative?.description ?? "منحنی تجمعی هزینه واقعی در برابر برآورد دوره‌ای";
+  curveInfo.title =
+    cumulative?.description ??
+    "منحنی تجمعی هزینه واقعی در برابر برآورد دوره‌ای";
   curveTitle.append(curveInfo);
   curveHead.append(curveTitle);
   curvePanel.append(curveHead);
@@ -579,10 +594,7 @@ function renderFinanceHome(
     createPricesSummary(prices ?? {}),
     createItemsSummary(items ?? {}),
   );
-  insightCards.append(
-    summaryStack,
-    buildWarningsCard(data),
-  );
+  insightCards.append(summaryStack, buildWarningsCard(data));
   rowThird.append(curvePanel, insightCards);
 
   board.append(pageTitle, rowMain, rowSecond, rowThird);
@@ -614,7 +626,9 @@ export function summarizeReportWarnings(warnings) {
     counts.set(message, (counts.get(message) ?? 0) + 1);
   }
   return [...counts].map(([message, count]) =>
-    count > 1 ? `${message} (برای ${formatDisplayNumber(count)} مورد)` : message,
+    count > 1
+      ? `${message} (برای ${formatDisplayNumber(count)} مورد)`
+      : message,
   );
 }
 
@@ -773,7 +787,8 @@ function currentMonthColumn(points) {
   const today = gregorianIsoToPersian(getTehranTodayIso());
   if (!today) return -1;
   return points.findIndex(
-    (point) => point.persianYear === today.year && point.persianMonth === today.month,
+    (point) =>
+      point.persianYear === today.year && point.persianMonth === today.month,
   );
 }
 
@@ -793,7 +808,8 @@ function trimmedWindowNotice(trendWindow) {
    Error and empty-state notices return before this helper and stay visible. */
 function collectChartNotices(panel) {
   const notices = Array.from(panel.children).filter(
-    (child) => child.tagName === "P" && child.classList.contains("inline-notice"),
+    (child) =>
+      child.tagName === "P" && child.classList.contains("inline-notice"),
   );
   const messages = notices.map((notice) => notice.textContent);
   notices.forEach((notice) => notice.remove());
@@ -968,7 +984,11 @@ function createMonthlyTrendPanel({ trend, trendError, trendWindow }) {
     renderTooltip: trendTooltip,
     ariaLabel: "نمودار ستونی هزینه واقعی و خط برآورد ماهانه",
   });
-  chart.setData({ points: view.points, ticks: view.axisTicks, focusColumn: currentMonthColumn(view.points) });
+  chart.setData({
+    points: view.points,
+    ticks: view.axisTicks,
+    focusColumn: currentMonthColumn(view.points),
+  });
   panel.append(chart.element);
 
   const basis = scheduleEstimateNotice(trend);
@@ -1009,7 +1029,9 @@ function createMonthlyTrendPanel({ trend, trendError, trendWindow }) {
     panel,
     chart,
     description: [
-      axisScale ? `${description} ارقام محور بر حسب ${axisScale.unit} است.` : description,
+      axisScale
+        ? `${description} ارقام محور بر حسب ${axisScale.unit} است.`
+        : description,
       ...collectChartNotices(panel),
     ].join(" "),
   };
@@ -1071,8 +1093,9 @@ export function createFinanceHomePage({
         // a snapshot carrying a Finance source file version has schedule rows
         // behind it; a host-ingested reference has none, whatever its date.
         const scheduleSnapshot =
-          reportableSnapshots(snapshots).find((snapshot) => snapshot.sourceFileVersionId)
-          ?? latest;
+          reportableSnapshots(snapshots).find(
+            (snapshot) => snapshot.sourceFileVersionId,
+          ) ?? latest;
 
         // The schedule behind the estimate line, and behind the chart's own span.
         // Its failure is silent by design: a deployment that does not serve this
@@ -1080,86 +1103,93 @@ export function createFinanceHomePage({
         // error notice here would report a missing baseline as a broken page.
         const scheduleFeedPromise = progressAdapter
           .getFeed(scheduleSnapshot.progressSnapshotId)
-          .then((value) => value, () => null);
+          .then(
+            (value) => value,
+            () => null,
+          );
         // The trend is independent of the overview: a failure there must not
         // take the eight headline metrics down with it.
-        const [report, monthly, rollup, priceData, itemData, scheduleFeed] = await Promise.all([
-          reportsAdapter.getOverview({
-            reportingDate,
-            progressSnapshotId: latest.progressSnapshotId,
-          }),
-          // The only request that waits on the feed, because the feed is what says
-          // how long this project is. Everything else starts immediately.
-          scheduleFeedPromise
-            .then((feed) => {
-              const window = scheduleWindow(feed, reportingDate);
-              trendWindow = window;
-              // Pinning a snapshot makes the service replace the anchor with that
-              // snapshot's own reporting date, which would pull the window back to
-              // the day the schedule was imported and cut off everything after it.
-              // The pin buys nothing here: this series is built from confirmed
-              // invoices and reads no progress fact at all.
-              return window
-                ? reportsAdapter.getMonthlyTrend({
-                    reportingDate: window.anchorDate,
-                    monthCount: window.monthCount,
-                  })
-                : reportsAdapter.getMonthlyTrend({
-                    reportingDate,
-                    progressSnapshotId: latest.progressSnapshotId,
-                  });
-            })
-            .then(
+        const [report, monthly, rollup, priceData, itemData, scheduleFeed] =
+          await Promise.all([
+            reportsAdapter.getOverview({
+              reportingDate,
+              progressSnapshotId: latest.progressSnapshotId,
+            }),
+            // The only request that waits on the feed, because the feed is what says
+            // how long this project is. Everything else starts immediately.
+            scheduleFeedPromise
+              .then((feed) => {
+                const window = scheduleWindow(feed, reportingDate);
+                trendWindow = window;
+                // Pinning a snapshot makes the service replace the anchor with that
+                // snapshot's own reporting date, which would pull the window back to
+                // the day the schedule was imported and cut off everything after it.
+                // The pin buys nothing here: this series is built from confirmed
+                // invoices and reads no progress fact at all.
+                return window
+                  ? reportsAdapter.getMonthlyTrend({
+                      reportingDate: window.anchorDate,
+                      monthCount: window.monthCount,
+                    })
+                  : reportsAdapter.getMonthlyTrend({
+                      reportingDate,
+                      progressSnapshotId: latest.progressSnapshotId,
+                    });
+              })
+              .then(
+                (value) => {
+                  trendError = null;
+                  return value;
+                },
+                (error) => {
+                  trendError = error;
+                  return null;
+                },
+              ),
+            // Independent too: the phase report is not built on the service yet,
+            // and its absence must not take the headline metrics down with it.
+            reportsAdapter
+              .getWbsRollup({
+                reportingDate,
+                progressSnapshotId: latest.progressSnapshotId,
+              })
+              .then(
+                (value) => {
+                  wbsError = null;
+                  return value;
+                },
+                (error) => {
+                  wbsError = error;
+                  return null;
+                },
+              ),
+            // The same workspace #finance/report-prices reads, through the same adapter.
+            // The summary shows three of its rows; it computes nothing of its own.
+            pricesAdapter.getPrices().then(
               (value) => {
-                trendError = null;
+                priceError = null;
                 return value;
               },
               (error) => {
-                trendError = error;
+                priceError = error;
                 return null;
               },
             ),
-          // Independent too: the phase report is not built on the service yet,
-          // and its absence must not take the headline metrics down with it.
-          reportsAdapter
-            .getWbsRollup({ reportingDate, progressSnapshotId: latest.progressSnapshotId })
-            .then(
+            // The compact estimate table is a read-only view of the exact
+            // workspace used by #finance/report-items. Its failure is isolated from the
+            // report metrics and from the day-price summary beside it.
+            financialItemsAdapter.getWorkspace().then(
               (value) => {
-                wbsError = null;
+                itemsError = null;
                 return value;
               },
               (error) => {
-                wbsError = error;
+                itemsError = error;
                 return null;
               },
             ),
-          // The same workspace #finance/report-prices reads, through the same adapter.
-          // The summary shows three of its rows; it computes nothing of its own.
-          pricesAdapter.getPrices().then(
-            (value) => {
-              priceError = null;
-              return value;
-            },
-            (error) => {
-              priceError = error;
-              return null;
-            },
-          ),
-          // The compact estimate table is a read-only view of the exact
-          // workspace used by #finance/report-items. Its failure is isolated from the
-          // report metrics and from the day-price summary beside it.
-          financialItemsAdapter.getWorkspace().then(
-            (value) => {
-              itemsError = null;
-              return value;
-            },
-            (error) => {
-              itemsError = error;
-              return null;
-            },
-          ),
-          scheduleFeedPromise,
-        ]);
+            scheduleFeedPromise,
+          ]);
         trend = withScheduleEstimate(monthly, scheduleFeed);
         wbsRollup = rollup;
         priceWorkspace = priceData;
