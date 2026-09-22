@@ -5957,6 +5957,11 @@
             "title": "Calculationstatus",
             "type": "string"
           },
+          "computedLineCount": {
+            "default": 0,
+            "title": "Computedlinecount",
+            "type": "integer"
+          },
           "excludedEstimateLineCount": {
             "default": 0,
             "title": "Excludedestimatelinecount",
@@ -6043,6 +6048,11 @@
             },
             "title": "Topquantityvariances",
             "type": "array"
+          },
+          "totalLineCount": {
+            "default": 0,
+            "title": "Totallinecount",
+            "type": "integer"
           },
           "warnings": {
             "items": {
@@ -7814,6 +7824,11 @@
             "title": "Calculationstatus",
             "type": "string"
           },
+          "computedLineCount": {
+            "default": 0,
+            "title": "Computedlinecount",
+            "type": "integer"
+          },
           "excludedEstimateLineCount": {
             "default": 0,
             "title": "Excludedestimatelinecount",
@@ -7890,6 +7905,11 @@
             },
             "title": "Topquantityvariances",
             "type": "array"
+          },
+          "totalLineCount": {
+            "default": 0,
+            "title": "Totallinecount",
+            "type": "integer"
           },
           "warnings": {
             "items": {
@@ -8905,9 +8925,15 @@
             "type": "string"
           },
           "reason": {
-            "minLength": 1,
-            "title": "Reason",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           },
           "scopeKind": {
             "enum": [
@@ -8934,8 +8960,7 @@
         "required": [
           "scopeKind",
           "unitPriceIrr",
-          "effectiveFrom",
-          "reason"
+          "effectiveFrom"
         ],
         "title": "PriceCreate",
         "type": "object"
@@ -9013,9 +9038,15 @@
             "type": "string"
           },
           "reason": {
-            "minLength": 1,
-            "title": "Reason",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           },
           "resourceId": {
             "format": "uuid",
@@ -9044,7 +9075,6 @@
           "scopeKind",
           "unitPriceIrr",
           "effectiveFrom",
-          "reason",
           "id",
           "resourceId",
           "version",

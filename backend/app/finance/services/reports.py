@@ -212,9 +212,9 @@ class FinanceLiveReportService:
 
     async def live(self,scope,reporting_date:date,progress_snapshot_id=None):
         report,_data,snapshot,_feed=await self._calculate(scope,reporting_date,progress_snapshot_id)
-        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"host_snapshot_id":snapshot.get("host_snapshot_id"),"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"missing_estimate_line_count":report.missing_estimate_line_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality}
+        return {"reporting_date":reporting_date,"progress_snapshot_id":snapshot["progress_snapshot_id"],"host_snapshot_id":snapshot.get("host_snapshot_id"),"metrics":report.metrics,"breakdown":report.breakdown,"top_price_variances":report.price_variances,"top_quantity_variances":report.quantity_variances,"warnings":report.warnings,"calculation_status":report.calculation_status,"incomplete_metric_keys":report.incomplete_metric_keys,"missing_price_count":report.missing_price_count,"missing_estimate_line_count":report.missing_estimate_line_count,"excluded_estimate_line_count":report.excluded_estimate_line_count,"excluded_estimate_line_ids":report.excluded_estimate_line_ids,"progress_quality":report.progress_quality,"computed_line_count":report.computed_line_count,"total_line_count":report.total_line_count}
 
-    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","host_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","missing_estimate_line_count","excluded_estimate_line_count","progress_quality")
+    OVERVIEW_FIELDS=("reporting_date","progress_snapshot_id","host_snapshot_id","metrics","breakdown","top_price_variances","top_quantity_variances","warnings","calculation_status","incomplete_metric_keys","missing_price_count","missing_estimate_line_count","excluded_estimate_line_count","progress_quality","computed_line_count","total_line_count")
 
     async def overview(self,scope,reporting_date:date,progress_snapshot_id=None):
         """Project the live report down to the operational fields finance.view may read."""
@@ -410,7 +410,7 @@ class FinanceLiveReportService:
             "topPriceVariances":report.price_variances,"topQuantityVariances":report.quantity_variances,
             "priceVariances":report.all_price_variances,"quantityVariances":report.all_quantity_variances,
             "calculationStatus":report.calculation_status,"incompleteMetricKeys":report.incomplete_metric_keys,
-            "missingPriceCount":report.missing_price_count,"missingEstimateLineCount":report.missing_estimate_line_count,"excludedEstimateLineCount":report.excluded_estimate_line_count,
+            "missingPriceCount":report.missing_price_count,"missingEstimateLineCount":report.missing_estimate_line_count,"excludedEstimateLineCount":report.excluded_estimate_line_count,"computedLineCount":report.computed_line_count,"totalLineCount":report.total_line_count,
             "excludedEstimateLineIds":report.excluded_estimate_line_ids,"progressQuality":report.progress_quality,"warnings":report.warnings})
         await self.repo.issue(scope,value,payload,self.ids())
         return self._response(scope,value)
