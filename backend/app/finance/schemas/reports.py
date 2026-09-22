@@ -167,6 +167,11 @@ class LiveReportResponse(ApiModel):
     #: `incompleteMetricKeys` -- rather than the project's estimate.
     missing_estimate_line_count:int=0
     excluded_estimate_line_count:int=0
+    #: How many estimate lines the figures above actually rest on, and how many the
+    #: project has. The metrics are sums over the computable lines; without the pair a sum
+    #: over 2 of 715 lines reads exactly like a sum over all 715.
+    computed_line_count:int=0
+    total_line_count:int=0
     excluded_estimate_line_ids:list[UUID]=Field(default_factory=list,
         description="Reporting-only: names individual estimate lines and is absent from the finance.view projection.")
     progress_quality:ProgressQuality|None=Field(default=None,
@@ -203,6 +208,11 @@ class OperationalOverviewResponse(ApiModel):
     #: belongs in the operational projection beside missingPriceCount.
     missing_estimate_line_count:int=0
     excluded_estimate_line_count:int=0
+    #: How many estimate lines the figures above actually rest on, and how many the
+    #: project has. The metrics are sums over the computable lines; without the pair a sum
+    #: over 2 of 715 lines reads exactly like a sum over all 715.
+    computed_line_count:int=0
+    total_line_count:int=0
     progress_quality:ProgressQuality|None=None
 
 

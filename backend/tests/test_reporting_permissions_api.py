@@ -54,7 +54,7 @@ class Reports:
             # reference exists, because reading no longer creates one.
             "hostSnapshotId":9001,
             "metrics":{"initialEstimateIrr":"100","actualCostIrr":"50","currentExecutedValueIrr":"40","remainingPhysicalCostIrr":"60","moneyRequiredToContinueIrr":"50","forecastFinalCostIrr":"100","actualCostPerSquareMeterIrr":"5","forecastPerSquareMeterIrr":"10"},
-            "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":2,"missingEstimateLineCount":4,"excludedEstimateLineCount":3,
+            "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":2,"missingEstimateLineCount":4,"excludedEstimateLineCount":3,"computedLineCount":830,"totalLineCount":835,
             "progressQuality":{"complete":False,"manualOverrideCount":1,"taskFallbackCount":0,"missingCount":1,
                 "assignmentActualCount":2,"assignmentPercentFallbackCount":0,"mappedLineCount":3,
                 "unmappedLineCount":1,"generalCostLineCount":1,"workAsQuantityCount":1,
@@ -119,7 +119,10 @@ class ReportingPermissionApiTests(unittest.TestCase):
         self.assertEqual(("reporting_date","progress_snapshot_id","host_snapshot_id","metrics","breakdown","top_price_variances",
             "top_quantity_variances","warnings","calculation_status","incomplete_metric_keys",
             "missing_price_count","missing_estimate_line_count","excluded_estimate_line_count",
-            "progress_quality"),
+            # The coverage pair qualifies the operational metrics the way the counters
+            # above it do -- these figures are sums over computedLineCount lines, and a
+            # reader who cannot see that against totalLineCount cannot judge them.
+            "progress_quality","computed_line_count","total_line_count"),
             FinanceLiveReportService.OVERVIEW_FIELDS)
         self.assertEqual(set(OperationalOverviewResponse.model_fields),set(FinanceLiveReportService.OVERVIEW_FIELDS))
         # progressQuality is aggregate counts and joins the other counters that qualify these

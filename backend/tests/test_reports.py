@@ -120,7 +120,15 @@ class LiveReportDomainTests(unittest.TestCase):
                          {warning["code"] for warning in report.warnings})
         self.assertIsNone(report.metrics["actualCostPerSquareMeterIrr"])
         self.assertEqual(("incomplete",1),(report.calculation_status,report.missing_price_count))
-        self.assertIsNone(report.metrics["forecastFinalCostIrr"])
+        # The one line here resolves no price, so it is excluded and the forecast is a sum
+        # over nothing. That sum is PUBLISHED as zero rather than withheld -- and what
+        # stops it reading as "this project needs no money" is the pair beside it: zero
+        # lines computed out of one. incompleteMetricKeys still names the figure.
+        # 10 is the invoice already paid. Nothing can be forecast FORWARD -- the only line
+        # resolves no price -- but money already spent is not a forecast, it is a fact, and
+        # it stays. The coverage pair is what says the forward half is empty.
+        self.assertEqual(Decimal("10"),report.metrics["forecastFinalCostIrr"])
+        self.assertEqual((0,1),(report.computed_line_count,report.total_line_count))
         self.assertIn("forecastFinalCostIrr",report.incomplete_metric_keys)
         warning=next(item for item in report.warnings if item["code"]=="CURRENT_PRICE_MISSING")
         self.assertEqual((str(MATERIAL_LINE),str(MATERIAL),"mat",True),(warning["estimateLineId"],warning["resourceId"],warning["resourceCode"],warning["excludedFromCalculation"]))
@@ -314,8 +322,12 @@ class LiveReportDomainTests(unittest.TestCase):
         invoice={"estimate_line_id":None,"resource_id":MATERIAL,"quantity":"5","unit":"box","base_unit":"each","dimension":"count","final_line_amount_irr":"500","financial_effect_sign":1,"resource_type":"material","resource_code":"mat"}
         report=calculate_live_report([row],[invoice],[{"assignmentExternalId":"a-m","actualQuantity":"0","task":{}}],[],"10")
         self.assertEqual("incomplete",report.calculation_status)
-        self.assertIsNone(report.metrics["moneyRequiredToContinueIrr"])
-        self.assertIsNone(report.metrics["forecastFinalCostIrr"])
+        # A conversion nobody stated leaves the purchased quantity unknown, so the figures
+        # it feeds are flagged -- but they are now published with their coverage rather
+        # than withheld, and the warning below still names the resource to fix.
+        self.assertIn("moneyRequiredToContinueIrr",report.incomplete_metric_keys)
+        self.assertIn("forecastFinalCostIrr",report.incomplete_metric_keys)
+        self.assertEqual(1,report.total_line_count)
         warning=next(item for item in report.warnings if item["code"]=="UNIT_CONVERSION_MISSING")
         self.assertEqual((str(MATERIAL),"mat",True),(warning["resourceId"],warning["resourceCode"],warning["excludedFromCalculation"]))
         self.assertIn("forecastFinalCostIrr",warning["affectedMetricKeys"])
@@ -763,11 +775,24 @@ class ProgressStateTests(unittest.TestCase):
                          "forecastFinalCostIrr": Decimal("1000"),
                          "actualCostPerSquareMeterIrr": Decimal("0"),
                          "forecastPerSquareMeterIrr": Decimal("100")}
+        # Revised 2026-09-22. An unmeasured line is now REMOVED from the sums that rest on
+        # a measurement, instead of making those sums disappear for the whole project. So
+        # the two executed-dependent figures are sums over nothing and read zero, and
+        # computedLineCount 0 of 1 is what says they are empty rather than settled.
+        #
+        # The two that survive are the point of the change. This is a material line, and
+        # what a material line still needs is what has not been BOUGHT -- a fact the
+        # purchase ledger states whether or not anyone walked the site. So 1000 of material
+        # is still required and still forecast, and the purchased-quantity rule is
+        # untouched. remainingPhysicalCostIrr 0 beside moneyRequiredToContinueIrr 1000 is
+        # not a contradiction: nobody measured the work, and nobody bought the material.
         unknown = {"initialEstimateIrr": Decimal("1000"), "actualCostIrr": Decimal("0"),
-                   "currentExecutedValueIrr": None, "remainingPhysicalCostIrr": None,
-                   "moneyRequiredToContinueIrr": None, "forecastFinalCostIrr": None,
+                   "currentExecutedValueIrr": Decimal("0"),
+                   "remainingPhysicalCostIrr": Decimal("0"),
+                   "moneyRequiredToContinueIrr": Decimal("1000"),
+                   "forecastFinalCostIrr": Decimal("1000"),
                    "actualCostPerSquareMeterIrr": Decimal("0"),
-                   "forecastPerSquareMeterIrr": None}
+                   "forecastPerSquareMeterIrr": Decimal("100")}
         for label, line, assignments in (
                 ("empty assignment", self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}]),
                 ("broken reference", self._line("a-missing", activity="ACT-1"), []),
@@ -777,34 +802,41 @@ class ProgressStateTests(unittest.TestCase):
                 self.assertEqual(unknown, report.metrics)
                 self.assertEqual("incomplete", report.calculation_status)
                 self.assertIn("forecastFinalCostIrr", report.incomplete_metric_keys)
+                self.assertEqual((0, 1), (report.computed_line_count, report.total_line_count))
         zero = self._report(self._line("a-1"),
                             [{"assignmentExternalId": "a-1", "actualQuantity": "0", "task": {}}])
         self.assertEqual(measured_zero, zero.metrics)
         self.assertEqual("complete", zero.calculation_status)
+        # A measured zero is data, so its line COUNTS. This is the assertion that keeps the
+        # two zeroes apart: same metrics shape, opposite coverage.
+        self.assertEqual((1, 1), (zero.computed_line_count, zero.total_line_count))
         measured = self._report(self._line("a-1"),
                                 [{"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}}])
         self.assertEqual(Decimal("400"), measured.metrics["currentExecutedValueIrr"])
         self.assertEqual(Decimal("600"), measured.metrics["remainingPhysicalCostIrr"])
 
-    def test_an_absence_makes_the_dependent_metrics_unavailable_without_excluding_the_line(self):
-        """Decided 2026-09-05: unknown progress is reported as unknown, never as zero.
+    def test_an_absence_excludes_the_line_instead_of_scoring_it_at_zero(self):
+        """Unknown progress removes the line from the sums; it never counts as 0% done.
 
-        The line is NOT excluded -- excludedFromCalculation stays False and the line is
-        absent from excludedEstimateLineIds, because nothing about the estimate is wrong;
-        the measurement is what is missing. What changes is the claim the report makes: a
-        forecast summed over a term nobody measured is not a forecast, so the metrics that
-        rest on executed quantity are None and named in incompleteMetricKeys, and the
-        report calls itself incomplete. The earlier behaviour scored the line at zero and
-        presented 1000 as a number; that was the conservative option while the policy was
-        open, and the policy is now closed the other way.
+        Decided 2026-09-05 the other way: the line stayed in and the dependent metrics went
+        None for the whole project. That was honest but unusable -- one unmeasured line
+        among 835 blanked the forecast for all of them, and a reader with no number has no
+        way to reach the 834 that were fine.
+
+        Revised 2026-09-22. The line is EXCLUDED: it appears in excludedEstimateLineIds,
+        its warning says so, and the figures that rest on a measurement are summed without
+        it. What makes that safe is the pair of counters -- a sum over 0 of 1 lines is
+        visibly empty, where a bare 0 would read as settled. Both readings of the old
+        behaviour are gone: nothing is scored at zero, and nothing is withheld.
         """
         report = self._report(self._line("a-1"), [{"assignmentExternalId": "a-1", "task": {}}])
         warning = next(w for w in report.warnings if w["code"] == "PROGRESS_MISSING")
-        self.assertFalse(warning["excludedFromCalculation"])
-        self.assertEqual([], report.excluded_estimate_line_ids)
-        self.assertEqual(0, report.excluded_estimate_line_count)
-        self.assertIsNone(report.metrics["forecastFinalCostIrr"])
-        self.assertIsNone(report.metrics["currentExecutedValueIrr"])
+        self.assertTrue(warning["excludedFromCalculation"])
+        self.assertEqual([str(MATERIAL_LINE)], report.excluded_estimate_line_ids)
+        self.assertEqual(1, report.excluded_estimate_line_count)
+        self.assertEqual((0, 1), (report.computed_line_count, report.total_line_count))
+        # Published, not withheld -- and named as incomplete in the same breath.
+        self.assertEqual(Decimal("0"), report.metrics["currentExecutedValueIrr"])
         self.assertIn("forecastFinalCostIrr", report.incomplete_metric_keys)
         self.assertEqual("incomplete", report.calculation_status)
         # What can be stated without a measurement still is stated.
@@ -1035,3 +1067,75 @@ class BackwardCompatibilityTests(unittest.TestCase):
         variance = report.quantity_variances[0]
         self.assertEqual(Decimal("0"), variance["executedQuantity"])
         self.assertEqual("0", QuantityVariance(**variance).model_dump(by_alias=True)["executedQuantity"])
+
+
+class CoverageCountTests(unittest.TestCase):
+    """The scenario the change exists for: a few blind lines among many good ones.
+
+    Before, five unmeasured lines out of 835 blanked every forecast figure for the whole
+    project, and the 830 that were fine could not be reached at all. The fix is not to stop
+    caring: the five are EXCLUDED from the sums, counted, and named -- and the counters say
+    the figures rest on 830 of 835 lines rather than on all of them.
+    """
+
+    #: 835 lines, 10 units each at 100 IRR, so every computable line is worth 1000.
+    LINES = 835
+    BLIND = 5
+
+    def _rows(self):
+        rows, assignments = [], []
+        for index in range(self.LINES):
+            line_id = UUID(int=0x51000000 + index)
+            reference = "a-%d" % index
+            rows.append(estimate(line_id, MATERIAL, "material", "10", "10", "100", "100",
+                                 reference))
+            # The last BLIND lines name an assignment that reports nothing -- the exact
+            # shape of a real gap: the link is fine, the measurement is not there.
+            if index < self.LINES - self.BLIND:
+                assignments.append({"assignmentExternalId": reference,
+                                    "actualQuantity": "4", "task": {}})
+            else:
+                assignments.append({"assignmentExternalId": reference, "task": {}})
+        return rows, assignments
+
+    def test_the_blind_lines_are_excluded_and_the_rest_are_published(self):
+        rows, assignments = self._rows()
+        report = calculate_live_report(rows, [], assignments, [], None)
+
+        self.assertEqual(830, report.computed_line_count)
+        self.assertEqual(835, report.total_line_count)
+        self.assertEqual(self.BLIND, report.excluded_estimate_line_count)
+        self.assertEqual(self.BLIND, len(report.excluded_estimate_line_ids))
+
+        # Published. This is the whole point: five gaps no longer erase 830 good lines.
+        for key in ("currentExecutedValueIrr", "remainingPhysicalCostIrr",
+                    "moneyRequiredToContinueIrr", "forecastFinalCostIrr"):
+            with self.subTest(key):
+                self.assertIsNotNone(report.metrics[key])
+
+        # ...and still flagged, so nobody reads them as whole.
+        self.assertEqual("incomplete", report.calculation_status)
+        self.assertIn("forecastFinalCostIrr", report.incomplete_metric_keys)
+
+    def test_the_excluded_lines_contribute_nothing_to_the_totals(self):
+        """Exclusion means absent from the sum, not entered as zero.
+
+        The check is arithmetic rather than a flag: 830 lines executed 4 of 10 at 100 IRR
+        is exactly 332,000 executed and 498,000 remaining. Had the five blind lines been
+        scored at 0% they would have added 5,000 to the remaining cost -- so this number
+        fails if the old behaviour ever comes back, with the amount on screen.
+        """
+        rows, assignments = self._rows()
+        report = calculate_live_report(rows, [], assignments, [], None)
+        self.assertEqual(Decimal("332000"), report.metrics["currentExecutedValueIrr"])
+        self.assertEqual(Decimal("498000"), report.metrics["remainingPhysicalCostIrr"])
+
+    def test_a_project_with_no_gaps_reports_full_coverage(self):
+        """The control. Same shape, nothing missing -- the counters must agree."""
+        rows, assignments = self._rows()
+        assignments = [dict(item, actualQuantity="4") for item in assignments]
+        report = calculate_live_report(rows, [], assignments, [], None)
+        self.assertEqual((835, 835), (report.computed_line_count, report.total_line_count))
+        self.assertEqual(0, report.excluded_estimate_line_count)
+        self.assertEqual("complete", report.calculation_status)
+        self.assertEqual([], report.incomplete_metric_keys)
