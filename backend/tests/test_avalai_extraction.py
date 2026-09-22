@@ -305,3 +305,58 @@ class CompositionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProviderNamingTests(unittest.TestCase):
+    """What a draft says answered it must be the gateway that answered it.
+
+    `LLMInvoiceExtractionProvider.provider` defaults to "openai" because the wire format
+    is OpenAI's chat-completions API. The format is not the counterparty. With
+    FINANCE_AI_PROVIDER=avalai the request goes to api.avalai.ir, and a draft whose
+    `extractionSource` reads `openai` sends anyone auditing where a number came from to
+    the wrong service.
+    """
+
+    KEYS = ("FINANCE_AI_EXTRACTION_ENABLED", "FINANCE_AI_PROVIDER", "FINANCE_AI_API_KEY",
+            "AVALAI_API_KEY", "AVALAI_BASE_URL", "FINANCE_AI_BASE_URL")
+
+    def setUp(self):
+        import os
+        self._saved = {name: os.environ.get(name) for name in self.KEYS}
+        for name in self.KEYS:
+            os.environ.pop(name, None)
+
+    def tearDown(self):
+        import os
+        for name, value in self._saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    def _built(self, provider_name):
+        import os
+
+        from extraction.providers.llm_invoice import build_extraction_provider
+        os.environ["FINANCE_AI_EXTRACTION_ENABLED"] = "true"
+        os.environ["FINANCE_AI_PROVIDER"] = provider_name
+        os.environ["FINANCE_AI_API_KEY"] = "test-key-not-a-real-credential"
+        return build_extraction_provider()
+
+    def test_avalai_names_itself(self):
+        self.assertEqual("avalai", self._built("avalai").provider)
+
+    def test_openai_still_names_itself(self):
+        self.assertEqual("openai", self._built("openai").provider)
+
+    def test_the_name_reaches_the_candidate_the_draft_is_built_from(self):
+        built = self._built("avalai")
+        built._post = lambda url, payload, key, timeout: (
+            200, json.dumps({"choices": [{"message": {"content": json.dumps(
+                {"invoice": {}, "items": [], "confidence": 0.9, "warnings": []})}}]}).encode())
+        self.assertEqual("avalai", built.extract_invoice("فاکتور").provider)
+
+    def test_the_base_url_agrees_with_the_name(self):
+        """A name that did not match where the request went would be worse than none."""
+        self.assertIn("avalai", self._built("avalai")._base_url)
+        self.assertIn("openai", self._built("openai")._base_url)

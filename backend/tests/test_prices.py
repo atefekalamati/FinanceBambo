@@ -29,9 +29,21 @@ class PriceTests(unittest.IsolatedAsyncioTestCase):
   self.assertEqual(2,len(repo.rows)); self.assertEqual(Decimal("100"),repo.rows[0].unit_price_irr)
   self.assertEqual(second,await service.current(scope,RES,date(2026,2,1)))
   self.assertEqual((1,2),(first.version,second.version))
- def test_fractional_irr_and_blank_reason_rejected(self):
+ def test_fractional_irr_rejected(self):
   with self.assertRaises(ValueError): PriceCreate(scopeKind="project",unitPriceIrr="100.5",effectiveFrom="2026-01-01",reason="x")
-  with self.assertRaises(ValueError): PriceCreate(scopeKind="project",unitPriceIrr="100",effectiveFrom="2026-01-01",reason=" ")
+
+ def test_a_blank_reason_is_absent_rather_than_refused(self):
+  """0036 made `reason` optional, so a blank is normalised rather than rejected.
+
+  It WAS rejected while the column was NOT NULL, and that is exactly what taught clients
+  to send placeholder text to get past it. Absent and empty are different statements and
+  only one of them is true, so a blank becomes None and the history then says nobody
+  wrote a reason -- which is what happened. The database still refuses an empty string.
+  """
+  for blank in (" ", "", "\t"):
+   self.assertIsNone(PriceCreate(scopeKind="project",unitPriceIrr="100",effectiveFrom="2026-01-01",reason=blank).reason)
+  self.assertIsNone(PriceCreate(scopeKind="project",unitPriceIrr="100",effectiveFrom="2026-01-01").reason)
+  self.assertEqual("real",PriceCreate(scopeKind="project",unitPriceIrr="100",effectiveFrom="2026-01-01",reason=" real ").reason)
 
 
 class PricePeriodOverlapTests(unittest.IsolatedAsyncioTestCase):
