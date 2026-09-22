@@ -1,6 +1,7 @@
 import { datasetsFor } from "./report-catalog.js";
-import { defaultSnapshot } from "../../shared/progress/project-snapshot.js";
+import { defaultSnapshot, reportableSnapshots } from "../../shared/progress/project-snapshot.js";
 import { openingDateFor } from "../../shared/dates/reporting-periods.js";
+import { scheduleWindow, withScheduleEstimate } from "../../shared/reports/schedule-estimate.js";
 
 // Do not silently print a truncated or changing register as a complete report.
 export async function loadAllInvoices(adapter) {
@@ -58,20 +59,35 @@ async function readPeriodOverview(adapter, period) {
 export async function loadReportData({ adapters, selection, period, today }) {
   const wanted = new Set(datasetsFor(selection));
   let snapshot = null;
-  if (wanted.has("overview") || wanted.has("wbs")) {
+  let snapshots = [];
+  const requiresSnapshot = wanted.has("overview") || wanted.has("wbs");
+  if (requiresSnapshot || (wanted.has("schedule") && adapters.progress?.getSnapshots)) {
     // A printed report has to be the same figures the screen showed. It therefore asks
     // the shared question instead of re-sorting the list into an order of its own.
-    snapshot = defaultSnapshot(await adapters.progress.getSnapshots());
-    if (!snapshot) return null;
+    snapshots = await adapters.progress.getSnapshots();
+    snapshot = defaultSnapshot(snapshots);
+    if (!snapshot && requiresSnapshot) return null;
   }
   // A source snapshot fixes progress reality.  The live financial cutoff remains the
   // requested as-of day, otherwise an old schedule date hides later estimates/invoices.
   const reportingDate = today;
   const query = { reportingDate, progressSnapshotId: snapshot?.progressSnapshotId };
   const monthlyQuery = snapshot ? query : { reportingDate };
+  const loadMonthly = async () => {
+    if (!wanted.has("monthly")) return null;
+    const scheduleSnapshot = reportableSnapshots(snapshots).find((item) => item.sourceFileVersionId) ?? snapshot;
+    const feed = scheduleSnapshot && adapters.progress?.getFeed
+      ? await adapters.progress.getFeed(scheduleSnapshot.progressSnapshotId).catch(() => null)
+      : null;
+    const window = scheduleWindow(feed, reportingDate);
+    const trend = await adapters.reports.getMonthlyTrend(window
+      ? { reportingDate: window.anchorDate, monthCount: window.monthCount }
+      : monthlyQuery);
+    return withScheduleEstimate(trend, feed);
+  };
   const [overview, monthly, invoices, audit, prices, financialItems, wbs, periodOverview] = await Promise.all([
     wanted.has("overview") ? adapters.reports.getOverview(query) : null,
-    wanted.has("monthly") ? adapters.reports.getMonthlyTrend(monthlyQuery) : null,
+    loadMonthly(),
     wanted.has("invoices") ? loadAllInvoices(adapters.invoices) : null,
     wanted.has("audit") ? adapters.audit.getEvents({ occurredFrom: period?.from, occurredTo: period?.to, pageSize: 200 }) : null,
     wanted.has("prices") ? adapters.prices.getPrices() : null,

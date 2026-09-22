@@ -399,69 +399,6 @@ a.vgroup__name:focus-visible {
   background: color-mix(in srgb, var(--dash-sev-crit) 7%, transparent);
 }
 
-/* --- one phase, by kind of item ---------------------------------------- */
-
-.level-one-breakdown {
-  display: grid;
-  gap: var(--space-md);
-  padding: var(--space-lg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--app-card-navy);
-  box-shadow: var(--dash-shadow), var(--dash-inner);
-}
-
-.level-one-breakdown > h2 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-}
-
-.level-one-breakdown__list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: var(--space-md);
-}
-
-.level-one-breakdown__item {
-  display: grid;
-  gap: .35rem;
-}
-
-.level-one-breakdown__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: .5rem;
-}
-
-.level-one-breakdown__head h3 {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-}
-
-.level-one-breakdown__track {
-  position: relative;
-  block-size: .5rem;
-  border-radius: .3rem;
-  background: var(--dash-grid);
-}
-
-.level-one-breakdown__bar {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  inline-size: var(--bar-width, 0%);
-  min-inline-size: 2px;
-  border-radius: .3rem;
-  background: var(--dash-actual);
-}
-
-.level-one-breakdown__share {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
 /* On paper there is no scrollbar, so a scroll container is a crop.
 
    The 92px floor above is right for a screen: past it the viewport scrolls rather than

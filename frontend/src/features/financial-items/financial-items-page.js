@@ -795,7 +795,12 @@ function sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resou
   if (UNIT_TROUBLE.has(priced.status)) {
     cell.append(element("span", "cell-secondary", priced.statusLabel ?? ""));
     if (canEdit && onMapPrice) {
-      const fix = element("button", "table-action table-action--map-price", "تبدیل واحد");
+      /* The button says which of the two questions this row is actually stuck on.
+         «تبدیل واحد» on a row whose SHEET never stated a unit promises a crossing whose
+         near side is missing -- there is nothing to convert from yet, and the panel behind
+         it opens on a different question. */
+      const fix = element("button", "table-action table-action--map-price",
+        priced.status === "unknown_source_unit" ? "مشخص‌کردن واحد قیمت" : "تبدیل واحد");
       fix.type = "button";
       fix.dataset.action = "fix-unit";
       fix.addEventListener("click", () => onMapPrice(line, resource));
@@ -843,6 +848,29 @@ function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, r
     cell.append(element("span", "cell-secondary", fallback));
   }
   cell.append(manualPriceButton(line, isGeneralCost, { canEdit, onManualPrice, resource }));
+  return cell;
+}
+
+/**
+ * The activity row's current cost is the exact sum of its priced child rows.
+ * Missing children do not become zero: a visible subtotal is labelled with its coverage,
+ * and a group with no usable child price states that no total is available yet.
+ */
+export function groupDailyPriceCell(rows, priceStatuses) {
+  const amounts = (rows ?? []).map((line) => {
+    const value = priceStatuses.get(line.lineId)?.dailyItemCostIRR;
+    return /^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : null;
+  });
+  const known = amounts.filter((value) => value !== null);
+  if (!known.length) return element("span", "missing-value", "هنوز قیمت روز ندارد");
+
+  const cell = document.createDocumentFragment();
+  const total = known.reduce((sum, value) => sum + value, 0n).toString();
+  cell.append(element("strong", "", formatTomanFromIrr(total, { withCurrency: false })));
+  if (known.length !== amounts.length) {
+    cell.append(element("span", "cell-secondary",
+      `${formatDisplayNumber(String(known.length))} از ${formatDisplayNumber(String(amounts.length))} ردیف قیمت‌گذاری شده`));
+  }
   return cell;
 }
 
@@ -900,7 +928,9 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
     group: {
       key: (line) => canonicalWbs(line) + "|" + activityLabel(line),
       countLabel: "قلم",
-      showColumnLabelsWhenOpen: true,
+      /* The real header stays visible while the table passes the viewport, so repeating
+         its labels inside every opened parent would be duplicate visual noise. */
+      showColumnLabelsWhenOpen: false,
       cells: (rows) => {
         const first = rows[0];
         const name = document.createDocumentFragment();
@@ -911,6 +941,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
           // The schedule's figure belongs to the activity, so it is written on
           // the activity's own row rather than repeated down its items.
           scheduleCost: formatTomanFromIrr(scheduleCostOf(first), { withCurrency: false }),
+          currentPrice: groupDailyPriceCell(rows, priceStatuses),
         };
       },
     },
@@ -978,6 +1009,69 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
   return fragment;
 }
 
+/* The table's horizontal scroll region is necessarily an overflow container. That makes
+   CSS sticky resolve against the region instead of the page, so a thead inside it cannot
+   follow window scrolling. A visual copy of the real header is fixed only after the real
+   one leaves the viewport, width-matched to it, and removed again at the table's end. */
+export function installEstimateStickyHeader(root) {
+  if (typeof window === "undefined" || typeof requestAnimationFrame !== "function") return () => {};
+  const table = root.querySelector(".estimate-lines-table");
+  const scroll = table?.parentElement;
+  const head = table?.querySelector("thead");
+  if (!table || !scroll || !head || typeof table.cloneNode !== "function") return () => {};
+
+  const floating = element("div", "estimate-lines-sticky-header");
+  floating.hidden = true;
+  floating.setAttribute("aria-hidden", "true");
+  const copy = table.cloneNode(false);
+  copy.classList.add("estimate-lines-table--sticky-copy");
+  const copiedHead = head.cloneNode(true);
+  copy.append(copiedHead);
+  floating.append(copy);
+  root.append(floating);
+
+  let frame = 0;
+  const update = () => {
+    frame = 0;
+    if (!table.isConnected) return;
+    const headRect = head.getBoundingClientRect();
+    const tableRect = table.getBoundingClientRect();
+    const scrollRect = scroll.getBoundingClientRect();
+    const height = headRect.height;
+    const active = headRect.top < 0 && tableRect.bottom > height;
+    floating.hidden = !active;
+    if (!active) return;
+
+    floating.style.left = `${scrollRect.left}px`;
+    floating.style.width = `${scrollRect.width}px`;
+    copy.style.width = `${table.scrollWidth}px`;
+    [...head.querySelectorAll("th")].forEach((cell) => {
+      const clone = copiedHead.querySelector(`th[data-col="${cell.dataset.col}"]`);
+      if (!clone || cell.hidden) return;
+      const width = cell.getBoundingClientRect().width;
+      clone.style.width = `${width}px`;
+      clone.style.minWidth = `${width}px`;
+      clone.style.maxWidth = `${width}px`;
+    });
+    floating.scrollLeft = scroll.scrollLeft;
+  };
+  const requestUpdate = () => {
+    if (!frame) frame = requestAnimationFrame(update);
+  };
+  window.addEventListener("scroll", requestUpdate, { passive: true });
+  window.addEventListener("resize", requestUpdate);
+  scroll.addEventListener("scroll", requestUpdate, { passive: true });
+  requestUpdate();
+
+  return () => {
+    if (frame) cancelAnimationFrame(frame);
+    window.removeEventListener("scroll", requestUpdate);
+    window.removeEventListener("resize", requestUpdate);
+    scroll.removeEventListener("scroll", requestUpdate);
+    floating.remove();
+  };
+}
+
 /**
  * Items and the estimate, on both surfaces.
  *
@@ -987,8 +1081,9 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
  * administrator reading the report gets the read-only table too. One mode per
  * route is a thing you can reason about; one mode per account is not.
  */
-export function createFinancialItemsPage({ context, adapter, priceMappingAdapter = null, pricesAdapter = null, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
+export function createFinancialItemsPage({ context, adapter, priceMappingAdapter = null, pricesAdapter = null, materialPricesAdapter = null, surface = SURFACES.OPERATIONS, focusResourceId = "", focusEstimateLineId = "" }) {
   const root = element("div", "financial-items-page");
+  let disposeStickyHeader = () => {};
   const readOnly = surface === SURFACES.REPORT;
   /* Which market listing prices each line, and what that makes it cost today.
      Kept beside the workspace rather than inside it: the estimate is one module's data
@@ -1211,6 +1306,9 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
       onMapPrice: !readOnly && priceMappingAdapter ? (line, resource) => {
         const panel = createPriceMappingPanel({
           line, resource, adapter: priceMappingAdapter, canEdit, canManageSettings,
+          /* Whose endpoint records what a sheet listing's price is a price OF. A host that
+             did not wire the material-prices module simply does not offer that step. */
+          materialPricesAdapter,
           /* The panel STAYS OPEN after a material is saved. A line is priced from a list,
              and closing after the first entry would make adding the second a fresh trip
              through the table. The row behind it refreshes so the total stays honest. */
@@ -1240,7 +1338,9 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
   }
 
   function paint() {
+    disposeStickyHeader();
     root.replaceChildren(renderHeader(), renderPageState(state, { renderContent, renderEmpty, onRetry: load }));
+    queueMicrotask(() => { disposeStickyHeader = installEstimateStickyHeader(root); });
     /* Re-SHOWN, not merely re-appended: a dialog removed from the document leaves the top
        layer, and putting the node back gives a panel with no backdrop and no focus trap. */
     if (openPricePanel) {

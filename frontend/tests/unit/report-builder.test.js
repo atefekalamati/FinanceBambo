@@ -55,7 +55,7 @@ test("unavailable reports remain unselectable if declared", () => {
 });
 
 test("a selection is cleaned up before anything is built from it", () => {
-  assert.deepEqual(normalizeSelection(["breakdown", "nope", "breakdown", "overview"]), ["overview", "breakdown"]);
+  assert.deepEqual(normalizeSelection(["breakdown", "nope", "breakdown", "overview"]), ["overview"]);
   assert.deepEqual(normalizeSelection([]), []);
   assert.deepEqual(normalizeSelection(), []);
   // Catalogue order, not the order they were ticked: the document's chapters
@@ -71,13 +71,13 @@ test("only the datasets the chosen reports need are asked for", () => {
   assert.deepEqual(datasetsFor(["prices"]), ["prices"]);
   assert.deepEqual(datasetsFor(["invoices", "auditEvents"]).sort(), ["audit", "invoices"]);
   assert.deepEqual(datasetsFor([]), []);
-  assert.deepEqual(datasetsFor(["sCurve"]), ["monthly"]);
+  assert.deepEqual(datasetsFor(["sCurve"]), ["monthly", "schedule"]);
   assert.deepEqual(datasetsFor(["levelOne"]), ["wbs"]);
 });
 
-test("the six requested shortcuts are selectable without removing other reports", () => {
-  assert.deepEqual(featuredReports().map((report) => report.key), ["overview", "breakdown", "levelOne", "sCurve", "warnings", "invoices"]);
-  assert.equal(normalizeSelection(featuredReports().map((report) => report.key)).length, 6);
+test("the featured shortcuts are selectable without removing other reports", () => {
+  assert.deepEqual(featuredReports().map((report) => report.key), ["overview", "levelOne", "sCurve", "warnings", "invoices"]);
+  assert.equal(normalizeSelection(featuredReports().map((report) => report.key)).length, 5);
   assert.ok(findReport("monthly"));
   assert.ok(findReport("priceVariance"));
 });
@@ -87,7 +87,7 @@ test("the chosen range is only claimed when something in the document uses it", 
   // would say the whole thing covers a window it does not.
   assert.equal(selectionUsesPeriod(["invoices"]), true);
   assert.equal(selectionUsesPeriod(["auditEvents", "overview"]), true);
-  assert.equal(selectionUsesPeriod(["overview", "breakdown", "prices"]), false);
+  assert.equal(selectionUsesPeriod(["overview", "prices"]), false);
   assert.equal(selectionUsesPeriod([]), false);
 });
 

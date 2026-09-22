@@ -1469,9 +1469,11 @@ a.finance-variance-card__link:hover {
 
 /* The lane the columns scroll through. It carries the plot alone: the value axis
    is a sibling, pinned beside it, so a scrolled column never slides under the
-   numbers. `direction: ltr` is not a reading order — the drawing places its own
-   months right-to-left in coordinates of its own — it is what keeps scrollLeft 0
-   meaning the newest month, which is where the chart opens. */
+   numbers. Its width is set on each draw, from the numbers as they actually
+   render — a width in this file could only ever be a guess at them.
+   `direction: ltr` is not a reading order — the drawing places its months in
+   coordinates of its own — it is what keeps `scrollLeft: 0` meaning the
+   drawing's left edge, the fixed point the opening offset is measured from. */
 .combo-chart__scroll {
   position: relative;
   block-size: 100%;
@@ -1517,9 +1519,14 @@ a.finance-variance-card__link:hover {
   stroke-width: 1;
 }
 
+/* Tilted in the drawing, so each month keeps its name however narrow its band.
+   `direction` is set rather than inherited: `text-anchor: start` resolves against
+   the inline base direction, and a label that resolved LTR would be anchored by
+   its other edge and lean across its neighbour instead of away from it. */
 .combo-chart__category {
   fill: var(--color-text-muted);
   font-family: inherit;
+  direction: rtl;
 }
 
 /* The value axis, in HTML over the plot. Each number sits on its own gridline
@@ -3674,14 +3681,53 @@ a.breakdown-donut:focus-visible {
 }
 
 .invoices-entry__tags li {
-  padding: .1rem .38rem;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
-  background: rgb(120 145 205 / 6%);
+  --invoice-tag-color: var(--dash-actual);
+
+  padding: 0;
+  /* border: 1px solid color-mix(in srgb, var(--invoice-tag-color) 32%, transparent); */
+  border-radius: .3rem;
+  background: linear-gradient(
+    to left,
+    color-mix(in srgb, var(--invoice-tag-color) 28%, transparent),
+    color-mix(in srgb, var(--invoice-tag-color) 10%, transparent) 58%,
+    transparent
+  );
   color: var(--color-text-secondary);
   font-size: var(--font-size-2xs);
   font-weight: 600;
   white-space: nowrap;
+}
+
+.invoices-entry__tags li:nth-child(2) {
+  --invoice-tag-color: var(--dash-plan);
+}
+
+.invoices-entry__tags li:nth-child(3) {
+  --invoice-tag-color: var(--dash-sev-high);
+}
+
+.invoices-entry__tag-link {
+  display: block;
+  padding: .1rem .38rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.invoices-entry__tags li:hover,
+.invoices-entry__tags li:focus-within {
+  border-color: color-mix(in srgb, var(--invoice-tag-color) 58%, transparent);
+  background: linear-gradient(
+    to left,
+    color-mix(in srgb, var(--invoice-tag-color) 38%, transparent),
+    color-mix(in srgb, var(--invoice-tag-color) 14%, transparent) 58%,
+    transparent
+  );
+}
+
+.invoices-entry__tag-link:focus-visible {
+  outline: 2px solid var(--invoice-tag-color);
+  outline-offset: .18rem;
+  border-radius: var(--radius-pill);
 }
 
 .invoices-entry__action {

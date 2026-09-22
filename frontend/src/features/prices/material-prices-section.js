@@ -1,7 +1,8 @@
 import { element } from "../../shared/dom/elements.js";
 import { createDataTable, createTablePagination } from "../../shared/components/data-table.js";
-import { formatBusinessDate, formatDisplayNumber, formatUnitLabel } from "../../shared/formatters/display.js";
+import { formatBusinessDate, formatDisplayNumber, formatJalaliBusinessDate, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
+import { createPriceTrend } from "../../shared/components/price-trend.js";
 
 /* «قیمت روز بازار» — the market prices imported from the material sheet.
  *
@@ -111,6 +112,17 @@ const MAINTENANCE_ONLY_COLUMNS = Object.freeze(new Set(["source", "productId", "
    table of prices. The key is what everything else matches on, so only the label moves. */
 const COLUMN_LABEL_OVERRIDES = Object.freeze({ workflowDate: "آخرین آپدیت" });
 
+/* Trend is a property of every listing, not a worksheet column. It is added at the
+   presentation boundary so a database capability never masquerades as source-sheet data. */
+function withTrend(columns) {
+  if (columns.some((column) => column.key === "trend")) return columns;
+  const trend = { key: "trend", label: "روند", kind: "computed" };
+  const priceIndex = columns.findIndex((column) => column.key === "price");
+  if (priceIndex < 0) return [...columns, trend];
+  const at = priceIndex + 1;
+  return [...columns.slice(0, at), trend, ...columns.slice(at)];
+}
+
 /**
  * The columns as this surface presents them.
  *
@@ -119,12 +131,36 @@ const COLUMN_LABEL_OVERRIDES = Object.freeze({ workflowDate: "آخرین آپد�
  * them from the all-categories view and leave them in every category's own.
  */
 export function presentedColumns(columns, { readOnly = false } = {}) {
-  const shown = withOrigin(columns, { readOnly })
+  const shown = withTrend(withOrigin(columns, { readOnly }))
     .filter((column) => !(readOnly && MAINTENANCE_ONLY_COLUMNS.has(column.key)))
     .map((column) => (COLUMN_LABEL_OVERRIDES[column.key]
       ? { ...column, label: COLUMN_LABEL_OVERRIDES[column.key] }
       : column));
   return shown;
+}
+
+/** Adapt newest-first observations to the shared sparkline's oldest-first contract. */
+export function materialPriceTrend(row, history = []) {
+  const points = (history ?? [])
+    .filter((observation) => (!observation?.validationStatus
+      || observation.validationStatus === "valid")
+      && /^\d+$/.test(String(observation?.priceIRR ?? "")))
+    .slice(0, 5)
+    .reverse()
+    .map((observation) => ({
+      effectiveFrom: observation.workflowDate ?? observation.observedAt ?? observation.fetchedAt,
+      unitPriceIrr: String(observation.priceIRR),
+    }));
+  const previous = points.at(-2)?.unitPriceIrr;
+  const current = points.at(-1)?.unitPriceIrr;
+  const direction = previous === undefined || current === undefined
+    ? "none"
+    : BigInt(current) > BigInt(previous) ? "up"
+      : BigInt(current) < BigInt(previous) ? "down" : "flat";
+  return {
+    resource: { resourceId: row.providerItemId },
+    trend: { trendDirection: direction, trendPoints: points },
+  };
 }
 
 /* «منشأ» is not a worksheet column, so no category declares it.
@@ -194,7 +230,10 @@ export function originLabel(row) {
 
 /** The date a reader recognises: the sheet's own Jalali text when it stated one. */
 export function sheetDateLabel(row) {
-  if (row.workflowDateJalali) return row.workflowDateJalali;
+  if (row.workflowDateJalali) {
+    const formatted = formatJalaliBusinessDate(row.workflowDateJalali);
+    return formatted === "—" ? row.workflowDateJalali : formatted;
+  }
   if (row.workflowDate) return formatBusinessDate(row.workflowDate);
   /* The cell was there and could not be read. Saying so is more useful than a blank,
      and far more useful than substituting today. */
@@ -247,9 +286,14 @@ export function statusText(row) {
 /* One cell per column, keyed the way the shared table wants them. The product cell is a
    fragment rather than a string: the status badge and the unit note hang under the name,
    which is where a reader judging a price looks, and neither is a column of the sheet. */
-function cellsFor(row, columns, categoryLabels) {
+function cellsFor(row, columns, categoryLabels, priceHistories) {
   const built = {};
   columns.forEach((column) => {
+    if (column.key === "trend") {
+      built[column.key] = createPriceTrend(
+        materialPriceTrend(row, priceHistories.get(row.providerItemId) ?? []), []);
+      return;
+    }
     const value = cellValue(column, row, categoryLabels);
     if (column.key !== "product") { built[column.key] = value; return; }
     const cell = document.createDocumentFragment();
@@ -300,7 +344,8 @@ function rowNotes(row) {
  */
 export function renderMaterialPrices(rows, { categories = [], selectedCategory = null,
                                              onSelectCategory = null, paging = null,
-                                             readOnly = false } = {}) {
+                                             readOnly = false,
+                                             priceHistories = new Map() } = {}) {
   const section = element("section", "prices-section material-prices");
   const heading = element("header", "prices-section__header");
   heading.append(element("h2", "", "قیمت روز بازار (برگه مصالح)"));
@@ -311,24 +356,49 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
 
   if (categories.length && onSelectCategory) {
     const filter = element("div", "material-prices__filters");
-    const all = element("button", "app-chip" + (selectedCategory ? "" : " app-chip--active"), "همه");
-    all.type = "button";
-    all.addEventListener("click", () => onSelectCategory(null));
-    filter.append(all);
-    categories.forEach((category) => {
+    const fixedCategories = [
+      { category: "brick", label: "آجر" },
+      { category: "rebar", label: "میلگرد" },
+      { category: "ibeam", label: "تیرآهن" },
+      { category: "channel", label: "ناودانی" },
+      { category: "pipe", label: "لوله" },
+    ];
+    const byCode = new Map(categories.map((category) => [category.category, category]));
+    const makeChip = (category, container = filter, dropdown = null) => {
       const active = category.category === selectedCategory;
-      /* The Persian name the Backend publishes, not the raw importer key. These tabs read
-         «angle (12)» and «pipe_fitting (0)» to a Finance user who has no reason to know
-         what the importer calls its worksheets. The code stays on the element, where a
-         test and anyone inspecting the page can still find it. */
+      const count = category.activeCount == null ? "" : ` (${category.activeCount})`;
       const chip = element("button", "app-chip" + (active ? " app-chip--active" : ""),
-        `${category.label ?? category.category} (${category.activeCount})`);
+        `${category.label ?? category.category}${count}`);
       chip.type = "button";
       chip.dataset.category = category.category;
       chip.setAttribute("aria-pressed", String(active));
-      chip.addEventListener("click", () => onSelectCategory(category.category));
-      filter.append(chip);
-    });
+      chip.addEventListener("click", () => {
+        if (dropdown) dropdown.open = false;
+        onSelectCategory(category.category);
+      });
+      container.append(chip);
+    };
+
+    const all = element("button", "app-chip" + (selectedCategory ? "" : " app-chip--active"), "همه");
+    all.type = "button";
+    all.setAttribute("aria-pressed", String(!selectedCategory));
+    all.addEventListener("click", () => onSelectCategory(null));
+    filter.append(all);
+    fixedCategories.forEach((fixed) => makeChip({ ...byCode.get(fixed.category), ...fixed }));
+
+    const fixedCodes = new Set(fixedCategories.map(({ category }) => category));
+    const overflowCategories = categories.filter(({ category }) => !fixedCodes.has(category));
+    if (overflowCategories.length) {
+      const dropdown = element("details", "material-prices__more");
+      const overflowActive = overflowCategories.some(({ category }) => category === selectedCategory);
+      const summary = element("summary", "app-chip material-prices__more-trigger"
+        + (overflowActive ? " app-chip--active" : ""), "…");
+      summary.setAttribute("aria-label", "سایر دسته‌بندی‌ها");
+      const menu = element("div", "material-prices__more-menu");
+      overflowCategories.forEach((category) => makeChip(category, menu, dropdown));
+      dropdown.append(summary, menu);
+      filter.append(dropdown);
+    }
     section.append(filter);
   }
 
@@ -356,7 +426,7 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
     className: "material-prices__table",
     columns,
     rows,
-    cells: (row) => cellsFor(row, columns, categoryLabels),
+    cells: (row) => cellsFor(row, columns, categoryLabels, priceHistories),
     rowAttributes: () => ({ className: "material-price__row" }),
     emptyMessage: "هیچ محصولی در این دسته نیست.",
   });

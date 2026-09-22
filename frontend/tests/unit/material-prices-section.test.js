@@ -5,7 +5,7 @@ import { installDom } from "../helpers/dom.js";
 
 installDom();
 
-const { alignmentCell, priceCell, renderMaterialPrices, sheetDateLabel, statusText,
+const { alignmentCell, materialPriceTrend, priceCell, renderMaterialPrices, sheetDateLabel, statusText,
         unitCell } =
   await import("../../src/features/prices/material-prices-section.js");
 
@@ -52,6 +52,27 @@ function row(changes = {}) {
   };
 }
 
+test("material price trend uses the five newest observations in chronological order", () => {
+  const history = [6, 5, 4, 3, 2, 1].map((price) => ({
+    priceIRR: String(price * 1000),
+    workflowDate: `2026-09-${String(price).padStart(2, "0")}`,
+  }));
+  const item = materialPriceTrend(row(), history);
+  assert.deepEqual(item.trend.trendPoints.map((point) => point.unitPriceIrr),
+    ["2000", "3000", "4000", "5000", "6000"]);
+  assert.equal(item.trend.trendDirection, "up");
+});
+
+test("material price trend ignores unusable observations and detects a decrease", () => {
+  const item = materialPriceTrend(row(), [
+    { priceIRR: "900", workflowDate: "2026-09-03" },
+    { priceIRR: null, workflowDate: "2026-09-02" },
+    { priceIRR: "1100", workflowDate: "2026-09-01" },
+  ]);
+  assert.deepEqual(item.trend.trendPoints.map((point) => point.unitPriceIrr), ["1100", "900"]);
+  assert.equal(item.trend.trendDirection, "down");
+});
+
 test("a missing price is an em dash, and never a zero", () => {
   for (const missing of [null, undefined]) {
     assert.equal(priceCell(row({ currentPriceIRR: missing })), "—");
@@ -96,7 +117,8 @@ test("the backend's reason is shown beside the label, not instead of it", () => 
 });
 
 test("the sheet's own Jalali date is what the reader sees", () => {
-  assert.equal(sheetDateLabel(row()), "1405/06/22");
+  assert.equal(sheetDateLabel(row()), "۲۲ شهریور ۱۴۰۵");
+  assert.equal(sheetDateLabel(row({ workflowDateJalali: "1405/06/23" })), "۲۳ شهریور ۱۴۰۵");
 });
 
 test("a date that could not be read says so rather than showing today", () => {
@@ -178,7 +200,7 @@ test("a row whose price is unusable still appears, with its reason", () => {
      typed it, and it is withheld from the report surface. See
      material-prices-category-columns.test.js. */
   const cells = [...section.querySelectorAll("tbody tr td")].map((td) => td.textContent);
-  assert.equal(cells.length, 7);
+  assert.equal(cells.length, 8);
   assert.ok(cells.some((text) => text.includes("—")), "the price cell is an em dash");
   assert.match(section.textContent, /قیمت خوانا نیست/);
   assert.match(section.textContent, /price is blank/);
@@ -202,17 +224,37 @@ test("a converted row carries the explanation of what was applied", () => {
   assert.match(tr.title, /dividing/);
 });
 
-test("category filters come from the data and never from a hardcoded list", () => {
+test("five primary categories stay visible and every other category lives in the more menu", () => {
   const chosen = [];
   const section = renderMaterialPrices([row()], {
-    categories: [{ category: "rebar", activeCount: 590, itemCount: 590, inactiveCount: 0 }],
+    categories: [
+      { category: "rebar", activeCount: 590, itemCount: 590, inactiveCount: 0 },
+      { category: "angle", label: "نبشی", activeCount: 12, itemCount: 12, inactiveCount: 0 },
+    ],
     selectedCategory: "rebar",
     onSelectCategory: (value) => chosen.push(value),
   });
-  const chips = [...section.querySelectorAll(".app-chip")].map((chip) => chip.textContent);
-  assert.deepEqual(chips, ["همه", "rebar (590)"]);
-  section.querySelectorAll(".app-chip")[0].click();
-  assert.deepEqual(chosen, [null]);
+  const filter = section.querySelector(".material-prices__filters");
+  assert.deepEqual(filter.children.slice(0, 6).map((chip) => chip.textContent),
+    ["همه", "آجر", "میلگرد (590)", "تیرآهن", "ناودانی", "لوله"]);
+
+  const more = filter.children[6];
+  assert.equal(more.tagName, "DETAILS");
+  assert.equal(more.children[0].textContent, "…");
+  more.open = true;
+  /* The test DOM deliberately supports only selectors the product generally uses; use the
+     menu's own button here rather than teaching it a one-off data selector. */
+  more.querySelector("button").click();
+  assert.equal(more.open, false);
+  assert.deepEqual(chosen, ["angle"]);
+});
+
+test("the prices page loads market prices on entry instead of waiting for a display button", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(
+    new URL("../../src/features/prices/prices-page.js", import.meta.url), "utf8");
+  assert.match(source, /state = createRequestState\(REQUEST_STATUS\.SUCCESS, workspace\);\s*await loadMarketPrices\(\);/);
+  assert.doesNotMatch(source, /نمایش قیمت روز بازار/);
 });
 
 test("the module reaches no external address", async () => {

@@ -187,9 +187,8 @@ test("the service's own refusal is shown, not a guess about which call failed", 
 });
 
 test("opening with no chips in hand fetches them, rather than showing an empty menu", async () => {
-  /* The page loads categories inside `loadMarketPrices`, which does not run until somebody
-     presses «نمایش قیمت روز بازار». A person who opens this dialog first was shown an empty
-     menu, and the only way forward was to invent a category that already existed. */
+  /* The dialog remains self-sufficient when a host opens it before the page's automatic
+     market-price request has finished. An empty menu must never force a duplicate category. */
   const adapter = recordingAdapter();
   let asked = 0;
   adapter.listCategories = async () => { asked += 1; return CATEGORIES; };

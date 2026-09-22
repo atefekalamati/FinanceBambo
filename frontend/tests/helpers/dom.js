@@ -236,6 +236,11 @@ export function installDom() {
     createElement(tag) {
       return new FakeNode(tag);
     },
+    createTextNode(value) {
+      const node = new FakeNode("#text");
+      node.textContent = value;
+      return node;
+    },
     createDocumentFragment() {
       return new FakeDocumentFragment();
     },

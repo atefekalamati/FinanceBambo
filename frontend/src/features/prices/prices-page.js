@@ -625,6 +625,7 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
          now the market sheet, which reports its own states -- not configured, not loaded
          yet, no rows in this category -- and none of those is the page being blank. */
       state = createRequestState(REQUEST_STATUS.SUCCESS, workspace);
+      await loadMarketPrices();
     } catch (error) {
       state = createRequestState(REQUEST_STATUS.ERROR, null, error);
     }
@@ -771,20 +772,15 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
       market.append(marketTitle,
         element("div", "inline-notice", "در حال دریافت قیمت روز بازار…"));
     } else if (marketPrices === null) {
-      market.append(marketTitle, element("p", "prices-section__hint",
-        "قیمت‌های وارد‌شده از برگه مصالح، جدا از قیمت رسمی مالی پروژه."));
-      const ask = element("div", "prices-history-ask");
-      const show = element("button", "button button--primary", "نمایش قیمت روز بازار");
-      show.type = "button";
-      show.addEventListener("click", loadMarketPrices);
-      ask.append(show);
-      market.append(ask);
+      market.append(marketTitle,
+        element("div", "inline-notice", "در حال آماده‌سازی قیمت‌های روز بازار…"));
     } else {
       fragment.append(toolbar, ...(readOnly ? [] : [history]),
                       renderMaterialPrices(marketPrices.items, {
         categories: marketCategories,
         selectedCategory: marketCategory,
         readOnly,
+        priceHistories: marketPriceHistories,
         /* Back to the first page whenever the category changes. Staying on page four of
            «لوله» while switching to «نبشی» -- which has twelve products -- would ask the
            server for a page that does not exist and show an empty table for a category
@@ -814,13 +810,41 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
   let marketCategory = null;
   let marketLoading = false;
   let marketError = null;
+  let marketPriceHistories = new Map();
+  let marketHistoryRequest = 0;
   /* SERVER paging, not a slice of something already fetched. The sheet holds 992 pipes in
      one category alone; asking for all of them to show fifty is the request this avoids,
      and it is the whole reason the page state carries a page number at all. */
   let marketPaging = { page: 1, pageSize: 50 };
 
+  async function loadMarketPriceHistories(rows, requestId) {
+    const pending = [...(rows ?? [])];
+    const histories = new Map();
+    /* A full page may contain fifty listings. Six workers avoid a fifty-request burst,
+       while each request transfers only the five points the sparkline can display. */
+    const worker = async () => {
+      while (pending.length) {
+        const row = pending.shift();
+        if (!row?.providerItemId) continue;
+        try {
+          const result = await materialPricesAdapter.listPriceHistory(
+            row.providerItemId, { page: 1, pageSize: 5 });
+          histories.set(row.providerItemId, result.items ?? []);
+        } catch {
+          /* A secondary visualization failing must not hide a valid current price. */
+          histories.set(row.providerItemId, []);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, pending.length) }, worker));
+    if (requestId !== marketHistoryRequest) return;
+    marketPriceHistories = histories;
+    paint();
+  }
+
   async function loadMarketPrices() {
     if (!materialPricesAdapter) return;
+    const requestId = ++marketHistoryRequest;
     marketLoading = true;
     marketError = null;
     paint();
@@ -837,6 +861,9 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
       ]);
       marketPrices = page;
       marketCategories = categories;
+      marketPriceHistories = new Map();
+      /* Render current prices first; their small trends arrive independently. */
+      void loadMarketPriceHistories(page.items, requestId);
     } catch (error) {
       marketError = error;
       /* The rows already on screen are kept. A failed refresh must not empty a table that

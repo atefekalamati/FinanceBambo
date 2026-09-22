@@ -1,5 +1,5 @@
 import { element } from "../../shared/dom/elements.js";
-import { formatDisplayNumber } from "../../shared/formatters/display.js";
+import { formatDisplayNumber, toPersianCode } from "../../shared/formatters/display.js";
 import { compactMoneyScale, formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { PERSIAN_MONTHS } from "../../shared/reports/monthly-trend.js";
 import { reportWarningText } from "../../shared/warnings/finance-warning-labels.js";
@@ -29,7 +29,7 @@ export function buildCumulativeSeries(months = []) {
       planned = planned !== null && baseline !== null ? planned + baseline : null;
       return {
         ...month,
-        label: `${PERSIAN_MONTHS[month.persianMonth - 1]?.label ?? "ماه نامشخص"} ${count(month.persianYear)}`,
+        label: `${PERSIAN_MONTHS[month.persianMonth - 1]?.label ?? "ماه نامشخص"} ${toPersianCode(month.persianYear)}`,
         actualCumulativeIrr: actual === null ? null : String(actual),
         plannedCumulativeIrr: planned === null ? null : String(planned),
       };
@@ -136,11 +136,6 @@ export function renderLevelOne(data) {
       caption: "تعداد فعالیت‌ها و ردیف‌های هر مرحله",
       columns: [{ label: "مرحله" }, { label: "فعالیت", numeric: true }, { label: "زیرمرحله", numeric: true }, { label: "ردیف برآورد", numeric: true }],
       rows: rows.map((row) => [label(row), count(row.activityCount), count(row.childCount), count(row.estimateLineCount)]),
-    }),
-    reportTable({
-      caption: "تفکیک هزینه واقعی هر مرحله به نوع قلم",
-      columns: ["مرحله", "مصالح", "نیروی انسانی", "تجهیزات", "هزینه عمومی"].map((title, i) => ({ label: title, numeric: i > 0 })),
-      rows: rows.map((row) => [label(row), ...["material", "labor", "equipment", "general_cost"].map((type) => money(row.breakdown?.[type]))]),
     }),
     ...allocationNotes(wbs),
     ...(wbs.warnings ?? []).map((warning) => note(reportWarningText(warning))),
