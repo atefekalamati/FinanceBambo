@@ -402,6 +402,55 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
         PsycopgFinanceAuditRepository(connection))
 
 
+async def publish_readiness(application, connection):
+    """Run the production composition over what `wire` just built.
+
+    WHY THIS WAS MISSING AND WHY IT MATTERS
+
+    `/healthz/finance` reads `app.state.finance_availability`, which only
+    `configure_finance` sets. Nothing outside the tests ever called it, so the development
+    host answered 503 FINANCE_NOT_CONFIGURED for its entire life -- while serving every
+    Finance endpoint perfectly. The readiness answer was not wrong, it was UNASKED: the
+    host set each service on `app.state` by hand and never performed the composition step
+    that checks the graph is complete and says so.
+
+    That is worth fixing rather than bypassing, because the check earns its keep. It is the
+    same function the real host calls, so a component this file forgets to build is
+    reported here by name instead of surfacing later as an AttributeError on one endpoint.
+    `dedicated=False`: a development host that cannot reach its database should still start
+    and say why, rather than refusing to boot.
+
+    The probe is the module's own, pointed at the revision the code expects. A database at
+    a different revision is a real reason to report not-ready.
+    """
+    from app.finance.integration import (PsycopgFinanceReadinessProbe, REQUIRED_COMPONENTS,
+                                         OPTIONAL_COMPONENTS, configure_finance)
+
+    components = {name: getattr(application.state, name, None)
+                  for name in REQUIRED_COMPONENTS + OPTIONAL_COMPONENTS}
+    return await configure_finance(
+        application, components,
+        PsycopgFinanceReadinessProbe(connection, expected_revision()),
+        dedicated=False,
+        # Named, never the underlying error: the reason is operator-only and the code is
+        # what a reader needs.
+        operator_notice=lambda code, detail: print(
+            "  finance readiness: %s (%s)" % (code, detail)))
+
+
+def expected_revision():
+    """The Alembic revision this code was written against.
+
+    Read from the migration directory rather than pinned in a constant, so adding a
+    revision does not leave the readiness probe asserting yesterday's schema. The highest
+    numbered file IS the head in this project: the chain is linear and
+    `test_migrations` holds it that way.
+    """
+    versions = Path(__file__).resolve().parent.parent / "alembic" / "versions"
+    revisions = sorted(path.stem.split("_", 1)[0] for path in versions.glob("[0-9]*.py"))
+    return revisions[-1] if revisions else ""
+
+
 def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -461,6 +510,12 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
             print("core integration ENABLED: membership, roles and permissions come from Core")
 
         wire(application, connection, storage_root, core)
+
+        # The composition step the production host performs, run over what `wire` just
+        # built. Without it `/healthz/finance` answers NOT_CONFIGURED forever, because
+        # nothing else sets `finance_availability` -- see `publish_readiness`.
+        readiness = await publish_readiness(application, connection)
+        print("  finance readiness: %s" % readiness.code)
 
         # ------------------------------------------------------------------ MPP import
         # Core-host duty, so it lives here and not in app/finance. The service opens its

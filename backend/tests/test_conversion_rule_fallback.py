@@ -42,9 +42,12 @@ from app.finance.services.item_price_components import ItemPriceComponentService
 from test_item_price_component_service import (ACTOR, COMPONENT, LINE, REBAR, Repo,
                                                component)
 
+#: `factor_value` only: that is the column the rules table has, so it is the only key a
+#: row from the repository arrives with. Carrying `factor` beside it here is what let a
+#: domain reading the wrong key pass this file while pricing nothing against real data.
 PROJECT_RULE = {
     "id": UUID(int=90), "scope_type": "project", "project_id": "p1",
-    "from_unit": "kg", "to_unit": "branch", "factor": Decimal("22"),
+    "from_unit": "kg", "to_unit": "branch",
     "factor_value": Decimal("22"), "conversion_method": "factor",
     "status": "approved", "version": 1, "effective_from": date(2026, 1, 1),
     "effective_to": None, "provider_id": None, "provider_item_id": None,
@@ -175,18 +178,28 @@ class QueryCountTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PrecedenceTests(unittest.TestCase):
-    """The shared chooser both pricing paths call."""
+    """The shared chooser both pricing paths call.
+
+    The two arguments are rows of two different tables and are keyed accordingly: a
+    listing measurement comes from `provider_item_unit_factors`, whose column is `factor`,
+    and a rule from `finance_unit_conversion_rules`, whose column is `factor_value`.
+    """
 
     def test_the_listing_measurement_comes_first(self):
         self.assertEqual((22, "provider_item"),
-                         choose_conversion({"factor": 22}, {"factor": 25}))
+                         choose_conversion({"factor": 22}, {"factor_value": 25}))
 
     def test_the_rule_fills_the_gap_behind_it(self):
-        self.assertEqual((25, "conversion_rule"), choose_conversion(None, {"factor": 25}))
+        self.assertEqual((25, "conversion_rule"),
+                         choose_conversion(None, {"factor_value": 25}))
 
     def test_a_rule_with_no_usable_factor_is_absent_not_zero(self):
-        self.assertEqual((None, None), choose_conversion(None, {"factor": None}))
-        self.assertEqual((None, None), choose_conversion(None, {"factor": 0}))
+        self.assertEqual((None, None), choose_conversion(None, {"factor_value": None}))
+        self.assertEqual((None, None), choose_conversion(None, {"factor_value": 0}))
+
+    def test_a_rule_keyed_the_listing_way_does_not_price(self):
+        """The bug, stated as a test: `factor` on a rule is not a factor."""
+        self.assertEqual((None, None), choose_conversion(None, {"factor": 25}))
 
     def test_nothing_at_all(self):
         self.assertEqual((None, None), choose_conversion(None, None))

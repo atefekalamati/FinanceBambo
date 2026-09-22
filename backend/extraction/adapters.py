@@ -123,6 +123,11 @@ def _as_contract(result):
         return {"fields": fields}
     structured = _structured_fields(text, confidence)
     fields.extend(structured)
+    # The page's own geometry, read only where the text-only parser found no table. It is
+    # a SECOND reading of the same page, not a replacement: everything above still stands,
+    # and this adds `tableRows` where a table could be reconstructed from positions that
+    # the flattened text no longer contains.
+    fields.extend(_layout_fields(result.get("lines"), {f["key"] for f in fields}))
     fields.extend(_ai_fields(text, {field["key"] for field in fields},
                              transcript=result.get("transcript"),
                              metadata=result.get("metadata"),
@@ -272,6 +277,182 @@ def _candidate_fields(candidate):
 def _decimal_text(value):
     """A parsed number as an exact string. Never a float: these are money."""
     return None if value is None else format(value, "f")
+
+
+#: The keys the layout reading contributes. Named so the set is visible in one place and
+#: so `_first_wins` can be reasoned about: none of these collide with a parser key.
+LAYOUT_KEYS = ("tableRows", "tablePageKind", "tableConfidence", "tableColumnSource")
+
+
+def _layout_fields(raw_lines, already_emitted):
+    """Line items rebuilt from where the words sit, when the text alone could not.
+
+    WHY THIS RUNS ONLY AS A FALLBACK
+
+    `invoice_parser` reads a table out of the text when the recogniser emitted it in
+    reading order, which is the common case and is well tested. Geometry is the answer for
+    the pages where that fails -- a detector that returns cells column-first leaves text
+    with no table left in it, and no amount of parsing recovers an order that is gone.
+
+    Running it second means no page that works today changes: `items` from the parser is
+    already in `already_emitted`, and this never replaces it.
+
+    WHAT IT REFUSES TO DO
+
+    A reconstruction whose cells are mostly unreadable is kept as a diagnosis and NOT
+    offered as values. On the audited three-page invoice the recogniser returned `'ld'bdd`
+    and `xl` where product names and amounts belong; turning those into line items would
+    put invented-looking data on a financial draft, which is worse than reporting that the
+    table could not be read. The structural rule in `layout._is_line_item` and the
+    confidence band both have to pass.
+    """
+    if not raw_lines:
+        return []
+    try:
+        from extraction import layout
+    except ImportError:                                        # noqa: BLE001
+        return []
+    try:
+        table = layout.reconstruct(raw_lines)
+    except Exception:                                          # noqa: BLE001
+        LOG.exception("layout reconstruction failed; the rest of the extraction stands")
+        return []
+    if table is None:
+        # A page that yielded no items still says what it was and why. "This is a summary
+        # page" and "this table could not be read" are different answers, and a reviewer
+        # looking at an empty item list cannot tell them apart from silence.
+        try:
+            kind, reason = layout.diagnose(raw_lines)
+        except Exception:                                      # noqa: BLE001
+            return []
+        if reason == layout.NO_TABLE_EMPTY:
+            return []
+        return [{"key": "tablePageKind", "extractedValue": kind,
+                 "confidence": 1.0, "editedByUser": False}] + _warning_fields(
+            "layoutWarnings", ["no line items were read from this page (%s)" % reason],
+            "layout-" + reason.replace("_", "-"))
+
+    emitted = [{"key": "tablePageKind", "extractedValue": table.page_kind,
+                "confidence": 1.0, "editedByUser": False},
+               {"key": "tableConfidence", "extractedValue": round(table.confidence, 4),
+                "confidence": 1.0, "editedByUser": False},
+               {"key": "tableColumnSource", "extractedValue": table.column_source,
+                "confidence": 1.0, "editedByUser": False}]
+    if not table.trustworthy:
+        # Said out loud rather than silently dropped, so a reviewer knows a table WAS
+        # found and why its contents are not being offered.
+        emitted.extend(_warning_fields(
+            "layoutWarnings",
+            ["a table of %d rows was reconstructed from the page layout, but its cells "
+             "average %.2f confidence and were not used" % (len(table.rows),
+                                                            table.confidence)],
+            "layout-low-confidence"))
+        return emitted
+    emitted.append({"key": "tableRows", "extractedValue": table.rows,
+                    "confidence": min(1.0, max(0.0, table.confidence)),
+                    "editedByUser": False})
+    if "items" in already_emitted:
+        # The parser already read this table from the text. Its reading is the tested one
+        # and it stands; the reconstruction still travels, because a reviewer comparing
+        # the two is exactly who `tableRows` is for.
+        return emitted
+
+    items = _items_from_table(table)
+    if items:
+        emitted.append({"key": "items", "extractedValue": items,
+                        "confidence": min(1.0, max(0.0, table.confidence)),
+                        "editedByUser": False})
+    return emitted
+
+
+def _items_from_table(table):
+    """`tableRows` in the shape the parser emits, or `[]` when nothing survives.
+
+    WHY THE PARSER'S OWN RULES AND NOT NEW ONES
+
+    Every money cell goes through `strict_amount`, which is what the text path uses. It
+    refuses `135,00,0` rather than stripping the separators out of it, and that refusal is
+    the reason a mangled figure does not become a confident wrong number. A second reader
+    with its own idea of what a number looks like would be a second answer to a question
+    this codebase has already settled.
+
+    WHAT AN UNREADABLE CELL BECOMES
+
+    None, and a warning on the item saying which cell and why -- never a zero, and never
+    the raw text passed off as a value. `null` in a review form is a question; `0` is an
+    assertion that something cost nothing.
+
+    An item keeps its description even when every number on the row failed. A reviewer who
+    can see «سیمان تیپ ۲» beside three empty fields is being told something useful; a row
+    dropped entirely tells them nothing.
+    """
+    from decimal import Decimal
+
+    from extraction.invoice_parser import strict_amount
+    from extraction.parsing import find_unit, normalize, to_decimal
+
+    items = []
+    for row in table.rows:
+        name = (row.get("name") or "").strip()
+        if not name:
+            continue
+        warnings = []
+
+        def money(role):
+            raw = (row.get(role) or "").strip()
+            if not raw:
+                return None
+            value, problem = strict_amount(raw)
+            if value is None:
+                warnings.append({"code": "INVOICE_CELL_UNREADABLE",
+                                 "message": "the %s cell does not form a number (%s)"
+                                            % (role, problem),
+                                 "evidence": raw})
+            return _decimal_text(value)
+
+        # Quantity is `to_decimal`, not `strict_amount`: a quantity cell reads «12 عدد» and
+        # the unit beside the number is ordinary there, while in a money cell it would mean
+        # the figure was misread. Different cells, different strictness, both deliberate.
+        quantity_raw = (row.get("quantity") or "").strip()
+        quantity = to_decimal(quantity_raw) if quantity_raw else None
+        if quantity_raw and quantity is None:
+            warnings.append({"code": "INVOICE_CELL_UNREADABLE",
+                             "message": "the quantity cell does not form a number",
+                             "evidence": quantity_raw})
+
+        # The matched WORD, exactly as `_item_from_block` stores it -- «پاکت», not `bag`.
+        # These items sit beside the parser's own in one field, and a reviewer reading the
+        # list should not be able to tell which reader produced which row. The registry
+        # code is settled later, by the layer that converts.
+        unit_cell = (row.get("unit") or "").strip()
+        _code, unit_word = find_unit(unit_cell) if unit_cell else (None, None)
+        unit = unit_word or (unit_cell or None)
+        if unit_cell and unit_word is None:
+            warnings.append({"code": "INVOICE_UNIT_UNKNOWN",
+                             "message": "the unit is not one this system knows; it is "
+                                        "reported as the sheet wrote it",
+                             "evidence": unit_cell})
+
+        unit_price = money("unit_price")
+        amount = money("amount")
+        # The same cross-check `_item_from_block` makes. Both figures are reported as read
+        # -- neither is corrected to agree with the other, because which one is wrong is
+        # not something this can know.
+        if quantity is not None and unit_price is not None and amount is not None:
+            if quantity * Decimal(unit_price) != Decimal(amount):
+                warnings.append({
+                    "code": "INVOICE_ITEM_ARITHMETIC_MISMATCH",
+                    "message": "quantity x unitPrice does not equal the stated amount; "
+                               "both values are reported as read.",
+                    "evidence": "%s x %s != %s" % (quantity, unit_price, amount)})
+
+        items.append({"name": normalize(name),
+                      "quantity": _decimal_text(quantity),
+                      "unit": unit,
+                      "unitPrice": unit_price,
+                      "amount": amount,
+                      "warnings": warnings})
+    return items
 
 
 def _structured_fields(text, ocr_confidence):

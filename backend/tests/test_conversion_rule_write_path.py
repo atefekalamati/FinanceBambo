@@ -188,7 +188,9 @@ class OneCrossingOneRuleTests(WritePathTestCase):
         """22 and 0.05 are not each other's inverse, and both would be live.
 
         The message has to carry the existing rule, because "already exists" with no way
-        forward is where a person gets stuck.
+        forward is where a person gets stuck. It says so in words: the reader is looking
+        at a screen, and the request field that carries a replacement is an API detail
+        that does not belong in a sentence shown to them.
         """
         first = self.create(Payload(from_unit="branch", to_unit="kg",
                                     factor_value=Decimal("22"), acknowledged=True))
@@ -198,7 +200,9 @@ class OneCrossingOneRuleTests(WritePathTestCase):
         message = str(refusal.exception)
         self.assertIn("جهت معکوس", message)
         self.assertIn("22", message, "the message must show the number that is in the way")
-        self.assertIn("supersedes_rule_id", message, "and how to move past it")
+        self.assertIn("قانون موجود را جایگزین کنید", message, "and how to move past it")
+        self.assertNotIn("supersedes_rule_id", message,
+                         "an internal field name has no business in a user's message")
         self.assertEqual(1, self.connection.execute(
             "SELECT count(*) n FROM finance_unit_conversion_rules"
             " WHERE organization_id=%s AND reason LIKE %s",

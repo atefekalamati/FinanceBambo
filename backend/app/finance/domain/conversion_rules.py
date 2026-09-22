@@ -248,7 +248,7 @@ def resolve_rule(rules, *, from_unit, to_unit, provider_id=None, provider_item_i
         rank = rank_of(rule, provider_id=provider_id, category=category)
         if rank is None:
             continue
-        factor = rule.get("factor")
+        factor = rule.get("factor_value")
         if direction == DIRECTION_REVERSE:
             factor = invert_factor(factor)
             if factor is None:
@@ -260,17 +260,17 @@ def resolve_rule(rules, *, from_unit, to_unit, provider_id=None, provider_item_i
         key = (rank, 0 if direction == DIRECTION_DIRECT else 1)
         if best_key is None or key < best_key:
             best_key = key
-            # BOTH factor keys are inverted, not just one. `choose_conversion` reads
-            # `factor` and `daily_estimate` reads `factor_value`, and a copy that inverted
-            # only one would price the table from 1/22 and the estimate beneath it from 22
-            # -- the same row, two numbers, differing by the square of the factor.
+            # `factor_value` is the column the rules table actually has, and therefore the
+            # only key a row from the repository arrives with. `factor` is written beside
+            # it purely so an older reader of an inverted copy is not handed a stale
+            # number; every read in this module goes through `factor_value`.
             best = (rule if direction == DIRECTION_DIRECT
                     else dict(rule, factor=factor, factor_value=factor,
                               from_unit=from_unit, to_unit=to_unit,
                               applied_direction=DIRECTION_REVERSE,
                               stated_from_unit=rule.get("from_unit"),
                               stated_to_unit=rule.get("to_unit"),
-                              stated_factor=rule.get("factor"),
+                              stated_factor=rule.get("factor_value"),
                               stated_factor_value=rule.get("factor_value")))
             if best is rule:
                 best = dict(rule, applied_direction=DIRECTION_DIRECT)
@@ -337,12 +337,21 @@ def choose_conversion(listing_factor, rule):
     Both callers -- the components table and the single-mapping preview -- go through
     here, so a row cannot be priced one way on one screen and another way on the next.
 
-    `rule` is whatever `resolve_rule` returned: a row with a `factor`, or None. A rule
-    that resolved but states no usable factor is treated as absent rather than as zero,
-    because zero is a price of nothing and no rule means that.
+    `rule` is whatever `resolve_rule` returned: a row with a `factor_value`, or None. A
+    rule that resolved but states no usable factor is treated as absent rather than as
+    zero, because zero is a price of nothing and no rule means that.
+
+    THE TWO KEYS ARE TWO TABLES, NOT A NAMING ACCIDENT
+
+    `listing_factor` is a row of `provider_item_unit_factors`, whose column is `factor`.
+    `rule` is a row of `finance_unit_conversion_rules`, whose column is `factor_value`.
+    Reading `factor` off a rule found nothing on every row the repository returns, so a
+    stored rule resolved and then priced nothing -- and read backwards it was skipped
+    outright, because there was no number to invert. Each side is read by its own column
+    name here.
     """
     if listing_factor is not None and listing_factor.get("factor"):
         return listing_factor["factor"], PROVIDER_ITEM_FACTOR
-    if rule is not None and rule.get("factor"):
-        return rule["factor"], CONVERSION_RULE_FACTOR
+    if rule is not None and rule.get("factor_value"):
+        return rule["factor_value"], CONVERSION_RULE_FACTOR
     return None, None

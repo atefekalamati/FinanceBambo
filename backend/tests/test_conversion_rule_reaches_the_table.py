@@ -36,10 +36,15 @@ from test_item_price_mapping_service import (ACTOR, FACTOR, ITEM, LINE, ORG, Rep
                                              observation, run)
 
 #: «۱ شاخه = ۲۲ کیلوگرم», written the way a person says it.
+#:
+#: `factor_value` ONLY, and deliberately so. The rules table has no `factor` column, so a
+#: row from the repository never carries that key. This fixture used to carry both, which
+#: is exactly how a domain reading `factor` passed every test in this file while resolving
+#: to nothing against the real database. Do not add it back.
 BRANCH_TO_KG = {
     "id": UUID(int=90), "scope_type": "organization", "project_id": None,
     "from_unit": "branch", "to_unit": "kg",
-    "factor": Decimal("22"), "factor_value": Decimal("22"),
+    "factor_value": Decimal("22"),
     "conversion_method": "factor", "status": "approved", "version": 1,
     "effective_from": date(2026, 1, 1), "effective_to": None,
     "provider_id": None, "provider_item_id": None, "category": None,
@@ -206,6 +211,27 @@ class TableSeesTheRuleTests(unittest.TestCase):
                          str(estimate["applied_conversion_rule_id"]),
                          "and the estimate names the rule it used")
 
+    def test_the_headline_factor_is_never_null_while_a_rule_was_applied(self):
+        """The shape the `factor`/`factor_value` mismatch produced, pinned exactly.
+
+        `choose_conversion` fed the headline and read `factor`; `daily_estimate` fed the
+        panel beneath and read `factor_value`. Against a real row -- which carries only
+        `factor_value` -- the headline went null while the estimate underneath named the
+        rule it had just used. One screen, one factor: if the estimate applied a rule, the
+        headline has to state the number.
+        """
+        service, _repo = self.service(rules=Rules([BRANCH_TO_KG]))
+        body = run(service.preview(Scope(), provider_item_id=ITEM, selected_unit="branch",
+                                   estimate_line_id=LINE))
+        estimate = body.get("daily_estimate") or {}
+        if estimate.get("applied_conversion_rule_id"):
+            self.assertIsNotNone(body["conversion_factor"],
+                                 "a rule priced the estimate but the headline said null")
+            self.assertEqual(Decimal(body["conversion_factor"]),
+                             Decimal(estimate["conversion_multiplier"]),
+                             "headline and estimate must be the same number")
+        self.assertEqual(CONVERSION_RULE_FACTOR, body["factor_source"])
+
     def test_the_stored_status_says_the_factor_came_from_a_rule(self):
         """`unknown` and «a rule answers this» are different situations."""
         repo = Repo(prices=priced_per_kg())
@@ -236,7 +262,9 @@ class EitherDirectionTests(unittest.TestCase):
 
     def test_the_stored_row_is_not_mutated_by_being_read_backwards(self):
         resolve_rule([BRANCH_TO_KG], from_unit="kg", to_unit="branch")
-        self.assertEqual(Decimal("22"), BRANCH_TO_KG["factor"])
+        self.assertEqual(Decimal("22"), BRANCH_TO_KG["factor_value"])
+        self.assertNotIn("factor", BRANCH_TO_KG,
+                         "reading backwards must not graft a key onto the stored row")
 
     def test_reading_backwards_adds_no_rounding(self):
         """The reason the rule is stored as stated instead of inverted on the way in.

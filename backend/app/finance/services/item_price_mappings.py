@@ -363,7 +363,11 @@ class ItemPriceMappingService:
             rule = self.conversion_rules.rule_from(
                 candidates, from_unit=source_unit, to_unit=selected_unit,
                 provider_item_id=provider_item_id)
-            if rule is not None and rule.get("factor"):
+            if rule is not None and rule.get("factor_value"):
+                # `factor_value`, not `factor`: this is a row of the rules table, whose
+                # column is `factor_value`. Asking a stored rule for `factor` found
+                # nothing, so every crossing a rule could answer reported «unknown».
+                #
                 # The rule's own id, not a factor id: the two are different tables and a
                 # reader following this needs the one that actually decided.
                 return "conversion_rule", rule.get("id")

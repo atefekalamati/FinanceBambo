@@ -68,24 +68,76 @@ def _enabled() -> bool:
     return value in {"1", "true", "yes", "on"}
 
 
+#: The gateways this provider can speak to, and where each keeps its settings.
+#:
+#: Both are OpenAI's chat-completions API -- AvalAI is a gateway in front of the same
+#: models, which is why one client serves both and why adding it is a table entry rather
+#: than a second implementation. What differs is only the base url and which environment
+#: variables an operator is expected to have set.
+#:
+#: `avalai` was previously refused. `build_extraction_provider` accepted the literal
+#: string "openai" and nothing else, so an operator following the AvalAI setup notes got
+#: `finance AI extraction disabled: unsupported provider 'avalai'` in a log nobody reads
+#: and a pipeline that silently did without its second reader.
+PROVIDER_SETTINGS = {
+    "openai": {"key": ("FINANCE_AI_API_KEY",),
+               "model": ("FINANCE_AI_MODEL",),
+               "base_url": ("FINANCE_AI_BASE_URL",),
+               "default_base_url": None},
+    "avalai": {# AVALAI_API_KEY first: it is the name the AvalAI notes use. FINANCE_AI_API_KEY
+               # is accepted too so a host that configures every provider through the one
+               # Finance variable keeps working.
+               "key": ("AVALAI_API_KEY", "FINANCE_AI_API_KEY"),
+               "model": ("AVALAI_MODEL", "FINANCE_AI_MODEL"),
+               "base_url": ("AVALAI_BASE_URL",),
+               "default_base_url": "https://api.avalai.ir/v1"},
+}
+
+
+def _first_set(names):
+    """The first of these environment variables that carries a value, or None.
+
+    Returns the VALUE, never the name, and nothing here is logged: these are credentials.
+    """
+    for name in names:
+        value = (os.environ.get(name) or "").strip()
+        if value:
+            return value
+    return None
+
+
+def _settings():
+    """`(provider, settings)` for the configured gateway, or `(provider, None)`."""
+    provider = (os.environ.get("FINANCE_AI_PROVIDER") or "").strip().lower()
+    return provider, PROVIDER_SETTINGS.get(provider)
+
+
 def provider_configured() -> bool:
-    return _enabled() and (os.environ.get("FINANCE_AI_PROVIDER") or "").strip().lower() == "openai" and bool(
-        (os.environ.get("FINANCE_AI_API_KEY") or "").strip()
-    )
+    _provider, settings = _settings()
+    if not _enabled() or settings is None:
+        return False
+    return _first_set(settings["key"]) is not None
 
 
 def build_extraction_provider() -> ExtractionProvider | None:
     if not _enabled():
         return None
-    provider = (os.environ.get("FINANCE_AI_PROVIDER") or "").strip().lower()
-    if provider != "openai":
-        LOG.warning("finance AI extraction disabled: unsupported provider %r", provider)
+    provider, settings = _settings()
+    if settings is None:
+        LOG.warning("finance AI extraction disabled: unsupported provider %r (known: %s)",
+                    provider, ", ".join(sorted(PROVIDER_SETTINGS)))
         return None
-    key = (os.environ.get("FINANCE_AI_API_KEY") or "").strip()
+    key = _first_set(settings["key"])
     if not key:
-        LOG.warning("finance AI extraction disabled: FINANCE_AI_API_KEY is not set")
+        # The NAMES of the variables, never a value. An operator needs to know which one
+        # to set; nothing about the key itself belongs in a log.
+        LOG.warning("finance AI extraction disabled: none of %s is set for provider %r",
+                    ", ".join(settings["key"]), provider)
         return None
-    return LLMInvoiceExtractionProvider(key=key)
+    return LLMInvoiceExtractionProvider(
+        key=key,
+        model=_first_set(settings["model"]),
+        base_url=_first_set(settings["base_url"]) or settings["default_base_url"])
 
 
 def _post(url: str, payload: dict[str, Any], key: str, timeout: int):
