@@ -13,6 +13,7 @@ that costs nothing are different rows, and only one of them is a number.
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from .base import ApiModel
@@ -51,6 +52,10 @@ class AssignmentResponse(ApiModel):
     #: resolved -- the unconverted number is never passed through in its place.
     converted_unit_price_irr: Decimal | None = None
     price_unit: str | None = None
+    #: Which rung of the shared ladder answered: a price a person set for this resource,
+    #: the mapped market listing, or neither. The page shows the amount; this is what lets
+    #: a reader tell an agreed rate from a market reading without opening another screen.
+    price_source: Literal["manual_resource", "sheet", "none"] | None = None
     price_as_of: date | None = None
 
     #: quantity x converted unit price, or null. Never zero for a missing input.
@@ -96,6 +101,9 @@ class ResourceAggregateResponse(ApiModel):
     conversion_status: str | None = None
     current_unit_price_irr: Decimal | None = None
     price_unit: str | None = None
+    #: Same vocabulary as the assignment rows below it, so a reader comparing the two
+    #: levels is comparing like with like.
+    price_source: Literal["manual_resource", "sheet", "none"] | None = None
 
     #: The sum of this resource's assignment estimates. Never added beside them.
     current_estimate_irr: Decimal | None = None

@@ -78,6 +78,14 @@ NEEDS_COMPONENTS = "needs_components"
 #: Some components priced and some did not. The resolved total is real and incomplete, and
 #: the row must say both.
 PARTIALLY_UNRESOLVED = "partially_unresolved"
+#: The line's own RESOURCE carries a price, so it needs no material components at all.
+#:
+#: «نیازمند افزودن مصالح» was being shown for a truck, a grader and sixteen other machines,
+#: and it was not merely unhelpful -- it was untrue. A machine is not built out of
+#: materials; it is hired at a rate somebody agreed. The old vocabulary could not say
+#: "priced, and nothing is missing" for anything that was not assembled from parts, so the
+#: only status left to give was a demand for work that must never be done.
+RESOURCE_PRICE_READY = "resource_price_ready"
 
 STATUS_LABELS: dict[str, str] = {
     READY: "آماده",
@@ -91,12 +99,14 @@ STATUS_LABELS: dict[str, str] = {
     INCOMPATIBLE: "تبدیل واحد ناسازگار است",
     NO_PRICE: "قیمت روز معتبر وجود ندارد",
     PARTIALLY_UNRESOLVED: "بخشی از اجزای قیمت‌گذاری ناقص است",
+    RESOURCE_PRICE_READY: "قیمت منبع ثبت شده است",
 }
 
 #: The sentence shown to the person who can fix it. Equal to the label for most statuses --
 #: the label already names the missing thing -- and only different where a label is a
 #: heading and the reason is the instruction.
-STATUS_REASONS: dict[str, str] = dict(STATUS_LABELS, **{READY: ""})
+STATUS_REASONS: dict[str, str] = dict(STATUS_LABELS,
+                                     **{READY: "", RESOURCE_PRICE_READY: ""})
 
 
 def _decimal(value):
@@ -347,4 +357,29 @@ def aggregate_row(priced):
         "component_count": len(components),
         "ready_component_count": len(ready),
         "unresolved_component_count": len(unresolved),
+    }
+
+
+def resource_priced_row(unit_price_irr, quantity, price_unit, price_source):
+    """A row priced from its own resource rather than from material components.
+
+    The cost is `quantity x unit_price`, computed HERE so that the page, the report and
+    this table cannot each arrive at their own answer. `quantity` may be None -- a line
+    whose quantity nobody has stated is priced per unit and has no line total, and the
+    difference between "no total" and "a total of zero" is the difference between a
+    question and a claim.
+    """
+    total = None if quantity is None else Decimal(quantity) * Decimal(unit_price_irr)
+    return {
+        "status": RESOURCE_PRICE_READY,
+        "status_label": STATUS_LABELS[RESOURCE_PRICE_READY],
+        "reason": STATUS_REASONS[RESOURCE_PRICE_READY],
+        "daily_item_cost_irr": total,
+        "current_unit_price_irr": Decimal(unit_price_irr),
+        "price_unit": price_unit,
+        "price_source": price_source,
+        # No components were consulted, and saying "0 of 0 ready" would invite the reader
+        # to think something is missing. Nothing is.
+        "component_count": 0, "ready_component_count": 0,
+        "unresolved_component_count": 0,
     }

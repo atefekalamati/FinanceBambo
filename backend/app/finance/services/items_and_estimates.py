@@ -148,8 +148,13 @@ class ItemsAndEstimatesService:
             "original_assignment_cost_irr": row["source_assignment_cost_irr"],
             "current_unit_price_irr": row["current_unit_price_irr"],
             "converted_unit_price_irr": converted,
-            "price_unit": row["selected_unit"],
-            "price_as_of": row["price_as_of"],
+            # The unit the PRICE is quoted per, from whichever rung answered: the
+            # resource's base unit for a manual price, the worksheet's own unit for a
+            # sheet price. `selected_unit` is the mapping's choice and only exists when a
+            # mapping does, so it cannot speak for a manually priced machine.
+            "price_unit": row["current_price_unit"] or row["selected_unit"],
+            "price_source": row["current_price_source"],
+            "price_as_of": row["current_price_effective_from"],
             "current_estimate_irr": estimate,
             "calculation_status": status,
             "issue_codes": issues,
@@ -193,7 +198,8 @@ class ItemsAndEstimatesService:
             "mapping_version": head["mapping_version"],
             "conversion_status": head["conversion_status"],
             "current_unit_price_irr": head["current_unit_price_irr"],
-            "price_unit": head["selected_unit"],
+            "price_unit": head["current_price_unit"] or head["selected_unit"],
+            "price_source": head["current_price_source"],
             "current_estimate_irr": total,
             "calculation_status": CALCULATED if counted else NOT_CALCULABLE,
             "counted_assignments": counted,

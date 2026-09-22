@@ -42,7 +42,8 @@ _VERSION_ORDER = """ORDER BY (pv.scope_kind='project') DESC, pv.effective_from D
                             pv.version DESC, pv.created_at DESC, pv.id DESC"""
 
 
-def resolved_price_joins(alias="l", as_of="%s"):
+def resolved_price_joins(alias="l", as_of="%s", *, organization=None, project=None,
+                         resource=None, assignment=None):
     """LATERAL joins that resolve one price per row of `alias`.
 
     Produces two derived tables, `manual_price` and `sheet_price`. They are LEFT joins:
@@ -51,43 +52,78 @@ def resolved_price_joins(alias="l", as_of="%s"):
     `totalLineCount` a count of priced lines, which is the one thing it must not be.
 
     `as_of` is the report cutoff, passed twice -- once per join.
+
+    The four keyword arguments override where each key is read from. A caller whose four
+    keys sit on ONE table leaves them out; Items and Estimates cannot, because its rows
+    come from `finance_mpp_rows` while the resource is on a LEFT-joined `finance_resources`
+    that may be absent. Reading `resource_id` off a row that might be NULL is how an
+    unclassified assignment would silently take some other line's price.
     """
+    organization = organization or "%s.organization_id" % alias
+    project = project or "%s.project_id" % alias
+    resource = resource or "%s.resource_id" % alias
+    assignment = assignment or "%s.source_assignment_uid" % alias
     return """
   LEFT JOIN LATERAL (
        SELECT pv.id AS price_version_id, pv.unit_price_irr, pv.scope_kind,
               pv.effective_from
          FROM price_versions pv
-        WHERE pv.organization_id={a}.organization_id
-          AND pv.project_id={a}.project_id
-          AND pv.resource_id={a}.resource_id
+        WHERE pv.organization_id={org}
+          AND pv.project_id={proj}
+          AND pv.resource_id={res}
           AND pv.effective_from<={as_of}
         {order}
         LIMIT 1) manual_price ON TRUE
   LEFT JOIN LATERAL (
-       SELECT o.normalized_price_irr AS unit_price_irr,
+       SELECT o.normalized_price_irr AS unit_price_irr, o.source_unit,
               o.workflow_date_gregorian AS effective_from
          FROM finance_item_price_mappings fm
          JOIN price_observations o
            ON o.organization_id=fm.organization_id AND o.project_id=fm.project_id
           AND o.provider_item_id=fm.provider_item_id
           AND o.validation_status='valid'
-        WHERE fm.organization_id={a}.organization_id
-          AND fm.project_id={a}.project_id
-          AND fm.source_assignment_uid={a}.source_assignment_uid
+        WHERE fm.organization_id={org}
+          AND fm.project_id={proj}
+          AND fm.source_assignment_uid={asg}
           AND fm.superseded_at IS NULL
           AND (o.workflow_date_gregorian IS NULL OR o.workflow_date_gregorian<={as_of})
         ORDER BY o.workflow_date_gregorian DESC NULLS LAST, o.fetched_at DESC, o.id
-        LIMIT 1) sheet_price ON TRUE""".format(a=alias, as_of=as_of, order=_VERSION_ORDER)
+        LIMIT 1) sheet_price ON TRUE""".format(org=organization, proj=project, res=resource, asg=assignment,
+                 as_of=as_of, order=_VERSION_ORDER)
 
 
-#: The four columns a caller selects. `priceSource` is the rung that answered; without it
-#: a NULL price and a sheet price are equally anonymous numbers.
+#: What `priceSource` can hold. Three values, and the third is not an absence of a value:
+#: `none` is the resolver saying it looked and found nothing, which is a different claim
+#: from a field that was never populated.
+SOURCE_MANUAL_RESOURCE = "manual_resource"
+SOURCE_SHEET = "sheet"
+SOURCE_NONE = "none"
+
+#: Which `price_versions.scope_kind` values count as a manual resource price. Both do --
+#: the ladder has already chosen between them by the time this runs, and a reader asking
+#: "who set this price" is asking about a person either way, not about the scope.
+MANUAL_SCOPES = ("project", "organization")
+
+#: The columns a caller selects. Two different questions get two different answers:
+#:
+#:   `current_price_scope`  -- WHICH rung: project, organization, provider_sheet, or NULL.
+#:                             The precise answer, for anyone auditing the precedence.
+#:   `current_price_source` -- manual_resource / sheet / none. The answer a page shows,
+#:                             where the distinction between a project price and an
+#:                             organization price is noise: both were typed by a person.
+#:
+#: Both are published because collapsing them lost information that the settings screen
+#: needs, and keeping only the precise one made every consumer re-derive the coarse one.
 RESOLVED_PRICE_COLUMNS = """
        COALESCE(manual_price.unit_price_irr, sheet_price.unit_price_irr)
            AS current_unit_price_irr,
        CASE WHEN manual_price.unit_price_irr IS NOT NULL THEN manual_price.scope_kind
             WHEN sheet_price.unit_price_irr IS NOT NULL THEN 'provider_sheet'
        END AS current_price_scope,
+       CASE WHEN manual_price.unit_price_irr IS NOT NULL THEN 'manual_resource'
+            WHEN sheet_price.unit_price_irr IS NOT NULL THEN 'sheet'
+            ELSE 'none'
+       END AS current_price_source,
        COALESCE(manual_price.effective_from, sheet_price.effective_from)
            AS current_price_effective_from,
        manual_price.price_version_id AS price_version_id"""
@@ -96,3 +132,38 @@ RESOLVED_PRICE_COLUMNS = """
 SCOPE_PROJECT = "project"
 SCOPE_ORGANIZATION = "organization"
 SCOPE_PROVIDER_SHEET = "provider_sheet"
+
+
+def price_source_of(scope_kind):
+    """The coarse source for a scope, for callers resolving a price in Python.
+
+    Kept beside the SQL that produces the same mapping so the two cannot drift: a service
+    that classified `organization` as a sheet price would disagree with the report about
+    what the user is looking at, and nothing would fail.
+    """
+    if scope_kind in MANUAL_SCOPES:
+        return SOURCE_MANUAL_RESOURCE
+    if scope_kind == SCOPE_PROVIDER_SHEET:
+        return SOURCE_SHEET
+    return SOURCE_NONE
+
+
+def resolved_price_columns(base_unit=None):
+    """`RESOLVED_PRICE_COLUMNS`, plus the unit the price is quoted per.
+
+    The two rungs are quoted per DIFFERENT units and only the caller knows one of them. A
+    manual price is per `finance_resources.base_unit` -- the unit a person chose when they
+    priced the thing. A sheet price is per whatever the worksheet column said, which is
+    what `price_observations.source_unit` records. Publishing the amount without the unit
+    invites the reader to assume they match; on this data they frequently do not, which is
+    the whole reason the conversion rules exist.
+
+    `base_unit` is a SQL expression for the resource's base unit, e.g. `"r.base_unit"`.
+    Omitted, the caller gets the columns unchanged.
+    """
+    if base_unit is None:
+        return RESOLVED_PRICE_COLUMNS
+    return RESOLVED_PRICE_COLUMNS + """,
+       CASE WHEN manual_price.unit_price_irr IS NOT NULL THEN %s
+            WHEN sheet_price.unit_price_irr IS NOT NULL THEN sheet_price.source_unit
+       END AS current_price_unit""" % base_unit

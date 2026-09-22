@@ -300,6 +300,22 @@
             ],
             "title": "Priceasof"
           },
+          "priceSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual_resource",
+                  "sheet",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricesource"
+          },
           "priceUnit": {
             "anyOf": [
               {
@@ -5547,6 +5563,17 @@
             "title": "Componentcount",
             "type": "integer"
           },
+          "currentUnitPriceIrr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentunitpriceirr"
+          },
           "dailyItemCostIrr": {
             "anyOf": [
               {
@@ -5572,6 +5599,33 @@
               }
             ],
             "title": "Factorsource"
+          },
+          "priceSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual_resource",
+                  "sheet",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricesource"
+          },
+          "priceUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priceunit"
           },
           "productName": {
             "anyOf": [
@@ -5656,7 +5710,8 @@
               "unknown_source_unit",
               "needs_factor",
               "incompatible",
-              "no_price"
+              "no_price",
+              "resource_price_ready"
             ],
             "title": "Status",
             "type": "string"
@@ -11165,6 +11220,22 @@
               }
             ],
             "title": "Originalmppcostirr"
+          },
+          "priceSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual_resource",
+                  "sheet",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricesource"
           },
           "priceUnit": {
             "anyOf": [
