@@ -43,6 +43,7 @@ import { createLevelOneSection } from "../level-one/level-one-section.js";
 import { createPricesSummary } from "./prices-summary.js";
 import { createItemsSummary } from "./items-summary.js";
 import { createInvoicesEntry } from "./invoices-entry.js";
+import { coverageNote, unavailableReason } from "./metric-coverage.js";
 
 /* The four the board shows, in the order it shows them. The rest of the
    catalogue is still what the report page and the builder draw on. */
@@ -112,7 +113,15 @@ const SUMMARY_MARKS = Object.freeze({
   actualCostPerSquareMeterIrr: "area",
 });
 
-function createSummaryCard(key, label, description, data) {
+/**
+ * @param report the whole overview payload, not just its `metrics`.
+ *
+ * The figure lives under `metrics`; the counts that say why it is absent, or how much of
+ * the project it covers, live beside it on the payload. A card given only the metrics can
+ * say «داده مبنا موجود نیست» and nothing further, which is what it used to do.
+ */
+function createSummaryCard(key, label, description, report) {
+  const data = report?.metrics ?? {};
   const card = document.createElement("article");
   const unavailable = data?.[key] === null || data?.[key] === undefined;
   const hierarchy = PRIMARY_SUMMARY_KEYS.has(key)
@@ -129,7 +138,14 @@ function createSummaryCard(key, label, description, data) {
   value.append(createTomanDisplay(data?.[key], { compact: true }));
   const unit = document.createElement("span");
   unit.className = "summary-card__unit";
-  unit.textContent = unavailable ? "داده مبنا موجود نیست" : description;
+  /* Absent: which gap, and how many lines of it. Present but partial: how many lines the
+     figure left out. Present and complete: the description, unchanged — a project with
+     nothing missing reads exactly as it always did. */
+  unit.textContent = coverageNote(report, key, description);
+  /* The long form goes in the title attribute rather than on the card, because the card is
+     one line tall and the sentence is the reader's second question, not their first. */
+  const reason = unavailableReason(report, key);
+  if (reason) unit.title = reason;
   card.append(title, value, unit);
 
   /* A watermark naming where the figure comes from, not an ornament: the
@@ -498,7 +514,7 @@ function renderFinanceHome(
     const item = SUMMARY_ITEMS.find(([itemKey]) => itemKey === key);
     if (item)
       figures.append(
-        createSummaryCard(item[0], item[1], item[2], data.metrics),
+        createSummaryCard(item[0], item[1], item[2], data),
       );
   });
 
