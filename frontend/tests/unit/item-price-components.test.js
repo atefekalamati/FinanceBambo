@@ -482,3 +482,69 @@ test("a cell may not reach around the surface gate to open a pricing tool", () =
   assert.ok(!/priceMappingAdapter|pricesAdapter/.test(table),
             "renderEstimateLineTable must depend on the handlers, never on an adapter");
 });
+
+/* A PRICE SOMEBODY TYPED IS STILL A PRICE.
+ *
+ * «برچیدن جدول» is 3,538 metres of demolition and no supplier quotes it, so an admin
+ * states the rate. That rate is a `price_versions` row — the same record the prices page
+ * writes for a material and the settings page writes for a machine — and the project's
+ * live report counts it in full.
+ *
+ * What it is not is a COMPONENT MAPPING, so the mapping status has nothing good to say
+ * about it and reports «نیازمند افزودن مصالح» with no daily cost. Reading that as «this
+ * row has no price» is what drew a valid figure in muted grey under a «وصل نشده» chip,
+ * and counted it among the rows with nothing.
+ */
+
+const { isManualPrice } =
+  await import("../../src/features/financial-items/financial-items-presentation.js");
+
+test("a typed price with no component mapping is recognised as a manual price", () => {
+  assert.equal(isManualPrice({ currentUnitPriceIRR: "32000000" },
+                             { dailyItemCostIRR: null }), true);
+});
+
+test("a row the components priced is not a manual price, whatever else it carries", () => {
+  /* Both can be true at once — a linked row may also have a hand-entered rate — and then
+     the component total is the number this column shows. */
+  assert.equal(isManualPrice({ currentUnitPriceIRR: "32000000" },
+                             { dailyItemCostIRR: "500000" }), false);
+});
+
+test("a row with no price of its own is not a manual price", () => {
+  assert.equal(isManualPrice({ currentUnitPriceIRR: null }, { dailyItemCostIRR: null }), false);
+  assert.equal(isManualPrice({}, {}), false);
+  assert.equal(isManualPrice(undefined, undefined), false);
+});
+
+test("the activity subtotal tells a hand-priced row apart from an unpriced one", () => {
+  const rows = [
+    { lineId: "a", currentUnitPriceIRR: null },
+    { lineId: "b", currentUnitPriceIRR: "32000000" },
+    { lineId: "c", currentUnitPriceIRR: null },
+  ];
+  const statuses = new Map([
+    ["a", { dailyItemCostIRR: "1000" }],
+    ["b", { dailyItemCostIRR: null }],
+    ["c", { dailyItemCostIRR: null }],
+  ]);
+  const text = groupDailyPriceCell(rows, statuses).textContent;
+  assert.match(text, /۱ از ۳ ردیف در این جمع/);
+  assert.match(text, /۱ ردیف قیمت دستی/, "the hand-priced row is not reported as priceless");
+  assert.match(text, /۱ ردیف بدون قیمت/, "and the one that truly has none still says so");
+});
+
+test("an activity priced only by hand says why it has no subtotal", () => {
+  /* «هنوز قیمت روز ندارد» would be false: every row has one. What is missing is the sum,
+     because the service states no daily cost for a row it did not price by components. */
+  const rows = [{ lineId: "a", currentUnitPriceIRR: "32000000" }];
+  const statuses = new Map([["a", { dailyItemCostIRR: null }]]);
+  assert.match(groupDailyPriceCell(rows, statuses).textContent,
+               /قیمت دستی دارد؛ جمع این فعالیت هنوز ساخته نمی‌شود/);
+});
+
+test("an activity with nothing priced at all still says so plainly", () => {
+  const rows = [{ lineId: "a", currentUnitPriceIRR: null }];
+  const statuses = new Map([["a", { dailyItemCostIRR: null }]]);
+  assert.match(groupDailyPriceCell(rows, statuses).textContent, /هنوز قیمت روز ندارد/);
+});

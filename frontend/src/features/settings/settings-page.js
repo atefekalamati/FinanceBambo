@@ -15,6 +15,7 @@ import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js
 import { createUnitConversionForm, renderConversionHistory, renderCurrentConversions } from "../prices/prices-page.js";
 import { isConfigurableConversionDirection } from "../prices/unit-conversions-validation.js";
 import { validateSettingsRevision } from "./settings-validation.js";
+import { createEquipmentPricingSection } from "./equipment-pricing-section.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { IDENTITY, PRIMARY, SECONDARY, createDataTableWithControl, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
@@ -445,8 +446,44 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
     const primaryGrid = element("div", "settings-primary-grid");
     primaryGrid.append(renderCurrencyPolicy(), renderAccessSummary());
     const editor = mayReviseArea(data) ? renderEditor(data) : renderRevisionDenied(data);
-    fragment.append(overview, primaryGrid, editor, renderUnitConversions(), history);
+    fragment.append(overview, primaryGrid, editor, renderUnitConversions(),
+                    renderEquipmentPricing(data), history);
     return fragment;
+  }
+
+  /**
+   * Machines are priced here because nothing else prices them.
+   *
+   * It sits AFTER the unit conversions on purpose: the rule «۱ روز = ۸ ساعت» is what turns
+   * a schedule measured in days into hours somebody can charge for, so a person who has to
+   * write it has already passed it on the way down.
+   *
+   * Built from the same workspace the conversions section reads, so opening this page asks
+   * the service for nothing extra. When that request failed the section says so rather
+   * than drawing an empty list, which would read as «this project has no equipment».
+   */
+  function renderEquipmentPricing(data) {
+    if (!conversionWorkspace) {
+      const section = element("section", "settings-card settings-equipment");
+      const head = element("div", "settings-card__head");
+      head.append(element("div", "settings-card__icon", "⚙"), element("div", "", ""));
+      head.lastElementChild.append(
+        element("h2", "", "قیمت‌گذاری تجهیزات"),
+        element("p", "", "فهرست دستگاه‌ها و قیمت‌هایشان خوانده نشد."));
+      section.append(head, element("p", "inline-notice",
+        conversionError
+          ? formatApiErrorMessage(conversionError, "دریافت فهرست تجهیزات انجام نشد.")
+          : "دریافت فهرست تجهیزات انجام نشد."));
+      return section;
+    }
+    return createEquipmentPricingSection({
+      workspace: conversionWorkspace,
+      adapter: pricesAdapter,
+      canEdit: mayReviseArea(data),
+      /* The service answers a fresh workspace, so the section is rebuilt from what was
+         actually saved rather than from what this page hoped it saved. */
+      onSaved: (workspace) => { conversionWorkspace = workspace; paint(); },
+    });
   }
 
   function paint() {

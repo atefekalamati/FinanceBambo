@@ -356,14 +356,24 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
 
   if (categories.length && onSelectCategory) {
     const filter = element("div", "material-prices__filters");
+    const byCode = new Map(categories.map((category) => [category.category, category]));
+    /* The five that are always on screen whatever this project's sheet happens to carry:
+       they are the trades every project has, and a chip that came and went with a missing
+       worksheet would make the filter bar a different shape on every project.
+
+       `تجهیزات` joins them ONLY once the service publishes the category. Machines are a
+       kind of priced thing a reader looks for by name rather than hunting for in the
+       overflow menu — but until the service answers `equipment`, an unconditional chip
+       would render with no count and filter to an empty table. It appears the day the
+       rows do, and nothing here needs changing then. */
     const fixedCategories = [
       { category: "brick", label: "آجر" },
       { category: "rebar", label: "میلگرد" },
       { category: "ibeam", label: "تیرآهن" },
       { category: "channel", label: "ناودانی" },
       { category: "pipe", label: "لوله" },
+      ...(byCode.has("equipment") ? [{ category: "equipment", label: "تجهیزات" }] : []),
     ];
-    const byCode = new Map(categories.map((category) => [category.category, category]));
     const makeChip = (category, container = filter, dropdown = null) => {
       const active = category.category === selectedCategory;
       const count = category.activeCount == null ? "" : ` (${category.activeCount})`;

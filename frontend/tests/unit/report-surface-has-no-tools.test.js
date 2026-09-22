@@ -97,3 +97,72 @@ test("امور مالی keeps every tool the report gave up", async () => {
   assert.ok(found.has("fix-unit"), "تبدیل واحد belongs on امور مالی");
   assert.ok(found.has("manual-price"), "ثبت دستی قیمت روز belongs on امور مالی");
 });
+
+/* AND IT SHOWS NO METHOD EITHER.
+ *
+ * A tool invites the reader to change the report. A note saying HOW a number was recorded
+ * invites them to weigh it — «قیمت دستی» reads as a caveat about a figure that has none,
+ * and «قانون تبدیل» answers a question only somebody who can act on it is asking. Both
+ * belong to امور مالی, where the person reading them can do something about it.
+ *
+ * Rendered on both surfaces rather than read from the source, for the same reason the
+ * tool tests are: the leak this guards against is a cell that drew a note without asking
+ * which surface it was on.
+ */
+
+/* A row priced by hand: a resource price with no component cost, which is what produces
+   the «قیمت دستی» note. The unit row above carries the factor-source note instead. */
+const MANUAL_LINE = { ...LINE, lineId: "30000000-0000-4000-8000-000000000002",
+                      assignmentExternalId: "asg-manual" };
+const MANUAL_STATUS = { ...STATUS, estimateLineId: MANUAL_LINE.lineId,
+                        status: "needs_components", statusLabel: "نیازمند افزودن مصالح",
+                        componentCount: 0, readyComponentCount: 0,
+                        unresolvedComponentCount: 0, factorSource: "conversion_rule",
+                        sourcePriceUnit: null, selectedUnit: null };
+
+async function renderManual(surface) {
+  const base = stubs();
+  const root = createFinancialItemsPage({
+    ...base, surface,
+    adapter: { async getWorkspace() {
+      return { resources: [RESOURCE],
+               estimateLines: [{ ...MANUAL_LINE, currentUnitPriceIRR: "32000000" }] };
+    } },
+    priceMappingAdapter: { async statuses() { return [MANUAL_STATUS]; } },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return root;
+}
+
+test("گزارش مالی shows the figure and not how it was recorded", async () => {
+  const root = await renderManual(SURFACES.REPORT);
+  const text = root.textContent ?? "";
+  assert.doesNotMatch(text, /قیمت دستی/,
+                      "how the price was entered is not the reader's question");
+  assert.match(text, /۳٬۲۰۰٬۰۰۰/, "and the figure itself is still there");
+});
+
+test("امور مالی keeps the note, because somebody there can act on it", async () => {
+  const root = await renderManual(SURFACES.OPERATIONS);
+  assert.match(root.textContent ?? "", /قیمت دستی/);
+});
+
+test("گزارش مالی does not name what crossed the two units", async () => {
+  /* «قانون تبدیل» versus «وزن‌کشی همین محصول» is a judgement about how far to trust a
+     conversion — a working question, on a page that does no work. */
+  const root = await render(SURFACES.REPORT);
+  assert.doesNotMatch(root.textContent ?? "", /قانون تبدیل|وزن‌کشی همین محصول/);
+});
+
+test("امور مالی still names it", async () => {
+  const withFactor = { ...STATUS, factorSource: "conversion_rule" };
+  const base = stubs();
+  const root = createFinancialItemsPage({
+    ...base, surface: SURFACES.OPERATIONS,
+    priceMappingAdapter: { async statuses() { return [withFactor]; } },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.match(root.textContent ?? "", /قانون تبدیل/);
+});

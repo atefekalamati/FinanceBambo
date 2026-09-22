@@ -157,14 +157,9 @@ test("a period with no closing report refuses rather than inventing one", () => 
 /**
  * The warnings chapter printed 1,828 rows to say 161 things.
  *
- * Every one of those warnings is a distinct record -- a distinct estimate line -- so there
- * was nothing duplicated to remove. What was wrong was the printed row: it showed the
- * message and the resource, which collide, and never showed the line, which does not. The
- * document repeated itself AND left out the field that told the records apart.
- *
- * These hold the grouping to the two things that make it safe: it is keyed on the record's
- * own fields and never on the sentence, and it loses nothing -- the count is printed and
- * every affected record is still named.
+ * Every warning remains a distinct source record, but the printable document is a summary.
+ * These checks keep identical user-facing sentences to one row and retain their total count
+ * without printing hundreds of resource or activity identifiers.
  */
 
 const aWarning = (over = {}) => ({
@@ -197,42 +192,44 @@ test("records agreeing on code, cause, severity and scope become one row with a 
     aWarning({ estimateLineId: "line-3", activityExternalId: "1.5.4" }),
   ]);
   assert.equal(rows.length, 1, "three records about one resource are one finding");
-  assert.match(rows[0][2], /۳/, "the number of affected lines must be printed");
+  assert.match(rows[0][1], /۳/, "the occurrence count must be printed");
 }));
 
-test("every affected record is still named, so grouping loses nothing", () => withDocument(() => {
+test("repeated records stay summarized instead of listing every activity", () => withDocument(() => {
   const rows = warningRows([
     aWarning({ estimateLineId: "line-1", activityExternalId: "1.5.2" }),
     aWarning({ estimateLineId: "line-2", activityExternalId: "1.5.3" }),
   ]);
-  assert.match(rows[0][3], /1\.5\.2/);
-  assert.match(rows[0][3], /1\.5\.3/);
+  assert.equal(rows.length, 1);
+  assert.match(rows[0][1], /۲/);
+  assert.doesNotMatch(rows[0].join(" "), /1\.5\.[23]/);
 }));
 
-test("a record with no activity id is counted and declared, never quietly dropped", () => withDocument(() => {
+test("a record with no activity id is still included in the count", () => withDocument(() => {
   const rows = warningRows([
     aWarning({ estimateLineId: "line-1", activityExternalId: "1.5.2" }),
     aWarning({ estimateLineId: "line-2", activityExternalId: null }),
   ]);
-  assert.match(rows[0][2], /۲/, "both records are counted");
-  assert.match(rows[0][3], /بدون شناسه فعالیت/, "the unnamed one is declared");
+  assert.match(rows[0][1], /۲/, "both records are counted");
 }));
 
-test("a different cause is a different finding, even with the same sentence", () => withDocument(() => {
+test("warnings with the same displayed sentence are printed once", () => withDocument(() => {
   const rows = warningRows([
     aWarning({ progressStatus: null, estimateLineId: "line-1" }),
     aWarning({ progressStatus: "unmapped_assignment", estimateLineId: "line-2" }),
   ]);
-  assert.equal(rows.length, 2);
+  assert.equal(rows.length, 1);
+  assert.match(rows[0][1], /۲/);
 }));
 
-test("a different severity, scope or excluded flag is a different finding", () => withDocument(() => {
+test("metadata differences do not duplicate an identical user-facing warning", () => withDocument(() => {
   for (const difference of [{ severity: "error" }, { resourceCode: "MPP-R999" },
                             { excludedFromCalculation: false },
                             { affectedMetricKeys: ["forecastFinalCostIrr"] }]) {
     const rows = warningRows([aWarning({ estimateLineId: "a" }),
                               aWarning({ estimateLineId: "b", ...difference })]);
-    assert.equal(rows.length, 2, `${JSON.stringify(difference)} was merged away`);
+    assert.equal(rows.length, 1, `${JSON.stringify(difference)} duplicated the message`);
+    assert.match(rows[0][1], /۲/);
   }
 }));
 
@@ -247,5 +244,5 @@ test("the grouped total is announced, so the reader knows what was folded", () =
   const nodes = REPORT_SECTIONS.warnings({ overview: { warnings: [
     aWarning({ estimateLineId: "line-1" }), aWarning({ estimateLineId: "line-2" })] } });
   assert.match(text(nodes), /۲ هشدار از سرویس دریافت شد/);
-  assert.match(text(nodes), /هیچ هشداری حذف نشده است/);
+  assert.match(text(nodes), /۱ پیام یکتا خلاصه شدند/);
 }));

@@ -58,7 +58,7 @@ export function buildOverviewComparisons(metrics = {}) {
     management: buildExactScale([
       { key: "initial", label: "برآورد اولیه", value: exactOrNull(metrics.initialEstimateIrr) },
       { key: "actual", label: "هزینه واقعی ثبت‌شده", value: exactOrNull(metrics.actualCostIrr) },
-      { key: "remaining", label: "هزینه کار باقی‌مانده با قیمت روز", value: exactOrNull(metrics.remainingPhysicalCostIrr) },
+      { key: "remaining", label: "هزینه بروز باقیمانده", value: exactOrNull(metrics.remainingPhysicalCostIrr) },
       { key: "forecast", label: "پیش‌بینی هزینه نهایی", value: exactOrNull(metrics.forecastFinalCostIrr) },
     ]),
   });

@@ -187,31 +187,18 @@ export function renderQuality(data) {
   }), ...warningTables(warnings)];
 }
 
-/**
- * The identity a warning is grouped by: its own fields, never its rendered sentence.
- *
- * Two records that read identically but differ in cause, severity or scope are two
- * findings and stay apart. Two that agree on all of these are the same finding about the
- * same thing, seen on more than one estimate line -- which is what the count is for.
- */
+/** One printable message per unique user-facing warning. */
 function warningIdentity(warning) {
-  return JSON.stringify([
-    warning.code ?? null,
-    warning.severity ?? null,
-    warning.progressStatus ?? null,
-    warning.excludedFromCalculation ?? null,
-    [...(warning.affectedMetricKeys ?? [])].sort(),
-    warning.resourceCode ?? warning.resourceId ?? null,
-  ]);
+  return reportWarningText(warning);
 }
 
 /**
- * The warnings chapter: one row per finding, with how many records carry it and which.
+ * The warnings chapter: one row per unique message, with its occurrence count.
  *
  * The service sends one warning per estimate line, which is right -- a line either has a
- * current price or it does not. Printing one ROW per line was not: 1,828 rows carried 161
- * distinct pairs of (sentence, resource), so the document repeated itself while leaving
- * out the only field that differed.
+ * current price or it does not. A printable report must not repeat that sentence for
+ * every resource or activity. The source records stay intact; only the report view folds
+ * identical messages together.
  *
  * Grouping is done here, in the document, and nowhere else. The service's list is the
  * record; this is a reading of it.
@@ -223,51 +210,25 @@ function groupWarnings(warnings) {
     const group = groups.get(identity) ?? {
       warning,
       count: 0,
-      activities: new Set(),
-      lines: new Set(),
     };
     group.count += 1;
-    if (warning.activityExternalId) group.activities.add(String(warning.activityExternalId));
-    if (warning.estimateLineId) group.lines.add(String(warning.estimateLineId));
     groups.set(identity, group);
   });
   return [...groups.values()].sort((left, right) => right.count - left.count);
-}
-
-/**
- * Where a group's affected records are named.
- *
- * (code, resource, activity) is unique per record on this dataset, so the activity list is
- * the complete set of records in the group and not a sample of it. When a record carries
- * no activity id there is nothing to name it by, and the row says so rather than implying
- * the list is complete when it is not.
- */
-function affectedList(group) {
-  const activities = [...group.activities].sort((left, right) =>
-    left.localeCompare(right, "fa", { numeric: true }));
-  if (!activities.length) return "بدون شناسه فعالیت";
-  const unnamed = group.count - activities.length;
-  return unnamed > 0
-    ? `${activities.join("، ")} (و ${count(unnamed)} ردیف بدون شناسه فعالیت)`
-    : activities.join("، ");
 }
 
 function warningTables(warnings) {
   const groups = groupWarnings(warnings);
   const grouped = groups.filter((group) => group.count > 1).reduce((sum, group) => sum + group.count, 0);
   const summary = groups.length && grouped
-    ? [note(`${count(warnings.length)} هشدار از سرویس دریافت شد. هشدارهای هم‌کد، هم‌شدت و هم‌دامنه در یک سطر جمع شده‌اند: `
-        + `${count(groups.length)} سطر، با تعداد ردیف‌های درگیر و شناسه فعالیت همه آن‌ها. هیچ هشداری حذف نشده است.`)]
+    ? [note(`${count(warnings.length)} هشدار از سرویس دریافت شد و پیام‌های تکراری در ${count(groups.length)} پیام یکتا خلاصه شدند. عدد مقابل هر پیام، تعداد رخدادهای آن است.`)]
     : [];
   return [...summary, reportTable({
     caption: "هشدارها و موارد نیازمند بررسی",
-    columns: [{ label: "هشدار" }, { label: "قلم" }, { label: "ردیف درگیر", numeric: true },
-              { label: "فعالیت‌های درگیر" }],
+    columns: [{ label: "هشدار" }, { label: "تعداد رخداد", numeric: true }],
     rows: groups.map((group) => [
       reportWarningText(group.warning),
-      group.warning.resourceCode ?? group.warning.resourceId ?? "کل پروژه",
       count(group.count),
-      affectedList(group),
     ]),
     empty: "سرویس برای این محاسبه هشداری اعلام نکرده است.",
   })];

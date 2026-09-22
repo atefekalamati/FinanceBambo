@@ -893,3 +893,237 @@ html[data-theme="light"] .form-field textarea {
     box-shadow: none;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Equipment pricing
+   -------------------------------------------------------------------------- */
+
+/* A machine has no market price, so this card is where they are typed. It is
+   built from the same `settings-card` vocabulary as every other section here;
+   only the list inside it is its own. */
+.settings-equipment {
+  min-inline-size: 0;
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.settings-equipment .section-count {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+.equipment-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.equipment-controls__search {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+
+.equipment-controls__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* THE LIST SCROLLS, THE PAGE DOES NOT. Nineteen machines on this project and a
+   bigger one has hundreds; growing the card would push every other setting off
+   the screen. A viewport-relative ceiling rather than a fixed height, so a short
+   list stays short and a long one never takes more than half the window. */
+.equipment-list {
+  min-inline-size: 0;
+  display: grid;
+  gap: var(--space-lg);
+  max-block-size: min(32rem, 55dvh);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding-inline-end: var(--space-sm);
+  scrollbar-width: thin;
+}
+
+.equipment-group {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+/* The unit is the heading, because it changes how every figure beneath it reads.
+   Sticky so a reader scrolling a long list never loses which unit they are in. */
+.equipment-group__title {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  margin: 0;
+  padding-block: var(--space-sm);
+  background: var(--app-card-navy);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.equipment-group__count {
+  margin-inline-start: auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.equipment-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(120 145 205 / 4%);
+}
+
+/* An unpriced machine is the thing this section exists to fix, so it is marked
+   rather than left to be found by reading every row. */
+.equipment-row[data-priced="false"] {
+  border-inline-start: 3px solid var(--dash-sev-med);
+}
+
+.equipment-row__identity {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.equipment-row__code {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.equipment-row__price {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.equipment-price__figure {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.equipment-price__per {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.equipment-row__actions {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+.equipment-row__price .table-note {
+  margin: 0;
+}
+
+/* Opened under the row it belongs to rather than in a dialog: the machine's name
+   and its current price stay on screen while the new number is typed. */
+.equipment-editor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  align-items: end;
+  gap: var(--space-md);
+  margin-block-start: calc(var(--space-sm) * -1);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-panel);
+}
+
+.equipment-editor__actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+/* The sentences span the form; only the fields share the row. */
+.equipment-editor > .table-note,
+.equipment-editor > .form-feedback {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+@media (max-width: 36rem) {
+  .equipment-row__actions {
+    inline-size: 100%;
+    margin-inline-start: 0;
+  }
+
+  .equipment-row__actions .button {
+    inline-size: 100%;
+  }
+}
+
+/* One machine's revisions, opened under its own row. A machine's rate is an
+   agreement rather than a market fact, so the question is «what happened to
+   THIS one» — which the project-wide history on the prices page buries. */
+.equipment-history {
+  margin-block-start: calc(var(--space-sm) * -1);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface-page) 55%, transparent);
+}
+
+.equipment-history__list {
+  display: grid;
+  gap: var(--space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.equipment-history__item {
+  display: grid;
+  gap: 0.15rem;
+  padding-inline-start: var(--space-md);
+  border-inline-start: 2px solid var(--color-border);
+}
+
+/* The one in force. A list ordered by version does not say which that is, and it
+   is the thing a reader scanning the list is looking for. */
+.equipment-history__item[data-current="true"] {
+  border-inline-start-color: var(--dash-actual);
+}
+
+.equipment-history__figure {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.equipment-history__badge {
+  padding: .05rem .4rem;
+  border-radius: var(--radius-pill);
+  background: rgb(0 172 88 / 14%);
+  color: var(--dash-actual);
+  font-size: var(--font-size-2xs);
+}
+
+.equipment-history__reason {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.equipment-history .table-note {
+  margin: 0;
+}
