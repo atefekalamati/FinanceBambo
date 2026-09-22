@@ -45,7 +45,8 @@
 32. `0032_manual_material_prices_and_declared_categories`
 33. `0033_attribute_units_the_sheet_never_stated`
 34. `0034_one_weight_in_one_unit`
-35. `0035_preserve_source_sheet_weight` (head)
+35. `0035_preserve_source_sheet_weight`
+36. `0036_a_price_revision_need_not_be_explained` (head)
 
 **۰۰۲۷ فقط شکل می‌سازد و هیچ داده‌ای نمی‌نویسد.** ستون‌های تایپ‌شدهٔ مشخصات روی
 `provider_items`، سه ستون Snapshot و یک تاریخ اجباری روی `price_observations`.

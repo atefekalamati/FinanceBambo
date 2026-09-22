@@ -15,9 +15,12 @@ class PricePeriodOverlap(FinanceDomainError):
 
 @dataclass(frozen=True)
 class PriceVersion:
+    # `reason` is optional. `created_by` and `created_at` are the evidence that a revision
+    # happened and neither can be omitted; demanding a sentence on top of them only taught
+    # clients to send placeholder text. See migration 0036.
     id: UUID; organization_id: UUID; project_id: str; resource_id: UUID
     scope_kind: str; version: int; unit_price_irr: Decimal
-    effective_from: date; reason: str; created_by: UUID; created_at: datetime
+    effective_from: date; reason: str | None; created_by: UUID; created_at: datetime
 
 
 def latest_price_trend(versions):

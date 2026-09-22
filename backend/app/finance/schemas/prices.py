@@ -11,16 +11,25 @@ class PriceCreate(ApiModel):
     scope_kind: Literal["organization","project"]
     unit_price_irr: Decimal = Field(ge=0,max_digits=18,decimal_places=0)
     effective_from: date
-    reason: str = Field(min_length=1)
+    #: OPTIONAL. Revising an equipment rate is an ordinary act, and the row already
+    #: records who did it and when -- `created_by` and `created_at` are written on every
+    #: version and neither can be omitted. Demanding a sentence on top of that bought
+    #: nothing: a client that must send something sends "..." to get past validation, and
+    #: the history fills with placeholder text that reads like evidence and is not.
+    #:
+    #: Blank is normalised to None rather than stored as "": a reader can tell "nobody
+    #: wrote a reason" from an empty string that looks like one was attempted.
+    reason: str | None = None
     @field_validator("unit_price_irr", mode="before")
     @classmethod
     def strict_money(cls,v):
         return strict_decimal(v)
     @field_validator("reason")
     @classmethod
-    def reason_required(cls,v):
-        if not v.strip(): raise ValueError("reason must not be blank")
-        return v.strip()
+    def blank_is_absent(cls,v):
+        if v is None: return None
+        stripped = v.strip()
+        return stripped or None
 
 class PriceResponse(PriceCreate):
     id: UUID; resource_id: UUID; version: int; created_by: UUID; created_at: datetime
