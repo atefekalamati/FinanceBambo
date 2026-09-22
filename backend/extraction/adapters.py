@@ -28,6 +28,7 @@ to invent a number.
 """
 
 import asyncio
+import io
 import logging
 import os
 import tempfile
@@ -96,7 +97,105 @@ def _suffix(content, kind):
     return ".jpg" if kind == "image" else ".mp3"
 
 
-def _as_contract(result):
+
+#: A page above this is downscaled before it is sent. Vision models tile large images and
+#: charge by tile, and a construction invoice photographed at 12 megapixels carries no more
+#: readable text than the same page at 2. Measured: gpt-4o spent 1,512 prompt tokens on
+#: these scans, gpt-4o-mini 37,045 for the same bytes.
+VISION_MAX_PIXELS = 2200
+VISION_JPEG_QUALITY = 85
+
+
+def _accepts_image(provider):
+    """Whether this provider's `extract_invoice` takes an image.
+
+    Asked rather than assumed, because `ExtractionProvider` is a Protocol and anything
+    satisfying the two-argument form is a legitimate provider. A vision call to one that
+    predates vision would be a TypeError at the worst possible moment -- inside an
+    extraction, after the OCR has already been paid for.
+    """
+    import inspect
+
+    try:
+        return "image" in inspect.signature(provider.extract_invoice).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _image_for_vision(path):
+    """The page as JPEG bytes, downscaled if it is larger than a model needs.
+
+    Returns None rather than raising. Preparing the image is an enhancement to the
+    extraction, not a precondition for it: a page that cannot be re-encoded still has its
+    OCR text, its parser candidates and its layout reading, and losing all of that because
+    a thumbnailer failed would be a poor trade.
+
+    The ORIGINAL on disk is never touched. This reads it and returns a copy in memory --
+    uploads are content-addressed by sha256 and a rewritten file would no longer be the
+    file that was uploaded.
+    """
+    try:
+        from PIL import Image
+
+        with Image.open(path) as page:
+            page.load()
+            if page.mode not in ("RGB", "L"):
+                page = page.convert("RGB")
+            if max(page.size) > VISION_MAX_PIXELS:
+                scale = VISION_MAX_PIXELS / float(max(page.size))
+                page = page.resize((max(1, int(page.width * scale)),
+                                    max(1, int(page.height * scale))),
+                                   Image.LANCZOS)
+            buffer = io.BytesIO()
+            page.save(buffer, format="JPEG", quality=VISION_JPEG_QUALITY, optimize=True)
+            return buffer.getvalue()
+    except Exception:                                            # noqa: BLE001
+        LOG.warning("invoice page could not be prepared for vision; text extraction stands",
+                    exc_info=True)
+        return None
+
+
+def _fusion_fields(structured, ai_emitted, already_emitted):
+    """The two readings compared, as fields a draft carries and a reviewer reads.
+
+    Neither reading is edited here and neither is chosen. `fusion` records where they
+    agree, where they differ, and where only one of them spoke; `financial_checks` asks
+    whether each reading is internally consistent. Both answers ride on the draft so the
+    person reviewing sees WHY a row is flagged, not merely that it is.
+    """
+    if "extractionSource" not in {field["key"] for field in ai_emitted}:
+        return []                       # no vision reading happened; nothing to compare
+
+    from . import financial_checks, fusion
+
+    def values(fields):
+        return {field["key"]: field["extractedValue"] for field in fields}
+
+    ocr_side = values(structured)
+    vision_side = values(ai_emitted)
+    report = fusion.fuse(ocr_side, vision_side,
+                         ocr_items=ocr_side.get("items"),
+                         vision_items=vision_side.get("items"))
+    checks = financial_checks.validate(vision_side, vision_side.get("items") or [])
+
+    emitted = []
+    for key, value in (("fusionResult", report), ("validationResult", checks)):
+        if key not in already_emitted:
+            emitted.append({"key": key, "extractedValue": value,
+                            "confidence": 1.0, "editedByUser": False})
+    if report["requiresReview"] or checks["requiresReview"]:
+        emitted.extend(_warning_fields(
+            "fusionWarnings",
+            (["فیلدهای ناسازگار: %s" % "، ".join(report["conflictFields"])]
+             if report["conflictFields"] else [])
+            + (["ردیف‌های ناسازگار: %s" % report["conflictRows"]]
+               if report["conflictRows"] else [])
+            + [entry["message"] for entry in checks["checks"]
+               if entry.get("message")],
+            "fusion-requires-review"))
+    return emitted
+
+def _as_contract(result, image=None, media_type="image/jpeg"):
     """A provider's answer as `ProviderExtractionResult` sees it.
 
     `{"fields": [{"key", "extractedValue", "confidence", "editedByUser"}]}` and nothing
@@ -128,10 +227,17 @@ def _as_contract(result):
     # and this adds `tableRows` where a table could be reconstructed from positions that
     # the flattened text no longer contains.
     fields.extend(_layout_fields(result.get("lines"), {f["key"] for f in fields}))
-    fields.extend(_ai_fields(text, {field["key"] for field in fields},
-                             transcript=result.get("transcript"),
-                             metadata=result.get("metadata"),
-                             needs_ai=_needs_ai(structured, confidence)))
+    ai = _ai_fields(text, {field["key"] for field in fields},
+                    transcript=result.get("transcript"),
+                    metadata=result.get("metadata"),
+                    # With a page in hand the model is always worth asking. `_needs_ai`
+                    # gates the TEXT reading, where a clean parse makes a second opinion
+                    # redundant; a vision reading is a different witness and is the whole
+                    # reason the image was kept this far.
+                    needs_ai=image is not None or _needs_ai(structured, confidence),
+                    image=image, media_type=media_type)
+    fields.extend(ai)
+    fields.extend(_fusion_fields(structured, ai, {f["key"] for f in fields}))
     return {"fields": fields}
 
 
@@ -154,7 +260,8 @@ def _needs_ai(structured_fields, ocr_confidence):
                for item in warnings)
 
 
-def _ai_fields(text, already_emitted, transcript=None, metadata=None, needs_ai=True):
+def _ai_fields(text, already_emitted, transcript=None, metadata=None, needs_ai=True,
+               image=None, media_type="image/jpeg"):
     """LLM candidates for fields the deterministic parser could not find.
 
     THE ORDER IS THE POINT. `_structured_fields` runs first and its keys are passed in
@@ -175,8 +282,16 @@ def _ai_fields(text, already_emitted, transcript=None, metadata=None, needs_ai=T
         legacy = _legacy_avalai_fields(text, already_emitted, transcript, metadata)
         return legacy
     try:
-        candidate = provider.extract_invoice(text, {"transcript": transcript,
-                                                    "metadata": metadata})
+        # The PAGE when one is available, the transcription otherwise. A provider built
+        # before vision existed still accepts the two-argument call, so an older or
+        # third-party provider keeps working -- it simply never sees an image.
+        if image is not None and _accepts_image(provider):
+            candidate = provider.extract_invoice(
+                text, {"transcript": transcript, "metadata": metadata},
+                image=image, media_type=media_type)
+        else:
+            candidate = provider.extract_invoice(text, {"transcript": transcript,
+                                                        "metadata": metadata})
     except (ExtractionProviderUnavailable, ExtractionProviderResponseInvalid) as error:
         LOG.warning("finance AI extraction skipped: %s", error)
         return _warning_fields("aiWarnings", [str(error)], "ai-unavailable")
@@ -562,7 +677,13 @@ class ImageExtractionAdapter:
             # to_thread, because the OCR call is CPU-bound and blocking. Without it one
             # upload would hold the event loop for the length of a recognition.
             result = await asyncio.to_thread(self._read, path)
-        return _as_contract(result)
+            # The page itself, read before the temporary file goes away. Until now the
+            # image ended here and everything downstream saw only a transcription -- which
+            # is why a 0.45-confidence scan produced nothing a reader could use. Held as
+            # bytes rather than a path because the provider posts it, and a path that has
+            # been deleted is not a page.
+            image = _image_for_vision(path)
+        return _as_contract(result, image=image, media_type="image/jpeg")
 
 
 class VoiceExtractionAdapter:
