@@ -126,8 +126,12 @@ class ObjectDiscoveryTests(unittest.TestCase):
         # `finance_item_price_mapping_components` with 0025, and the two conversion tables
         # with 0026 -- which also adds columns to `finance_mpp_rows`, already listed.
         # `finance_price_categories` arrives with 0032, which also adds `origin` to
-        # `provider_items` and `price_observations`, both already listed. That the
-        # discovery found them without being told is the property this test is about.
+        # `provider_items` and `price_observations`, both already listed.
+        # `price_versions` arrives with 0036, which drops NOT NULL from its `reason`
+        # and rewrites the check on it -- a constraint change is exactly the kind of
+        # difference an environment drifts on, so the reconciler must compare it.
+        # That the discovery found them without being told is the property this test
+        # is about.
         self.assertEqual(
             ["estimate_line_source_completions", "estimate_lines",
              "finance_invoice_counters", "finance_item_price_mapping_components",
@@ -137,7 +141,8 @@ class ObjectDiscoveryTests(unittest.TestCase):
              "finance_price_categories", "finance_resources",
              "finance_unit_conversion_issues", "finance_unit_conversion_rules",
              "invoices", "material_unit_settings", "price_collection_runs",
-             "price_observations", "price_providers", "progress_snapshot_refs",
+             "price_observations", "price_providers", "price_versions",
+             "progress_snapshot_refs",
              "provider_item_labels", "provider_item_unit_factors",
              "provider_items"], tables)
 
