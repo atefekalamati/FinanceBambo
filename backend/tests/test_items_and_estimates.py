@@ -59,7 +59,13 @@ def row(**changes):
         "mapping_id": None, "provider_item_id": None, "selected_unit": None,
         "conversion_status": None, "mapping_version": None,
         "mapped_product_name": None, "mapped_product_category": None,
-        "current_unit_price_irr": None, "price_source_unit": None, "price_as_of": None,
+        # The shared resolver's own columns. `price_as_of` is no longer a column of its
+        # own: the effective date belongs to whichever rung answered, so it comes back
+        # from the resolver beside the amount rather than from the observation alone.
+        "current_unit_price_irr": None, "price_source_unit": None,
+        "current_price_source": "none", "current_price_unit": None,
+        "current_price_scope": None, "current_price_effective_from": None,
+        "price_version_id": None,
     }
     value.update(changes)
     return value

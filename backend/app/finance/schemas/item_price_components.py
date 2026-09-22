@@ -35,7 +35,14 @@ ComponentStatus = Literal["ready", "needs_product", "needs_product_type", "needs
 #: How a ROW can stand. Every component status, plus the two that only an aggregate has.
 RowStatus = Literal["ready", "needs_components", "partially_unresolved", "needs_product",
                     "needs_product_type", "needs_unit", "needs_usage_quantity",
-                    "unknown_source_unit", "needs_factor", "incompatible", "no_price"]
+                    "unknown_source_unit", "needs_factor", "incompatible", "no_price",
+                    # The line is priced by its own resource and needs no components. It
+                    # is not a failure and must never be shown as one.
+                    "resource_price_ready"]
+
+#: Where the price on a row came from. `none` is the resolver reporting that it looked,
+#: which is a different statement from a field nobody filled in.
+PriceSource = Literal["manual_resource", "sheet", "none"]
 
 UsageMode = Literal["per_msp_unit", "total_quantity"]
 
@@ -52,8 +59,16 @@ class ItemPriceRowStatusResponse(ApiModel):
     status_label: str
     reason: str | None = None
 
-    #: The sum of the components that resolved. Null when none did -- never zero.
+    #: The sum of the components that resolved, or `quantity x unit price` when the row
+    #: is priced by its own resource. Null when neither -- never zero.
     daily_item_cost_irr: str | None = None
+
+    #: The resolved unit price, the unit it is quoted per, and which rung of the ladder
+    #: answered. Present on a resource-priced row; null on a row built from components,
+    #: whose components carry their own prices.
+    current_unit_price_irr: str | None = None
+    price_unit: str | None = None
+    price_source: PriceSource | None = None
 
     component_count: int = 0
     ready_component_count: int = 0

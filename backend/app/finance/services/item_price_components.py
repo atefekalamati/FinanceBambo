@@ -28,7 +28,7 @@ from uuid import uuid4
 from ..domain.errors import FinanceDomainError
 from ..domain.item_price_components import (PER_MSP_UNIT, TOTAL_QUANTITY, USAGE_MODES,
                                             PricedComponent, aggregate_row,
-                                            price_component)
+                                            price_component, resource_priced_row)
 from ..domain.conversion_rules import choose_conversion
 from ..domain.material_categories import category_label, spec_columns, specs_of
 from ..domain.unit_conversion import can_convert
@@ -79,6 +79,11 @@ class ItemPriceComponentService:
         prices = await self.repository.latest_prices_for_items(scope, item_ids)
         factors = await self.repository.approved_factors_for_items(scope, item_ids)
         quantities = await self.repository.line_quantities(scope)
+        # The line's own resource price, by the same ladder the live report uses. Asked
+        # for every line and not only the componentless ones, because a line that has BOTH
+        # a resource price and components must resolve the same way here as it does in the
+        # report -- and the report puts price_versions first.
+        resource_prices = await self._resource_prices(scope)
         # ONE query for every unit pair the table needs, not one per component. A page of
         # 835 rows asks about a handful of distinct crossings.
         rules = await self._rule_candidates(scope, active, prices)
@@ -89,6 +94,17 @@ class ItemPriceComponentService:
 
         answers = {}
         for line_id, quantity in quantities.items():
+            resource_price = resource_prices.get(line_id)
+            if resource_price and resource_price.get("current_unit_price_irr") is not None:
+                # Priced by its own resource. A truck is hired at a rate, not assembled
+                # from materials, and demanding components for it asks for work that must
+                # never be done.
+                answers[str(line_id)] = dict(
+                    resource_priced_row(resource_price["current_unit_price_irr"], quantity,
+                                        resource_price.get("current_price_unit"),
+                                        resource_price.get("current_price_source")),
+                    estimate_line_id=str(line_id))
+                continue
             priced = [self._price(c, prices, factors, quantity, rules)
                       for c in by_line.get(line_id, [])]
             row = aggregate_row(priced)
@@ -105,6 +121,18 @@ class ItemPriceComponentService:
                 estimate_line_id=str(line_id),
                 **self._source_summary(items, prices, orphaned)))
         return answers
+
+
+    async def _resource_prices(self, scope):
+        """Resource prices, or nothing when the repository predates this lookup.
+
+        A repository without the method is a test double, and the table answered without
+        resource prices before this existed. Degrading to that answer beats a 500.
+        """
+        lookup = getattr(self.repository, "resource_prices", None)
+        if lookup is None:
+            return {}
+        return await lookup(scope, self.clock())
 
     @staticmethod
     def _source_summary(components, prices, priced=()):

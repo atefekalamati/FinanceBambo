@@ -111,6 +111,11 @@ class Repo:
     async def line_quantities(self, s):
         return dict(self._quantities)
 
+    async def resource_prices(self, s, as_of):
+        # Default: no line's resource carries a price, which is what every test written
+        # before this rung existed assumed. A test that wants one sets `_resource_prices`.
+        return dict(getattr(self, "_resource_prices", {}))
+
     async def line_context(self, s, line_id):
         return dict(self._context) if self._context is not None else None
 
@@ -657,3 +662,84 @@ class CascadeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AResourcePriceReplacesTheDemandForComponentsTests(unittest.TestCase):
+    """«نیازمند افزودن مصالح» was being shown for a truck.
+
+    It was not merely unhelpful. A machine is hired at a rate somebody agreed; it is not
+    assembled out of materials, so the table was asking for work that must never be done,
+    and the line stayed unpriced for as long as nobody did it.
+    """
+
+    def _service(self, resource_prices=None, components=()):
+        repo = Repo(components=list(components),
+                    quantities={LINE: Decimal("100")})
+        repo._resource_prices = resource_prices or {}
+        return ItemPriceComponentService(repo, clock=lambda: date(2026, 9, 15))
+
+    @staticmethod
+    def _price(amount="32000000", unit="hour", source="manual_resource"):
+        return {"current_unit_price_irr": Decimal(amount), "current_price_unit": unit,
+                "current_price_source": source}
+
+    def test_a_manually_priced_resource_is_priced_here_with_no_mapping_at_all(self):
+        """The required case: price_versions exists, no provider_item mapping exists."""
+        service = self._service({LINE: self._price()})
+        answers = asyncio.run(service.table_status(Scope()))
+        row = answers[str(LINE)]
+        self.assertEqual("resource_price_ready", row["status"])
+        self.assertEqual(Decimal("3200000000"), row["daily_item_cost_irr"])
+        self.assertEqual("manual_resource", row["price_source"])
+        self.assertEqual("hour", row["price_unit"])
+        self.assertEqual(Decimal("32000000"), row["current_unit_price_irr"])
+
+    def test_it_never_asks_for_components_or_a_product(self):
+        service = self._service({LINE: self._price()})
+        row = asyncio.run(service.table_status(Scope()))[str(LINE)]
+        self.assertNotIn(row["status"], ("needs_components", "needs_product"))
+        self.assertEqual("", row["reason"], "nothing is missing, so nothing is demanded")
+
+    def test_a_resource_price_wins_over_components_the_line_also_has(self):
+        """Same order as the report: price_versions first, whatever else exists.
+
+        A line with both must not resolve one way here and another way there -- that is
+        the entire defect this work exists to close.
+        """
+        service = self._service({LINE: self._price()},
+                                components=[{"id": COMPONENT, "estimate_line_id": LINE,
+                                             "provider_item_id": REBAR, "active": True,
+                                             "selected_unit": "kg",
+                                             "usage_mode": "per_msp_unit",
+                                             "usage_quantity": Decimal("80"),
+                                             "version": 1}])
+        row = asyncio.run(service.table_status(Scope()))[str(LINE)]
+        self.assertEqual("resource_price_ready", row["status"])
+        self.assertEqual(Decimal("3200000000"), row["daily_item_cost_irr"])
+
+    def test_a_sheet_priced_resource_says_so(self):
+        service = self._service({LINE: self._price(amount="938400", unit="کیلو",
+                                                   source="sheet")})
+        row = asyncio.run(service.table_status(Scope()))[str(LINE)]
+        self.assertEqual("sheet", row["price_source"])
+
+    def test_no_price_anywhere_stays_unresolved_with_a_null_cost(self):
+        row = asyncio.run(self._service().table_status(Scope()))[str(LINE)]
+        self.assertEqual("needs_components", row["status"])
+        self.assertIsNone(row["daily_item_cost_irr"], "null, never zero")
+
+    def test_a_repository_without_the_lookup_still_answers(self):
+        """Older doubles, and any caller wired before this rung existed.
+
+        A subclass that HIDES the method, rather than deleting it from `Repo` -- deleting
+        it mutated the class for every test that ran afterwards, and the ones that failed
+        were not the one doing the deleting.
+        """
+        class Older(Repo):
+            resource_prices = None
+
+        service = ItemPriceComponentService(
+            Older(components=[], quantities={LINE: Decimal("100")}),
+            clock=lambda: date(2026, 9, 15))
+        row = asyncio.run(service.table_status(Scope()))[str(LINE)]
+        self.assertEqual("needs_components", row["status"])

@@ -29,6 +29,9 @@ is a carrier.
 
 from psycopg.rows import dict_row
 
+from ..domain.price_resolution import (resolved_price_columns,
+                                       resolved_price_joins)
+
 
 #: The newest version anybody may still read. Superseded versions are excluded by 0028's
 #: column rather than by guessing from `imported_at` alone.
@@ -59,9 +62,8 @@ SELECT DISTINCT ON (m.source_assignment_uid)
        map.id AS mapping_id, map.provider_item_id, map.selected_unit,
        map.conversion_status, map.version AS mapping_version,
        pi.external_name AS mapped_product_name, pi.category AS mapped_product_category,
-       obs.normalized_price_irr AS current_unit_price_irr,
-       obs.source_unit AS price_source_unit,
-       obs.workflow_date_gregorian AS price_as_of
+""" + resolved_price_columns("r.base_unit") + """,
+       sheet_price.source_unit AS price_source_unit
   FROM finance_mpp_rows m
   LEFT JOIN finance_resources r
          ON r.organization_id=m.organization_id AND r.project_id=m.project_id
@@ -78,14 +80,10 @@ SELECT DISTINCT ON (m.source_assignment_uid)
   LEFT JOIN provider_items pi
          ON pi.organization_id=m.organization_id AND pi.project_id=m.project_id
         AND pi.id=map.provider_item_id
-  LEFT JOIN LATERAL (
-       SELECT o.normalized_price_irr, o.source_unit, o.workflow_date_gregorian
-         FROM price_observations o
-        WHERE o.organization_id=m.organization_id AND o.project_id=m.project_id
-          AND o.provider_item_id=map.provider_item_id
-          AND o.validation_status='valid'
-        ORDER BY o.workflow_date_gregorian DESC NULLS LAST, o.fetched_at DESC, o.id
-        LIMIT 1) obs ON TRUE
+""" + resolved_price_joins(
+    as_of="CURRENT_DATE",
+    organization="m.organization_id", project="m.project_id",
+    resource="r.id", assignment="m.source_assignment_uid") + """
  WHERE m.organization_id=%s AND m.project_id=%s AND m.source_version_id=%s
    AND m.source_assignment_uid IS NOT NULL
  ORDER BY m.source_assignment_uid, m.id

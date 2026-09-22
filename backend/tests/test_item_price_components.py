@@ -256,7 +256,10 @@ class TheVocabularyTests(unittest.TestCase):
              "نیازمند انتخاب محصول قیمت روز", "نیازمند انتخاب واحد",
              "نیازمند مقدار مصرف مصالح", "واحد قیمت مبدأ مشخص نیست",
              "نیازمند ضریب تبدیل", "تبدیل واحد ناسازگار است",
-             "قیمت روز معتبر وجود ندارد", "بخشی از اجزای قیمت‌گذاری ناقص است"},
+             "قیمت روز معتبر وجود ندارد", "بخشی از اجزای قیمت‌گذاری ناقص است",
+             # A line priced by its own resource. Not a failure, and the only status here
+             # whose reason is empty besides «آماده» -- nothing is missing.
+             "قیمت منبع ثبت شده است"},
             set(STATUS_LABELS.values()))
 
     def test_money_is_whole_rials_so_the_page_can_render_it(self):

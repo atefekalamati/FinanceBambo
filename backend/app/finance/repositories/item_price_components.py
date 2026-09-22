@@ -13,6 +13,9 @@ from uuid import uuid4
 
 from psycopg.rows import dict_row
 
+from ..domain.price_resolution import (resolved_price_columns,
+                                       resolved_price_joins)
+
 #: Named rather than `*`: `ApiModel` forbids unknown fields, so a `SELECT *` that picks up a
 #: new column becomes a 500 on a response nobody changed.
 _COLUMNS = """
@@ -193,6 +196,28 @@ class PsycopgItemPriceComponentRepository:
                 (s.organization_id, s.project_id, list(provider_item_ids)))
             return {(r["provider_item_id"], r["from_unit"], r["to_unit"]): r
                     for r in await c.fetchall()}
+
+    async def resource_prices(self, s, as_of):
+        """The price each line's own RESOURCE carries, by the shared ladder.
+
+        Same resolver the live report uses, so a machine cannot be priced at one number on
+        the report and another on this table. Lines whose resource resolves nothing come
+        back with a NULL price rather than being omitted: this table has to distinguish
+        "this line is priced by its resource" from "this line was not asked about".
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                """SELECT l.id AS estimate_line_id, r.base_unit,"""
+                + resolved_price_columns("r.base_unit") +
+                """ FROM estimate_lines l
+                     JOIN finance_resources r
+                       ON r.organization_id=l.organization_id
+                      AND r.project_id=l.project_id AND r.id=l.resource_id"""
+                + resolved_price_joins("l") +
+                """ WHERE l.organization_id=%s AND l.project_id=%s
+                      AND l.deleted_at IS NULL AND r.deleted_at IS NULL""",
+                (as_of, as_of, s.organization_id, s.project_id))
+            return {row["estimate_line_id"]: row for row in await c.fetchall()}
 
     async def line_quantities(self, s):
         """The quantity each line is priced on, for every line of the project.
