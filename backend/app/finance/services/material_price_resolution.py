@@ -36,19 +36,70 @@ from ..domain.unit_registry import UNIT_REGISTRY
 #: How the sheet spells a unit, and which registry code that is. Left side: what people
 #: write. Right side: always a key of UNIT_REGISTRY.
 SHEET_UNIT_SPELLINGS = {
-    "کیلو": "kg", "کیلوگرم": "kg", "كيلو": "kg", "kilogram": "kg", "kilo": "kg",
+    "کیلو": "kg", "کیلوگرم": "kg", "kilogram": "kg", "kilo": "kg",
     "گرم": "g", "gram": "g",
     "تن": "ton", "tonne": "ton",
-    "متر": "m", "متری": "m", "meter": "m", "metre": "m",
-    "سانتیمتر": "cm", "سانتی‌متر": "cm", "centimeter": "cm",
-    "میلیمتر": "mm", "میلی‌متر": "mm", "millimeter": "mm",
-    "مترمربع": "m2", "متر مربع": "m2", "square meter": "m2",
-    "مترمکعب": "m3", "متر مکعب": "m3",
+    "متر": "m", "متری": "m", "meter": "m", "metre": "m", "مترطول": "m",
+    "سانتیمتر": "cm", "centimeter": "cm",
+    "میلیمتر": "mm", "millimeter": "mm",
+    "مترمربع": "m2", "square meter": "m2", "sqm": "m2", "متر مرکعب": "m3",
+    "مترمکعب": "m3", "cubic meter": "m3", "cmb": "m3", "مترمرکعب": "m3",
     "لیتر": "liter", "litre": "liter",
+    # Count. The registry's code is `each`; «عدد», «دانه», «تعداد», «قطعه» and the English
+    # `piece`/`number` are spellings of it, not units of their own. An earlier draft of
+    # this file invented `piece` as a separate name and a price could then agree with a
+    # resource only by accident -- see the note above.
     "عدد": "each", "piece": "each", "pcs": "each", "قطعه": "each",
+    "دانه": "each", "تعداد": "each", "number": "each",
     "شاخه": "branch",
     "کیسه": "bag", "پاکت": "bag",
+    # Time, which the sheet does state for hired plant.
+    "روز": "day", "ساعت": "hour",
 }
+
+#: Spellings deliberately left OUT, and why. «بسته», «رول», «برگ», «جفت» and «ست» are real
+#: units somebody writes, and the registry has no code for any of them. Mapping them to a
+#: name invented here would produce a unit with no dimension and no conversion -- it would
+#: read as resolved and could never be crossed with anything, which is worse than being
+#: unrecognised. They return None until the registry gains real codes for them.
+UNMAPPED_SHEET_SPELLINGS = ("بسته", "رول", "برگ", "جفت", "ست", "package", "roll",
+                            "sheet", "pair", "set",
+                            # Seen on real listings and just as unnameable: the registry
+                            # has no decimetre-cubed, and deriving one from m3 here would
+                            # put a conversion factor in a spelling table.
+                            "دسیمترمکعب")
+
+#: Letters that are one letter written two ways. A supplier typing on an Arabic keyboard
+#: produces «كيلو» where a Persian one produces «کیلو», and a map keyed on one spelling
+#: silently fails to recognise the other -- which is how a perfectly good unit becomes
+#: `unresolved_unit`.
+_LETTER_FOLD = {"ي": "ی", "ى": "ی", "ك": "ک",
+                "ة": "ه"}
+
+#: Persian and Arabic digits, for units written «متر 2» or «m٢».
+_DIGIT_FOLD = {ord(digit): str(index)
+               for index, digit in enumerate("۰۱۲۳۴"
+                                             "۵۶۷۸۹")}
+_DIGIT_FOLD.update({ord(digit): str(index)
+                    for index, digit in enumerate("٠١٢٣٤"
+                                                  "٥٦٧٨٩")})
+
+
+def normalize_unit_text(unit):
+    """What a person typed, reduced to what two spellings of one unit have in common.
+
+    Folds the Arabic/Persian letter pairs, converts Persian and Arabic digits to ASCII,
+    removes the zero-width non-joiner, collapses runs of whitespace to one space, and
+    lowercases. It does NOT decide what the unit is -- that is `canonical_unit`'s job, and
+    keeping them apart is what lets this be tested on its own.
+    """
+    if unit is None:
+        return ""
+    text = str(unit)
+    for source, target in _LETTER_FOLD.items():
+        text = text.replace(source, target)
+    text = text.translate(_DIGIT_FOLD).replace("‌", "")
+    return " ".join(text.split()).lower()
 
 #: Statuses, named once so the API, the UI and these tests cannot drift apart.
 RESOLVED = "resolved"
@@ -106,7 +157,24 @@ def canonical_unit(unit):
     lowered = text.lower()
     if lowered in UNIT_REGISTRY:
         return lowered
-    return SHEET_UNIT_SPELLINGS.get(text) or SHEET_UNIT_SPELLINGS.get(lowered)
+    # Folded last, so an exact registry code is never altered on its way through. What the
+    # folding buys is the spellings that differ only in keyboard: «كيلو» for «کیلو»,
+    # «متر  مربع» with two spaces, «m٢» with an Arabic digit.
+    folded = normalize_unit_text(text)
+    if folded in UNIT_REGISTRY:
+        return folded
+    named = (SHEET_UNIT_SPELLINGS.get(text) or SHEET_UNIT_SPELLINGS.get(lowered)
+             or SHEET_UNIT_SPELLINGS.get(folded))
+    if named is not None:
+        return named
+    # Last: the same lookup with the spaces taken out, so «متر مربع» and «مترمربع» are one
+    # spelling. Listing both in the map covered the two people happen to write; a supplier
+    # writing «متر  مربع» or «سانتی متر» was still unrecognised, and a unit this system
+    # cannot name is a price it cannot use.
+    tight = folded.replace(" ", "")
+    if tight in UNIT_REGISTRY:
+        return tight
+    return SHEET_UNIT_SPELLINGS.get(tight)
 
 
 
