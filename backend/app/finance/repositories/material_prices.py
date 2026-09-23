@@ -22,6 +22,8 @@ import hashlib
 from uuid import uuid4
 
 from psycopg.rows import dict_row
+
+from ..domain.price_scope import SCOPE_PROJECT
 from psycopg.types.json import Jsonb
 
 from ..domain.material_specs import SPEC_COLUMNS
@@ -43,6 +45,21 @@ def row_fingerprint(product_id, workflow_date_raw, raw_price) -> str:
     return hashlib.sha256(parts.encode("utf-8")).hexdigest()
 
 
+def _scope_level(scope):
+    """Which scope a write belongs to, defaulting to `project`.
+
+    Read off the scope object rather than passed as a parameter to four methods: a caller
+    that supplied it to three of them would write a provider, an item and a run at one
+    scope and the observation at another, and the CHECK added by 0037 would reject only
+    the last of those -- after the first three had already been committed.
+
+    `getattr` because the HTTP path's authorised scope predates this field and is
+    project-scoped by construction. A scope that does not mention it is a project scope,
+    which is what every caller meant before the setting existed.
+    """
+    return getattr(scope, "scope_level", SCOPE_PROJECT)
+
+
 class PsycopgMaterialPriceRepository:
     def __init__(self, db):
         self.db = db
@@ -61,13 +78,14 @@ class PsycopgMaterialPriceRepository:
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute(
                 """INSERT INTO price_providers
-                       (id, organization_id, project_id, name, domain, provider_type,
+                       (scope_level, id, organization_id, project_id, name, domain, provider_type,
                         crawl_method, active, default_interval_minutes)
-                   VALUES (%s, %s, %s, %s, %s, 'spreadsheet', 'google_sheet', true, %s)
+                   VALUES (%s, %s, %s, %s, %s, %s, 'spreadsheet', 'google_sheet', true, %s)
                    ON CONFLICT (organization_id, project_id, domain)
                    DO UPDATE SET name = EXCLUDED.name
                    RETURNING *""",
-                (uuid4(), s.organization_id, s.project_id, name, domain, interval_minutes))
+                (_scope_level(s), uuid4(), s.organization_id, s.project_id, name, domain,
+                 interval_minutes))
             return await c.fetchone()
 
     async def providers(self, s):
@@ -111,11 +129,12 @@ class PsycopgMaterialPriceRepository:
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute(
                 """INSERT INTO provider_items
-                       (id, organization_id, project_id, provider_id, external_id,
+                       (scope_level, id, organization_id, project_id, provider_id,
+                        external_id,
                         external_name, category, url, source_unit, source_worksheet,
                         active, inactive_reason, metadata, spec_source, spec_conflicts, """
                 + ", ".join(columns) + """)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, """
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, """
                 + ", ".join(["%s"] * len(columns)) + """)
                    ON CONFLICT (organization_id, project_id, provider_id, external_id)
                    DO UPDATE SET external_name = EXCLUDED.external_name,
@@ -139,7 +158,8 @@ class PsycopgMaterialPriceRepository:
                    -- listing an import knows better.
                    WHERE provider_items.origin = 'sheet'
                    RETURNING *""",
-                [uuid4(), s.organization_id, s.project_id, provider_id, external_id,
+                [_scope_level(s), uuid4(), s.organization_id, s.project_id, provider_id,
+                 external_id,
                  external_name, category, url, source_unit, worksheet, active,
                  inactive_reason, Jsonb(metadata or {}), spec_source,
                  Jsonb(spec_conflicts) if spec_conflicts else None] + values)
@@ -283,11 +303,11 @@ class PsycopgMaterialPriceRepository:
                 return existing
             await c.execute(
                 """INSERT INTO price_providers
-                       (id, organization_id, project_id, name, domain, provider_type,
+                       (scope_level, id, organization_id, project_id, name, domain, provider_type,
                         crawl_method, active, default_interval_minutes)
-                   VALUES (%s, %s, %s, %s, %s, 'manual', 'manual_entry', true, 1440)
+                   VALUES (%s, %s, %s, %s, %s, %s, 'manual', 'manual_entry', true, 1440)
                    RETURNING *""",
-                (provider_id, s.organization_id, s.project_id, name,
+                (_scope_level(s), provider_id, s.organization_id, s.project_id, name,
                  "manual://%s" % s.project_id))
             return await c.fetchone()
 
@@ -315,14 +335,15 @@ class PsycopgMaterialPriceRepository:
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute(
                 """INSERT INTO provider_items
-                       (id, organization_id, project_id, provider_id, external_id,
+                       (scope_level, id, organization_id, project_id, provider_id,
+                        external_id,
                         external_name, category, source_unit, url, active, metadata,
                         origin)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, true, '{}'::jsonb,
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, true, '{}'::jsonb,
                            'manual')
                    RETURNING *""",
-                (item_id, s.organization_id, s.project_id, provider_id, external_id,
-                 external_name, category, source_unit))
+                (_scope_level(s), item_id, s.organization_id, s.project_id, provider_id,
+                 external_id, external_name, category, source_unit))
             return await c.fetchone()
 
     async def record_manual_observation(self, s, *, observation_id, provider_id,
@@ -339,14 +360,14 @@ class PsycopgMaterialPriceRepository:
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute(
                 """INSERT INTO price_observations
-                       (id, organization_id, project_id, provider_id, provider_item_id,
+                       (scope_level, id, organization_id, project_id, provider_id, provider_item_id,
                         collection_run_id, raw_price, normalized_price_irr,
                         source_currency, source_unit, source_url, observed_at,
                         fetched_at, availability, validation_status, validation_reasons,
                         raw_data, observed_at_source, workflow_date_gregorian,
                         row_fingerprint, product_external_id, product_name_snapshot,
                         provider_name_snapshot, origin, entered_by, reason)
-                   VALUES (%s, %s, %s, %s, %s,
+                   VALUES (%s, %s, %s, %s, %s, %s,
                            NULL, %s, %s,
                            'IRR', %s, NULL, %s,
                            now(), 'available', 'valid', '[]'::jsonb,
@@ -355,7 +376,8 @@ class PsycopgMaterialPriceRepository:
                            %s, 'manual', %s, %s)
                    ON CONFLICT DO NOTHING
                    RETURNING *""",
-                (observation_id, s.organization_id, s.project_id, provider_id,
+                (_scope_level(s), observation_id, s.organization_id, s.project_id,
+                 provider_id,
                  provider_item_id, str(price_irr), price_irr, source_unit, observed_on,
                  observed_on, fingerprint, str(provider_item_id), product_name,
                  provider_name, entered_by, reason))
@@ -405,12 +427,12 @@ class PsycopgMaterialPriceRepository:
             async with self.db.cursor(row_factory=dict_row) as c:
                 await c.execute(
                     """INSERT INTO price_collection_runs
-                           (id, organization_id, project_id, provider_id, started_at,
+                           (scope_level, id, organization_id, project_id, provider_id, started_at,
                             status, source_document_id)
-                       VALUES (%s, %s, %s, %s, %s, 'running', %s)
+                       VALUES (%s, %s, %s, %s, %s, %s, 'running', %s)
                        RETURNING *""",
-                    (uuid4(), s.organization_id, s.project_id, provider_id, started_at,
-                     document_id))
+                    (_scope_level(s), uuid4(), s.organization_id, s.project_id, provider_id,
+                     started_at, document_id))
                 return await c.fetchone()
         except errors.UniqueViolation as exc:
             raise RunAlreadyRunning(
@@ -473,7 +495,8 @@ class PsycopgMaterialPriceRepository:
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute(
                 """INSERT INTO price_observations
-                       (id, organization_id, project_id, provider_id, provider_item_id,
+                       (scope_level, id, organization_id, project_id, provider_id,
+                        provider_item_id,
                         collection_run_id, raw_price, normalized_price_irr, source_currency,
                         source_unit, source_url, observed_at, fetched_at, availability,
                         validation_status, validation_reasons, raw_data,
@@ -482,14 +505,15 @@ class PsycopgMaterialPriceRepository:
                         observed_at_source, secondary_price_irr, secondary_price_basis,
                         row_fingerprint,
                         product_external_id, product_name_snapshot, provider_name_snapshot)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'TOMAN', %s, %s, %s, %s,
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'TOMAN', %s, %s, %s, %s,
                            'unknown', %s, %s, %s, %s, %s, %s, %s, %s, %s,
                            %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (organization_id, project_id, provider_item_id, row_fingerprint)
                    WHERE row_fingerprint IS NOT NULL
                    DO NOTHING
                    RETURNING *""",
-                (uuid4(), s.organization_id, s.project_id, provider_id, provider_item_id,
+                (_scope_level(s), uuid4(), s.organization_id, s.project_id, provider_id,
+                 provider_item_id,
                  run_id, raw_price, price_irr, source_unit, source_url, observed_at,
                  fetched_at, validation_status, Jsonb(list(validation_reasons or ())),
                  Jsonb(raw_data or {}), document_id, worksheet, row_number,

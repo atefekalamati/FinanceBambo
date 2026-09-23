@@ -99,6 +99,11 @@ class LiveReport:
     #: that is. Equal counts mean the figures are whole.
     computed_line_count: int = 0
     total_line_count: int = 0
+    #: Lines the FORECAST rests on -- `moneyRequiredToContinueIrr` and
+    #: `forecastFinalCostIrr`. A different set from `computed_line_count`, and the reason
+    #: both are published: a material with a price and no measurement is in one and not the
+    #: other, and one number could not say so.
+    required_line_count: int = 0
 
 
 def _calculation_status(missing_price_count, missing_conversion_count, progress_quality):
@@ -179,6 +184,13 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     # How many lines the published figures actually rest on, against how many there are.
     # Without this pair a sum over 2 of 715 lines and a sum over 715 of 715 look identical.
     computed_line_count=0;total_line_count=0
+    # A SECOND coverage figure, because the forecast rests on a different set of lines than
+    # the executed-value figures do. A material line with a price and no measurement is
+    # excluded from `computedLineCount` -- nobody measured it -- yet it still contributes
+    # what it needs to `moneyRequiredToContinueIrr`, because what a material still needs is
+    # what has not been BOUGHT. Reporting one count beside both pairs of metrics said the
+    # forecast rested on 0 of 715 lines when it rested on rather more than that.
+    required_line_count=0
     # missingCount counts lines that DID match an assignment but had no usable quantity on
     # it. Lines that matched nothing are unmappedLineCount instead: the two need different
     # work from different people, so one number for both told the reader nothing.
@@ -226,6 +238,11 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             resource_actual_remaining[row["resource_id"]] = pooled_actual - pooled_allocated
             line_actual = linked_actual + pooled_allocated
             general_required += max(revised_amount - line_actual, ZERO)
+            # Counted here because this branch `continue`s: a general cost contributes to
+            # money_required through `general_required` below and never passes the
+            # per-line test. Left out, the count would understate the forecast's coverage
+            # by every general-cost line the project has.
+            if has_baseline: required_line_count += 1
             if line_actual > revised_amount:
                 warnings.append(_line_warning(row,"GENERAL_COST_OVERRUN","General cost actual exceeds its revised estimate.",affected=("moneyRequiredToContinueIrr","forecastFinalCostIrr")))
             continue
@@ -336,7 +353,8 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         # rule is untouched. Every other kind derives its requirement from `remaining`, so
         # it needs the measurement like the two sums above do.
         required_is_known = has_price and (kind == "material" or progress_known)
-        if required_is_known: money_required += required
+        if required_is_known:
+            money_required += required;required_line_count += 1
         if has_price and progress_known:
             breakdown[kind]["remainingPhysicalCostIrr"] += remaining_cost
         if required_is_known:
@@ -433,4 +451,4 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         item["impactSharePercent"] = None if total_impact == 0 or not item["priceAvailable"] else (abs(item["varianceIrr"]) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     for item in quantity_variances:
         item["impactSharePercent"] = None if total_impact == 0 or not item["priceAvailable"] else (abs(item["remainingPhysicalCostIrr"] or ZERO) * Decimal(100) / total_impact).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-    return LiveReport(metrics,list(breakdown.values()),price_variances[:10],quantity_variances[:10],price_variances,quantity_variances,warnings,_calculation_status(missing_price_count,missing_conversion_count,progress_quality),incomplete_metric_keys,missing_price_count,missing_estimate_count,len(excluded_estimate_line_ids),excluded_estimate_line_ids,progress_quality,computed_line_count,total_line_count)
+    return LiveReport(metrics,list(breakdown.values()),price_variances[:10],quantity_variances[:10],price_variances,quantity_variances,warnings,_calculation_status(missing_price_count,missing_conversion_count,progress_quality),incomplete_metric_keys,missing_price_count,missing_estimate_count,len(excluded_estimate_line_ids),excluded_estimate_line_ids,progress_quality,computed_line_count,total_line_count,required_line_count)

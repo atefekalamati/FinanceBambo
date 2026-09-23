@@ -6090,6 +6090,11 @@
             "title": "Reportingdate",
             "type": "string"
           },
+          "requiredLineCount": {
+            "default": 0,
+            "title": "Requiredlinecount",
+            "type": "integer"
+          },
           "topPriceVariances": {
             "items": {
               "$ref": "#/components/schemas/PriceVariance"
@@ -7946,6 +7951,11 @@
             "format": "date",
             "title": "Reportingdate",
             "type": "string"
+          },
+          "requiredLineCount": {
+            "default": 0,
+            "title": "Requiredlinecount",
+            "type": "integer"
           },
           "topPriceVariances": {
             "items": {

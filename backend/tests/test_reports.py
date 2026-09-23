@@ -1139,3 +1139,68 @@ class CoverageCountTests(unittest.TestCase):
         self.assertEqual(0, report.excluded_estimate_line_count)
         self.assertEqual("complete", report.calculation_status)
         self.assertEqual([], report.incomplete_metric_keys)
+
+
+class RequiredLineCoverageTests(unittest.TestCase):
+    """Two metrics, two sets of lines, and one count could not describe both.
+
+    `computedLineCount` answers "how many lines did the executed-value figures rest on".
+    The forecast rests on a DIFFERENT set: a material with a price and no measurement is
+    excluded from the first -- nobody measured it -- and still contributes to
+    `moneyRequiredToContinueIrr`, because what a material still needs is what has not been
+    BOUGHT, which the purchase ledger states whether or not anyone walked the site.
+
+    Reporting the one number beside both pairs said the forecast rested on 0 of 715 lines
+    when it rested on rather more.
+    """
+
+    def test_a_priced_material_with_no_measurement_counts_for_the_forecast(self):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1")
+        report = calculate_live_report([row], [], [{"assignmentExternalId": "a-1",
+                                                   "task": {}}], [], None)
+        self.assertEqual(0, report.computed_line_count, "nobody measured it")
+        self.assertEqual(1, report.required_line_count, "nobody bought it either")
+        self.assertEqual(Decimal("1000"), report.metrics["moneyRequiredToContinueIrr"])
+        self.assertEqual(Decimal("1000"), report.metrics["forecastFinalCostIrr"])
+
+    def test_a_measured_priced_line_counts_for_both(self):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1")
+        report = calculate_live_report(
+            [row], [], [{"assignmentExternalId": "a-1", "actualQuantity": "4",
+                         "task": {}}], [], None)
+        self.assertEqual((1, 1, 1), (report.computed_line_count,
+                                     report.required_line_count,
+                                     report.total_line_count))
+
+    def test_an_unpriced_line_counts_for_neither(self):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", None, "a-1")
+        report = calculate_live_report(
+            [row], [], [{"assignmentExternalId": "a-1", "actualQuantity": "4",
+                         "task": {}}], [], None)
+        self.assertEqual((0, 0, 1), (report.computed_line_count,
+                                     report.required_line_count,
+                                     report.total_line_count))
+
+    def test_a_general_cost_with_a_baseline_counts(self):
+        """It `continue`s before the per-line test and still feeds money_required.
+
+        Left uncounted, the figure would understate the forecast's coverage by every
+        general-cost line the project has -- and general cost is the one kind that never
+        reaches the branch where everything else is counted.
+        """
+        row = estimate(GENERAL_LINE, GENERAL, "general_cost", None, None, "5000", None, None)
+        report = calculate_live_report([row], [], [], [], None)
+        self.assertEqual(1, report.required_line_count)
+        self.assertEqual(0, report.computed_line_count, "there is nothing to measure")
+
+    def test_a_general_cost_with_no_baseline_does_not_count(self):
+        row = estimate(GENERAL_LINE, GENERAL, "general_cost", None, None, None, None, None)
+        report = calculate_live_report([row], [], [], [], None)
+        self.assertEqual(0, report.required_line_count)
+
+    def test_it_never_exceeds_the_lines_that_exist(self):
+        rows = [estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1"),
+                estimate(GENERAL_LINE, GENERAL, "general_cost", None, None, "5000", None, None)]
+        report = calculate_live_report(rows, [], [], [], None)
+        self.assertLessEqual(report.required_line_count, report.total_line_count)
+        self.assertLessEqual(report.computed_line_count, report.total_line_count)

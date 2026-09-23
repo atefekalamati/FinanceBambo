@@ -689,10 +689,13 @@ class AResourcePriceReplacesTheDemandForComponentsTests(unittest.TestCase):
         answers = asyncio.run(service.table_status(Scope()))
         row = answers[str(LINE)]
         self.assertEqual("resource_price_ready", row["status"])
-        self.assertEqual(Decimal("3200000000"), row["daily_item_cost_irr"])
+        # STRINGS. The schema types money as `str | None` because a Decimal serialises
+        # through float and 3,200,000,000 rial does not survive that intact -- and
+        # returning the Decimal made the whole endpoint 500 on its first priced row.
+        self.assertEqual("3200000000", row["daily_item_cost_irr"])
         self.assertEqual("manual_resource", row["price_source"])
         self.assertEqual("hour", row["price_unit"])
-        self.assertEqual(Decimal("32000000"), row["current_unit_price_irr"])
+        self.assertEqual("32000000", row["current_unit_price_irr"])
 
     def test_it_never_asks_for_components_or_a_product(self):
         service = self._service({LINE: self._price()})
@@ -715,7 +718,7 @@ class AResourcePriceReplacesTheDemandForComponentsTests(unittest.TestCase):
                                              "version": 1}])
         row = asyncio.run(service.table_status(Scope()))[str(LINE)]
         self.assertEqual("resource_price_ready", row["status"])
-        self.assertEqual(Decimal("3200000000"), row["daily_item_cost_irr"])
+        self.assertEqual("3200000000", row["daily_item_cost_irr"])
 
     def test_a_sheet_priced_resource_says_so(self):
         service = self._service({LINE: self._price(amount="938400", unit="کیلو",
@@ -743,3 +746,23 @@ class AResourcePriceReplacesTheDemandForComponentsTests(unittest.TestCase):
             clock=lambda: date(2026, 9, 15))
         row = asyncio.run(service.table_status(Scope()))[str(LINE)]
         self.assertEqual("needs_components", row["status"])
+
+    def test_the_row_validates_against_the_published_schema(self):
+        """The 500 the frontend hit, pinned where it can be seen.
+
+        Asserting the strings is not enough on its own -- it says what the builder emits
+        and nothing about whether the response model accepts it. This runs the row through
+        the model the endpoint actually returns.
+        """
+        from app.finance.schemas.item_price_components import ItemPriceRowStatusResponse
+
+        row = asyncio.run(self._service({LINE: self._price()}).table_status(Scope()))
+        ItemPriceRowStatusResponse(**row[str(LINE)])
+
+    def test_a_row_with_no_quantity_states_a_price_and_no_total(self):
+        repo = Repo(components=[], quantities={LINE: None})
+        repo._resource_prices = {LINE: self._price()}
+        row = asyncio.run(ItemPriceComponentService(
+            repo, clock=lambda: date(2026, 9, 15)).table_status(Scope()))[str(LINE)]
+        self.assertIsNone(row["daily_item_cost_irr"], "null, never the string '0'")
+        self.assertEqual("32000000", row["current_unit_price_irr"])

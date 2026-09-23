@@ -374,8 +374,12 @@ def resource_priced_row(unit_price_irr, quantity, price_unit, price_source):
         "status": RESOURCE_PRICE_READY,
         "status_label": STATUS_LABELS[RESOURCE_PRICE_READY],
         "reason": STATUS_REASONS[RESOURCE_PRICE_READY],
-        "daily_item_cost_irr": total,
-        "current_unit_price_irr": Decimal(unit_price_irr),
+        # Strings, like every other money field this module emits. The schema types them
+        # `str | None` on purpose -- a Decimal serialises through float and 3,200,000,000
+        # rial does not survive that intact. Returning the raw Decimal here made the whole
+        # endpoint 500 on the first resource-priced row: two validation errors, no page.
+        "daily_item_cost_irr": _text(total),
+        "current_unit_price_irr": _text(unit_price_irr),
         "price_unit": price_unit,
         "price_source": price_source,
         # No components were consulted, and saying "0 of 0 ready" would invite the reader

@@ -123,7 +123,9 @@ class ResourcePricedRowTests(unittest.TestCase):
                                   SOURCE_MANUAL_RESOURCE)
         self.assertEqual(RESOURCE_PRICE_READY, row["status"])
         self.assertNotEqual(NEEDS_COMPONENTS, row["status"])
-        self.assertEqual(Decimal("3200000000"), row["daily_item_cost_irr"])
+        # A STRING. The schema types money as `str | None`: a Decimal serialises through
+        # float, and 3,200,000,000 rial does not survive that intact.
+        self.assertEqual("3200000000", row["daily_item_cost_irr"])
         self.assertEqual(("hour", SOURCE_MANUAL_RESOURCE),
                          (row["price_unit"], row["price_source"]))
 
@@ -135,8 +137,8 @@ class ResourcePricedRowTests(unittest.TestCase):
     def test_a_line_with_no_quantity_has_a_price_and_no_total(self):
         """Null, never zero. "No total" is a question; "a total of 0" is a claim."""
         row = resource_priced_row(Decimal("32000000"), None, "hour", SOURCE_MANUAL_RESOURCE)
-        self.assertIsNone(row["daily_item_cost_irr"])
-        self.assertEqual(Decimal("32000000"), row["current_unit_price_irr"])
+        self.assertIsNone(row["daily_item_cost_irr"], "None, never the string '0'")
+        self.assertEqual("32000000", row["current_unit_price_irr"])
 
     def test_it_is_not_presented_as_something_to_fix(self):
         """Its reason is empty, like «آماده» and unlike every other status."""
