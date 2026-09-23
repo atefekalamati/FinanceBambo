@@ -110,3 +110,56 @@ test("an absent report is answered, not thrown at", () => {
   assert.equal(coverageOf(null, "remainingPhysicalCostIrr"), null);
   assert.equal(coverageNote({}, "remainingPhysicalCostIrr", "…"), "داده مبنا موجود نیست");
 });
+
+/* A SUM OVER NO LINES IS NOT A SMALL NUMBER.
+ *
+ * The service publishes it as `0` on purpose: it excludes the lines it cannot use, states
+ * the total, and leaves the counts to say how much of the project that is. For 2 of 715
+ * that is right — a partial sum is a number a reader can use. For 0 of 715 it is not:
+ * «۰ تومان» beside «هزینه کار باقی‌مانده» reads as «the work is finished».
+ */
+
+const { restsOnNothing } = await import("../../src/features/finance-home/metric-coverage.js");
+
+test("a figure built from no lines at all is withheld, not drawn as zero", () => {
+  const report = REPORT({ remainingPhysicalCostIrr: "0" },
+                        { computedLineCount: 0, totalLineCount: 715 });
+  assert.equal(restsOnNothing(report, "remainingPhysicalCostIrr"), true);
+  assert.match(coverageNote(report, "remainingPhysicalCostIrr", "کار باقیمانده"),
+               /هیچ‌کدام از ۷۱۵ ردیف/);
+});
+
+test("a figure built from some lines is still drawn, and qualified", () => {
+  const report = REPORT({ remainingPhysicalCostIrr: "5" },
+                        { computedLineCount: 2, totalLineCount: 715 });
+  assert.equal(restsOnNothing(report, "remainingPhysicalCostIrr"), false);
+  assert.match(coverageNote(report, "remainingPhysicalCostIrr", "کار باقیمانده"),
+               /۷۱۳ ردیف در این عدد نیامده/);
+});
+
+/* THE FORECAST ANSWERS TO ITS OWN COUNT.
+ *
+ * Measured on the live service: computedLineCount 0 while requiredLineCount is 52,
+ * because what is still to BUY is known from the purchase ledger whether or not anyone
+ * measured site progress. One count cannot describe both figures.
+ */
+
+test("the forecast is not judged by the count that belongs to the remaining cost", () => {
+  const report = REPORT({ remainingPhysicalCostIrr: "0", forecastFinalCostIrr: "8347173100000" },
+                        { computedLineCount: 0, requiredLineCount: 52, totalLineCount: 715 });
+  assert.equal(restsOnNothing(report, "forecastFinalCostIrr"), false,
+               "52 lines built it; it is not a sum over nothing");
+  assert.match(coverageNote(report, "forecastFinalCostIrr", "پیش‌بینی"),
+               /۶۶۳ ردیف در این عدد نیامده/);
+  assert.equal(restsOnNothing(report, "remainingPhysicalCostIrr"), true,
+               "and the other figure, on the same payload, rests on nothing");
+});
+
+test("a service that publishes no count for a figure leaves it unqualified", () => {
+  /* Before `requiredLineCount` shipped, reading `computedLineCount` beside the forecast
+     printed «هیچ ردیفی در این عدد نیامده» next to 8,347 billion. Silence is better. */
+  const report = REPORT({ forecastFinalCostIrr: "8347173100000" },
+                        { computedLineCount: 0, totalLineCount: 715 });
+  assert.equal(restsOnNothing(report, "forecastFinalCostIrr"), false);
+  assert.equal(coverageNote(report, "forecastFinalCostIrr", "پیش‌بینی"), "پیش‌بینی");
+});
