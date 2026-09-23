@@ -32,7 +32,8 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.finance.repositories.material_prices import PsycopgMaterialPriceRepository
 from app.finance.services.material_price_import import (MaterialPriceImportError,
-                                                        MaterialPriceImportService)
+                                                        MaterialPriceImportService,
+                                                        validate_import)
 from app.finance.services.material_price_sheet import read_workbook, workbook_from_xlsx
 from app.finance.services.google_sheet import fetch_workbook_as_xlsx
 
@@ -74,9 +75,18 @@ def refuse_protected(dsn):
     return name
 
 
-async def dry_run(link):
+async def dry_run(link, organization_id=None, project_id=None, scope_level="project"):
     content = await fetch_workbook_as_xlsx(link)
     workbook = read_workbook(await asyncio.to_thread(workbook_from_xlsx, content))
+    # The same check the service offers, rather than a second opinion written here. A dry
+    # run that validated differently from the thing it previews is worse than none.
+    report = validate_import(organization_id, project_id, scope_level, workbook)
+    print("  scope              : %s -> project_id %r"
+          % (report["scopeLevel"], report["storageProjectId"]))
+    for problem in report["problems"]:
+        print("  %-18s : %s" % (problem.get("severity", "problem"), problem["message"]))
+    print("  would insert       : %d" % report["wouldInsert"])
+    print("  would reject       : %d" % report["wouldReject"])
     print("  worksheets read    : %d" % sum(1 for w in workbook.worksheets if w.read))
     print("  refused            : %s" % ([w.reason for w in workbook.refused] or "none"))
     print("  missing            : %s" % (list(workbook.missing_titles) or "none"))
@@ -124,6 +134,10 @@ def main(argv=None):
     parser.add_argument("--actor", default="00000000-0000-4000-8000-000000000000")
     parser.add_argument("--sheet", default=os.environ.get("FINANCE_MATERIAL_PRICE_SHEET_URL"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--scope", default="project", choices=("project", "organization"),
+                        help="where the rows belong. `organization` files them under the "
+                             "sentinel project so every project of the company can read "
+                             "them; the default keeps the existing per-project behaviour.")
     args = parser.parse_args(argv)
 
     if not args.sheet:
@@ -131,7 +145,8 @@ def main(argv=None):
                          "pass --sheet")
     try:
         if args.dry_run:
-            return asyncio.run(dry_run(args.sheet), loop_factory=_selector_loop)
+            return asyncio.run(dry_run(args.sheet, args.organization, args.project,
+                                       args.scope), loop_factory=_selector_loop)
         if not (args.dsn and args.organization and args.project):
             raise SystemExit("--dsn, --organization and --project are required unless "
                              "--dry-run is given")

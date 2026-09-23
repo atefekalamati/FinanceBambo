@@ -294,3 +294,120 @@ class EveryWriteCarriesTheScopeTests(unittest.TestCase):
             project_id = "terrace"
 
         self.assertEqual(SCOPE_PROJECT, _scope_level(OldScope()))
+
+
+class TheProviderRowIsTheConfigurationTests(unittest.TestCase):
+    """Activating the company's sheet must be one edit, on the thing being configured.
+
+    The alternative was an environment variable or a document id in code, and both put the
+    setting somewhere it can disagree with the row it describes. 0037 already gave
+    `price_providers` a `scope_level`; the tick reads it, and that is the whole mechanism.
+    """
+
+    REPOSITORY = (BACKEND_ROOT / "app" / "finance" / "repositories"
+                  / "material_prices.py").read_text(encoding="utf-8")
+    SERVICE = (BACKEND_ROOT / "app" / "finance" / "services"
+               / "material_price_import.py").read_text(encoding="utf-8")
+
+    def test_discovery_reports_the_scope_each_provider_was_marked_with(self):
+        self.assertIn("SELECT p.organization_id, p.project_id, p.scope_level",
+                      self.REPOSITORY)
+        self.assertIn("GROUP BY p.organization_id, p.project_id, p.scope_level",
+                      self.REPOSITORY)
+
+    def test_the_tick_obeys_it_rather_than_deciding(self):
+        self.assertIn('row.get("scope_level") or SCOPE_PROJECT', self.SERVICE)
+
+    def test_no_sheet_or_provider_is_named_in_code(self):
+        """No hardcoded document id, no hardcoded provider, no borrowed seed project."""
+        for forbidden in ("1RgjXoz", "sample_site_01", "docs.google.com/spreadsheets/d/1"):
+            with self.subTest(forbidden):
+                self.assertNotIn(forbidden, self.SERVICE)
+                self.assertNotIn(forbidden, self.REPOSITORY)
+
+
+class ValidatingBeforeTheSheetExistsTests(unittest.TestCase):
+    """Sign-off that does not wait for the production sheet to be finished."""
+
+    @staticmethod
+    def _validate(**over):
+        from app.finance.services.material_price_import import validate_import
+        return validate_import(**dict({"organization_id": "org-1",
+                                       "project_id": "terrace",
+                                       "scope_level": SCOPE_PROJECT}, **over))
+
+    def test_it_writes_nothing_and_cannot(self):
+        """No repository is passed to it at all.
+
+        A stronger guarantee than a `dry_run` flag every downstream writer has to honour:
+        a dry run that can reach the database is one edit away from not being one.
+        """
+        report = self._validate()
+        self.assertFalse(report["written"])
+        from app.finance.services import material_price_import as module
+        import inspect
+        self.assertNotIn("repository",
+                         inspect.signature(module.validate_import).parameters)
+
+    def test_a_good_project_configuration_passes(self):
+        report = self._validate()
+        self.assertTrue(report["ok"])
+        self.assertEqual("terrace", report["storageProjectId"])
+
+    def test_an_organization_configuration_says_where_rows_will_go(self):
+        report = self._validate(scope_level=SCOPE_ORGANIZATION)
+        self.assertTrue(report["ok"], "informational, not an error")
+        self.assertEqual(ORGANIZATION_SENTINEL_PROJECT, report["storageProjectId"])
+        codes = {problem["code"] for problem in report["problems"]}
+        self.assertIn("SCOPE_ORGANIZATION_SENTINEL", codes)
+
+    def test_an_unknown_scope_is_refused(self):
+        report = self._validate(scope_level="global")
+        self.assertFalse(report["ok"])
+        self.assertIn("SCOPE_UNKNOWN", {p["code"] for p in report["problems"]})
+
+    def test_a_missing_organization_is_refused(self):
+        report = self._validate(organization_id=None)
+        self.assertFalse(report["ok"])
+        self.assertIn("ORGANIZATION_MISSING", {p["code"] for p in report["problems"]})
+
+    def test_an_organization_import_needs_no_normal_project(self):
+        report = self._validate(project_id=None, scope_level=SCOPE_ORGANIZATION)
+        self.assertTrue(report["ok"])
+        self.assertEqual(ORGANIZATION_SENTINEL_PROJECT, report["storageProjectId"])
+
+    def test_a_project_import_still_needs_one(self):
+        report = self._validate(project_id=None)
+        self.assertFalse(report["ok"])
+        self.assertIn("PROJECT_MISSING", {p["code"] for p in report["problems"]})
+
+    def test_a_worksheet_refused_for_its_columns_is_reported_with_the_reason(self):
+        """The answer to «will the new sheet's columns do» -- from a fixture, not the sheet."""
+        from app.finance.services.material_price_sheet import WorkbookResult, WorksheetResult
+
+        workbook = WorkbookResult(
+            worksheets=(WorksheetResult(title="brick", read=False,
+                                        reason="missing required header 'قیمت'"),),
+            missing_titles=("steel -Rebar",))
+        report = self._validate(workbook=workbook)
+        self.assertFalse(report["ok"], "a worksheet the source does not state")
+        self.assertIn("WORKSHEET_MISSING", {p["code"] for p in report["problems"]})
+        self.assertEqual("missing required header 'قیمت'",
+                         report["worksheets"][0]["reason"])
+
+    def test_rejected_rows_are_counted_and_named_not_silently_dropped(self):
+        from app.finance.domain.material_price_rows import RowStatus
+        from app.finance.services.material_price_sheet import WorkbookResult, WorksheetResult
+
+        class Row:
+            status = RowStatus.REJECTED
+            row_number = 7
+            reasons = ("unknown unit",)
+
+        workbook = WorkbookResult(
+            worksheets=(WorksheetResult(title="brick", read=True, rows=(Row(),)),))
+        report = self._validate(workbook=workbook)
+        self.assertEqual(1, report["wouldReject"])
+        self.assertEqual(0, report["wouldInsert"])
+        self.assertIn((7, "unknown unit"), report["worksheets"][0]["rejections"])
+        self.assertTrue(report["ok"], "bad ROWS do not condemn a whole sheet")
