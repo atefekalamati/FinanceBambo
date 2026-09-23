@@ -54,7 +54,7 @@ class Reports:
             # reference exists, because reading no longer creates one.
             "hostSnapshotId":9001,
             "metrics":{"initialEstimateIrr":"100","actualCostIrr":"50","currentExecutedValueIrr":"40","remainingPhysicalCostIrr":"60","moneyRequiredToContinueIrr":"50","forecastFinalCostIrr":"100","actualCostPerSquareMeterIrr":"5","forecastPerSquareMeterIrr":"10"},
-            "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":2,"missingEstimateLineCount":4,"excludedEstimateLineCount":3,"computedLineCount":830,"totalLineCount":835,
+            "breakdown":[],"topPriceVariances":[],"topQuantityVariances":[],"warnings":[],"calculationStatus":"complete","incompleteMetricKeys":[],"missingPriceCount":2,"missingEstimateLineCount":4,"excludedEstimateLineCount":3,"computedLineCount":830,"totalLineCount":835,"requiredLineCount":833,
             "progressQuality":{"complete":False,"manualOverrideCount":1,"taskFallbackCount":0,"missingCount":1,
                 "assignmentActualCount":2,"assignmentPercentFallbackCount":0,"mappedLineCount":3,
                 "unmappedLineCount":1,"generalCostLineCount":1,"workAsQuantityCount":1,
@@ -122,7 +122,8 @@ class ReportingPermissionApiTests(unittest.TestCase):
             # The coverage pair qualifies the operational metrics the way the counters
             # above it do -- these figures are sums over computedLineCount lines, and a
             # reader who cannot see that against totalLineCount cannot judge them.
-            "progress_quality","computed_line_count","total_line_count"),
+            "progress_quality","computed_line_count","total_line_count",
+            "required_line_count"),
             FinanceLiveReportService.OVERVIEW_FIELDS)
         self.assertEqual(set(OperationalOverviewResponse.model_fields),set(FinanceLiveReportService.OVERVIEW_FIELDS))
         # progressQuality is aggregate counts and joins the other counters that qualify these

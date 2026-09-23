@@ -26,6 +26,8 @@ import asyncio
 from datetime import datetime, timezone
 
 from ..domain.material_price_rows import PIPE_FITTING_CATEGORY, RowStatus
+from ..domain.price_scope import (SCOPE_LEVELS, SCOPE_ORGANIZATION,
+                                  SCOPE_PROJECT, storage_project_id)
 from ..repositories.material_prices import RunAlreadyRunning, row_fingerprint
 from ..domain.errors import FinanceDomainError
 from .google_sheet import GoogleSheetError, export_url, fetch_workbook_as_xlsx, parse_sheet_link
@@ -83,6 +85,13 @@ class ImportOutcome:
         self.error_message = error_message
 
 
+#: Where a configured sheet's prices belong. `project` is the default and the existing
+#: behaviour: an unflagged import writes exactly what it always wrote. `organization` is
+#: opted into per provider row, because which sheet is the company's daily source is a
+#: business fact and not something to infer from a URL.
+SCOPE_SETTING = "scope_level"
+
+
 class _Scope:
     """The (organization, project) pair the repository expects, for a tick's own use.
 
@@ -91,11 +100,20 @@ class _Scope:
     provider table -- it cannot widen what it touches, because there is nothing else on it.
     """
 
-    __slots__ = ("organization_id", "project_id")
+    __slots__ = ("organization_id", "project_id", "scope_level")
 
-    def __init__(self, organization_id, project_id):
+    def __init__(self, organization_id, project_id, scope_level=SCOPE_PROJECT):
+        if scope_level not in SCOPE_LEVELS:
+            raise ValueError("unknown price scope: %r" % (scope_level,))
+        if not organization_id:
+            raise ValueError("an import scope needs an organization")
         self.organization_id = organization_id
-        self.project_id = project_id
+        self.scope_level = scope_level
+        # ONE place decides where an organization row is stored. A caller that passed a
+        # real project id alongside `organization` would otherwise file the company's
+        # prices inside that project -- which is exactly the mistake a project-scoped URL
+        # invites, and it would not fail, it would just be wrong.
+        self.project_id = storage_project_id(scope_level, project_id)
 
 
 class MaterialPriceImportService:

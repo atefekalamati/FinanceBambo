@@ -203,3 +203,94 @@ class TheReadableClauseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheImportScopeTests(unittest.TestCase):
+    """Which scope an import writes at, and the mistake a project-scoped URL invites.
+
+    The route that triggers an import has a project in its path. Passing that project
+    through while the config says `organization` would file the company's prices inside
+    one project -- and it would not fail, it would just be wrong, silently, until somebody
+    noticed the other projects still had no prices.
+    """
+
+    def _scope(self, **over):
+        from app.finance.services.material_price_import import _Scope
+        return _Scope(**dict({"organization_id": "org-1", "project_id": "terrace"}, **over))
+
+    def test_an_unflagged_import_writes_exactly_what_it_always_wrote(self):
+        scope = self._scope()
+        self.assertEqual(SCOPE_PROJECT, scope.scope_level)
+        self.assertEqual("terrace", scope.project_id)
+
+    def test_an_organization_import_is_filed_under_the_sentinel(self):
+        scope = self._scope(scope_level=SCOPE_ORGANIZATION)
+        self.assertEqual(SCOPE_ORGANIZATION, scope.scope_level)
+        self.assertEqual(ORGANIZATION_SENTINEL_PROJECT, scope.project_id)
+
+    def test_the_project_in_the_url_cannot_capture_an_organization_import(self):
+        """The whole point of resolving the destination in one place."""
+        scope = self._scope(project_id="some-other-project",
+                            scope_level=SCOPE_ORGANIZATION)
+        self.assertEqual(ORGANIZATION_SENTINEL_PROJECT, scope.project_id)
+        self.assertNotEqual("some-other-project", scope.project_id)
+
+    def test_an_unknown_scope_is_refused(self):
+        for bad in ("global", "ORGANIZATION", "", None, "org"):
+            with self.subTest(repr(bad)):
+                with self.assertRaises(ValueError):
+                    self._scope(scope_level=bad)
+
+    def test_an_import_without_an_organization_is_refused(self):
+        """Organization scope with no organization is the one truly unsafe combination."""
+        with self.assertRaises(ValueError):
+            self._scope(organization_id=None, scope_level=SCOPE_ORGANIZATION)
+        with self.assertRaises(ValueError):
+            self._scope(organization_id="", scope_level=SCOPE_PROJECT)
+
+    def test_the_project_id_is_never_null(self):
+        for level in SCOPE_LEVELS:
+            with self.subTest(level):
+                self.assertIsNotNone(self._scope(scope_level=level).project_id)
+
+
+class EveryWriteCarriesTheScopeTests(unittest.TestCase):
+    """All four tables, or none of them.
+
+    A repository that passed the scope to three writes out of four would commit a
+    provider, an item and a run at one scope and have the observation rejected by 0037's
+    CHECK -- after the first three were already in.
+    """
+
+    SOURCE = (BACKEND_ROOT / "app" / "finance" / "repositories"
+              / "material_prices.py").read_text(encoding="utf-8")
+
+    def test_every_insert_into_a_scoped_table_names_the_column(self):
+        """Counted by parsing the statements, not by matching whitespace.
+
+        The two indentation levels in this file differ, and a check keyed on one of them
+        would pass while missing the other entirely.
+        """
+        for table in SCOPED_TABLES:
+            with self.subTest(table):
+                pattern = re.compile(r"INSERT INTO %s\s*\(([^)]*)" % table)
+                columns = pattern.findall(self.SOURCE)
+                self.assertTrue(columns, "no INSERT INTO %s found" % table)
+                for column_list in columns:
+                    self.assertIn("scope_level", column_list,
+                                  "an INSERT INTO %s omits scope_level" % table)
+
+    def test_the_value_comes_from_the_scope_and_not_a_parameter(self):
+        """Read off the scope object, so three callers cannot supply three answers."""
+        self.assertIn("def _scope_level(scope)", self.SOURCE)
+        self.assertIn('getattr(scope, "scope_level", SCOPE_PROJECT)', self.SOURCE)
+
+    def test_a_scope_that_predates_the_field_still_works(self):
+        """The HTTP path's authorised scope has no `scope_level` and never needed one."""
+        from app.finance.repositories.material_prices import _scope_level
+
+        class OldScope:
+            organization_id = "org-1"
+            project_id = "terrace"
+
+        self.assertEqual(SCOPE_PROJECT, _scope_level(OldScope()))

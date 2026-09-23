@@ -172,6 +172,11 @@ class LiveReportResponse(ApiModel):
     #: over 2 of 715 lines reads exactly like a sum over all 715.
     computed_line_count:int=0
     total_line_count:int=0
+    #: Lines the FORECAST rests on. Not the same set as `computedLineCount`: a material
+    #: with a price and no measurement is excluded from that one and included in this,
+    #: because what a material still needs is what has not been bought. Two metrics, two
+    #: coverage figures -- one number could not describe both.
+    required_line_count:int=0
     excluded_estimate_line_ids:list[UUID]=Field(default_factory=list,
         description="Reporting-only: names individual estimate lines and is absent from the finance.view projection.")
     progress_quality:ProgressQuality|None=Field(default=None,
@@ -213,6 +218,11 @@ class OperationalOverviewResponse(ApiModel):
     #: over 2 of 715 lines reads exactly like a sum over all 715.
     computed_line_count:int=0
     total_line_count:int=0
+    #: Lines the FORECAST rests on. Not the same set as `computedLineCount`: a material
+    #: with a price and no measurement is excluded from that one and included in this,
+    #: because what a material still needs is what has not been bought. Two metrics, two
+    #: coverage figures -- one number could not describe both.
+    required_line_count:int=0
     progress_quality:ProgressQuality|None=None
 
 
