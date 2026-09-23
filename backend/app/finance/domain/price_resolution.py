@@ -13,8 +13,17 @@ The rungs, in order. The first that answers, wins:
 
     1. price_versions, scope_kind='project'        a price someone set FOR THIS PROJECT
     2. price_versions, scope_kind='organization'   the company's price for that resource
-    3. the mapped market listing's newest VALID observation   (the sheet)
-    4. nothing
+    3. the mapped listing's newest VALID observation, PROJECT-scoped
+    4. the same, ORGANIZATION-scoped                the company's daily market reading
+    5. nothing
+
+Rungs 2 and 4 are the company's, and both were unreachable until 0037. An organization
+price_version carried a project_id and the join demanded it match, so «organization» only
+changed precedence WITHIN the project it happened to be stored against; and a sheet
+observation had nowhere to live except a project, which is why one Google Sheet was
+imported six times and produced 14,258 duplicate rows. The scope now says which it is, and
+a price collected for this project still beats the company's general one -- specificity
+wins, the same reason project beats organization above.
 
 A project price outranks an organization price because it is the more specific statement,
 and both outrank the sheet because a person chose them deliberately for this work while
@@ -69,17 +78,18 @@ def resolved_price_joins(alias="l", as_of="%s", *, organization=None, project=No
               pv.effective_from
          FROM price_versions pv
         WHERE pv.organization_id={org}
-          AND pv.project_id={proj}
+          AND (pv.scope_kind='organization' OR pv.project_id={proj})
           AND pv.resource_id={res}
           AND pv.effective_from<={as_of}
         {order}
         LIMIT 1) manual_price ON TRUE
   LEFT JOIN LATERAL (
-       SELECT o.normalized_price_irr AS unit_price_irr, o.source_unit,
+       SELECT o.normalized_price_irr AS unit_price_irr, o.source_unit, o.scope_level,
               o.workflow_date_gregorian AS effective_from
          FROM finance_item_price_mappings fm
          JOIN price_observations o
-           ON o.organization_id=fm.organization_id AND o.project_id=fm.project_id
+           ON o.organization_id=fm.organization_id
+          AND (o.project_id=fm.project_id OR o.scope_level='organization')
           AND o.provider_item_id=fm.provider_item_id
           AND o.validation_status='valid'
         WHERE fm.organization_id={org}
@@ -87,7 +97,8 @@ def resolved_price_joins(alias="l", as_of="%s", *, organization=None, project=No
           AND fm.source_assignment_uid={asg}
           AND fm.superseded_at IS NULL
           AND (o.workflow_date_gregorian IS NULL OR o.workflow_date_gregorian<={as_of})
-        ORDER BY o.workflow_date_gregorian DESC NULLS LAST, o.fetched_at DESC, o.id
+        ORDER BY (o.scope_level='project') DESC,
+                 o.workflow_date_gregorian DESC NULLS LAST, o.fetched_at DESC, o.id
         LIMIT 1) sheet_price ON TRUE""".format(org=organization, proj=project, res=resource, asg=assignment,
                  as_of=as_of, order=_VERSION_ORDER)
 
@@ -126,6 +137,11 @@ RESOLVED_PRICE_COLUMNS = """
        END AS current_price_source,
        COALESCE(manual_price.effective_from, sheet_price.effective_from)
            AS current_price_effective_from,
+       CASE WHEN manual_price.unit_price_irr IS NOT NULL
+                 THEN CASE WHEN manual_price.scope_kind='organization'
+                           THEN 'organization' ELSE 'project' END
+            WHEN sheet_price.unit_price_irr IS NOT NULL THEN sheet_price.scope_level
+       END AS current_price_scope_level,
        manual_price.price_version_id AS price_version_id"""
 
 #: What `current_price_scope` can hold, for anyone matching on it.
