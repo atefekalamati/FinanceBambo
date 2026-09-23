@@ -46,7 +46,8 @@
 33. `0033_attribute_units_the_sheet_never_stated`
 34. `0034_one_weight_in_one_unit`
 35. `0035_preserve_source_sheet_weight`
-36. `0036_a_price_revision_need_not_be_explained` (head)
+36. `0036_a_price_revision_need_not_be_explained`
+37. `0037_a_market_price_belongs_to_the_company` (head) — ستون `scope_level` روی چهار جدول قیمت شیت. فقط افزودنی: ردیف‌های موجود با پیش‌فرض `project` می‌مانند و هیچ سطری بازنویسی نمی‌شود.
 
 **۰۰۲۷ فقط شکل می‌سازد و هیچ داده‌ای نمی‌نویسد.** ستون‌های تایپ‌شدهٔ مشخصات روی
 `provider_items`، سه ستون Snapshot و یک تاریخ اجباری روی `price_observations`.
