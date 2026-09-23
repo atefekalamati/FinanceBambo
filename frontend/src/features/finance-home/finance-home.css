@@ -23,18 +23,28 @@
 .operations-home-page {
   --operations-card-border: rgb(82 122 177 / 24%);
   --operations-card-background: linear-gradient(145deg, rgb(22 37 66 / 96%), rgb(13 26 49 / 96%));
-  grid-template-columns: minmax(0, 1fr) minmax(13rem, 20rem);
-  grid-template-areas:
-    "input heading"
-    "areas areas";
-  align-items: center;
+  position: relative;
   gap: clamp(1rem, 2vw, 1.6rem);
 }
 
 .operations-home-page__header {
-  grid-area: heading;
   justify-content: flex-start;
   padding-block: .25rem;
+}
+
+.operations-home-page__heading {
+  inline-size: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
+.operations-home-page__title {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
 }
 
 .operations-home-page__heading p {
@@ -44,48 +54,35 @@
 }
 
 .operations-input-state {
-  grid-area: input;
-  justify-self: start;
-  min-inline-size: 0;
-  inline-size: 100%;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  position: relative;
+  z-index: 20;
+  flex: 0 0 auto;
   font-size: clamp(.68rem, 1.6vw, .82rem);
   line-height: 1.6;
 }
 
-.operations-input-state[open] {
-  padding: .45rem clamp(.55rem, 1.2vw, .9rem) .65rem;
-  border-color: var(--operations-card-border);
-  background: rgb(8 20 39 / 52%);
-  box-shadow: inset 0 1px 0 rgb(150 175 230 / 4%);
-}
-
 .operations-input-state__trigger {
-  inline-size: 2.65rem;
+  inline-size: auto;
+  min-inline-size: 6.9rem;
   block-size: 2.35rem;
-  display: grid;
-  place-items: center;
-  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 .8rem;
   border: 1px solid var(--operations-card-border);
   border-radius: var(--radius-sm);
   background: rgb(22 37 66 / 78%);
   color: var(--color-text-muted);
   cursor: pointer;
-  list-style: none;
   transition:
     border-color var(--duration-fast) var(--ease-standard),
     background var(--duration-fast) var(--ease-standard),
     color var(--duration-fast) var(--ease-standard);
 }
 
-.operations-input-state__trigger::-webkit-details-marker {
-  display: none;
-}
-
 .operations-input-state__trigger:hover,
 .operations-input-state__trigger:focus-visible,
-.operations-input-state[open] .operations-input-state__trigger {
+.operations-input-state:focus-within .operations-input-state__trigger {
   border-color: rgb(0 172 88 / 45%);
   background: var(--grad-accent-soft);
   color: var(--dash-actual);
@@ -96,24 +93,48 @@
   outline-offset: 2px;
 }
 
-.operations-input-state__dots {
-  direction: ltr;
-  font-size: .85rem;
-  font-weight: 800;
-  letter-spacing: .12em;
+.operations-input-state__label {
+  font-size: .78rem;
+  font-weight: 700;
   line-height: 1;
-  transform: translateY(-.12rem);
+  white-space: nowrap;
+}
+
+.operations-input-state__popover {
+  position: absolute;
+  inset-block-start: calc(100% - 1px);
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+  inline-size: min(22rem, calc(100vw - 2rem));
+  padding: .65rem;
+  visibility: hidden;
+  border: 1px solid var(--operations-card-border);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(145deg, #142440, #0d1a31);
+  box-shadow: var(--dash-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-.25rem);
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard),
+    visibility var(--duration-fast) var(--ease-standard);
+}
+
+.operations-input-state:hover .operations-input-state__popover,
+.operations-input-state:focus-within .operations-input-state__popover {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .operations-input-state__facts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem 0;
   min-inline-size: 0;
   margin: 0;
-}
-
-.operations-input-state[open] .operations-input-state__facts {
-  margin-block-start: .45rem;
 }
 
 .operations-input-state__facts > div {
@@ -374,7 +395,6 @@
 }
 
 .operations-home-page .work-area-grid {
-  grid-area: areas;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: clamp(.75rem, 1.5vw, 1rem);
 }
@@ -495,15 +515,6 @@
 }
 
 @media (max-width: 64rem) {
-  .operations-home-page {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "heading"
-      "input"
-      "areas";
-    align-items: stretch;
-  }
-
   .operations-home-page .work-area-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
