@@ -844,6 +844,21 @@
   box-shadow: 0 0 1rem color-mix(in srgb, var(--dash-sev-med) 24%, transparent);
 }
 
+/* The coverage mark, inside a label that is a `-webkit-box` with a line clamp.
+   `.rc-info` is `display: grid` at 19px, which is right beside a heading and wrong
+   beside an 11px label -- and a grid child of a -webkit-box does not sit on the text
+   baseline. Inline-grid and a middle alignment put it back on the line, small enough
+   that the label is still the thing being read. */
+.managerial-combo-chart__label .managerial-combo-chart__coverage {
+  display: inline-grid;
+  vertical-align: middle;
+  inline-size: 14px;
+  block-size: 14px;
+  margin-inline-start: .25rem;
+  font-size: 8px;
+  opacity: .75;
+}
+
 .managerial-combo-chart__label {
   display: -webkit-box;
   -webkit-box-orient: vertical;

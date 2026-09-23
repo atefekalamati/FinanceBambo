@@ -163,3 +163,73 @@ test("a service that publishes no count for a figure leaves it unqualified", () 
   assert.equal(restsOnNothing(report, "forecastFinalCostIrr"), false);
   assert.equal(coverageNote(report, "forecastFinalCostIrr", "پیش‌بینی"), "پیش‌بینی");
 });
+
+/* THE MARK ON THE CHART, AND THE LINE IN THE WARNINGS.
+ *
+ * A card has a sub-line to qualify its figure in. A bar has a label and nothing else, and
+ * the list of everything wrong with a calculation is somewhere else again. Same facts,
+ * three places, one source.
+ */
+
+const { coverageTooltip, coverageWarnings } =
+  await import("../../src/features/finance-home/metric-coverage.js");
+
+test("a figure built from every line gets no mark at all", () => {
+  /* A mark on every bar is a mark nobody reads. */
+  const report = REPORT({ remainingPhysicalCostIrr: "5" },
+                        { computedLineCount: 715, totalLineCount: 715 });
+  assert.equal(coverageTooltip(report, "remainingPhysicalCostIrr"), null);
+  assert.deepEqual(coverageWarnings(report), []);
+});
+
+test("a partial figure states both halves, because they answer different questions", () => {
+  const report = REPORT({ forecastFinalCostIrr: "8347173100000" },
+                        { requiredLineCount: 52, totalLineCount: 715 });
+  const tip = coverageTooltip(report, "forecastFinalCostIrr");
+  assert.match(tip, /۵۲ ردیف از ۷۱۵ ردیف/, "what it rests on");
+  assert.match(tip, /۶۶۳ ردیف در آن نیامده/, "and what it does not");
+});
+
+test("a figure resting on nothing says so rather than counting to zero", () => {
+  const report = REPORT({ remainingPhysicalCostIrr: "0" },
+                        { computedLineCount: 0, totalLineCount: 715 });
+  assert.match(coverageTooltip(report, "remainingPhysicalCostIrr"),
+               /هیچ‌کدام از ۷۱۵ ردیف/);
+});
+
+test("a figure the service never published gets no mark — the card says why instead", () => {
+  const report = REPORT({ forecastFinalCostIrr: null },
+                        { requiredLineCount: 52, totalLineCount: 715 });
+  assert.equal(coverageTooltip(report, "forecastFinalCostIrr"), null);
+});
+
+test("the warnings name the figures a count governs, once, not one line each", () => {
+  /* Five metrics, two counts. Five lines saying «built on 52 of 715» would be one fact
+     printed five times, and a list nobody finishes is a list that warns nobody. */
+  const report = REPORT({ remainingPhysicalCostIrr: "0", currentExecutedValueIrr: "0",
+                          forecastFinalCostIrr: "8347173100000",
+                          moneyRequiredToContinueIrr: "6654488100000" },
+                        { computedLineCount: 0, requiredLineCount: 52, totalLineCount: 715 });
+  const messages = coverageWarnings(report).map((w) => w.message);
+  assert.equal(messages.length, 2);
+  assert.match(messages[0], /ارزش اجراشده و هزینه بروز باقیمانده/);
+  assert.match(messages[0], /هیچ‌کدام از ۷۱۵ ردیف/);
+  assert.match(messages[1], /پیش‌بینی هزینه نهایی/);
+  assert.match(messages[1], /۵۲ ردیف از ۷۱۵/);
+  assert.match(messages[1], /۶۶۳ ردیف در آن‌ها نیامده/);
+});
+
+test("a group whose figures are all absent is not reported as a coverage problem", () => {
+  /* The card already names WHICH gap made each one absent. Repeating it here under a
+     different description would report one gap twice. */
+  const report = REPORT({ forecastFinalCostIrr: null, moneyRequiredToContinueIrr: null,
+                          forecastPerSquareMeterIrr: null },
+                        { requiredLineCount: 0, totalLineCount: 715 });
+  assert.deepEqual(coverageWarnings(report).filter((w) => /پیش‌بینی/.test(w.message)), []);
+});
+
+test("a service that publishes no counts produces no marks and no warnings", () => {
+  const report = REPORT({ remainingPhysicalCostIrr: "5", forecastFinalCostIrr: "9" });
+  assert.equal(coverageTooltip(report, "remainingPhysicalCostIrr"), null);
+  assert.deepEqual(coverageWarnings(report), []);
+});

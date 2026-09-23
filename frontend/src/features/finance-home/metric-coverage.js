@@ -145,6 +145,84 @@ export function coverageOf(report, key) {
   return { computed, total, excluded: total - computed };
 }
 
+/* The figures each coverage count governs, and what to call them together.
+ *
+ * Grouped rather than listed one by one because the counts are what differ, not the
+ * figures: five separate lines saying «built on 52 of 715» would be one fact printed
+ * five times, and a warnings list nobody finishes reading is a warnings list that warns
+ * nobody. */
+const COVERAGE_GROUPS = Object.freeze([
+  { field: "computedLineCount",
+    keys: ["currentExecutedValueIrr", "remainingPhysicalCostIrr"],
+    label: "ارزش اجراشده و هزینه بروز باقیمانده" },
+  { field: "requiredLineCount",
+    keys: ["moneyRequiredToContinueIrr", "forecastFinalCostIrr", "forecastPerSquareMeterIrr"],
+    label: "پیش‌بینی هزینه نهایی، بودجه موردنیاز تا تکمیل و پیش‌بینی هر مترمربع" },
+]);
+
+/** `{computed, total}` for one governing count, or null when it cannot be read. */
+function span(report, field) {
+  const computed = Number(report?.[field]);
+  const total = Number(report?.totalLineCount);
+  if (!Number.isFinite(computed) || !Number.isFinite(total) || total <= 0) return null;
+  if (computed >= total) return null;      // whole: there is nothing to qualify
+  return { computed, total };
+}
+
+/**
+ * The whole sentence, for a mark the reader hovers.
+ *
+ * The card's sub-line has one line to work in and says «۶۶۳ ردیف در این عدد نیامده»;
+ * that is the fact, with the reader left to infer what it was built from. A figure on a
+ * chart has no sub-line at all, so the mark beside it carries the full statement instead
+ * — both halves, because «۵۲ of ۷۱۵» and «۶۶۳ missing» answer different questions and a
+ * reader deciding whether to trust the number wants both.
+ *
+ * Null when there is nothing to say: no figure, no count, or a figure built from every
+ * line there is. A mark that appears on a complete figure is a mark that means nothing.
+ */
+export function coverageTooltip(report, key) {
+  if (!stated(report, key)) return null;
+  const field = COVERAGE_COUNT[key];
+  if (!field) return null;
+  const reach = span(report, field);
+  if (!reach) return null;
+  if (reach.computed === 0) {
+    return `هیچ‌کدام از ${count(reach.total)} ردیف این پروژه در این عدد نیامده است.`;
+  }
+  return `این عدد بر ${count(reach.computed)} ردیف از ${count(reach.total)} ردیف پروژه بنا شده است؛ `
+    + `${count(reach.total - reach.computed)} ردیف در آن نیامده.`;
+}
+
+/**
+ * The same facts as warnings, for the list that collects everything wrong with a
+ * calculation.
+ *
+ * A mark on a chart is seen by whoever is looking at that chart. Somebody auditing the
+ * figures opens «هشدارهای کیفیت محاسبه» and expects to find every reason a number might
+ * be wrong in one place — and «this total is missing 663 of the project's lines» is
+ * exactly such a reason, even though the service raised no warning about it: the service
+ * published the counts and considers the matter stated.
+ */
+export function coverageWarnings(report) {
+  return COVERAGE_GROUPS.flatMap(({ field, keys, label }) => {
+    /* A group whose figures the service did not publish is not a coverage problem. The
+       card already says WHY each one is absent, and naming it here as well would report
+       one gap twice under two different descriptions. */
+    if (!keys.some((key) => stated(report, key))) return [];
+    const reach = span(report, field);
+    if (!reach) return [];
+    const code = `COVERAGE_${field}`;
+    if (reach.computed === 0) {
+      return [{ code,
+        message: `${label}: هیچ‌کدام از ${count(reach.total)} ردیف این پروژه هنوز قابل محاسبه نیست.` }];
+    }
+    return [{ code,
+      message: `${label} بر ${count(reach.computed)} ردیف از ${count(reach.total)} ردیف پروژه بنا شده‌اند؛ `
+        + `${count(reach.total - reach.computed)} ردیف در آن‌ها نیامده است.` }];
+  });
+}
+
 /** The card's sub-line: the description when all is well, the qualification when not. */
 export function coverageNote(report, key, description) {
   const reason = unavailableReason(report, key);
