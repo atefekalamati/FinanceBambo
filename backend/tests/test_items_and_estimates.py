@@ -485,3 +485,54 @@ class ManualCreationRefusedTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AManualResourcePriceNeedsNoMappingTests(unittest.TestCase):
+    """A price somebody typed is already in the resource's own unit.
+
+    `conversionStatus` describes a MAPPING -- whether a listing's unit could be crossed
+    into the line's. A manually priced machine has no mapping, so it answered None, fell
+    through the gate meant for listings, and was reported as a missing conversion. The
+    price resolved, appeared on the row, and produced no estimate: «قیمت هست، برآورد نیست»
+    with nothing on screen saying why.
+    """
+
+    def _row(self, **over):
+        base = {"current_unit_price_irr": Decimal("32000000"),
+                "current_price_source": "manual_resource",
+                "current_price_unit": "hour",
+                # No mapping exists, and none is needed.
+                "conversion_status": None,
+                "normalized_unit": "hour", "resource_unit": "hour",
+                "source_assignment_units": Decimal("100")}
+        base.update(over)
+        return row(**base)
+
+    def test_a_manual_price_is_not_reported_as_a_missing_conversion(self):
+        assignment = ItemsAndEstimatesService._assignment(self._row())
+        self.assertNotIn("missing_conversion", assignment["issue_codes"])
+        self.assertEqual("manual_resource", assignment["price_source"])
+        self.assertEqual("hour", assignment["price_unit"])
+
+    def test_a_sheet_price_still_needs_its_mapping_to_have_crossed_the_units(self):
+        """The gate stays shut for the case it was built for.
+
+        Widening it for manual prices must not let an unconverted listing price through:
+        a price per «کیلو» multiplied by a quantity in metres is a number, and a wrong one.
+        """
+        assignment = ItemsAndEstimatesService._assignment(
+            self._row(current_price_source="sheet", conversion_status="unknown"))
+        self.assertIn("missing_conversion", assignment["issue_codes"])
+        self.assertIsNone(assignment["current_estimate_irr"], "null, never a guess")
+
+    def test_a_sheet_price_whose_mapping_did_cross_them_is_used(self):
+        assignment = ItemsAndEstimatesService._assignment(
+            self._row(current_price_source="sheet", conversion_status="factor"))
+        self.assertNotIn("missing_conversion", assignment["issue_codes"])
+
+    def test_no_price_is_still_no_price(self):
+        assignment = ItemsAndEstimatesService._assignment(
+            self._row(current_unit_price_irr=None, current_price_source="none",
+                      current_price_unit=None))
+        self.assertIsNone(assignment["current_estimate_irr"])
+        self.assertEqual("none", assignment["price_source"])

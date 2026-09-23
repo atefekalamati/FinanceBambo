@@ -48,6 +48,10 @@ from ..domain.assignment_semantics import (ALLOCATION_PERCENTAGE, CALCULATED,
 #:     unknown       nobody has established whether they can
 CONVERSION_READY = ("automatic", "factor")
 
+#: A price the resolver took from `price_versions`. Named from the shared module rather
+#: than spelled here, so the two cannot drift into disagreeing about what "manual" means.
+from ..domain.price_resolution import SOURCE_MANUAL_RESOURCE  # noqa: E402
+
 
 class ItemsAndEstimatesService:
     def __init__(self, repository):
@@ -118,7 +122,18 @@ class ItemsAndEstimatesService:
         converted = None
         conversion_issue = None
         if row["current_unit_price_irr"] is not None:
-            if row["conversion_status"] in CONVERSION_READY:
+            # `conversion_status` describes a MAPPING: it says whether the listing's unit
+            # could be crossed into the line's. A manual resource price has no mapping and
+            # needs no crossing -- it is already quoted per the resource's own base unit,
+            # because that is the unit the person was shown when they typed it.
+            #
+            # Before this, the gate asked every price for a mapping's verdict. A machine
+            # priced by hand answered None, fell to the `else`, and was reported as a
+            # missing conversion: the price resolved, appeared in the row, and produced no
+            # estimate. «قیمت هست، برآورد نیست» with nothing on screen explaining why.
+            if row["current_price_source"] == SOURCE_MANUAL_RESOURCE:
+                converted = Decimal(row["current_unit_price_irr"])
+            elif row["conversion_status"] in CONVERSION_READY:
                 converted = Decimal(row["current_unit_price_irr"])
             else:
                 conversion_issue = MISSING_CONVERSION
