@@ -179,7 +179,11 @@ class MaterialPriceImportService:
 
         outcomes = []
         for row, _minutes in due:
-            scope = _Scope(row["organization_id"], row["project_id"])
+            # The provider row is the configuration. A tick reads the scope it was
+            # marked with rather than deciding one, so activating the company's sheet is a
+            # single edit on that row and no code change at all.
+            scope = _Scope(row["organization_id"], row["project_id"],
+                           row.get("scope_level") or SCOPE_PROJECT)
             try:
                 outcome = await self.run(scope)
                 outcomes.append({
@@ -367,3 +371,77 @@ class MaterialPriceImportService:
             return fetched_at
         return datetime.combine(decided.workflow_date_gregorian,
                                 datetime.min.time(), tzinfo=timezone.utc)
+
+
+def validate_import(organization_id, project_id, scope_level, workbook=None):
+    """Whether a configured source could be imported, WITHOUT importing it.
+
+    Written so the company's sheet can be signed off before it exists: `workbook` is
+    optional and the configuration half is checked either way. Give it a fixture and the
+    content half is checked too -- which is what a test does, and what the CLI's
+    `--dry-run` does against the real link.
+
+    It never writes. There is no repository on this function at all, which is a stronger
+    guarantee than a flag that has to be honoured by everything downstream: a dry run that
+    can reach the database is one edit away from not being one.
+
+    Returns a report. `ok` is True only when nothing would be refused outright; rejected
+    ROWS do not make it False, because a sheet with three bad rows out of four hundred is
+    a sheet worth importing and the three are reported with their reasons.
+    """
+    problems = []
+    if not organization_id:
+        problems.append({"code": "ORGANIZATION_MISSING",
+                         "message": "an import needs an organization"})
+    if scope_level not in SCOPE_LEVELS:
+        problems.append({"code": "SCOPE_UNKNOWN",
+                         "message": "unknown price scope: %r" % (scope_level,)})
+    elif scope_level == SCOPE_ORGANIZATION:
+        # Not an error, a statement: the caller's project is deliberately ignored, and
+        # somebody reading this report should see that rather than infer it.
+        problems.append({"code": "SCOPE_ORGANIZATION_SENTINEL", "severity": "info",
+                         "message": "rows will be filed under %r, not %r"
+                                    % (storage_project_id(scope_level, project_id),
+                                       project_id)})
+    elif not project_id:
+        problems.append({"code": "PROJECT_MISSING",
+                         "message": "a project-scoped import needs a project"})
+
+    report = {
+        "ok": not any(problem.get("severity") != "info" for problem in problems),
+        "scopeLevel": scope_level,
+        "storageProjectId": storage_project_id(scope_level, project_id)
+                            if scope_level in SCOPE_LEVELS else None,
+        "problems": problems,
+        "worksheets": [],
+        "wouldInsert": 0,
+        "wouldReject": 0,
+        "written": False,
+    }
+    if workbook is None:
+        return report
+
+    for worksheet in workbook.worksheets:
+        rejected = worksheet.rejected
+        report["wouldInsert"] += len(worksheet.accepted)
+        report["wouldReject"] += len(rejected)
+        report["worksheets"].append({
+            "title": worksheet.title,
+            "read": worksheet.read,
+            # A worksheet refused for a missing REQUIRED header says so here, which is the
+            # answer to "will the new sheet's columns do".
+            "reason": worksheet.reason,
+            "rows": len(worksheet.rows),
+            "accepted": len(worksheet.accepted),
+            "rejected": len(rejected),
+            # Reasons, deduplicated, with a row number for each so the sheet can be fixed
+            # rather than merely blamed. A unit nobody could name lands here, never in the
+            # accepted pile with a guess attached.
+            "rejections": sorted({(row.row_number, reason)
+                                  for row in rejected for reason in (row.reasons or ())})[:20],
+        })
+    for title in workbook.missing_titles:
+        report["problems"].append({"code": "WORKSHEET_MISSING",
+                                   "message": "the source states no worksheet %r" % title})
+    report["ok"] = report["ok"] and not workbook.missing_titles
+    return report

@@ -396,10 +396,16 @@ class PsycopgMaterialPriceRepository:
         run. The caller treats that as due, which is what makes a freshly configured
         project import on the next tick instead of waiting out an interval it was never
         present for.
+
+        `scope_level` comes back because the PROVIDER ROW IS THE CONFIGURATION. A sheet
+        that is the company's daily source is marked once, on its provider, and the tick
+        reads it here. There is no second place to set it, no environment variable and no
+        hardcoded document id -- which is the point: a setting kept beside the thing it
+        configures cannot disagree with it.
         """
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute(
-                """SELECT p.organization_id, p.project_id,
+                """SELECT p.organization_id, p.project_id, p.scope_level,
                           EXTRACT(EPOCH FROM (now() - max(r.started_at))) / 60
                               AS minutes_since_last_success
                      FROM price_providers p
@@ -408,7 +414,7 @@ class PsycopgMaterialPriceRepository:
                            AND r.project_id = p.project_id
                            AND r.status IN ('succeeded', 'partially_succeeded')
                     WHERE p.active AND p.crawl_method = 'google_sheet'
-                    GROUP BY p.organization_id, p.project_id
+                    GROUP BY p.organization_id, p.project_id, p.scope_level
                     ORDER BY p.project_id""")
             return await c.fetchall()
 
