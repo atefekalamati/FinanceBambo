@@ -1118,6 +1118,8 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
      both to refresh either. Empty until it arrives, and a row with no entry simply shows
      what it showed before -- the table must render before this call returns. */
   let priceStatuses = new Map();
+  /* Why the statuses are missing, when they are. Null while they are fine. */
+  let priceStatusError = null;
   /* The price panel while it is open. Held because `paint()` replaces the page's children
      and the panel is one of them: the daily-price statuses refresh after every material is
      saved, so a repaint took the open panel out of the document halfway through a list.
@@ -1160,13 +1162,21 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
      existed -- a failure here must not be able to empty the table. */
   async function loadPriceStatuses() {
     if (!priceMappingAdapter) return;
+    priceStatusError = null;
     try {
       const rows = await priceMappingAdapter.statuses();
       priceStatuses = new Map(rows.map((row) => [row.estimateLineId, row]));
       paint();
     } catch (error) {
-      /* Left as it was. The row then shows its own price and no mapping status, which is
-         the truthful state: we do not know, rather than nothing is mapped. */
+      /* The table is left as it was: the row shows its own price and no mapping status,
+         which is the truthful state -- we do not know, rather than nothing is mapped.
+
+         But SAID, not swallowed. Measured when this call started returning 500: the page
+         rendered 125 rows, every status chip and every pricing button gone, and no word
+         anywhere about why. A reader has no way to tell that from a table where nothing
+         needs doing, so they stop looking -- which is worse than an error. */
+      priceStatusError = error;
+      paint();
     }
   }
 
@@ -1290,6 +1300,15 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
     }), lineActions);
     linesHead.append(element("div", "", ""), linesMeta);
     linesHead.firstElementChild.append(element("h2", "", "ریز برآورد پروژه"), element("p", "", "هر ردیف، مقدار برآوردشده یک قلم هزینه را فقط برای یک فعالیت مشخص نگه می‌دارد. استفاده همان قلم در فعالیت دیگر ردیف جدا دارد تا برآورد، اصلاحات و پیشرفت هر فعالیت مستقل و قابل پیگیری بماند؛ قیمت‌گذاری و هزینه واقعی در بخش قیمت روز و فاکتورهای تأییدشده محاسبه می‌شوند."));
+    if (priceStatusError) {
+      /* Above the table rather than inside it: every row is affected, and a notice
+         repeated 835 times is a notice nobody reads. */
+      const notice = element("p", "inline-notice",
+        formatApiErrorMessage(priceStatusError,
+          "وضعیت قیمت‌گذاری ردیف‌ها خوانده نشد؛ ستون‌های وضعیت و ابزارهای قیمت‌گذاری تا رفع آن نمایش داده نمی‌شوند."));
+      notice.setAttribute("role", "status");
+      linesSection.append(notice);
+    }
     linesSection.append(linesHead, renderEstimateLineTable(workspace.estimateLines, workspace.resources, {
       /* HOW a number came to be is an operations question, not a reader's.
          «قیمت دستی» and «قانون تبدیل» answer «چطور ثبت شد» — which is the working half of

@@ -49,7 +49,7 @@ import { createLevelOneSection } from "../level-one/level-one-section.js";
 import { createPricesSummary } from "./prices-summary.js";
 import { createItemsSummary } from "./items-summary.js";
 import { createInvoicesEntry } from "./invoices-entry.js";
-import { coverageNote, unavailableReason } from "./metric-coverage.js";
+import { coverageNote, restsOnNothing, unavailableReason } from "./metric-coverage.js";
 
 /* The four the board shows, in the order it shows them. The rest of the
    catalogue is still what the report page and the builder draw on. */
@@ -129,7 +129,11 @@ const SUMMARY_MARKS = Object.freeze({
 function createSummaryCard(key, label, description, report) {
   const data = report?.metrics ?? {};
   const card = document.createElement("article");
-  const unavailable = data?.[key] === null || data?.[key] === undefined;
+  /* Absent, or present as a sum over no lines at all — which the service publishes as 0
+     and which reads as «nothing remains» rather than «nothing could be worked out». Both
+     are «no figure» to a reader, and the sub-line below says which. */
+  const unavailable = data?.[key] === null || data?.[key] === undefined
+    || restsOnNothing(report, key);
   const hierarchy = PRIMARY_SUMMARY_KEYS.has(key)
     ? "primary"
     : RELATED_SUMMARY_KEYS.has(key)
@@ -141,7 +145,7 @@ function createSummaryCard(key, label, description, report) {
   title.textContent = label;
   const value = document.createElement("p");
   value.className = "summary-card__value";
-  value.append(createTomanDisplay(data?.[key], { compact: true }));
+  value.append(createTomanDisplay(unavailable ? null : data?.[key], { compact: true }));
   const unit = document.createElement("span");
   unit.className = "summary-card__unit";
   /* Absent: which gap, and how many lines of it. Present but partial: how many lines the

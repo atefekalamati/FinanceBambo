@@ -128,6 +128,12 @@ class FakeNode {
     return this.attributes.has(name) ? this.attributes.get(name) : null;
   }
 
+  /* Asked before setting one: `showAccessibleDialog` will not overwrite a name a caller
+     gave the dialog itself. Without this the check threw and the dialog never opened. */
+  hasAttribute(name) {
+    return this.attributes.has(name);
+  }
+
   addEventListener(type, handler) {
     if (!this.listeners.has(type)) this.listeners.set(type, []);
     this.listeners.get(type).push(handler);
@@ -255,5 +261,17 @@ export function installDom() {
   };
   globalThis.document = document;
   globalThis.DocumentFragment = FakeDocumentFragment;
+  /* `showAccessibleDialog` refuses anything that is not a real <dialog>, which is right in
+     the browser and made every dialog in the module untestable through its own entry
+     point: tests had to append the element and skip `open()`, so the one function that
+     sets `aria-modal`, names the dialog and returns focus was never exercised.
+
+     This is not a pretend dialog. The stub above really does implement `showModal` and
+     `close`; what was missing was only the constructor the guard checks against, so the
+     brand is declared for nodes that already behave like one. */
+  globalThis.HTMLDialogElement = { [Symbol.hasInstance]: (value) => value?.tagName === "DIALOG" };
+  /* The same, for the guard that decides whether an element is still worth focusing.
+     Every node this stub makes is one. */
+  globalThis.HTMLElement = { [Symbol.hasInstance]: (value) => value instanceof FakeNode };
   return document;
 }

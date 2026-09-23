@@ -3,6 +3,7 @@ import { createDataTable, createTablePagination } from "../../shared/components/
 import { formatBusinessDate, formatDisplayNumber, formatJalaliBusinessDate, formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { createPriceTrend } from "../../shared/components/price-trend.js";
+import { createPriceTrendDetailDialog } from "../../shared/components/price-trend-detail.js";
 
 /* «قیمت روز بازار» — the market prices imported from the material sheet.
  *
@@ -290,8 +291,16 @@ function cellsFor(row, columns, categoryLabels, priceHistories) {
   const built = {};
   columns.forEach((column) => {
     if (column.key === "trend") {
+      /* The sparkline says «up» and nothing else. These are the only figures behind it,
+         so pressing it opens the points it was drawn from -- the same array, in the same
+         order, with no request of its own. Keyed on this row's own listing, so a modal
+         can only ever show the product whose line was pressed. */
       built[column.key] = createPriceTrend(
-        materialPriceTrend(row, priceHistories.get(row.providerItemId) ?? []), []);
+        materialPriceTrend(row, priceHistories.get(row.providerItemId) ?? []), [],
+        { onOpen: (points) => createPriceTrendDetailDialog({
+            title: cellValue({ key: "product", kind: "base" }, row, categoryLabels),
+            points,
+          }).open() });
       return;
     }
     const value = cellValue(column, row, categoryLabels);

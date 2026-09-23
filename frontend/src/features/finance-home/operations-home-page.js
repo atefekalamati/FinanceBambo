@@ -114,20 +114,25 @@ export function createOperationsHomePage({ progressAdapter }) {
   }
 
   function renderInputState(snapshots) {
-    const section = element("details", "operations-input-state");
+    const section = element("div", "operations-input-state");
     section.setAttribute("aria-label", "وضعیت ورودی‌های محاسبه");
     // "ورودی محاسبه" must name the version the figures are actually computed from, so it
     // asks the same question the report pages ask rather than assuming the newest row.
     const latest = defaultSnapshot(snapshots);
 
-    const trigger = element("summary", "operations-input-state__trigger");
+    const trigger = element("button", "operations-input-state__trigger");
+    trigger.type = "button";
     trigger.setAttribute("title", "نمایش اطلاعات ورودی محاسبه");
+    trigger.setAttribute("aria-describedby", "operations-input-state-popover");
     trigger.append(
-      element("span", "operations-input-state__dots", "•••"),
+      element("span", "operations-input-state__label", "نسخه محاسبه"),
       element("span", "sr-only", "نمایش اطلاعات ورودی محاسبه"),
     );
     section.append(trigger);
 
+    const popover = element("div", "operations-input-state__popover");
+    popover.id = "operations-input-state-popover";
+    popover.setAttribute("role", "tooltip");
     const facts = element("dl", "operations-input-state__facts");
     const add = (label, value) => {
       const item = element("div");
@@ -138,13 +143,14 @@ export function createOperationsHomePage({ progressAdapter }) {
     add("نسخه پیشرفت مبنا", latest ? formatBusinessDate(latest.reportingDate) : "ثبت نشده");
     add("نسخه‌های ثبت‌شده", formatDisplayNumber(String(snapshots.length)));
     if (latest?.sourceFileNameSafe) add("فایل مبدأ", latest.sourceFileNameSafe);
-    section.append(facts);
+    popover.append(facts);
 
     if (!latest) {
       const notice = element("p", "inline-notice", "تا وقتی نسخه پیشرفتی ثبت نشده باشد، شاخص‌های مالی قابل محاسبه نیستند.");
       notice.setAttribute("role", "status");
-      section.append(notice);
+      popover.append(notice);
     }
+    section.append(popover);
     return section;
   }
 
@@ -153,17 +159,19 @@ export function createOperationsHomePage({ progressAdapter }) {
 
     const header = element("header", "finance-page-header operations-home-page__header");
     const heading = element("div", "operations-home-page__heading");
-    heading.append(
+    const title = element("div", "operations-home-page__title");
+    title.append(
       element("h1", "finance-page-title", "امور مالی"),
       element("p", "", "مدیریت مالی پروژه، برآوردها، قیمت‌ها و تنظیمات مرتبط"),
     );
+    heading.append(title, renderInputState(data.snapshots));
     header.append(heading);
 
     const areas = element("section", "work-area-grid");
     areas.setAttribute("aria-label", "بخش‌های امور مالی");
     WORK_AREAS.forEach((area) => areas.append(createWorkAreaCard(area)));
 
-    fragment.append(header, renderInputState(data.snapshots), areas);
+    fragment.append(header, areas);
     return fragment;
   }
 

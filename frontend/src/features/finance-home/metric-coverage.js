@@ -86,6 +86,47 @@ export function unavailableReason(report, key) {
 }
 
 /**
+ * Which published count measures each figure's coverage.
+ *
+ * TWO COUNTS, BECAUSE THE SERVICE APPLIES TWO RULES. A figure about work DONE needs a
+ * price and a measurement. A figure about money still to SPEND needs a price and, for
+ * material, no measurement at all — what is left to buy comes from the purchase ledger,
+ * not from site progress. Measured on this project the two differ completely: 0 lines
+ * against 52.
+ *
+ * So a single count cannot describe both, and reading `computedLineCount` beside the
+ * forecast produced «هیچ ردیفی در این عدد نیامده» next to a figure of 8,347 billion. A
+ * figure whose count the service does not publish is left unqualified rather than
+ * qualified wrongly.
+ */
+const COVERAGE_COUNT = Object.freeze({
+  currentExecutedValueIrr: "computedLineCount",
+  remainingPhysicalCostIrr: "computedLineCount",
+  moneyRequiredToContinueIrr: "requiredLineCount",
+  forecastFinalCostIrr: "requiredLineCount",
+  forecastPerSquareMeterIrr: "requiredLineCount",
+});
+
+/**
+ * Whether this figure is a sum over NO lines at all.
+ *
+ * The service publishes such a sum as `0`, deliberately: it excludes the lines it cannot
+ * use and states the total, leaving the counts to say how much of the project that is.
+ * For every partial sum that is right — 2 of 715 is a number a reader can use. For a sum
+ * over zero lines it is not: «۰ تومان» beside «هزینه کار باقی‌مانده» reads as «the work
+ * is finished», which is the one reading no gap should ever produce.
+ *
+ * So this is where the figure is withheld — a presentation decision, made once, where the
+ * figure is drawn. The service keeps publishing the number for anyone who wants it.
+ */
+export function restsOnNothing(report, key) {
+  const field = COVERAGE_COUNT[key];
+  if (!field) return false;
+  const computed = Number(report?.[field]);
+  return Number.isFinite(computed) && computed === 0;
+}
+
+/**
  * How much of the project a published figure was built from.
  *
  * `null` when the service says nothing — which is every version before it learned to
@@ -95,7 +136,9 @@ export function unavailableReason(report, key) {
  */
 export function coverageOf(report, key) {
   if (!stated(report, key)) return null;
-  const computed = Number(report?.computedLineCount);
+  const field = COVERAGE_COUNT[key];
+  if (!field) return null;
+  const computed = Number(report?.[field]);
   const total = Number(report?.totalLineCount);
   if (!Number.isFinite(computed) || !Number.isFinite(total) || total <= 0) return null;
   if (computed >= total) return null;      // complete: nothing to qualify
@@ -107,6 +150,10 @@ export function coverageNote(report, key, description) {
   const reason = unavailableReason(report, key);
   if (reason) return reason;
   if (!stated(report, key)) return "داده مبنا موجود نیست";
+  if (restsOnNothing(report, key)) {
+    const total = formatDisplayNumber(String(Number(report?.totalLineCount) || 0));
+    return `هیچ‌کدام از ${total} ردیف این پروژه هنوز قابل محاسبه نیست.`;
+  }
   const coverage = coverageOf(report, key);
   if (!coverage) return description;
   return `${description} · ${count(coverage.excluded)} ردیف در این عدد نیامده`;
