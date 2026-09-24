@@ -70,7 +70,11 @@ test("a confirmed extraction sends the supplier's fields, not a number for this 
   await adapter.confirmExtraction({
     draftId: "draft-1", expectedVersion: 2, idempotencyKey: "k-3", fieldConfirmations: [],
     // What the extractor read off the paper travels in, and must not travel out.
-    invoice: { invoiceNumber: "INV-77/A", invoiceDate: "2026-08-10", vendorName: "فروشنده", resourceId: "target-1", totalIRR: "5000" },
+    /* The lines arrive built now -- the review card asks which estimate line or general
+       cost each one belongs to. What the extractor read off the paper still travels in,
+       and must still not travel out. */
+    invoice: { invoiceNumber: "INV-77/A", invoiceDate: "2026-08-10", vendorName: "فروشنده",
+               lines: [{ estimateLineId: null, resourceId: "resource-1", quantity: null, unit: null, unitPriceIrr: null, lineAmountIrr: "5000", description: null }] },
   });
   const body = bodyOf(calls, "/confirm");
   // Named rather than searched for: if the request stops nesting the invoice, this
