@@ -20104,6 +20104,278 @@
         ]
       }
     },
+    "/api/projects/{projectId}/finance/mpp/remap": {
+      "post": {
+        "description": "Re-run the mapping over the project's active schedule and report what changed.\n\nIdempotent by construction rather than by a flag: every write below is a\nmatch-or-insert keyed on the file's own identifiers, so running this twice over an\nunchanged schedule reports the second pass as matched and writes nothing. That is\nwhat makes it safe to expose as an operation somebody can repeat when they are not\nsure whether the first one took.\n\nA project with no active source version gets a 404 naming that, not a 500: there is\nnothing to map, and the request was well formed.",
+        "operationId": "mpp_remap_api_projects__projectId__finance_mpp_remap_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
+          }
+        },
+        "summary": "Mpp Remap",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/finance/mpp/status": {
+      "get": {
+        "description": "What became of every row of the active schedule, and which file it came from.\n\nReads and counts; writes nothing and computes no financial figure. The provenance\nfields come from the SAME statement that chose the version the counts were taken\nover, so a reader can never be shown one file's name beside another file's numbers.\n\nA project that has imported nothing is not an error: it reports zero of everything\nwith a null version, which is a different answer from a failure and reads as one.",
+        "operationId": "mpp_status_api_projects__projectId__finance_mpp_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
+          }
+        },
+        "summary": "Mpp Status",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/api/projects/{projectId}/finance/overview": {
       "get": {
         "operationId": "finance_overview_api_projects__projectId__finance_overview_get",

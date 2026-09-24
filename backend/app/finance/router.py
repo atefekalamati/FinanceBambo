@@ -1392,3 +1392,79 @@ async def list_unit_conversion_issues(projectId:str,request:Request,
     rows=await request.app.state.unit_conversion_rule_service.list_issues(
         scope,status=status,estimate_line_id=lineId)
     return ConversionIssueListResponse(items=[_issue_body(r) for r in rows])
+
+
+# ----------------------------------------------------------------- MPP mapping, in production
+#
+# The schedule's own money, turned into estimate lines. The mapping itself has existed
+# since 0012 and ran only from the development host, which meant the one production route
+# to a fixed-cost line was an import that happened to be followed by a developer calling
+# it. These two put the same service behind the same guards every other Finance route
+# uses: `finance.view` to look, `finance.edit` to write.
+#
+# Neither endpoint takes a version id. The version is the project's own active one, read
+# through the shared rule -- a caller naming one could ask this project to be mapped from
+# another project's schedule, and there is no reason for the API to offer that.
+
+def _mpp_mapping_service(request: Request):
+    """The mapping service, or a 503 that says what is missing.
+
+    Optional on purpose: a Finance host with no MPP root configured is a perfectly
+    ordinary deployment. Saying so beats an AttributeError raised halfway through a
+    request, which reaches the caller as a 500 about nothing they can act on.
+    """
+    service = getattr(request.app.state, "finance_mpp_mapping_service", None)
+    if service is None:
+        raise HTTPException(status_code=503,
+                            detail="finance MPP mapping is not configured on this host")
+    return service
+
+
+@router.get("/mpp/status", responses=FINANCE_ERROR_RESPONSES)
+async def mpp_status(projectId: str, request: Request):
+    """What became of every row of the active schedule, and which file it came from.
+
+    Reads and counts; writes nothing and computes no financial figure. The provenance
+    fields come from the SAME statement that chose the version the counts were taken
+    over, so a reader can never be shown one file's name beside another file's numbers.
+
+    A project that has imported nothing is not an error: it reports zero of everything
+    with a null version, which is a different answer from a failure and reads as one.
+    """
+    scope = await _resource_scope(projectId, request, "finance.view")
+    service = _mpp_mapping_service(request)
+    organization = str(scope.organization_id)
+    status = await service.mapping_status(organization, projectId)
+    detail = await service.current_version_detail(organization, projectId)
+    status["sourceFileName"] = None if detail is None else detail["source_file_name_safe"]
+    status["importedAt"] = None if detail is None else detail["imported_at"]
+    # The file's own status date, when it stated one. Null is common and means the file
+    # named no reporting date -- not that the import has none.
+    status["reportingDate"] = None if detail is None else detail["reporting_date"]
+    status["rowCount"] = None if detail is None else detail["row_count"]
+    return status
+
+
+@router.post("/mpp/remap", responses=FINANCE_ERROR_RESPONSES)
+async def mpp_remap(projectId: str, request: Request):
+    """Re-run the mapping over the project's active schedule and report what changed.
+
+    Idempotent by construction rather than by a flag: every write below is a
+    match-or-insert keyed on the file's own identifiers, so running this twice over an
+    unchanged schedule reports the second pass as matched and writes nothing. That is
+    what makes it safe to expose as an operation somebody can repeat when they are not
+    sure whether the first one took.
+
+    A project with no active source version gets a 404 naming that, not a 500: there is
+    nothing to map, and the request was well formed.
+    """
+    scope = await _resource_scope(projectId, request, "finance.edit")
+    service = _mpp_mapping_service(request)
+    organization = str(scope.organization_id)
+    version = await service.current_version_id(organization, projectId)
+    if version is None:
+        raise HTTPException(
+            status_code=404,
+            detail="this project has no ready MPP source version to map")
+    return await service.map_source_version(organization, projectId, version,
+                                            actor_user_id=scope.actor_user_id)

@@ -17,10 +17,12 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from coreint.finance_mpp_sync import MATERIAL_UNIT_RATE
-from coreint.finance_mpp_mapping import (CLASSIFIABLE_TYPES, FIXED_COST_RESOURCE_CODE,
+from coreint.finance_mpp_mapping import (CLASSIFIABLE_TYPES, FIXED_COST_RESIDUE_TASK_UID,
+                                         FIXED_COST_RESOURCE_CODE,
                                          FIXED_COST_RESOURCE_TITLE, RESOURCE_CODE_PREFIX,
                                          FinanceMppClassificationRefused,
-                                         FinanceMppMappingService, _finance_type)
+                                         FinanceMppMappingService, _FIXED_COST_TASKS,
+                                         _finance_type)
 
 
 def found_by_its_own_code(sql):
@@ -523,20 +525,78 @@ class TaskFixedCostTests(unittest.TestCase):
         self.assertEqual(Decimal("-29721600000"), params[5])
         self.assertEqual("-29721600000", result["fixedCostIrr"])
 
-    def test_residue_below_one_unit_of_the_files_currency_is_not_money(self):
+    def test_residue_below_one_unit_is_not_its_own_line_but_is_not_lost_either(self):
         # MS Project holds Task.Cost = its assignments + Fixed Cost, in doubles, so a task
         # nobody entered a fixed cost on still carries what is left of that arithmetic.
         # This project shows both kinds and they are not close: twenty-one tasks between
         # -0.25 and 0.5 of a toman, and three holding the whole of it.
+        #
+        # Neither extreme is right. Twenty-one lines of a fraction of a rial would be
+        # noise in the estimate; dropping them makes the project total disagree with the
+        # file by an amount nobody can account for. So they are summed into one line.
         result, db = run([row(1, 100, 97, fixed_cost="0.5", fixed_cost_irr="5"),
                           row(2, 101, 98, fixed_cost="-0.25", fixed_cost_irr="-2.5"),
                           row(3, 102, 99, fixed_cost="2829688000.0",
                               fixed_cost_irr="28296880000.0")])
-        self.assertEqual(1, result["fixedCostLinesCreated"])
+        self.assertEqual(2, result["fixedCostLinesCreated"], "the task's own, plus one aggregate")
         self.assertEqual(2, result["fixedCostResidueRows"], "counted, never quietly dropped")
         self.assertEqual("0.25", result["fixedCostResidueFileUnits"])
+        stated, aggregate = sorted(self.lines(db), key=lambda p: p[6], reverse=True)
+        self.assertEqual(Decimal("28296880000"), stated[5])
+        self.assertEqual(FIXED_COST_RESIDUE_TASK_UID, aggregate[6])
+        self.assertEqual(Decimal("3"), aggregate[5], "5 + -2.5 = 2.5, rounded half up")
+        self.assertIsNone(aggregate[4], "it belongs to no one activity, so it names none")
+        self.assertEqual("28296880003", result["fixedCostIrr"],
+                         "the reported total is what was written, aggregate included")
+
+    def test_the_aggregate_is_keyed_on_a_task_the_file_can_never_use(self):
+        # The residue line needs a key of its own, and the match-or-insert rule keys fixed
+        # costs on the task. Task 0 is MS Project's project summary: it is not a costed
+        # task and never appears in the rows. The query excludes it OUTRIGHT so that a
+        # future file stating a fixed cost there could not be silently matched by -- or
+        # collide with -- this aggregate.
+        self.assertEqual(0, FIXED_COST_RESIDUE_TASK_UID)
+        self.assertIn("source_task_uid <> 0", " ".join(_FIXED_COST_TASKS.split()))
+
+    def test_a_residue_that_rounds_to_nothing_writes_no_line(self):
+        # A general cost of zero would sit in the estimate forever stating nothing.
+        result, db = run([row(1, 100, 97, fixed_cost="0.02", fixed_cost_irr="0.2"),
+                          row(2, 101, 98, fixed_cost="-0.02", fixed_cost_irr="-0.2")])
+        self.assertEqual(2, result["fixedCostResidueRows"])
+        self.assertEqual(0, result["fixedCostLinesCreated"])
+        self.assertEqual([], self.lines(db))
+
+    def test_a_project_whose_only_fixed_cost_is_residue_still_gets_the_aggregate(self):
+        # The resource the lines hang on has to be created for the aggregate alone, so the
+        # early return cannot be "nothing was priced".
+        result, db = run([row(1, 100, 97, fixed_cost="0.5", fixed_cost_irr="5"),
+                          row(2, 101, 98, fixed_cost="0.5", fixed_cost_irr="5")])
+        self.assertEqual(1, result["fixedCostLinesCreated"])
+        self.assertEqual(2, result["fixedCostResidueRows"])
         params, = self.lines(db)
-        self.assertEqual(Decimal("28296880000"), params[5])
+        self.assertEqual(Decimal("10"), params[5])
+        self.assertEqual(FIXED_COST_RESIDUE_TASK_UID, params[6])
+
+    def test_a_negative_residue_sum_stays_negative(self):
+        # Same rule as a stated negative fixed cost: the file's evidence travels as it is.
+        result, db = run([row(1, 100, 97, fixed_cost="-0.5", fixed_cost_irr="-5"),
+                          row(2, 101, 98, fixed_cost="-0.4", fixed_cost_irr="-4")])
+        params, = self.lines(db)
+        self.assertEqual(Decimal("-9"), params[5])
+        self.assertEqual("-9", result["fixedCostIrr"])
+
+    def test_a_second_pass_matches_the_aggregate_instead_of_adding_another(self):
+        # Idempotency covers the synthetic line exactly as it covers the file's own.
+        rows = [row(1, 100, 97, fixed_cost="0.5", fixed_cost_irr="5"),
+                row(2, 101, 98, fixed_cost="-0.25", fixed_cost_irr="-2.5"),
+                row(3, 102, 99, fixed_cost="2829688000.0", fixed_cost_irr="28296880000.0")]
+        db = Db(rows)
+        first, _ = run(rows, db=db)
+        self.assertEqual(2, first["fixedCostLinesCreated"])
+        second, _ = run(rows, db=db)
+        self.assertEqual(0, second["fixedCostLinesCreated"])
+        self.assertEqual(2, second["fixedCostLinesMatched"])
+        self.assertEqual(2, len(self.lines(db)), "no second write of either line")
 
     def test_a_task_fixed_cost_repeated_on_every_row_of_the_task_makes_one_line(self):
         # The column holds the TASK's figure on each of the task's rows, exactly as
@@ -585,3 +645,97 @@ class TaskFixedCostTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TerraceFixedCostAcceptanceTests(unittest.TestCase):
+    """The whole fixed-cost reading of this project's schedule, in one pass.
+
+    The numbers are the file's own: three activities carry a fixed cost somebody entered,
+    twenty-one carry what is left of MS Project's `Task.Cost = assignments + Fixed Cost`
+    reconciliation, and the three real ones do not agree in sign -- one activity was
+    corrected by a negative against its neighbour's positive.
+
+    Kept together as one case because the interesting property is the TOTAL: three stated
+    amounts plus an aggregated residue that reconciles the project to the file. Any one of
+    them tested alone would still pass while the sum was wrong.
+    """
+
+    #: What the file states on the three activities that carry a real fixed cost, in the
+    #: file's own units and through the currency decision. 5,290,960,000.5 toman is not a
+    #: whole rial and is the reason the rounding policy is stated once and shared.
+    STATED = ((1227, "2829688000.0", "28296880000.0"),
+              (1229, "-2972160000.0", "-29721600000.0"),
+              (1231, "5290960000.5", "52909600004.6"))
+
+    def fixture(self):
+        rows = [row(uid, uid, 900 + index, wbs="1.%d" % uid,
+                    fixed_cost=stated, fixed_cost_irr=rials)
+                for index, (uid, stated, rials) in enumerate(self.STATED)]
+        # Twenty-one tasks below one toman: twenty at +0.3 and one at -0.1, which is
+        # +59 rials once. Each on its own rounds to 3 or -1 rials; none of them is an
+        # amount anybody entered, and together they are the difference from the file.
+        for index in range(20):
+            rows.append(row(2000 + index, 2000 + index, 800 + index,
+                            fixed_cost="0.3", fixed_cost_irr="3"))
+        rows.append(row(2100, 2100, 899, fixed_cost="-0.1", fixed_cost_irr="-1"))
+        return rows
+
+    def lines(self, db):
+        return [p for text, p in db.statements
+                if "INSERT INTO estimate_lines" in text and "'progress_feed',NULL," in text]
+
+    def test_the_first_pass_creates_four_lines_totalling_the_files_fixed_cost(self):
+        result, db = run(self.fixture())
+        self.assertEqual(4, result["fixedCostLinesCreated"], "three stated, one aggregate")
+        self.assertEqual(0, result["fixedCostLinesMatched"])
+        self.assertEqual("51484880064", result["fixedCostIrr"])
+        self.assertEqual(21, result["fixedCostResidueRows"])
+        self.assertEqual("5.9", result["fixedCostResidueFileUnits"])
+        self.assertEqual(4, len(self.lines(db)))
+
+    def test_the_second_pass_matches_all_four_and_writes_none(self):
+        rows = self.fixture()
+        db = Db(rows)
+        run(rows, db=db)
+        second, _ = run(rows, db=db)
+        self.assertEqual(0, second["fixedCostLinesCreated"])
+        self.assertEqual(4, second["fixedCostLinesMatched"])
+        self.assertEqual(4, len(self.lines(db)), "still four, not eight")
+
+    def test_the_corrected_activity_keeps_its_negative(self):
+        # 1229 is the activity this project's planner corrected downwards. Clamping it to
+        # zero would publish an initial estimate the schedule does not have, and would do
+        # it in the direction that looks more plausible.
+        _result, db = run(self.fixture())
+        by_task = {params[6]: params[5] for params in self.lines(db)}
+        self.assertEqual(Decimal("-29721600000"), by_task[1229])
+
+    def test_the_half_rial_is_rounded_once_and_kept(self):
+        _result, db = run(self.fixture())
+        by_task = {params[6]: params[5] for params in self.lines(db)}
+        self.assertEqual(Decimal("52909600005"), by_task[1231])
+
+    def test_the_residue_arrives_as_one_line_on_task_zero(self):
+        _result, db = run(self.fixture())
+        by_task = {params[6]: params for params in self.lines(db)}
+        aggregate = by_task[FIXED_COST_RESIDUE_TASK_UID]
+        self.assertEqual(Decimal("59"), aggregate[5])
+        self.assertIsNone(aggregate[4], "no activity: it is the residue of twenty-one")
+
+    def test_the_lines_hang_on_one_general_cost_item(self):
+        _result, db = run(self.fixture())
+        created = [p for text, p in db.statements
+                   if "INSERT INTO finance_resources" in text and "'general_cost'" in text]
+        self.assertEqual(1, len(created), "one MPP-FIXEDCOST resource for the project")
+        self.assertEqual(FIXED_COST_RESOURCE_CODE, created[0][3])
+
+    def test_the_pass_never_touches_a_line_it_did_not_create(self):
+        # The 715 estimate lines this project already carries are not addressable from
+        # here at all: every statement is an INSERT that tolerates an existing row, or a
+        # SELECT keyed on the file's own identifiers.
+        _result, db = run(self.fixture())
+        for text, _params in db.statements:
+            self.assertFalse(text.startswith("UPDATE"), text[:60])
+            self.assertFalse(text.startswith("DELETE"), text[:60])
+            if text.startswith("INSERT"):
+                self.assertIn("ON CONFLICT DO NOTHING", text)

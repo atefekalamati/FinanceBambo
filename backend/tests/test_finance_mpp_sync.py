@@ -501,3 +501,108 @@ class WhichFileBelongsToWhichProjectTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Mapper:
+    """A mapping service that records what it was asked and can be told to fail."""
+
+    def __init__(self, fail=None):
+        self.calls = []
+        self._fail = fail
+
+    async def map_source_version(self, organization_id, project_id, version_id,
+                                 actor_user_id=None):
+        self.calls.append((organization_id, project_id, version_id, actor_user_id))
+        if self._fail is not None:
+            raise self._fail
+        return {"fixedCostLinesCreated": 4, "fixedCostLinesMatched": 0,
+                "fixedCostIrr": "51484880064"}
+
+
+class MappingAfterImportTests(SyncTests):
+    """An import that lands must become estimate lines without anybody asking twice.
+
+    Before this, reading a schedule into `finance_mpp_rows` and turning those rows into
+    financial records were two requests, and only the first one was automatic. A project
+    whose file imported cleanly could sit with an empty estimate indefinitely, and nothing
+    in either answer said which half had not run.
+
+    The two halves are still separate operations -- see `sync` -- and these pin the rule
+    that keeps them safe to chain: the import is committed before the mapping is attempted,
+    so a mapping that fails leaves a correctly imported schedule behind it.
+    """
+
+    ACTOR = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1")
+
+    def service(self, connection, reader, mapper=None):
+        async def factory():
+            return connection
+        return FinanceMppSyncService(factory, reader, import_root=self.root.name,
+                                     id_factory=lambda: VERSION,
+                                     mapping_service=mapper)
+
+    def test_a_new_import_is_mapped_without_a_second_request(self):
+        connection, mapper = Connection(), Mapper()
+        result = run(self.service(connection, Reader(self.parsed), mapper)
+                     .sync(ORG, "terrace", actor_user_id=self.ACTOR))
+        self.assertEqual("imported", result["status"])
+        self.assertEqual("mapped", result["mapping"]["status"])
+        self.assertEqual(4, result["mapping"]["fixedCostLinesCreated"])
+        self.assertEqual([(ORG, "terrace", str(VERSION), self.ACTOR)], mapper.calls)
+
+    def test_a_refresh_is_mapped_too_because_its_rows_changed(self):
+        connection = Connection(existing=[{"id": VERSION, "row_count": 2,
+                                           "source_file_name_safe": "terrace.mpp"}])
+        mapper = Mapper()
+        result = run(self.service(connection, Reader(self.parsed), mapper)
+                     .sync(ORG, "terrace", actor_user_id=self.ACTOR, refresh=True))
+        self.assertEqual("refreshed", result["status"])
+        self.assertEqual("mapped", result["mapping"]["status"])
+        self.assertEqual(1, len(mapper.calls))
+
+    def test_unchanged_bytes_are_not_remapped(self):
+        # The same file produced the same rows, so there is nothing new to map. Mapping on
+        # every poll of an unmoved file would be work with no result -- and the periodic
+        # tick polls every project on every interval.
+        connection = Connection(existing=[{"id": VERSION, "row_count": 2,
+                                           "source_file_name_safe": "terrace.mpp"}])
+        mapper = Mapper()
+        result = run(self.service(connection, Reader(self.parsed), mapper)
+                     .sync(ORG, "terrace", actor_user_id=self.ACTOR))
+        self.assertEqual("unchanged", result["status"])
+        self.assertNotIn("mapping", result)
+        self.assertEqual([], mapper.calls)
+
+    def test_a_failed_mapping_does_not_undo_the_import(self):
+        connection = Connection()
+        mapper = Mapper(fail=RuntimeError("classification refused"))
+        result = run(self.service(connection, Reader(self.parsed), mapper)
+                     .sync(ORG, "terrace", actor_user_id=self.ACTOR))
+        self.assertEqual("imported", result["status"], "the file was read correctly")
+        self.assertEqual("failed", result["mapping"]["status"])
+        self.assertEqual("RuntimeError", result["mapping"]["code"])
+        self.assertIn("classification refused", result["mapping"]["message"])
+        # The rows are still there and the transaction still committed. Rolling the import
+        # back would turn a mapping problem into a lost file, and the operator would
+        # restage the schedule to fix something the schedule never had wrong.
+        self.assertEqual(2, sum("INSERT INTO finance_mpp_rows" in s
+                                for s in connection.statements))
+        self.assertIn("COMMIT", connection.log)
+        self.assertNotIn("ROLLBACK", connection.log)
+
+    def test_an_unattended_import_says_why_it_did_not_map(self):
+        # The periodic tick names no actor, and `estimate_lines.created_by` is NOT NULL.
+        # Inventing one to satisfy the column would put a fabricated author on every line.
+        connection, mapper = Connection(), Mapper()
+        result = run(self.service(connection, Reader(self.parsed), mapper).sync(ORG, "terrace"))
+        self.assertEqual("imported", result["status"])
+        self.assertEqual("skipped", result["mapping"]["status"])
+        self.assertEqual("FINANCE_MPP_ACTOR_REQUIRED", result["mapping"]["code"])
+        self.assertEqual([], mapper.calls)
+
+    def test_a_host_with_no_mapper_answers_exactly_as_it_did_before(self):
+        connection = Connection()
+        result = run(self.service(connection, Reader(self.parsed), None)
+                     .sync(ORG, "terrace", actor_user_id=self.ACTOR))
+        self.assertEqual("imported", result["status"])
+        self.assertNotIn("mapping", result)

@@ -156,6 +156,12 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/labels", "post"),
                 ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/factors", "get"),
                 ("/api/projects/{projectId}/finance/material-prices/{providerItemId}/factors", "post"),
+                # The schedule's own money, as estimate lines. The mapping predates these
+                # routes; what it never had was a way to be asked for in production, which
+                # is why a deployed project's fixed costs depended on somebody calling the
+                # development host afterwards.
+                ("/api/projects/{projectId}/finance/mpp/status", "get"),
+                ("/api/projects/{projectId}/finance/mpp/remap", "post"),
             },
             business_operations,
         )

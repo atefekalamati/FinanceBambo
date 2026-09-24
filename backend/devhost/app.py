@@ -563,16 +563,22 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
                 _mpp_connection, reader,
                 import_root=root, max_size_mb=mpp_max_file_size_mb())
             print("mpp import CONFIGURED: root is set; POST /api/projects/{id}/mpp-imports")
+            # Turning those rows into financial records, and the one decision the file
+            # cannot make: whether a WORK resource is labour or equipment.
+            #
+            # Built BEFORE the sync service so it can be handed to it. An import that is
+            # not followed by a mapping leaves the schedule read but the estimate empty,
+            # and the only thing that used to close that gap was a developer remembering
+            # to call the mapper afterwards.
+            application.state.finance_mpp_mapping_service = FinanceMppMappingService(
+                _mpp_connection)
             # The Finance half of the same file, into Finance's own tables. Same reader,
             # same root, its own persistence: a Finance-only host runs this alone.
             application.state.finance_mpp_sync_service = FinanceMppSyncService(
                 _mpp_connection, reader,
-                import_root=root, max_size_mb=mpp_max_file_size_mb())
+                import_root=root, max_size_mb=mpp_max_file_size_mb(),
+                mapping_service=application.state.finance_mpp_mapping_service)
             print("finance mpp sync CONFIGURED; POST /api/projects/{id}/finance/mpp-sync")
-            # Turning those rows into financial records, and the one decision the file
-            # cannot make: whether a WORK resource is labour or equipment.
-            application.state.finance_mpp_mapping_service = FinanceMppMappingService(
-                _mpp_connection)
 
             if mpp_import_enabled():
                 interval = mpp_import_interval_minutes() * 60

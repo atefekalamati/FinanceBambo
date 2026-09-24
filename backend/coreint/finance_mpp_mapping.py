@@ -135,8 +135,21 @@ FIXED_COST_RESOURCE_TITLE = "هزینه ثابت فعالیت (برنامه زم
 #: So the rule is stated in the file's OWN units, where "one unit of the currency someone
 #: typed in" is a sentence that means something, rather than in rials, where the same
 #: threshold would silently depend on the currency decision. Residue is counted and
-#: reported, never quietly dropped.
+#: reported, and its SUM is carried as one line rather than dropped: each piece is too
+#: small to be an amount anybody entered, but together they are the difference between
+#: this project's total and MS Project's own, and a difference nobody can see is worse
+#: than a small line somebody can.
 FIXED_COST_MINIMUM_FILE_UNITS = Decimal(1)
+
+#: The task the aggregated residue line is keyed on.
+#:
+#: Zero, because MS Project numbers its own tasks from 1 and reserves 0 for the project
+#: summary -- which has no Fixed Cost of its own and never appears in `finance_mpp_rows`
+#: as a costed task. So it is a key no real task can claim, which is what a synthetic line
+#: needs. `_FIXED_COST_TASKS` excludes it explicitly rather than relying on that: if a
+#: future file ever did state a fixed cost on task 0, the two would collide silently and
+#: the aggregate would be matched as though it were the file's own figure.
+FIXED_COST_RESIDUE_TASK_UID = 0
 
 #: Every task of a source version that states a fixed cost, once per task.
 #:
@@ -152,6 +165,7 @@ _FIXED_COST_TASKS = """
      WHERE source_version_id = %(version_id)s
        AND organization_id = %(organization_id)s AND project_id = %(project_id)s
        AND source_task_uid IS NOT NULL
+       AND source_task_uid <> 0
        AND source_fixed_cost_irr IS NOT NULL
        AND source_fixed_cost IS NOT NULL
        AND source_fixed_cost <> 0
@@ -343,6 +357,24 @@ class FinanceMppMappingService:
                 found = await cursor.fetchone()
         return None if found is None else found["id"]
 
+    async def current_version_detail(self, organization_id, project_id):
+        """Which file the active version was read from, and when. Reads only; None if none.
+
+        The same statement `current_version_id` uses, asked for more columns, so the
+        provenance a reader is shown can never belong to a different version from the one
+        the counts were taken over. A separate query ordered the same way would usually
+        agree -- and would stop agreeing exactly when an import lands between the two.
+        """
+        async with await self._connect() as connection:
+            async with connection.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(
+                    active_source_version(
+                        columns="id, source_file_name_safe, imported_at, reporting_date,"
+                                " row_count",
+                        organization="%s", project="%s"),
+                    (organization_id, project_id))
+                return await cursor.fetchone()
+
     async def mapping_status(self, organization_id, project_id):
         """What became of every row of the current schedule. Reads only.
 
@@ -513,11 +545,14 @@ class FinanceMppMappingService:
                   # know which half moved.
                   "fixedCostLinesCreated": 0, "fixedCostLinesMatched": 0,
                   "fixedCostIrr": "0",
-                  # What was read and NOT turned into money, and why. See
-                  # FIXED_COST_MINIMUM_FILE_UNITS: below one unit of the file's own
-                  # currency a fixed cost is reconciliation residue, not an amount. Said
-                  # out loud so the difference between this and MS Project's own total is
-                  # a number a reader can see rather than one they have to discover.
+                  # How much of the fixed cost arrived as reconciliation residue rather
+                  # than as an amount somebody entered. See FIXED_COST_MINIMUM_FILE_UNITS:
+                  # below one unit of the file's own currency, a fixed cost is what is left
+                  # of MS Project's own arithmetic. Those rows do not become lines of their
+                  # own -- twenty-one lines of a fraction of a rial would be noise -- but
+                  # their SUM does, on FIXED_COST_RESIDUE_TASK_UID, so the project total
+                  # still reconciles to the file. These two say how many rows and how much,
+                  # in the file's units, went into that one line.
                   "fixedCostResidueRows": 0, "fixedCostResidueFileUnits": "0",
                   "unmappedRows": 0, "unclassifiedResources": []}
 
@@ -645,15 +680,29 @@ class FinanceMppMappingService:
         tasks = await cursor.fetchall()
         priced = []
         residue = Decimal(0)
+        residue_irr = Decimal(0)
         for row in tasks:
             stated = Decimal(row["source_fixed_cost"])
             if abs(stated) < FIXED_COST_MINIMUM_FILE_UNITS:
                 result["fixedCostResidueRows"] += 1
                 residue += stated
+                # Summed in rials as well as in the file's units, because the file's units
+                # are what the THRESHOLD is stated in and rials are what a line is stored
+                # in. Rounding each piece on its own would round twenty-one numbers smaller
+                # than a rial to nothing and lose the sum; the sum is rounded once, below.
+                residue_irr += Decimal(row["source_fixed_cost_irr"])
                 continue
             priced.append(row)
         result["fixedCostResidueFileUnits"] = format(residue, "f")
-        if not priced:
+
+        # The aggregate, decided before anything is written so an empty pass stays empty.
+        # Same rounding policy as every other amount here: whole rials, ROUND_HALF_UP.
+        aggregate = residue_irr.quantize(Decimal(1), rounding=ROUND_HALF_UP)
+        # Zero is not a line. A residue that rounds away states nothing a reader could act
+        # on, and a general cost of nought would sit in the estimate forever saying it.
+        if aggregate == 0:
+            aggregate = None
+        if not priced and aggregate is None:
             return
 
         # The item they hang on, created once per project. Looked up first and inserted
@@ -678,9 +727,25 @@ class FinanceMppMappingService:
             return
         resource_id = found["id"]
 
+        # (task uid, activity, amount) for everything this pass would write. The aggregate
+        # is built into the same list rather than written separately, so it is matched,
+        # counted and totalled by exactly the rules the file's own fixed costs are -- and
+        # a second pass over an unchanged schedule matches it instead of adding another.
+        writes = [(row["source_task_uid"], row["task_wbs"],
+                   # Whole rials, like every other amount Finance stores, and like the
+                   # standard rate the assignment lines carry. The column is numeric(18,0)
+                   # and would round anyway; doing it here means the number written is the
+                   # number decided.
+                   Decimal(row["source_fixed_cost_irr"]).quantize(
+                       Decimal(1), rounding=ROUND_HALF_UP))
+                  for row in priced]
+        if aggregate is not None:
+            # No activity: this line is the residue of many tasks and belongs to none of
+            # them, and naming one of their WBS codes would attribute it to that activity.
+            writes.append((FIXED_COST_RESIDUE_TASK_UID, None, aggregate))
+
         total = Decimal(0)
-        for row in priced:
-            task_uid = row["source_task_uid"]
+        for task_uid, activity, amount in writes:
             await cursor.execute("""
                 SELECT id FROM estimate_lines
                  WHERE organization_id=%s AND project_id=%s
@@ -690,15 +755,10 @@ class FinanceMppMappingService:
             if await cursor.fetchone() is not None:
                 result["fixedCostLinesMatched"] += 1
                 continue
-            # Whole rials, like every other amount Finance stores, and like the standard
-            # rate the assignment lines carry. The column is numeric(18,0) and would round
-            # anyway; doing it here means the number written is the number decided.
-            amount = Decimal(row["source_fixed_cost_irr"]).quantize(
-                Decimal(1), rounding=ROUND_HALF_UP)
             await cursor.execute(
                 _INSERT_FIXED_COST_LINE,
                 (str(self._ids()), organization_id, project_id, resource_id,
-                 row["task_wbs"], amount, task_uid, actor_user_id))
+                 activity, amount, task_uid, actor_user_id))
             result["fixedCostLinesCreated"] += 1
             total += amount
         result["fixedCostIrr"] = format(total, "f")

@@ -440,12 +440,58 @@ class FinanceMppSyncService:
         return outcomes
 
     def __init__(self, connection_factory, reader, *, import_root, max_size_mb=100,
-                 id_factory=uuid4):
+                 id_factory=uuid4, mapping_service=None):
         self._connect = connection_factory
         self._reader = reader
         self._import_root = import_root
         self._max_size_mb = max_size_mb
         self._ids = id_factory
+        # Optional, and injected rather than imported: a host that reads schedules into
+        # Finance's tables without turning them into estimate lines is a real deployment,
+        # and this class must not require the mapper to exist in order to import a file.
+        self._mapping = mapping_service
+
+    #: The import outcomes that changed the rows a mapping would read. `unchanged` is
+    #: deliberately not among them: the same bytes produced the same rows, so there is
+    #: nothing new to map, and re-running the mapper on every poll of an unmoved file
+    #: would be work with no result.
+    MAPPED_AFTER = ("imported", "refreshed")
+
+    async def _map_after_sync(self, organization_id, project_id, actor_user_id, outcome):
+        """Map the version this import just wrote. Never raises, never rolls back.
+
+        THE IMPORT IS ALREADY COMMITTED when this runs -- `_sync` closed its transaction
+        before returning -- which is the whole point of doing it here rather than inside.
+        A schedule that was read correctly and then failed to become estimate lines is a
+        mapping problem, and undoing the import would turn it into a lost file as well.
+
+        So every failure is caught, logged with its stack, and reported on the outcome
+        under `mapping`. A caller that only looks at `status` sees its import succeeded,
+        because it did; a caller diagnosing a missing estimate line has the reason.
+        """
+        if self._mapping is None or outcome.get("status") not in self.MAPPED_AFTER:
+            return outcome
+        if actor_user_id is None:
+            # Mapping writes financial records and `estimate_lines.created_by` is NOT
+            # NULL. An unattended import (the periodic tick) names nobody, and inventing
+            # an actor to satisfy the column would put a fabricated author on every line
+            # it wrote. Reported rather than guessed.
+            outcome["mapping"] = {"status": "skipped",
+                                  "code": "FINANCE_MPP_ACTOR_REQUIRED",
+                                  "message": "mapping creates financial records and this "
+                                             "import named no actor"}
+            return outcome
+        try:
+            mapped = await self._mapping.map_source_version(
+                organization_id, project_id, outcome["sourceVersionId"],
+                actor_user_id=actor_user_id)
+            outcome["mapping"] = {"status": "mapped", **mapped}
+        except Exception as error:                                     # noqa: BLE001
+            LOG.exception("finance mpp mapping after import failed project=%s", project_id)
+            outcome["mapping"] = {"status": "failed",
+                                  "code": getattr(error, "code", None) or type(error).__name__,
+                                  "message": str(error)}
+        return outcome
 
     def _parse_a_private_copy(self, resolved):
         """Copy, verify the copy is the same bytes, parse the copy, remove it.
@@ -520,6 +566,27 @@ class FinanceMppSyncService:
 
     async def sync(self, organization_id, project_id, actor_user_id=None, refresh=False,
                    file_name=None):
+        """Import the schedule, then turn what it added into estimate lines.
+
+        The two halves are deliberately sequential and not one transaction. Reading a file
+        into `finance_mpp_rows` is a fact about the file and succeeds or fails on its own;
+        turning those rows into financial records is a separate judgement that can fail for
+        reasons the file is not responsible for -- a WORK resource nobody has classified,
+        an actor the request did not name. Binding them would mean a mapping problem threw
+        away a correct import, and the operator would restage the file to fix something the
+        file never had wrong.
+
+        So: import commits, mapping runs after, and its outcome rides back under `mapping`.
+        See `_map_after_sync`. A host with no mapper configured gets the import alone, and
+        the answer is shaped exactly as it was before this existed.
+        """
+        outcome = await self._sync(organization_id, project_id, actor_user_id=actor_user_id,
+                                   refresh=refresh, file_name=file_name)
+        return await self._map_after_sync(organization_id, project_id, actor_user_id,
+                                          outcome)
+
+    async def _sync(self, organization_id, project_id, actor_user_id=None, refresh=False,
+                    file_name=None):
         """One sync. Returns what happened; raises `FinanceMppSyncRefused` on refusal.
 
         The whole write is one transaction: a parse that fails or a row that will not
