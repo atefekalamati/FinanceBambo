@@ -307,3 +307,96 @@ test("and joins the primary chips as soon as it does", () => {
   chip.click();
   assert.deepEqual(chosen, ["equipment"]);
 });
+
+
+/* AN EQUIPMENT ROW, AS THE SERVICE WILL SEND IT.
+ *
+ * «تجهیزات» is not a worksheet. A machine's rate is a number somebody negotiated and
+ * typed, it lives in `price_versions`, and it reaches this page through the same
+ * `/material-prices/current` shape as everything else -- no supplier, no worksheet
+ * columns, no observation. This pins the contract from the page's side, so the service
+ * can be built against something that is already known to render.
+ */
+
+const MACHINE = () => row({
+  providerItemId: "22222222-2222-4222-8222-222222222222",
+  externalId: null,
+  name: "گریدر",
+  category: "equipment",
+  providerName: null,          // a machine has no supplier
+  worksheet: null,
+  origin: "manual",
+  currentPriceIRR: "52100000",
+  rawPrice: null,
+  sourceCurrency: null,
+  sourceUnit: "hour",
+  sourceUnitCode: "hour",
+  displayUnit: "hour",
+  targetUnit: "hour",
+  conversionFactor: null,
+  workflowDateRaw: null,
+  workflowDateJalali: null,
+  workflowDate: "2026-09-17",  // the rate's effective_from
+  validationStatus: "valid",
+  resolutionStatus: "resolved",
+  specs: {},
+});
+
+test("a machine renders on the prices page with no supplier and no worksheet", () => {
+  const section = renderMaterialPrices([MACHINE()], {
+    categories: [{ category: "equipment", label: "تجهیزات", activeCount: 1, itemCount: 1 }],
+    selectedCategory: "equipment",
+    onSelectCategory: () => {},
+  });
+  const text = section.textContent;
+  assert.match(text, /گریدر/);
+  assert.match(text, /۵٬۲۱۰٬۰۰۰/, "the rate, through the shared money formatter");
+  assert.match(text, /ثبت دستی/, "«منشأ» says a person typed it, not the sheet");
+  assert.match(text, /تجهیزات/, "and it is filed under its own category");
+});
+
+test("the empty supplier and product id are dashes, never blanks or zeros", () => {
+  const cells = [...renderMaterialPrices([MACHINE()], {
+    categories: [{ category: "equipment", label: "تجهیزات", activeCount: 1, itemCount: 1 }],
+    selectedCategory: "equipment", onSelectCategory: () => {},
+  }).querySelectorAll("tbody td")].map((cell) => cell.textContent.trim());
+  assert.ok(cells.includes("—"), "an absent supplier reads as an em dash");
+});
+
+test("the rate's own date is shown, not today", () => {
+  /* `effective_from` arrives where a sheet row carries its workflow date. A machine
+     states no Jalali text of its own, so the shared business formatter renders it. */
+  assert.match(sheetDateLabel(MACHINE()), /شهریور ۱۴۰۵/);
+});
+
+test("the chip appears only when the service publishes the category", () => {
+  /* Guarded on purpose: the five primaries are always drawn, «تجهیزات» only when it
+     exists. A chip with nothing behind it is worse than no chip. */
+  const withoutIt = renderMaterialPrices([], {
+    categories: [{ category: "rebar", label: "میلگرد", activeCount: 1, itemCount: 1 }],
+    selectedCategory: "rebar", onSelectCategory: () => {},
+  });
+  assert.doesNotMatch(withoutIt.textContent, /تجهیزات/);
+
+  const withIt = renderMaterialPrices([], {
+    categories: [{ category: "rebar", label: "میلگرد", activeCount: 1, itemCount: 1 },
+                 { category: "equipment", label: "تجهیزات", activeCount: 3, itemCount: 3 }],
+    selectedCategory: "rebar", onSelectCategory: () => {},
+  });
+  /* The count is the service's own number, printed as the chips have always printed
+     one -- Latin digits, like «میلگرد (1)» beside it. Pinned as it is rather than as it
+     arguably should be: a chip that suddenly counted in Persian while its neighbours
+     counted in Latin would be a new inconsistency, not a fix. */
+  assert.match(withIt.textContent, /تجهیزات \(3\)/, "and it carries its own count");
+});
+
+test("a machine's rate history draws the same trend as a sheet listing", () => {
+  /* Two price_versions become two points, oldest first — the component cannot tell what
+     wrote them, which is the whole reason it needs no equipment-specific code. */
+  const versions = [{ workflowDate: "2026-09-17", priceIRR: "52100000", validationStatus: "valid" },
+                    { workflowDate: "2026-08-20", priceIRR: "48000000", validationStatus: "valid" }];
+  const trend = materialPriceTrend({ providerItemId: "m-1" }, versions);
+  assert.deepEqual(trend.trend.trendPoints.map((p) => p.unitPriceIrr),
+                   ["48000000", "52100000"]);
+  assert.equal(trend.trend.trendDirection, "up");
+});
