@@ -77,11 +77,23 @@ export function createMockAttachmentsAdapter(context, { initialState = "success"
     ];
   }
 
-  async function startExtraction(fileId, { simulateFailure = false } = {}) {
+  /* `forceNew` is the retry route's `force_new`, and the default is the service's default.
+     Without it this mock re-read a file that already had a draft, which the service
+     refuses: it answers 202 naming the draft the file already has. A preview that
+     re-extracts where the real host declines teaches the page a behaviour it will not
+     get. Both answers carry `alreadyExtracted` so the page reads one field either way --
+     the API adapter returns only that and the status, this returns the draft beside it
+     because the preview's own tests are written against a draft. */
+  async function startExtraction(fileId, { simulateFailure = false, forceNew = false } = {}) {
     requireEditPermission("مجوز شروع پردازش فایل وجود ندارد.");
     const file = findFile(fileId);
     if (file.uploadedBy !== context.userId) throw new ApiError({ status: 403, code: "FINANCE_FORBIDDEN", message: "فقط بارگذار فایل می‌تواند پردازش را شروع کند." });
     if (file.processingStatus === "processing") throw new ApiError({ status: 503, code: "AI_EXTRACTION_FAILED", message: "فایل هم‌اکنون در حال پردازش است." });
+    const already = forceNew ? null : drafts.find((item) => item.file.fileId === fileId);
+    if (already) {
+      return { ...structuredClone(already), alreadyExtracted: true, extractionId: already.draftId,
+               fileId, processingStatus: file.processingStatus };
+    }
     file.processingStatus = "processing";
     file.processingError = null;
     await wait(650);
@@ -106,7 +118,8 @@ export function createMockAttachmentsAdapter(context, { initialState = "success"
       confirmedAt: null,
     };
     drafts.unshift(draft);
-    return structuredClone(draft);
+    return { ...structuredClone(draft), alreadyExtracted: false, extractionId: draft.draftId,
+             fileId, processingStatus: file.processingStatus };
   }
 
   async function getExtractions() {
@@ -131,7 +144,7 @@ export function createMockAttachmentsAdapter(context, { initialState = "success"
     const current = drafts.find((item) => item.draftId === draftId);
     if (!current) throw new ApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "پیش‌نویس استخراج پیدا نشد." });
     if (current.submittedBy !== context.userId) throw new ApiError({ status: 403, code: "FINANCE_FORBIDDEN", message: "فقط بارگذار فایل می‌تواند پردازش را تکرار کند." });
-    return startExtraction(current.file.fileId);
+    return startExtraction(current.file.fileId, { forceNew: true });
   }
 
   async function rejectExtraction({ draftId, expectedVersion }) {

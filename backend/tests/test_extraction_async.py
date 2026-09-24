@@ -20,6 +20,13 @@ from uuid import UUID, uuid4
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+
+from app.main import create_app
+from app.finance.domain.attachments import FinanceAttachment
+from app.finance.domain.extractions import ExtractionDraft, ExtractionField
+from app.finance.security.context import AuthContext
 from app.finance.security.guards import FinanceScope
 from app.finance.services.extractions import (AIExtractionFailed, ExtractionForbidden,
                                               FinanceExtractionService)
@@ -32,6 +39,27 @@ SCOPE = FinanceScope(organization_id=ORG, project_id="p1", actor_user_id=ACTOR)
 
 GOOD = {"fields": [{"key": "rawText", "extractedValue": "جمع کل ۱۳۵٬۰۰۰٬۰۰۰",
                     "confidence": 0.97, "editedByUser": False}]}
+
+PROJECT = "p1"
+DRAFT_ID = UUID("55555555-5555-4555-8555-555555555555")
+
+
+def draft(draft_id=DRAFT_ID):
+    """A real ExtractionDraft, built through its own constructor.
+
+    Stands where `object()` used to: a double that answers to any attribute cannot tell a
+    caller reading the wrong one from a caller reading the right one, which is exactly the
+    mistake it let through.
+    """
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    return ExtractionDraft(
+        draft_id, ORG, PROJECT,
+        FinanceAttachment(FILE_ID, ORG, PROJECT, "invoice_image", "invoice.png",
+                          "%s.png" % FILE_ID, "image/png", 1024, "0" * 64, ACTOR, now,
+                          "ready", "%s.png" % FILE_ID, None),
+        1, "awaitingReview", "draft", "image-adapter",
+        [ExtractionField("rawText", "فاکتور", None, 0.97, False)],
+        ACTOR, now, Decimal(0))
 
 
 class Attachment:
@@ -241,7 +269,11 @@ class DuplicateTests(unittest.TestCase):
         self.assertEqual(1, extractor.calls)
 
     def test_an_existing_draft_is_returned_instead_of_extracting_again(self):
-        existing = object()
+        # A REAL draft, not `object()`. The bare object passed here for a long time while
+        # the router read `existing.id` off it -- an attribute an ExtractionDraft does not
+        # have -- and answered 500 on this exact branch. A double that answers to anything
+        # tests nothing about the thing it stands for. See `RouterAnswerTests` below.
+        existing = draft()
         background, extractor = Background(), Extractor()
         svc = service(drafts=Drafts(existing=existing), extractor=extractor)
 
@@ -255,7 +287,7 @@ class DuplicateTests(unittest.TestCase):
 
     def test_force_new_extracts_again_even_with_a_draft_present(self):
         background, extractor = Background(), Extractor()
-        svc = service(drafts=Drafts(existing=object()), extractor=extractor)
+        svc = service(drafts=Drafts(existing=draft()), extractor=extractor)
 
         async def main():
             await svc.schedule(SCOPE, FILE_ID, background.add, force_new=True)
@@ -274,6 +306,80 @@ class DuplicateTests(unittest.TestCase):
         attachments, background = Attachments(status="failed"), Background()
         run(service(attachments=attachments).schedule(SCOPE, FILE_ID, background.add))
         self.assertEqual("processing", attachments.value.processing_status)
+
+
+class RouterAnswerTests(unittest.TestCase):
+    """The BODY the 202 carries, asserted through the route rather than the service.
+
+    Every test above stops at `schedule` and asserts what it returns. The route then has to
+    turn that into JSON, and that step had a bug no service test could see: it read
+    `existing.id`, which an ExtractionDraft does not have, so a file that already had a
+    draft answered 500 -- the one branch these very tests cover most carefully.
+
+    Reproduced against the running host before the fix, on a file with a draft:
+    `POST /files/{id}/extractions/async` -> HTTP 500, empty body.
+    """
+
+    def client(self):
+        app = create_app()
+        app.state.auth_context_provider = _Auth()
+        app.state.scope_authorizer = _Scope()
+        app.state.permission_authorizer = _Permissions()
+        app.state.finance_extraction_service = _Service()
+        # No durable executor, so the route takes the development branch. Nothing here
+        # queues anything: both cases under test return before any work is scheduled.
+        app.state.allow_ephemeral_finance_tasks = True
+        return TestClient(app)
+
+    def post(self):
+        return self.client().post(
+            "/api/projects/%s/finance/files/%s/extractions/async" % (PROJECT, FILE_ID),
+            json={"hints": {"locale": "fa-IR"}})
+
+    def test_a_file_that_already_has_a_draft_is_answered_with_that_draft(self):
+        _Service.existing = draft()
+        response = self.post()
+        self.assertEqual(202, response.status_code, response.text)
+        self.assertEqual({"fileId": str(FILE_ID), "processingStatus": "ready",
+                          "extractionId": str(DRAFT_ID), "alreadyExtracted": True},
+                         response.json())
+
+    def test_a_file_with_no_draft_says_so_rather_than_naming_one(self):
+        _Service.existing = None
+        response = self.post()
+        self.assertEqual(202, response.status_code, response.text)
+        body = response.json()
+        self.assertIsNone(body["extractionId"])
+        self.assertFalse(body["alreadyExtracted"])
+
+
+class _Auth:
+    async def current(self, _request):
+        return AuthContext(userId=ACTOR, organizationId=ORG, projectId=PROJECT,
+                           permissionCodes=["finance.manage_invoice", "finance.view"],
+                           organizationRole="finance_expert", projectRole="finance_expert",
+                           timezone="Asia/Tehran", locale="fa")
+
+
+class _Scope:
+    async def require_organization(self, _context, _organization_id): return None
+    async def require_project(self, _context, _organization_id, _project_id): return None
+
+
+class _Permissions:
+    async def require(self, context, permission_code):
+        if permission_code not in context.permission_codes:
+            raise HTTPException(403, "permission denied")
+
+
+class _Service:
+    """Answers `schedule` with whatever the test put on `existing`."""
+
+    existing = None
+
+    async def schedule(self, _scope, _file_id, _enqueue, _hints=None):
+        attachment = draft().file
+        return attachment, _Service.existing
 
 
 class AuthorityTests(unittest.TestCase):

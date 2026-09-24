@@ -536,8 +536,15 @@ async def start_extraction_async(projectId:str,fileId:UUID,payload:ExtractionSta
         raise HTTPException(503,"durable extraction execution is not configured")
     attachment,existing=await request.app.state.finance_extraction_service.schedule(
         scope,fileId,enqueue,payload.hints)
+    # `draft_id`, which is what an ExtractionDraft calls it -- it has no `id` at all. This
+    # read `existing.id` and therefore raised AttributeError on the one branch it runs in:
+    # a file that ALREADY has a draft. Every such request answered 500 instead of the 202
+    # that tells the client «this file was read before, here is the result», and the client
+    # -- which ignores the response and polls the file's status -- showed the old draft as
+    # though it were new. Nothing was written, because the branch returns before the
+    # attachment is claimed, so no figure was ever wrong; the answer was.
     return {"fileId":str(fileId),"processingStatus":attachment.processing_status,
-            "extractionId":None if existing is None else str(existing.id),
+            "extractionId":None if existing is None else str(existing.draft_id),
             "alreadyExtracted":existing is not None}
 
 @router.get("/extractions",response_model=ExtractionListResponse,responses=FINANCE_ERROR_RESPONSES)

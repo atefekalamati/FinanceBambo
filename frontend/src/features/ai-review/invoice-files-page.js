@@ -90,7 +90,8 @@ function createUploadCard({ logicalType, title, description, accept, limit, adap
   return card;
 }
 
-function renderFiles(files, { adapter, canUpload, onChanged }) {
+/** Exported so the card's decisions can be asserted without a page, a clock or a browser. */
+export function renderFiles(files, { adapter, canUpload, onChanged }) {
   const section = element("section", "uploaded-files");
   const head = element("div", "section-heading");
   const copy = element("div");
@@ -127,10 +128,20 @@ function renderFiles(files, { adapter, canUpload, onChanged }) {
       card.append(failure);
     }
     const actions = element("div", "uploaded-file-card__actions");
-    const process = element("button", "button button--primary", file.processingStatus === "failed" ? "پردازش دوباره" : "شروع پردازش");
+    /* A file the service has already read is not offered as one to start reading. It
+       cannot be re-read through this route -- the service answers 202 naming the draft it
+       already has and queues nothing -- so «شروع پردازش» on a `ready` file promised
+       something it never did, and the press ended on the review page showing the OLD
+       draft as though it were new. Re-reading is `retryExtraction`, which lives on the
+       draft's own card where the reviewer can see what they would be replacing. */
+    const alreadyRead = file.processingStatus === "ready";
+    const process = element("button", "button button--primary",
+      alreadyRead ? "مشاهده نتیجهٔ خواندن"
+        : file.processingStatus === "failed" ? "پردازش دوباره" : "شروع پردازش");
     process.type = "button";
     process.disabled = !canUpload || file.processingStatus === "processing";
     process.addEventListener("click", async () => {
+      if (alreadyRead) { window.location.hash = "#finance/ai-review"; return; }
       process.disabled = true;
       process.textContent = "در حال پردازش…";
       // The request answers 202 the moment the work is queued, so starting the extraction
@@ -139,10 +150,20 @@ function renderFiles(files, { adapter, canUpload, onChanged }) {
       // file really is processing, and the poll below reports what actually happened in
       // either case. A start refused for a permission reason leaves the file `uploaded`,
       // which the poll returns at once.
+      let outcome = null;
       try {
-        await adapter.startExtraction(file.fileId);
+        outcome = await adapter.startExtraction(file.fileId);
       } catch (error) {
         // Intentionally ignored: the file's own status is the answer, not this rejection.
+      }
+      /* The service declined to read this file twice and named the draft it already has.
+         That is an answer, not a failure -- so there is nothing to wait for, and polling a
+         status that will never move would spend a minute arriving at what the response
+         already said. */
+      if (outcome?.alreadyExtracted) {
+        await onChanged();
+        window.location.hash = "#finance/ai-review";
+        return;
       }
       const settled = await waitForExtraction({ adapter, fileId: file.fileId });
       // Always refresh. The card renders `ready` or `failed` from the file's own row, and

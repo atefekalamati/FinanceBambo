@@ -23,7 +23,18 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
   // 202 as soon as the work is queued and reports the attachment's own status; the caller
   // watches that status rather than the response.
   async function startExtraction(fileId) {
-    return client.request(`${base}/files/${encodeURIComponent(fileId)}/extractions/async`, jsonOptions("POST", { hints: { locale: context.locale ?? "fa-IR" } }));
+    const payload = await client.request(`${base}/files/${encodeURIComponent(fileId)}/extractions/async`, jsonOptions("POST", { hints: { locale: context.locale ?? "fa-IR" } }));
+    /* `alreadyExtracted` is the service declining to read a file twice, and it is an
+       ANSWER rather than a refusal: the draft it names is the reading this file already
+       has. Mapped rather than passed through, because until now nothing read this body at
+       all -- the page threw it away and polled the file's status instead, so a file that
+       was already read looked like one that had just been re-read. */
+    return {
+      fileId: payload?.fileId ?? fileId,
+      processingStatus: payload?.processingStatus ?? null,
+      alreadyExtracted: payload?.alreadyExtracted === true,
+      extractionId: payload?.extractionId ?? null,
+    };
   }
   async function getExtractions({ page = 1, pageSize = 50, reviewStatus = "", source = "", fileId = "", linkedInvoiceId = "" } = {}) {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });

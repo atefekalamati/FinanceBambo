@@ -93,3 +93,28 @@ test("the defaults cover a cold local OCR run", () => {
   // with room, or the page would give up on work that is about to finish.
   assert.ok(DEFAULT_ATTEMPTS * DEFAULT_INTERVAL_MS >= 60_000);
 });
+
+test("the 202 body is read, not thrown away", async () => {
+  /* Nothing read it before, and that hid a 500. The service answers this route with
+     `{alreadyExtracted, extractionId}` when the file has been read already; the page
+     ignored the response and polled the file's status instead, so a file that was already
+     read looked exactly like one that had just been re-read. */
+  const client = { async request() {
+    return { fileId: "file-1", processingStatus: "ready",
+             extractionId: "draft-9", alreadyExtracted: true };
+  } };
+  const outcome = await createApiAttachmentsAdapter(context, client).startExtraction("file-1");
+  assert.deepEqual(outcome, { fileId: "file-1", processingStatus: "ready",
+                              extractionId: "draft-9", alreadyExtracted: true });
+});
+
+test("a host that says nothing about a previous reading is not assumed to have one", async () => {
+  /* `alreadyExtracted` is only true when the service says so. Absent -- an older host, or
+     a body that never mentions it -- the page must wait for the work like it always did,
+     not skip straight to a draft that may not exist. */
+  const client = { async request() { return { processingStatus: "processing" }; } };
+  const outcome = await createApiAttachmentsAdapter(context, client).startExtraction("file-1");
+  assert.equal(outcome.alreadyExtracted, false);
+  assert.equal(outcome.extractionId, null);
+  assert.equal(outcome.fileId, "file-1", "falls back to the id that was asked about");
+});
