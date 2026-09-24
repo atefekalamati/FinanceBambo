@@ -67,16 +67,39 @@ test("maps reviewed extraction confirmation to canonical invoice DTO", async () 
   const client = { async request(path, options) { request = { path, options }; return invoice(); } };
   const targets = [{ targetId: "target-1", targetType: "general_cost", estimateLineId: null, resourceId: "resource-1" }];
   const adapter = createApiAttachmentsAdapter(context, client, { getInvoiceTargets: async () => targets });
-  await adapter.confirmExtraction({ draftId: "draft-1", expectedVersion: 2, idempotencyKey: "confirm-1", fieldConfirmations: [], invoice: { invoiceNumber: "F-2", invoiceDate: "2026-08-10", vendorName: "فروشنده", resourceId: "target-1", totalIRR: "5000" } });
+  await adapter.confirmExtraction({ draftId: "draft-1", expectedVersion: 2, idempotencyKey: "confirm-1", fieldConfirmations: [], invoice: { invoiceDate: "2026-08-10", vendorName: "فروشنده", lines: [{ estimateLineId: null, resourceId: "resource-1", quantity: null, unit: null, unitPriceIrr: null, lineAmountIrr: "5000", description: null }] } });
   const body = JSON.parse(request.options.body);
   assert.equal(body.invoice.lines[0].lineAmountIrr, "5000");
-  assert.equal(body.invoice.lines[0].quantity, null);
+  assert.equal(body.invoice.lines[0].quantity, null, "a general cost has no quantity to state");
   assert.equal(body.expectedVersion, 2);
 });
 
-test("does not invent quantity truth when extracted total targets a quantified line", async () => {
-  const adapter = createApiAttachmentsAdapter(context, { request: async () => { throw new Error("request must not be sent"); } }, { getInvoiceTargets: async () => [{ targetId: "target-1", targetType: "estimate_line", estimateLineId: "line-1", resourceId: "resource-1" }] });
-  await assert.rejects(adapter.confirmExtraction({ draftId: "draft-1", expectedVersion: 1, idempotencyKey: "confirm-quantified", fieldConfirmations: [], invoice: { invoiceDate: "2026-08-10", vendorName: "فروشنده", resourceId: "target-1", totalIRR: "5000" } }), (error) => error.code === "EXTRACTION_QUANTIFIED_LINE_DATA_MISSING");
+test("a quantified line is never left to be scored as one times zero", async () => {
+  /* What the removed guard was right about. `_calculate_lines` reads `line_amount_irr`
+     first and only multiplies quantity by rate when that is absent, so a quantified line
+     sent with both of those null and no amount would be booked as zero. Every line now
+     carries its amount, which is the figure the reviewer approved and the one the service
+     takes as stated.
+
+     The guard itself is gone: it refused every target but a general cost, and a general
+     cost carries no estimate line -- so no activity, no WBS stage, and nothing the
+     level-one chart can draw. Every extracted invoice landed outside that chart. */
+  let request;
+  const client = { async request(path, options) { request = { path, options }; return invoice(); } };
+  const adapter = createApiAttachmentsAdapter(context, client, { getInvoiceTargets: async () => [] });
+  await adapter.confirmExtraction({ draftId: "draft-1", expectedVersion: 1, idempotencyKey: "confirm-quantified", fieldConfirmations: [],
+    invoice: { invoiceDate: "2026-08-10", vendorName: "فروشنده",
+               lines: [{ estimateLineId: "line-1", resourceId: "resource-1", quantity: "2.5",
+                         unit: "kg", unitPriceIrr: "1000", lineAmountIrr: "2500", description: "میلگرد" }] } });
+  const line = JSON.parse(request.options.body).invoice.lines[0];
+  assert.equal(line.estimateLineId, "line-1", "this is what puts the money on an activity");
+  assert.equal(line.lineAmountIrr, "2500", "stated, so the service never multiplies");
+});
+
+test("a confirmation with no line is refused before it is sent", async () => {
+  const adapter = createApiAttachmentsAdapter(context, { request: async () => { throw new Error("request must not be sent"); } }, { getInvoiceTargets: async () => [] });
+  await assert.rejects(adapter.confirmExtraction({ draftId: "draft-1", expectedVersion: 1, idempotencyKey: "k", fieldConfirmations: [], invoice: { invoiceDate: "2026-08-10", vendorName: "فروشنده", lines: [] } }),
+                       (error) => error.code === "INVOICE_TARGET_INVALID");
 });
 
 test("lists progress snapshots with a single request and no per-snapshot feed fan-out", async () => {

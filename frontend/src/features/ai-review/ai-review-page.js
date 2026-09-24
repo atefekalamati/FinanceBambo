@@ -10,6 +10,8 @@ import { getDisplayCurrencyLabel } from "../../shared/preferences/currency-prefe
 import { formatApiErrorMessage } from "../../shared/errors/error-presentation.js";
 import { renderPageState } from "../../shared/components/page-state.js";
 import { element } from "../../shared/dom/elements.js";
+import { fieldValue, invoiceLines, linesTotalIrr, proposedLines, reconcile,
+         rowAmountIrr, unattachedRows } from "./extraction-lines.js";
 
 // The keys the BACKEND emits. `vendorName` and `totalIRR` were this page's names for
 // them and the backend has never sent either: they came from the mock adapter this
@@ -26,10 +28,29 @@ const FIELD_LABELS = Object.freeze({
   taxAmount: "مالیات",
   items: "اقلام فاکتور",
   rawText: "متن خوانده‌شده",
+  voiceTranscript: "رونوشت گفتار",
+  speechProvider: "موتور تبدیل گفتار",
   validationStatus: "وضعیت بررسی خودکار",
   parserWarnings: "هشدارهای خواندن",
   resourceId: "تخصیص به قلم هزینه",
 });
+
+/* Read from the document, not asked of the reviewer.
+ *
+ * `items` became the line editor below and must not also appear as a single-line input
+ * holding «[object Object]». The rest are PROVENANCE: which engine read this, how sure it
+ * said it was, and — for speech — the transcript itself.
+ *
+ * The transcript is the load-bearing one. The service keeps it precisely because a spoken
+ * amount and a printed one can disagree, and it is the only evidence they do; an input a
+ * reviewer can type into is not evidence. It is shown beside the recording instead, whole
+ * and read-only. */
+const LINE_EDITOR_KEYS = Object.freeze(new Set(["items"]));
+const PROVENANCE_KEYS = Object.freeze(new Set([
+  "voiceTranscript", "rawText", "speechProvider", "source",
+  "extractionSource", "extractionConfidence",
+  "tableRows", "tablePageKind", "tableConfidence", "tableColumnSource",
+]));
 
 const REVIEW_LABELS = Object.freeze({
   awaitingReview: "نیازمند بررسی",
@@ -37,8 +58,16 @@ const REVIEW_LABELS = Object.freeze({
   rejected: "ردشده",
 });
 
+/* «۸۷ درصد اطمینان», or the honest gap.
+ *
+ * The speech provider reports no per-segment probability and the service sends null
+ * rather than a figure invented beside it -- «a missing confidence is a fact; a
+ * fabricated one is a claim». `Math.round(Number(null) * 100)` is 0, so the old form
+ * printed «۰ درصد اطمینان» on a reading nobody had scored, which is a worse claim than
+ * either. */
 function confidenceLabel(value) {
-  return `${formatDisplayNumber(String(Math.round(Number(value) * 100)))} درصد اطمینان`;
+  if (typeof value !== "number" || !Number.isFinite(value)) return "اطمینان اندازه‌گیری نشده";
+  return `${formatDisplayNumber(String(Math.round(value * 100)))} درصد اطمینان`;
 }
 
 function confirmationDialog({ title, message, confirmLabel, onConfirm }) {
@@ -120,10 +149,41 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
   }
   card.append(source);
 
+  /* The transcript, whole and read-only, where the document's image would be.
+     It is the evidence that a spoken amount and the figures below it disagree, and a box
+     somebody can type into is not evidence. */
+  /* Two different things under one block. `voiceTranscript` is what somebody SAID;
+     `rawText` on an image path is what the OCR READ off the page. Calling the second one
+     «رونوشت گفتار» -- which it was called until a probe showed «فاكتور فروش» sitting under
+     that heading on a scanned invoice -- names the wrong act and the wrong evidence. */
+  const spoken = fieldValue(draft, "voiceTranscript");
+  const transcript = spoken ?? fieldValue(draft, "rawText");
+  if (transcript && String(transcript).trim()) {
+    /* Open for speech, folded for a scan.
+       A transcript IS the evidence on the voice path -- there is nothing else to compare
+       a spoken amount against -- so it is open and whole. OCR text is not: the page it
+       was read from is right above it, and left open it ran to sixty lines and pushed the
+       lines and the buttons off the card. Folded, never hidden: the reader opens it when
+       the reading and the figures disagree, which is the only time they need it. */
+    const block = element("details", "ai-review-transcript");
+    block.open = Boolean(spoken);
+    block.append(element("summary", "ai-review-transcript__summary",
+                   spoken ? FIELD_LABELS.voiceTranscript : FIELD_LABELS.rawText),
+                 element("p", "ai-review-transcript__text", String(transcript).trim()));
+    card.append(block);
+  }
+
   const form = element("div", "ai-fields-grid");
   const controls = new Map();
-  draft.fields.forEach((field) => {
-    const wrapper = element("label", `ai-field${field.confidence < 0.8 ? " ai-field--low" : ""}`);
+  draft.fields.filter((field) => !LINE_EDITOR_KEYS.has(field.key)
+                              && !PROVENANCE_KEYS.has(field.key)).forEach((field) => {
+    /* `confidence < 0.8` is false for null, so an UNMEASURED reading used to pass as a
+       confident one. The speech provider reports no per-segment probability and the
+       service refuses to invent a number for it, so the card says which it is. */
+    const measured = typeof field.confidence === "number";
+    const wrapper = element("label",
+      `ai-field${measured && field.confidence < 0.8 ? " ai-field--low" : ""}`
+      + (measured ? "" : " ai-field--unmeasured"));
     const labelRow = element("span", "ai-field__label");
     const fieldLabel = field.key === "totalAmount" ? `${FIELD_LABELS[field.key]} به ${getDisplayCurrencyLabel()}` : FIELD_LABELS[field.key];
     labelRow.append(element("strong", "", fieldLabel ?? "اطلاعات خوانده‌شده"), element("small", "", confidenceLabel(field.confidence)));
@@ -161,6 +221,94 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
 
   const warning = element("p", "ai-confidence-note", "فیلدهای نارنجی اطمینان کمتر از ۸۰ درصد دارند و باید با سند اصلی تطبیق داده شوند.");
   card.append(warning);
+
+  /* THE LINES, AND WHERE EACH ONE'S MONEY GOES.
+     This is what decides whether the invoice reaches the level-one chart: a line carrying
+     an estimate line lands on that activity's stage, and a general cost lands nowhere on
+     it. The card cannot choose for the reviewer -- neither a document nor a recording says
+     which activity a purchase belongs to -- so each row asks, and a row nobody has
+     answered for blocks the confirmation by name. */
+  const rows = proposedLines(draft);
+  const lineEditor = element("div", "ai-lines");
+  const lineTotal = element("p", "ai-lines__total");
+  const lineNote = element("p", "ai-lines__note");
+
+  function paintTotals() {
+    lineTotal.textContent = `جمع خطوط: ${formatTomanFromIrr(linesTotalIrr(rows))}`;
+    const check = reconcile(rows, draft);
+    if (!check || check.matches) {
+      lineNote.textContent = check
+        ? "با مبلغ نهایی خوانده‌شده می‌خواند."
+        : "";
+      lineNote.className = "ai-lines__note ai-lines__note--ok";
+      return;
+    }
+    /* The draft against ITSELF -- never against another invoice. The service refuses to
+       assume two uploads describe the same document, and neither does this. */
+    lineNote.textContent = `با مبلغ نهایی خوانده‌شده (${formatTomanFromIrr(check.statedIrr)}) `
+      + `${formatTomanFromIrr(check.differenceIrr)} ${check.over ? "بیشتر" : "کمتر"} است.`;
+    lineNote.className = "ai-lines__note ai-lines__note--differs";
+  }
+
+  rows.forEach((row) => {
+    const box = element("div", "ai-line");
+    box.append(element("p", "ai-line__name", row.description || "قلم بدون نام"));
+
+    const targetField = element("label", "form-field");
+    targetField.append(element("span", "form-label", "این هزینه برای کدام ردیف یا فعالیت است؟"));
+    const targetSelect = element("select", "app-select");
+    const blank = element("option", "", "انتخاب کنید");
+    blank.value = "";
+    targetSelect.append(blank);
+    targets.forEach((target) => {
+      const option = element("option", "",
+        `${target.label} · ${target.targetType === "general_cost" ? "هزینه‌های عمومی پروژه" : "ردیف برآورد"}`);
+      option.value = target.targetId;
+      targetSelect.append(option);
+    });
+    targetSelect.value = row.targetId ?? "";
+    targetField.append(targetSelect);
+
+    /* Said before the money is committed, not discovered afterwards. A general cost is
+       not lost money -- it counts in the actual cost, the monthly trend and the breakdown
+       by type -- but it belongs to no activity, so `by_wbs` places it in no node and the
+       level-one chart cannot draw it. */
+    const generalNote = element("p", "invoice-warning",
+      "هزینه عمومی به هیچ مرحله‌ای وصل نمی‌شود، پس در نمودار «گزارش مالی سطح ۱» دیده نمی‌شود. "
+      + "اگر این خرید برای مرحله مشخصی است، همان ردیف برآورد را انتخاب کنید.");
+    generalNote.hidden = true;
+
+    const numbers = element("div", "ai-line__numbers");
+    const make = (label, value, key, mode) => {
+      const wrap = element("label", "form-field");
+      wrap.append(element("span", "form-label", label));
+      const input = element("input", "app-input");
+      input.value = value ?? "";
+      input.inputMode = mode;
+      input.addEventListener("input", () => { row[key] = input.value; paintTotals(); });
+      wrap.append(input);
+      numbers.append(wrap);
+      return input;
+    };
+    make("مقدار", row.quantity, "quantity", "decimal");
+    make(`قیمت واحد به ${getDisplayCurrencyLabel()}`, row.unitPrice, "unitPrice", "decimal");
+    make(`مبلغ خط به ${getDisplayCurrencyLabel()}`, row.amount, "amount", "decimal");
+
+    targetSelect.addEventListener("change", () => {
+      row.targetId = targetSelect.value || null;
+      const chosen = targets.find((item) => item.targetId === row.targetId);
+      generalNote.hidden = chosen?.targetType !== "general_cost";
+      paintTotals();
+    });
+    [targetSelect, ...numbers.querySelectorAll("input")].forEach((control) => {
+      control.disabled = draft.reviewStatus !== "awaitingReview" || !canEdit;
+    });
+    box.append(targetField, generalNote, numbers);
+    lineEditor.append(box);
+  });
+  paintTotals();
+  lineEditor.append(lineTotal, lineNote);
+  card.append(element("h3", "ai-lines__heading", "خطوط فاکتور و تخصیص آن‌ها"), lineEditor);
   if (draft.reviewStatus !== "awaitingReview") {
     if (draft.linkedInvoiceId) {
       const invoiceLink = element("a", "button button--ghost", "مشاهده فاکتورهای ثبت‌شده");
@@ -201,13 +349,28 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
   confirm.disabled = !canEdit;
   confirm.addEventListener("click", () => {
     const values = Object.fromEntries([...controls].map(([key, control]) => [key, control.getValue()]));
-    if (!values.invoiceDate || !values.vendorName || !values.resourceId || !/^\d+$/.test(values.totalIRR)) {
-      feedback.textContent = `تاریخ، فروشنده، تخصیص قلم هزینه و مبلغ صحیح ${getDisplayCurrencyLabel()} برای تأیید الزامی است.`;
+    /* The service's own key names. `vendorName` and `totalIRR` were this page's, they came
+       from the mock adapter it was built against, and the backend has never sent either --
+       so these three tests read `undefined` and the confirmation could not succeed on any
+       real extraction. The labels were corrected; this was left behind. */
+    const missing = [];
+    if (!values.invoiceDate) missing.push("تاریخ فاکتور");
+    if (!values.supplierName) missing.push("فروشنده");
+    const waiting = unattachedRows(rows);
+    if (waiting.length) missing.push(`تخصیص ${formatDisplayNumber(String(waiting.length))} خط`);
+    const unpriced = rows.filter((row) => rowAmountIrr(row) === null);
+    if (unpriced.length) missing.push(`مبلغ ${formatDisplayNumber(String(unpriced.length))} خط`);
+    if (missing.length) {
+      feedback.textContent = `برای تأیید لازم است: ${missing.join("، ")}.`;
       feedback.className = "form-message form-message--error";
       return;
     }
-    const fieldConfirmations = draft.fields.filter((field) => values[field.key] !== String(field.extractedValue ?? "")).map((field) => ({ key: field.key, confirmedValue: values[field.key] }));
-    const dialog = confirmationDialog({ title: "تأیید نهایی و ایجاد فاکتور", message: "پس از این تأیید، پیش‌نویس بررسی‌شده به فاکتور تأییدشده تبدیل می‌شود و اثر مالی ایجاد می‌کند.", confirmLabel: "تأیید نهایی", onConfirm: async () => { await adapter.confirmExtraction({ draftId: draft.draftId, expectedVersion: draft.version, idempotencyKey: crypto.randomUUID(), fieldConfirmations, invoice: values }); await onChanged(); } });
+    const lines = invoiceLines(rows, targets);
+    const fieldConfirmations = draft.fields
+      .filter((field) => Object.hasOwn(values, field.key)
+                      && values[field.key] !== String(field.extractedValue ?? ""))
+      .map((field) => ({ key: field.key, confirmedValue: values[field.key] }));
+    const dialog = confirmationDialog({ title: "تأیید نهایی و ایجاد فاکتور", message: "پس از این تأیید، پیش‌نویس بررسی‌شده به فاکتور تأییدشده تبدیل می‌شود و اثر مالی ایجاد می‌کند.", confirmLabel: "تأیید نهایی", onConfirm: async () => { await adapter.confirmExtraction({ draftId: draft.draftId, expectedVersion: draft.version, idempotencyKey: crypto.randomUUID(), fieldConfirmations, invoice: { invoiceDate: values.invoiceDate, vendorName: values.supplierName, lines } }); await onChanged(); } });
     root.append(dialog);
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
     showAccessibleDialog(dialog);

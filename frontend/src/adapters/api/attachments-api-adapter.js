@@ -43,22 +43,30 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
   async function rejectExtraction({ draftId, expectedVersion, reason = null }) {
     return client.request(`${base}/extractions/${encodeURIComponent(draftId)}/reject`, jsonOptions("POST", { expectedVersion, reason }));
   }
-  /**
-   * The review form yields a single total, which maps to InvoiceLineCreate's
-   * lineAmountIrr. The Backend restricts that field: _calculate_lines raises
-   * "direct line amount requires a general_cost resource", and the extraction
-   * confirm route reaches it through prepare_extracted. Sending the total
-   * against a quantified line would be rejected; sending a quantified line
-   * without quantity and unitPriceIrr is worse — the same function scores it
-   * as (1 x 0) and would silently book a zero-amount line. So the guard below
-   * mirrors a Backend rule and must not be relaxed until the extraction
-   * contract carries quantity, unit and unit price.
-   */
+  /* The reviewed draft, as an invoice.
+   *
+   * The lines arrive built: the review card asked which estimate line or general cost each
+   * one belongs to, and `invoiceLines` turned that into the service's shape. This function
+   * used to build a single line itself -- the whole total, no quantity, no rate -- and
+   * refuse any target but a general cost, on the stated grounds that «the extraction
+   * contract carries quantity, unit and unit price» was not yet true.
+   *
+   * It was true. `_candidate_fields` maps the model's items to exactly those three, for
+   * the image path and the voice path alike. And the refusal it protected had a price:
+   * a general cost carries no estimate line, so no activity and no WBS stage can be
+   * derived for it, and the level-one chart cannot draw it. Every extracted invoice
+   * landed outside that chart, and the message told the reader to type it in by hand.
+   *
+   * The guard it replaced was real about one thing: a quantified line sent with a null
+   * quantity and a null rate would have been read as `1 x 0` and booked as zero. It is not
+   * sent that way -- `invoiceLines` sends `lineAmountIrr` on every line, which the service
+   * takes as stated and never multiplies. */
   async function confirmExtraction(payload) {
-    const targets = await invoiceAdapter.getInvoiceTargets();
-    const target = targets.find((item) => item.targetId === payload.invoice.resourceId);
-    if (!target) throw new ApiError({ status: 422, code: "INVOICE_TARGET_INVALID", message: "اتصال داده استخراج‌شده به قلم مالی معتبر نیست." });
-    if (target.targetType !== "general_cost") throw new ApiError({ status: 422, code: "EXTRACTION_QUANTIFIED_LINE_DATA_MISSING", message: "برای ثبت روی قلم مقداری، مقدار، واحد و قیمت واحد باید توسط قرارداد استخراج تأمین شود؛ از ورود دستی فاکتور استفاده کنید." });
+    const lines = payload.invoice.lines ?? [];
+    if (!lines.length) {
+      throw new ApiError({ status: 422, code: "INVOICE_TARGET_INVALID",
+        message: "هیچ خط قابل ثبتی برای این پیش‌نویس ساخته نشد." });
+    }
     const invoice = {
       // No invoiceNumber. The extractor still reads the one printed on the supplier's
       // document and the review card still shows it, but it is their number, not this
@@ -73,10 +81,11 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
       shippingIrr: "0",
       otherCostsIrr: "0",
       directAdjustmentAllocations: [],
-      lines: [{ estimateLineId: null, resourceId: target.resourceId, quantity: null, unit: null, unitPriceIrr: null, lineAmountIrr: payload.invoice.totalIRR, description: null }],
+      lines,
     };
     return client.request(`${base}/extractions/${encodeURIComponent(payload.draftId)}/confirm`, jsonOptions("POST", { expectedVersion: payload.expectedVersion, idempotencyKey: payload.idempotencyKey, fieldConfirmations: payload.fieldConfirmations, invoice }));
   }
+
   /**
    * The stored file is never served from a public path; this authorised,
    * same-origin endpoint is. A URL is returned rather than bytes so an <img> or
