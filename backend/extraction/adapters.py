@@ -687,7 +687,23 @@ class ImageExtractionAdapter:
 
 
 class VoiceExtractionAdapter:
-    """`InvoiceVoiceExtractor` over a local speech provider."""
+    """`InvoiceVoiceExtractor` over a speech provider, then over the invoice reader.
+
+    TWO STAGES, KEPT APART
+
+        audio  ->  speech provider  ->  transcript      (this file knows no invoices)
+        transcript  ->  invoice reader  ->  fields      (this file knows no audio)
+
+    They are separate calls to separate models because they answer separate questions, and
+    a single model asked to do both would give one confidence for two different acts. The
+    transcript is kept whichever way the second stage goes -- see below.
+
+    WHICH SPEECH PROVIDER
+
+    Whatever is injected. Nothing here names AvalAI or Whisper; `devhost` decides from
+    configuration and this adapter cannot tell which answered. That is what lets the model
+    change without touching anything that reasons about invoices.
+    """
 
     adapter_name = "whisper-local"
 
@@ -708,4 +724,70 @@ class VoiceExtractionAdapter:
     async def extract(self, file, hints=None):
         with _TemporaryUpload(file, "audio") as path:
             result = await asyncio.to_thread(self._transcribe, path)
-        return _as_contract(result)
+        return _as_contract_voice(result, hints)
+
+
+#: What a voice draft records about where its numbers came from. `source` is named here
+#: rather than derived from `provider_adapter`, because the adapter name says WHICH
+#: transcriber ran and a reviewer is asking WHICH KIND OF INPUT this was.
+VOICE_SOURCE_KEY = "source"
+VOICE_SOURCE = "voice"
+TRANSCRIPT_KEY = "voiceTranscript"
+SPEECH_PROVIDER_KEY = "speechProvider"
+
+
+def _as_contract_voice(result, hints=None):
+    """A transcript, plus whatever the invoice reader could take from it.
+
+    THE TRANSCRIPT SURVIVES EVERYTHING. It is emitted before the reader is asked and is
+    never replaced by what the reader decided -- so the question "what did the speaker
+    actually say" always has an answer, including when the structuring stage is switched
+    off, unavailable, or wrong.
+
+    That matters most in the case this exists for: a speaker who states an amount that a
+    scanned invoice contradicts. The transcript is the only evidence the two disagree, and
+    a pipeline that discarded it after structuring would destroy that evidence and leave
+    two numbers with no way to tell which came from whom.
+    """
+    # `_as_contract` answers with the whole payload -- `{"fields": [...]}` -- because that
+    # is what the service reads. The fields are taken out, added to, and put back in the
+    # same envelope: returning a bare list here would be off-contract and the service would
+    # reject the entire extraction.
+    contract = _as_contract(result)
+    fields = contract["fields"]
+    emitted = {field["key"] for field in fields}
+
+    text = "" if result.get("text") is None else str(result["text"])
+    confidence = result.get("confidence")
+
+    provenance = [
+        {"key": VOICE_SOURCE_KEY, "extractedValue": VOICE_SOURCE,
+         "confidence": 1.0, "editedByUser": False},
+        # The transcript again under its own key. `rawText` is the generic slot every
+        # adapter fills; this one says it is SPEECH, which is what a reviewer comparing a
+        # spoken amount against a printed one needs to find.
+        {"key": TRANSCRIPT_KEY, "extractedValue": text,
+         # The speech provider's own confidence when it reports one, and NOT a number
+         # invented here when it does not: AvalAI returns no per-segment probability, and
+         # a fabricated figure would be read as measured.
+         "confidence": 0.0 if confidence is None else min(1.0, max(0.0, float(confidence))),
+         "editedByUser": False},
+    ]
+    if result.get("provider"):
+        provenance.append({"key": SPEECH_PROVIDER_KEY,
+                           "extractedValue": "%s%s" % (
+                               result["provider"],
+                               "/" + result["model"] if result.get("model") else ""),
+                           "confidence": 1.0, "editedByUser": False})
+    fields.extend(field for field in provenance if field["key"] not in emitted)
+
+    if not text.strip():
+        return contract
+
+    # Stage two, and the same reader the image path uses -- not a second one. `needs_ai`
+    # is unconditional here because a transcript has no deterministic parser to try first:
+    # for an image, rules run before the model and the model only fills gaps; for speech
+    # there are no rules, so the reader is the only candidate source there is.
+    fields.extend(_ai_fields(text, {field["key"] for field in fields},
+                             transcript=text, metadata=None, needs_ai=True))
+    return contract

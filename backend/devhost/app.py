@@ -12,6 +12,7 @@ Two things make the browser leave mock mode:
     served by one process on one port.
 """
 
+import os
 import asyncio
 import json
 import re
@@ -185,7 +186,31 @@ def extraction_providers():
                 UnavailableExtractor("dev-voice-extractor"))
     from extraction.adapters import ImageExtractionAdapter, VoiceExtractionAdapter
     print("self-hosted extraction ENABLED: OCR and speech run locally on this machine")
-    return ImageExtractionAdapter(), VoiceExtractionAdapter()
+    return ImageExtractionAdapter(), VoiceExtractionAdapter(*speech_provider())
+
+
+def speech_provider():
+    """`(provider, adapter_name)` for the voice adapter, chosen by configuration.
+
+    `FINANCE_STT_PROVIDER=avalai` sends transcription to the hosted endpoint; anything
+    else, including nothing at all, keeps the local Whisper that was here before. The
+    default is deliberately the old behaviour: a host that upgrades and changes no setting
+    transcribes exactly as it did yesterday.
+
+    Returns `()` for the local case rather than constructing the provider, because
+    `WhisperProvider` loads a model and the adapter already defers that until the first
+    request. Constructing it here would pay for the model on every startup, including on
+    hosts that never receive a voice file.
+    """
+    if (os.environ.get("FINANCE_STT_PROVIDER") or "").strip().lower() != "avalai":
+        return ()
+    from extraction.providers.avalai_speech import AvalAISpeechProvider
+    provider = AvalAISpeechProvider()
+    # The MODEL is printed because an operator needs to know which one ran. The key is
+    # reported as present or absent and its value is never read into a log.
+    print("speech provider: avalai/%s  (AVALAI_API_KEY: %s)"
+          % (provider.model, "PRESENT" if provider.configured else "MISSING"))
+    return provider, "avalai-speech"
 
 
 def core_identity(default_user, organization_id, project_id):
