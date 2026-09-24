@@ -1204,3 +1204,88 @@ class RequiredLineCoverageTests(unittest.TestCase):
         report = calculate_live_report(rows, [], [], [], None)
         self.assertLessEqual(report.required_line_count, report.total_line_count)
         self.assertLessEqual(report.computed_line_count, report.total_line_count)
+
+
+class PriceUnitTests(unittest.TestCase):
+    """A price is only this line's price when it is quoted per this line's unit.
+
+    MEASURED ON REAL DATA, which is why this exists. On `terrace`, assignment 9702
+    «تجهیزکارگاه اولیه» is measured in «واحد» and the price the resolver finds for it comes
+    off the material sheet quoted per «کیلو». «ریز برآورد» refuses to compute that line --
+    `calculationStatus: not_calculable` -- while the live report computed it and published
+    the result, because the report's query never selected the price's unit. Today the line
+    escapes only because nobody has measured its progress; the first real progress snapshot
+    would have put «واحد × قیمت هر کیلو» on the board with no warning at all.
+    """
+
+    def priced(self, base_unit, price_unit, current="100", dimension="mass"):
+        row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", current, "a-1")
+        row.update(base_unit=base_unit, current_price_unit=price_unit, dimension=dimension)
+        return row
+
+    def report(self, row, conversions=()):
+        return calculate_live_report(
+            [row], [], [{"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}}],
+            list(conversions), "10")
+
+    def codes(self, report):
+        return {warning["code"] for warning in report.warnings}
+
+    def test_a_price_in_this_lines_own_unit_is_used_as_it_always_was(self):
+        report = self.report(self.priced("kg", "kg"))
+        # remaining 6 x 100
+        self.assertEqual(Decimal("600"), report.metrics["remainingPhysicalCostIrr"])
+        self.assertEqual(1, report.computed_line_count)
+        self.assertNotIn("PRICE_UNIT_NOT_CONVERTIBLE", self.codes(report))
+
+    def test_a_price_whose_unit_the_row_does_not_state_is_taken_as_this_lines_unit(self):
+        """`current_price_unit` is NULL for a host that does not send it, and for a manual
+        price it is the base unit by construction. Neither is a mismatch."""
+        report = self.report(self.priced("kg", None))
+        self.assertEqual(Decimal("600"), report.metrics["remainingPhysicalCostIrr"])
+
+    def test_a_crossable_price_is_crossed_rather_than_dropped(self):
+        """Quoted per kg, the line measured in tonnes: one tonne costs a thousand times one
+        kilogram. The crossing multiplies the PRICE by base-units-per-price-unit, so no
+        division rounds money."""
+        report = self.report(self.priced("ton", "kg"),
+                             [{"source_unit": "ton", "target_unit": "kg",
+                               "dimension": "mass", "factor": "1000"}])
+        # remaining 6 tonnes x (100 per kg x 1000 kg per tonne)
+        self.assertEqual(Decimal("600000"), report.metrics["remainingPhysicalCostIrr"])
+        self.assertEqual(1, report.computed_line_count)
+        self.assertNotIn("PRICE_UNIT_NOT_CONVERTIBLE", self.codes(report))
+
+    def test_an_uncrossable_price_excludes_the_line_instead_of_pricing_it(self):
+        """THE BUG. «واحد» against a price per «کیلو», with no factor between them: the
+        product is a number that looks like money and means nothing. Excluded, not warned
+        about and published anyway."""
+        report = self.report(self.priced("واحد", "کیلو"))
+        self.assertEqual(Decimal("0"), report.metrics["remainingPhysicalCostIrr"])
+        self.assertEqual(0, report.computed_line_count)
+        self.assertEqual(1, report.total_line_count)
+        self.assertIn(str(MATERIAL_LINE), report.excluded_estimate_line_ids)
+        self.assertIn("PRICE_UNIT_NOT_CONVERTIBLE", self.codes(report))
+        self.assertIn("remainingPhysicalCostIrr", report.incomplete_metric_keys)
+
+    def test_an_uncrossable_price_is_not_reported_as_a_missing_one(self):
+        """Two different problems, fixed by two different people: one needs somebody to
+        record a price, the other needs somebody to resolve a unit crossing. Saying «قیمت
+        نیست» about a line that has one sends the reader to the wrong screen."""
+        report = self.report(self.priced("واحد", "کیلو"))
+        self.assertNotIn("CURRENT_PRICE_MISSING", self.codes(report))
+        self.assertEqual(0, report.missing_price_count)
+
+    def test_a_genuinely_absent_price_still_says_so(self):
+        report = self.report(self.priced("kg", None, current=None))
+        self.assertIn("CURRENT_PRICE_MISSING", self.codes(report))
+        self.assertNotIn("PRICE_UNIT_NOT_CONVERTIBLE", self.codes(report))
+        self.assertEqual(1, report.missing_price_count)
+
+    def test_a_line_excluded_for_its_unit_is_counted_once(self):
+        """It is one excluded line however many ways it is excluded, or
+        `excludedEstimateLineCount` would exceed the number of lines that exist."""
+        row = self.priced("واحد", "کیلو")
+        report = calculate_live_report([row], [], [], [], "10")   # no progress either
+        self.assertEqual(1, report.excluded_estimate_line_count)
+        self.assertEqual([str(MATERIAL_LINE)], report.excluded_estimate_line_ids)

@@ -15,13 +15,16 @@ import {
 const read = (path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 
 test("every warning code the Backend can emit has Persian wording", () => {
-  // The finance domain emits these ten on the report; the feed adds its own.
+  // The finance domain emits these eleven on the report; the feed adds its own.
   assert.deepEqual([...REPORT_WARNING_CODES].sort(), [
     "CURRENT_PRICE_MISSING",
     "ESTIMATE_BASELINE_MISSING",
     "GENERAL_COST_OVERRUN",
     "GROSS_AREA_MISSING",
     "MONTHLY_ESTIMATE_UNAVAILABLE",
+    // A price that exists and cannot be brought into the line's unit. Separate from
+    // CURRENT_PRICE_MISSING because it sends the reader to a different screen.
+    "PRICE_UNIT_NOT_CONVERTIBLE",
     "PROGRESS_MISSING",
     "PROGRESS_UNMAPPED",
     "PROGRESS_WORK_NOT_QUANTITY",

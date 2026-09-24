@@ -41,6 +41,10 @@ const REPORT_WARNINGS = Object.freeze({
   PROGRESS_WORK_NOT_QUANTITY: "مقدار اجرای یکی از ردیف‌ها از ساعت‌کار گزارش‌شده به دست آمده است، نه از مقدار اندازه‌گیری‌شده.",
   QUANTITY_OVERRUN: "مقدار انجام‌شده یکی از ردیف‌ها از آخرین مقدار برآورد بیشتر است.",
   CURRENT_PRICE_MISSING: "قیمت روز یکی از اقلام ثبت نشده و آن ردیف از محاسبات زنده کنار گذاشته شده است.",
+  /* NOT the same as the line above, and the difference is who fixes it: there IS a price,
+     and it is quoted per a unit this line cannot be converted into. Sending that reader to
+     the price screen would waste their time -- the crossing is what is missing. */
+  PRICE_UNIT_NOT_CONVERTIBLE: "قیمت روز یکی از اقلام بر حسب واحدی است که به واحد آن ردیف تبدیل نمی‌شود، پس آن ردیف از محاسبات زنده کنار گذاشته شده است.",
   ESTIMATE_BASELINE_MISSING: "یکی از ردیف‌های برآورد مقدار اولیه یا قیمت اولیه ندارد و از جمع برآورد اولیه کنار گذاشته شده است.",
   GROSS_AREA_MISSING: "زیربنای کل پروژه ثبت نشده و شاخص‌های هر مترمربع قابل محاسبه نیستند.",
   MONTHLY_ESTIMATE_UNAVAILABLE: "برآورد ماهانه برای این بازه در دسترس نیست.",

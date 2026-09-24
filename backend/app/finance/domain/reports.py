@@ -37,6 +37,13 @@ PROGRESS_ABSENT = (PROGRESS_UNAVAILABLE, PROGRESS_UNMAPPED_ASSIGNMENT, PROGRESS_
 #: Metrics that stop being trustworthy when a line's progress is unknown. All three
 #: progress warnings claim the same list, so a reader cannot conclude that one kind of gap
 #: threatens the forecast while another does not.
+#: The live-value metrics any price problem touches -- absent, or in a unit this line
+#: cannot be crossed into. One tuple, because the two gates exclude the same line from the
+#: same figures and a second copy is how they drift apart.
+PRICE_AFFECTED_METRICS = ("currentExecutedValueIrr", "remainingPhysicalCostIrr",
+                          "moneyRequiredToContinueIrr", "forecastFinalCostIrr",
+                          "forecastPerSquareMeterIrr")
+
 PROGRESS_AFFECTED_METRICS = ("currentExecutedValueIrr", "remainingPhysicalCostIrr",
                              "forecastFinalCostIrr")
 
@@ -321,16 +328,60 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             warnings.append(_line_warning(row,"QUANTITY_OVERRUN","Executed quantity exceeds revised quantity.",
                 affected=("remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr"),
                 deviationQuantity=format(deviation,"f"),deviationPercent=None if percent is None else format(percent,"f")))
-        current_price = row.get("current_unit_price_irr")
+        # THE PRICE, IN THIS LINE'S OWN UNIT -- or no price at all.
+        #
+        # The two rungs are quoted per different units. A manual price is per the resource's
+        # base unit, because that is the unit the person was shown when they typed it. A
+        # SHEET price is per whatever the worksheet column said, and on this project those
+        # frequently differ: «تجهیزکارگاه اولیه» is measured in «واحد» and its resolved
+        # sheet price is quoted per «کیلو».
+        #
+        # This used to multiply the two regardless. «ریز برآورد» has refused that crossing
+        # from the start -- "a cubic metre at the cost of a kilogram" is its own comment --
+        # and the report simply could not see the unit, because its query never selected
+        # it. So one surface declined to compute a line while the other computed it wrong,
+        # from the same two numbers, and said nothing.
+        #
+        # Crossed through the conversions this function already holds, by the same rule and
+        # the same table the purchased quantities above use -- converting the QUANTITY into
+        # the price's unit rather than inverting the price, so no division rounds money.
+        # Uncrossable is not a warning on a published figure: the line is excluded exactly
+        # as an unpriced one is, because a price in the wrong unit is not this line's price.
+        stated_current_price = row.get("current_unit_price_irr")
+        price_unit = row.get("current_price_unit")
+        price_quantity_factor = Decimal(1)
+        uncrossable_price = False
+        if stated_current_price is not None and price_unit is not None and price_unit != row.get("base_unit"):
+            crossing = conversion_by_key.get((row.get("base_unit"), price_unit, row.get("dimension")))
+            if crossing is None:
+                uncrossable_price = True
+            else:
+                price_quantity_factor = crossing
+        # A price in the wrong unit is not this line's price, so the line is excluded
+        # exactly as an unpriced one is -- but it is NOT reported as unpriced. The price is
+        # there and could not be brought into this unit: a different problem, fixed by a
+        # different person, and the same distinction «ریز برآورد» draws when it replaces
+        # «قیمت نیست» with «تبدیل واحد نیست». Counted with the other conversion gaps.
+        current_price = None if uncrossable_price else stated_current_price
         has_price = current_price is not None
-        if current_price is None:
+        if uncrossable_price:
+            missing_conversion_count += 1
+            missing_conversion_types.add(kind)
+            excluded_estimate_line_ids.append(str(row["id"]));excluded_ids_seen.add(str(row["id"]))
+            excluded_lines_by_type[kind] += 1
+            warnings.append(_line_warning(row,"PRICE_UNIT_NOT_CONVERTIBLE",
+                "The resolved price is quoted per a unit this line cannot be converted into; live-value metrics exclude this line.",
+                excluded=True,affected=PRICE_AFFECTED_METRICS))
+        elif current_price is None:
             missing_price_count += 1
             excluded_estimate_line_ids.append(str(row["id"]));excluded_ids_seen.add(str(row["id"]))
             excluded_lines_by_type[kind] += 1
             warnings.append(_line_warning(row,"CURRENT_PRICE_MISSING","Current price is missing; live-value metrics exclude this line.",excluded=True,
-                affected=("currentExecutedValueIrr","remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr","forecastPerSquareMeterIrr")))
-            current = ZERO
-        else: current = Decimal(current_price)
+                affected=PRICE_AFFECTED_METRICS))
+        # The price PER THIS LINE'S OWN UNIT. The crossing is applied here as a
+        # multiplication -- price-per-price-unit times base-units-per-price-unit -- rather
+        # than by dividing the price, so no division rounds money on its way to a total.
+        current = ZERO if current_price is None else Decimal(current_price) * price_quantity_factor
         if not progress_known and str(row["id"]) not in excluded_ids_seen:
             excluded_estimate_line_ids.append(str(row["id"]));excluded_ids_seen.add(str(row["id"]))
             excluded_lines_by_type[kind] += 1
