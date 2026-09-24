@@ -51,6 +51,35 @@ _VERSION_ORDER = """ORDER BY (pv.scope_kind='project') DESC, pv.effective_from D
                             pv.version DESC, pv.created_at DESC, pv.id DESC"""
 
 
+def manual_price_join(*, organization, project, resource, as_of="%s",
+                      name="manual_price"):
+    """Rungs 1 and 2 on their own: the newest applicable `price_versions` row.
+
+    Split out of `resolved_price_joins` rather than written twice. The daily-prices page
+    needs exactly this rung for equipment -- equipment has no worksheet, so rungs 3 and 4
+    cannot answer for it -- and a second copy of the WHERE and the ORDER BY is how the two
+    readers of `price_versions` would start disagreeing about which price wins. There is
+    one statement of the precedence and both callers get it.
+
+    `created_by` and `created_at` are selected because the daily-prices row publishes who
+    set the rate and when it was recorded -- which is a different fact from the date it
+    takes effect. The other callers ignore both; a derived table with a column nobody reads
+    costs nothing.
+    """
+    return """
+  LEFT JOIN LATERAL (
+       SELECT pv.id AS price_version_id, pv.unit_price_irr, pv.scope_kind,
+              pv.effective_from, pv.created_by, pv.created_at AS price_recorded_at
+         FROM price_versions pv
+        WHERE pv.organization_id={org}
+          AND (pv.scope_kind='organization' OR pv.project_id={proj})
+          AND pv.resource_id={res}
+          AND pv.effective_from<={as_of}
+        {order}
+        LIMIT 1) {name} ON TRUE""".format(org=organization, proj=project, res=resource,
+                                          as_of=as_of, order=_VERSION_ORDER, name=name)
+
+
 def resolved_price_joins(alias="l", as_of="%s", *, organization=None, project=None,
                          resource=None, assignment=None):
     """LATERAL joins that resolve one price per row of `alias`.
@@ -72,17 +101,8 @@ def resolved_price_joins(alias="l", as_of="%s", *, organization=None, project=No
     project = project or "%s.project_id" % alias
     resource = resource or "%s.resource_id" % alias
     assignment = assignment or "%s.source_assignment_uid" % alias
-    return """
-  LEFT JOIN LATERAL (
-       SELECT pv.id AS price_version_id, pv.unit_price_irr, pv.scope_kind,
-              pv.effective_from
-         FROM price_versions pv
-        WHERE pv.organization_id={org}
-          AND (pv.scope_kind='organization' OR pv.project_id={proj})
-          AND pv.resource_id={res}
-          AND pv.effective_from<={as_of}
-        {order}
-        LIMIT 1) manual_price ON TRUE
+    return manual_price_join(organization=organization, project=project,
+                             resource=resource, as_of=as_of) + """
   LEFT JOIN LATERAL (
        SELECT o.normalized_price_irr AS unit_price_irr, o.source_unit, o.scope_level,
               o.workflow_date_gregorian AS effective_from

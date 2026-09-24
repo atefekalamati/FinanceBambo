@@ -6848,8 +6848,15 @@
             "title": "Enteredby"
           },
           "externalId": {
-            "title": "Externalid",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalid"
           },
           "externalName": {
             "title": "Externalname",
@@ -7151,8 +7158,15 @@
             "type": "string"
           },
           "providerName": {
-            "title": "Providername",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providername"
           },
           "providerNameSnapshot": {
             "anyOf": [
@@ -7477,10 +7491,8 @@
         },
         "required": [
           "providerItemId",
-          "externalId",
           "externalName",
           "category",
-          "providerName",
           "active",
           "observedAtSource",
           "observedAt",

@@ -11,7 +11,7 @@ supplies both. This service does not read a clock -- a report for a date in the 
 not be told that everything in it is stale.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from decimal import Decimal
 
 from ..domain.material_specs import SPEC_COLUMNS, WEIGHT_BASES_USABLE_FOR_CONVERSION
@@ -23,6 +23,27 @@ from .material_price_resolution import Resolution, canonical_unit, resolve
 #: the sheet's own rhythm -- its four dates span five days -- and it is a label, never a
 #: reason to withhold: a stale price is still the best figure anybody has.
 DEFAULT_STALE_AFTER_DAYS = 7
+
+
+#: The virtual category that publishes equipment rates on the daily-prices page.
+#:
+#: It is not a worksheet and there are no `provider_items` behind it. The rows come from
+#: `price_versions` -- the same rung the report resolves a manual price from -- and this
+#: service only READS them. Nothing in this module writes a provider item or an
+#: observation for a piece of equipment: a listing is something a supplier published, a
+#: rate is something a person decided, and copying one into the other would put a row in
+#: the importer's table that no sheet produced.
+EQUIPMENT_CATEGORY = "equipment"
+
+
+def _midnight(day):
+    """A business DATE as the timestamp the response declares, or None.
+
+    The sheet path carries a real observation time; a price version carries only the day
+    it takes effect. Widening it here is honest exactly because `observedAtSource` says
+    `workflow_date` beside it: the reader is told the timestamp came from a date.
+    """
+    return None if day is None else datetime.combine(day, time.min, tzinfo=timezone.utc)
 
 
 #: A category at these levels is a statement about every project the tenant will ever
@@ -55,7 +76,7 @@ class MaterialPriceService:
     #: what it is rather than for a company, because no company quoted through this path.
     MANUAL_PROVIDER_NAME = "ورود دستی"
 
-    async def categories(self, scope):
+    async def categories(self, scope, *, today=None):
         """Every category this project can show: counted from listings, plus declared ones.
 
         The union is deliberately seamless. A chip somebody declared and a chip the sheet
@@ -84,6 +105,23 @@ class MaterialPriceService:
                     existing["declared"] = True
                     existing["scope_level"] = row["scope_level"]
                     existing["declared_label"] = row.get("label")
+        # Equipment, when the project has any priced. Counted through the same statement
+        # that lists them, so the chip's number and the table's rows cannot disagree.
+        #
+        # `today` rather than a clock read here: this service deliberately reads none, so a
+        # caller asking about a past day is never told what is in force now. A caller that
+        # names no day is not asking which rates are current and gets no equipment chip.
+        if today is not None and hasattr(self.repository, "equipment_rate_count"):
+            priced = await self.repository.equipment_rate_count(scope, as_of=today)
+            if priced:
+                by_name[EQUIPMENT_CATEGORY] = {
+                    "category": EQUIPMENT_CATEGORY,
+                    "item_count": priced,
+                    # Every published equipment rate is active by construction: the rate
+                    # IS the price version in force, and a resource with none is not
+                    # published at all. There is no inactive half to report.
+                    "active_count": priced, "inactive_count": 0,
+                    "declared": False, "scope_level": None}
         return [by_name[name] for name in sorted(by_name)]
 
     async def declare_category(self, scope, payload, actor_id, *, permissions=()):
@@ -243,7 +281,7 @@ class MaterialPriceService:
         return await self.repository.unresolved_items(scope, page=page, page_size=page_size)
 
     async def current(self, scope, *, category=None, as_of=None, page=1, page_size=50,
-                      only_active=True, provider_item_id=None):
+                      only_active=True, provider_item_id=None, today=None):
         """The newest observation per listing, resolved, paged.
 
         Paged in memory after resolution rather than in SQL, and deliberately: the status a
@@ -252,6 +290,9 @@ class MaterialPriceService:
         is one project's provider listings -- hundreds, not millions -- and correctness is
         worth more than the query here.
         """
+        if category == EQUIPMENT_CATEGORY:
+            return await self._equipment_current(scope, as_of=as_of, today=today,
+                                                 page=page, page_size=page_size)
         options = {"category": category, "only_active": only_active}
         if provider_item_id is not None:
             options["provider_item_id"] = provider_item_id
@@ -307,6 +348,95 @@ class MaterialPriceService:
         total = len(resolved)
         start = (page - 1) * page_size
         return resolved[start:start + page_size], total
+
+    async def _equipment_current(self, scope, *, as_of, today, page, page_size):
+        """Equipment rates, in the shape the daily-prices table already renders.
+
+        Asked for explicitly or not at all. `category=equipment` is the only way in: the
+        "all" view and every material category go through the observation path above and
+        never see these rows, because an equipment rate is not a sheet reading and would
+        sit in a table of sheet readings claiming to be one.
+
+        `includeInactive` has nothing to act on and is deliberately not consulted. The
+        query publishes a resource only when a price version is in force for it, so there
+        is no unpriced half a flag could reveal -- and letting `includeInactive` admit
+        unpriced equipment would put rows with a null price into a price list.
+        """
+        cutoff = as_of or today
+        if cutoff is None or not hasattr(self.repository, "equipment_rates"):
+            return [], 0
+        rows = await self.repository.equipment_rates(scope, as_of=cutoff)
+        shaped = [self._equipment_row(row) for row in rows]
+        start = (page - 1) * page_size
+        return shaped[start:start + page_size], len(shaped)
+
+    @staticmethod
+    def _equipment_row(row):
+        """One equipment rate as a price row. Every absent fact is null, never a placeholder.
+
+        The nulls are the point. There is no supplier, so `providerName` is null rather
+        than an invented name; there is no sheet, so there is no external id, no worksheet,
+        no row number and no source url. A reader comparing an equipment row against a
+        sheet row can see which of the two a number came from without being told.
+        """
+        unit = row.get("base_unit")
+        effective = row.get("effective_from")
+        return {
+            "provider_item_id": row["provider_item_id"],
+            # No supplier listing behind it. Null rather than "" or the resource code: an
+            # empty string reads as "the sheet left this cell blank", which is a claim
+            # about a sheet that does not exist.
+            "external_id": None,
+            "external_name": row["external_name"],
+            "category": EQUIPMENT_CATEGORY,
+            "provider_name": None,
+            "active": True,
+            "inactive_reason": None,
+            "worksheet": None,
+            # No worksheet object, so the router's `specs_of` finds no columns for this
+            # category and publishes {} -- the honest table for a rate with no product
+            # specification behind it.
+            "metadata": None,
+            "current_price_irr": row["unit_price_irr"],
+            # `price_versions.unit_price_irr` is rials by definition, unlike the sheet,
+            # whose cells are toman until the importer decides otherwise.
+            "source_currency": "IRR",
+            "raw_price": None,
+            "secondary_price_irr": None,
+            "secondary_price_basis": None,
+            # All four are the resource's own unit. A rate is quoted per the unit the
+            # resource is measured in; there is no second unit to cross into and nothing
+            # was converted, so saying it four times is agreement, not repetition.
+            "source_unit": unit,
+            "source_unit_code": unit,
+            "display_unit": unit,
+            "target_unit": unit,
+            "conversion_factor": None,
+            "conversion_note": None,
+            "factor_origin": None,
+            # The sheet's other two spellings of the date do not exist here.
+            "workflow_date_raw": None,
+            "workflow_date_jalali": None,
+            "workflow_date_gregorian": effective,
+            # The business date IS the effective date, said out loud rather than implied:
+            # `observedAt` below is that date widened to a timestamp, and a reader has to
+            # be able to tell a widened date from a moment somebody recorded.
+            "observed_at_source": "workflow_date",
+            "observed_at": _midnight(effective),
+            # When the rate was written down, which is a different fact from the day it
+            # takes effect -- a price set in advance has the two days apart.
+            "fetched_at": row.get("price_recorded_at") or _midnight(effective),
+            # A price version is a decision, not a reading, so there is nothing to
+            # validate and nothing that could be stale: it is in force or it is not.
+            "validation_status": "valid",
+            "validation_reasons": [],
+            "resolution_status": "resolved",
+            "resolution_reason": None,
+            "source_row_number": None,
+            "source_url": None,
+            "origin": "manual",
+            "entered_by": row.get("created_by"),
+        }
 
     async def _product_factor(self, scope, provider_item_id, source, target):
         """`(factor, origin)` for one listing's own crossing, or `None`.

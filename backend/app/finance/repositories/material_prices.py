@@ -23,6 +23,7 @@ from uuid import uuid4
 
 from psycopg.rows import dict_row
 
+from ..domain.price_resolution import manual_price_join
 from ..domain.price_scope import SCOPE_PROJECT
 from psycopg.types.json import Jsonb
 
@@ -216,6 +217,70 @@ class PsycopgMaterialPriceRepository:
                     GROUP BY category ORDER BY category""",
                 (s.organization_id, s.project_id))
             return await c.fetchall()
+
+    # ------------------------------------------------------------- equipment rates
+    #
+    # Equipment has no worksheet and never will: nobody publishes a daily crane rate in the
+    # material sheet. What a project HAS is a `price_versions` row somebody set against the
+    # equipment resource, and that is the same rung the report and Items-and-Estimates
+    # already resolve from. This reads it, and only it.
+    #
+    # NOTHING HERE WRITES. No `provider_items` row is created to hang an equipment rate on
+    # and no `price_observations` row is written for one. A provider item is a listing a
+    # supplier published; an equipment rate is a decision somebody made. Copying one into
+    # the other would put a fabricated listing in the table the importer owns, and the next
+    # import would have to decide what to do with a row no sheet produced.
+
+    #: One row per PRICED equipment resource. The join is the shared `price_versions` rung,
+    #: so project beats organization and the newest effective date wins, exactly as every
+    #: other reader of that table resolves it. `IS NOT NULL` turns the LEFT JOIN into an
+    #: inner one: equipment nobody has priced is not a rate and is not published.
+    _EQUIPMENT_RATES = ("""
+        SELECT r.id                      AS provider_item_id,
+               r.title                   AS external_name,
+               r.base_unit,
+               manual_price.unit_price_irr,
+               manual_price.effective_from,
+               manual_price.created_by,
+               manual_price.price_recorded_at,
+               manual_price.scope_kind
+          FROM finance_resources r"""
+        + manual_price_join(organization="r.organization_id", project="r.project_id",
+                            resource="r.id", as_of="%(as_of)s")
+        + """
+         WHERE r.organization_id=%(organization_id)s
+           AND r.project_id=%(project_id)s
+           AND r.resource_type='equipment'
+           AND r.deleted_at IS NULL
+           AND manual_price.unit_price_irr IS NOT NULL
+         ORDER BY r.title, r.id""")
+
+    def _equipment_params(self, s, as_of):
+        return {"organization_id": s.organization_id, "project_id": s.project_id,
+                "as_of": as_of}
+
+    async def equipment_rates(self, s, *, as_of):
+        """Every priced equipment resource with the rate in force on `as_of`.
+
+        `as_of` is required rather than defaulted here: "today" is a decision about the
+        request, and a repository that quietly picked its own would answer a different
+        question from the one the caller asked on a day-boundary.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(self._EQUIPMENT_RATES, self._equipment_params(s, as_of))
+            return await c.fetchall()
+
+    async def equipment_rate_count(self, s, *, as_of):
+        """How many of them there are, for the category chip.
+
+        Wrapped around the same statement rather than a second one shaped like it: a count
+        that could disagree with the list it counts is worse than no count.
+        """
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute("SELECT count(*) AS n FROM (%s) rates" % self._EQUIPMENT_RATES,
+                            self._equipment_params(s, as_of))
+            row = await c.fetchone()
+        return int((row or {}).get("n") or 0)
 
     # ------------------------------------------------------ declared categories
 

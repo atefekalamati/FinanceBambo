@@ -654,7 +654,9 @@ async def audit_events(projectId:str,request:Request,page:int=Query(1,ge=1),page
 async def material_categories(projectId:str,request:Request):
     """Every category present, counted from the database. No category is assumed to exist."""
     scope=await _resource_scope(projectId,request,"finance.view")
-    items=await request.app.state.material_price_service.categories(scope)
+    # `today` so the service can say which equipment rates are in force without
+    # reading a clock of its own -- the rule this service has always followed.
+    items=await request.app.state.material_price_service.categories(scope,today=date.today())
     # Each category carries its own table schema. The page builds its header row from this
     # rather than from a list of its own, so a worksheet column can never be shown for a
     # category whose sheet does not state one.
@@ -728,7 +730,11 @@ async def material_prices_current(projectId:str,request:Request,
     scope=await _resource_scope(projectId,request,"finance.view")
     items,total=await request.app.state.material_price_service.current(
         scope,category=category,as_of=asOf,page=page,page_size=pageSize,
-        only_active=not includeInactive)
+        only_active=not includeInactive,
+        # The day to read equipment rates against when the caller named none. It is NOT a
+        # default for `asOf`: passing it there would turn freshness on for every sheet row
+        # and start calling prices stale on a request that never asked about a date.
+        today=date.today())
     # The worksheet's own values for each row, read from what the importer already stored
     # on `provider_items.metadata`. Nothing is parsed or filled in here: a blank cell is
     # null, and a category whose sheet states no measurements gets an empty object.

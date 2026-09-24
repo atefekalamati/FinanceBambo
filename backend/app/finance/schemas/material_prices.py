@@ -112,10 +112,14 @@ class MaterialPriceResponse(ApiModel):
     """The newest observation for one provider listing, with everything needed to judge it."""
 
     provider_item_id: UUID
-    external_id: str
+    #: Null on a row that came from no sheet. Equipment rates are `price_versions` a
+    #: person set against a Finance resource: there is no supplier listing behind them, so
+    #: there is no external id and no provider to name. Null says that; "" would claim a
+    #: sheet left the cell blank.
+    external_id: str | None = None
     external_name: str
     category: str
-    provider_name: str
+    provider_name: str | None = None
     active: bool
     inactive_reason: str | None = None
     worksheet: str | None = None

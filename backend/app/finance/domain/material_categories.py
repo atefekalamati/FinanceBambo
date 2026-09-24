@@ -86,7 +86,21 @@ CATEGORY_LABELS: dict[str, str] = {
     "pipe": "لوله",
     "pipe_fitting": "اتصالات لوله",
     "brick": "آجر",
+    # Not a worksheet. Equipment rates are `price_versions` rows a person set against a
+    # Finance resource, shown on the daily-prices page beside the sheet's categories so a
+    # reader looking for "what does this cost today" finds all of it in one place. The
+    # label lives here, with the others, so no service has to spell it again.
+    "equipment": "تجهیزات",
 }
+
+#: Categories that are a READING of Finance's own records rather than a worksheet.
+#:
+#: They appear on the same page and behave the same way, and one thing about them is
+#: different: there is no sheet, so there are no sheet columns. `category_columns` returns
+#: nothing for them rather than the five base ones, because every base column names
+#: something a worksheet supplies -- a source, a workflow date, a product id -- and an
+#: equipment rate has none of those to show.
+VIRTUAL_CATEGORIES: frozenset[str] = frozenset({"equipment"})
 
 
 def spec_columns(category):
@@ -152,7 +166,12 @@ def category_columns(category):
     Published by the API so the page does not hold a second copy of the schema. A category
     with no spec columns -- pipe states none -- gets the five base ones and nothing else,
     which is the honest table for a worksheet that says nothing more about its products.
+
+    A VIRTUAL category gets none at all. See `VIRTUAL_CATEGORIES`: it has no worksheet, so
+    the base columns have nothing behind them either.
     """
+    if (category or "") in VIRTUAL_CATEGORIES:
+        return []
     specs = [dict(column, kind="spec") for column in spec_columns(category)]
     # A spec that is itself a price sits beside the price; the rest are measurements and
     # sit where the sheet puts them, between the product name and the price.
