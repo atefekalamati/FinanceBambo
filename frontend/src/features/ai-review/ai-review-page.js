@@ -12,6 +12,7 @@ import { renderPageState } from "../../shared/components/page-state.js";
 import { element } from "../../shared/dom/elements.js";
 import { fieldValue, invoiceLines, linesTotalIrr, proposedLines, reconcile,
          rowAmountIrr, unattachedRows } from "./extraction-lines.js";
+import { draftWarnings, WARNING_KEYS } from "./extraction-warnings.js";
 
 // The keys the BACKEND emits. `vendorName` and `totalIRR` were this page's names for
 // them and the backend has never sent either: they came from the mock adapter this
@@ -50,6 +51,12 @@ const PROVENANCE_KEYS = Object.freeze(new Set([
   "voiceTranscript", "rawText", "speechProvider", "source",
   "extractionSource", "extractionConfidence",
   "tableRows", "tablePageKind", "tableConfidence", "tableColumnSource",
+  /* The reader's own diagnostic records, as whole objects: which fields the image and the
+     text disagreed on, and which arithmetic checks ran. They are not readings and there is
+     nothing to type into them -- they reached the grid as «[object Object]» in an editable
+     box. Nothing is lost by folding them away: when either one requires review the service
+     already restates its findings as `fusionWarnings`, which is shown. */
+  "fusionResult", "validationResult",
 ]));
 
 const REVIEW_LABELS = Object.freeze({
@@ -176,7 +183,8 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
   const form = element("div", "ai-fields-grid");
   const controls = new Map();
   draft.fields.filter((field) => !LINE_EDITOR_KEYS.has(field.key)
-                              && !PROVENANCE_KEYS.has(field.key)).forEach((field) => {
+                              && !PROVENANCE_KEYS.has(field.key)
+                              && !WARNING_KEYS.has(field.key)).forEach((field) => {
     /* `confidence < 0.8` is false for null, so an UNMEASURED reading used to pass as a
        confident one. The speech provider reports no per-segment probability and the
        service refuses to invent a number for it, so the card says which it is. */
@@ -218,6 +226,28 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
     form.append(wrapper);
   });
   card.append(form);
+
+  /* WHAT THE READER COULD NOT DO, BEFORE THE FIGURES ARE JUDGED.
+     Above the confidence note and above the lines, because it changes how both are read:
+     a warning that no currency was recorded decides whether the amounts below mean what
+     they appear to. Read-only and outside `controls` -- these are the reader's report on
+     itself, not a field anybody fills in, and as an input each one was an editable box
+     reading «[object Object]». */
+  const warnings = draftWarnings(draft);
+  if (warnings.length) {
+    const list = element("ul", "ai-warnings");
+    list.setAttribute("aria-label", "هشدارهای خواندن این سند");
+    warnings.forEach((item) => {
+      const row = element("li", "ai-warnings__row");
+      row.dataset.warningKey = item.key;
+      row.append(element("p", "ai-warnings__text", item.text));
+      /* Figures, not prose: `2 x 500 != 1200` survives translation and is the part a
+         reviewer can check against the document. */
+      if (item.evidence) row.append(element("code", "ai-warnings__evidence", item.evidence));
+      list.append(row);
+    });
+    card.append(list);
+  }
 
   const warning = element("p", "ai-confidence-note", "فیلدهای نارنجی اطمینان کمتر از ۸۰ درصد دارند و باید با سند اصلی تطبیق داده شوند.");
   card.append(warning);
