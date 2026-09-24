@@ -53,14 +53,42 @@ function exactOrNull(value) {
   return /^-?\d+$/.test(String(value ?? "")) ? String(value) : null;
 }
 
-export function buildOverviewComparisons(metrics = {}) {
+//: The four bars, and the metric each one draws. Exported because the caller has to
+//: decide, per metric, whether the figure may be drawn at all -- see `withheld` below.
+export const MANAGEMENT_BARS = Object.freeze([
+  { key: "initial", metric: "initialEstimateIrr", label: "برآورد اولیه" },
+  { key: "actual", metric: "actualCostIrr", label: "هزینه واقعی ثبت‌شده" },
+  { key: "remaining", metric: "remainingPhysicalCostIrr", label: "هزینه بروز باقیمانده" },
+  { key: "forecast", metric: "forecastFinalCostIrr", label: "پیش‌بینی هزینه نهایی" },
+]);
+
+export const MANAGEMENT_METRIC_KEYS = Object.freeze(MANAGEMENT_BARS.map((bar) => bar.metric));
+
+/**
+ * @param withheld  metric keys whose value must be treated as absent however the service
+ *   stated it.
+ *
+ * The note above keeps a null null, which covers the figure the service could not work
+ * out. It does not cover the other one: a sum the service DID publish, as `0`, over none
+ * of the project's lines. That is a stated value and arrives here as "0", so the guard
+ * above lets it through and the chart draws «۰ تومان» beside «هزینه بروز باقیمانده» --
+ * measured on terrace, where the card next to it read «قابل محاسبه نیست». One panel, two
+ * answers, and the wrong one is the one that looks like a number.
+ *
+ * Whether a sum rests on nothing is a question about the report's line counts, not about
+ * `metrics`, and this module is given only `metrics`. So the caller -- which already
+ * makes exactly this judgement for the cards -- makes it once and names the keys here,
+ * and both surfaces withhold the same figures for the same reason.
+ */
+export function buildOverviewComparisons(metrics = {}, { withheld = [] } = {}) {
+  const held = new Set(withheld);
   return Object.freeze({
-    management: buildExactScale([
-      { key: "initial", label: "برآورد اولیه", value: exactOrNull(metrics.initialEstimateIrr) },
-      { key: "actual", label: "هزینه واقعی ثبت‌شده", value: exactOrNull(metrics.actualCostIrr) },
-      { key: "remaining", label: "هزینه بروز باقیمانده", value: exactOrNull(metrics.remainingPhysicalCostIrr) },
-      { key: "forecast", label: "پیش‌بینی هزینه نهایی", value: exactOrNull(metrics.forecastFinalCostIrr) },
-    ]),
+    management: buildExactScale(MANAGEMENT_BARS.map((bar) => ({
+      key: bar.key,
+      metric: bar.metric,
+      label: bar.label,
+      value: held.has(bar.metric) ? null : exactOrNull(metrics[bar.metric]),
+    }))),
   });
 }
 

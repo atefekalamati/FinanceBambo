@@ -95,3 +95,48 @@ test("the percentage stays exact at magnitudes a float would round", () => {
   assert.deepEqual(empty.ticks, []);
   assert.deepEqual(empty.rows, []);
 });
+
+/* A SUM OVER NO LINES MUST NOT BECOME A BAR.
+ *
+ * The module keeps a null null, which covers the figure the service could not work out.
+ * It never covered the other one: a sum the service DID publish, as `0`, over none of the
+ * project's lines. Measured on terrace, the chart drew «۰ تومان» under «هزینه بروز
+ * باقیمانده» while the card beside it read «قابل محاسبه نیست» — one panel, two answers,
+ * and the wrong one looked like a number.
+ */
+
+test("a withheld metric is drawn as absent even though the service stated it", () => {
+  const metrics = { initialEstimateIrr: "360000000000", remainingPhysicalCostIrr: "0" };
+  const { management } = buildOverviewComparisons(metrics,
+    { withheld: ["remainingPhysicalCostIrr"] });
+  const remaining = management.find((bar) => bar.key === "remaining");
+  assert.equal(remaining.value, null, "no amount");
+  assert.equal(remaining.magnitude, 0, "and therefore no bar to draw");
+});
+
+test("withholding one bar does not rescale the others", () => {
+  /* The scale comes from the tallest bar, and a withheld bar is worth nothing. A figure
+     the reader is still being shown must not change height because another was removed. */
+  const metrics = { initialEstimateIrr: "100", actualCostIrr: "50",
+                    remainingPhysicalCostIrr: "0" };
+  const before = buildOverviewComparisons(metrics).management;
+  const after = buildOverviewComparisons(metrics,
+    { withheld: ["remainingPhysicalCostIrr"] }).management;
+  assert.deepEqual(after.filter((b) => b.key !== "remaining").map((b) => b.magnitude),
+                   before.filter((b) => b.key !== "remaining").map((b) => b.magnitude));
+});
+
+test("naming no keys leaves every stated figure exactly as it was", () => {
+  const metrics = { remainingPhysicalCostIrr: "0", forecastFinalCostIrr: "900" };
+  const { management } = buildOverviewComparisons(metrics);
+  assert.equal(management.find((bar) => bar.key === "remaining").value, "0",
+               "the default is still to draw what the service said");
+});
+
+test("each bar carries the metric it draws, so a caller can address one", () => {
+  /* Both the withholding above and the coverage mark beside the label are decisions made
+     per METRIC by the page; a bar keyed only by «remaining» could not be matched to one. */
+  assert.deepEqual(buildOverviewComparisons({}).management.map((bar) => bar.metric),
+                   ["initialEstimateIrr", "actualCostIrr",
+                    "remainingPhysicalCostIrr", "forecastFinalCostIrr"]);
+});

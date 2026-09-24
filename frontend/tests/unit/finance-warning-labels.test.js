@@ -15,9 +15,10 @@ import {
 const read = (path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 
 test("every warning code the Backend can emit has Persian wording", () => {
-  // The finance domain emits these nine on the report; the feed adds its own.
+  // The finance domain emits these ten on the report; the feed adds its own.
   assert.deepEqual([...REPORT_WARNING_CODES].sort(), [
     "CURRENT_PRICE_MISSING",
+    "ESTIMATE_BASELINE_MISSING",
     "GENERAL_COST_OVERRUN",
     "GROSS_AREA_MISSING",
     "MONTHLY_ESTIMATE_UNAVAILABLE",
@@ -125,4 +126,26 @@ test("the page never works out the snapshot pairing for itself", () => {
   // come from the service: repeating its pairing rule here would drift from it.
   const source = read("../../src/features/finance-home/finance-home-page.js");
   assert.doesNotMatch(source, /assignmentExternalId === /, "the page must not redo the pairing itself");
+});
+
+/* THE LIST ABOVE IS WRITTEN BY HAND, AND THE SERVICE IS NOT.
+ *
+ * `ESTIMATE_BASELINE_MISSING` shipped on the service and reached the board as «The line
+ * states no original quantity or no original price; estimate totals exclude it. (برای ۴۲۶
+ * مورد)» — English, in a Persian card, because `reportWarningText` falls back to the
+ * service's own developer-facing message rather than saying nothing. That fallback is
+ * right and it is not a translation, so nothing ever failed.
+ *
+ * This reads the service's own source instead. It is the only check here that can fail
+ * for a code nobody has thought of yet.
+ */
+
+test("no code the report service raises is left to fall back to English", () => {
+  const source = read("../../../backend/app/finance/domain/reports.py");
+  const emitted = [...source.matchAll(/_line_warning\(\s*row\s*,\s*"([A-Z_]+)"/g)]
+    .map((match) => match[1]);
+  assert.ok(emitted.length >= 7, "the pattern must still match how warnings are raised");
+  const untranslated = [...new Set(emitted)].filter((code) => !describeReportWarning(code));
+  assert.deepEqual(untranslated, [],
+                   "these codes reach the card in the service's own English");
 });

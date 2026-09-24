@@ -40,7 +40,8 @@ import {
   withScheduleEstimate,
 } from "../../shared/reports/schedule-estimate.js";
 import { buildValueTicks } from "../../shared/charts/value-ticks.js";
-import { buildOverviewComparisons } from "../../shared/reports/report-presentation.js";
+import { buildOverviewComparisons, MANAGEMENT_METRIC_KEYS }
+  from "../../shared/reports/report-presentation.js";
 import { createBreakdownChart } from "../../shared/components/breakdown-chart.js";
 import { createTomanDisplay } from "../../shared/components/money-display.js";
 import { createReportBuilderSection } from "../report-builder/report-builder-section.js";
@@ -49,7 +50,8 @@ import { createLevelOneSection } from "../level-one/level-one-section.js";
 import { createPricesSummary } from "./prices-summary.js";
 import { createItemsSummary } from "./items-summary.js";
 import { createInvoicesEntry } from "./invoices-entry.js";
-import { coverageNote, unavailableReason } from "./metric-coverage.js";
+import { coverageNote, coverageTooltip, coverageWarnings, restsOnNothing, unavailableReason }
+  from "./metric-coverage.js";
 
 /* The four the board shows, in the order it shows them. The rest of the
    catalogue is still what the report page and the builder draw on. */
@@ -129,7 +131,11 @@ const SUMMARY_MARKS = Object.freeze({
 function createSummaryCard(key, label, description, report) {
   const data = report?.metrics ?? {};
   const card = document.createElement("article");
-  const unavailable = data?.[key] === null || data?.[key] === undefined;
+  /* Absent, or present as a sum over no lines at all — which the service publishes as 0
+     and which reads as «nothing remains» rather than «nothing could be worked out». Both
+     are «no figure» to a reader, and the sub-line below says which. */
+  const unavailable = data?.[key] === null || data?.[key] === undefined
+    || restsOnNothing(report, key);
   const hierarchy = PRIMARY_SUMMARY_KEYS.has(key)
     ? "primary"
     : RELATED_SUMMARY_KEYS.has(key)
@@ -141,7 +147,7 @@ function createSummaryCard(key, label, description, report) {
   title.textContent = label;
   const value = document.createElement("p");
   value.className = "summary-card__value";
-  value.append(createTomanDisplay(data?.[key], { compact: true }));
+  value.append(createTomanDisplay(unavailable ? null : data?.[key], { compact: true }));
   const unit = document.createElement("span");
   unit.className = "summary-card__unit";
   /* Absent: which gap, and how many lines of it. Present but partial: how many lines the
@@ -185,11 +191,16 @@ const ANALYSIS_CHARTS = Object.freeze({
  * comparison is the default; the monthly trend is revealed by the switch in
  * this card's heading.
  */
+/**
+ * @param coverage  metric key -> the sentence saying how much of the project that
+ *   figure rests on. A bar with an entry gets a mark beside its label; a bar without
+ *   one gets nothing, because a mark on every bar is a mark nobody reads.
+ */
 function createManagerialComparisonPanel(
   metrics,
   entries,
   monthly = null,
-  { activeChart = "managerial", onChartChange = () => {} } = {},
+  { activeChart = "managerial", onChartChange = () => {}, coverage = {} } = {},
 ) {
   const section = document.createElement("section");
   section.className = "finance-analysis-card finance-managerial-comparison";
@@ -248,18 +259,38 @@ function createManagerialComparisonPanel(
 
     const barCell = document.createElement("div");
     barCell.className = `managerial-combo-chart__cell managerial-combo-chart__item--${entry.key}`;
-    const column = document.createElement("div");
-    column.className = "managerial-combo-chart__column chart-mark";
-    column.style.setProperty("--column-size", `${entry.magnitude}%`);
-    barCell.append(column);
+    /* No figure, no column. The bar has a 4px floor so that a real but tiny amount stays
+       visible rather than vanishing -- right for a small number, and a lie for an absent
+       one: it painted a stub under «قابل محاسبه نیست», which reads as «almost nothing»
+       where the value band has just said «we do not know». The cell stays, so the four
+       columns keep their places. */
+    if (entry.value !== null) {
+      const column = document.createElement("div");
+      column.className = "managerial-combo-chart__column chart-mark";
+      column.style.setProperty("--column-size", `${entry.magnitude}%`);
+      barCell.append(column);
+    }
     barsBand.append(barCell);
 
     const label = document.createElement("h3");
     label.className = "managerial-combo-chart__label";
-    label.textContent = entry.label;
+    label.append(document.createTextNode(entry.label));
     // The band holds a fixed number of lines, so a longer label is clamped
     // rather than allowed to move anything. The full wording stays on hover.
     label.title = entry.label;
+    /* A figure built from part of the project says so here. The card surface has a
+       sub-line to put this in; a bar has nothing but its label, and printing «۶۶۳ ردیف
+       در این عدد نیامده» under a bar would be a second line of type under every column
+       and a chart half made of prose. The mark is the module's own `.rc-info`, and its
+       title outranks the label's for anything the pointer is actually over. */
+    const note = coverage[entry.metric];
+    if (note) {
+      const mark = element("span", "rc-info managerial-combo-chart__coverage", "i");
+      mark.setAttribute("role", "img");
+      mark.setAttribute("aria-label", note);
+      mark.title = note;
+      label.append(mark);
+    }
     labelsBand.append(label);
   });
 
@@ -513,7 +544,16 @@ function renderFinanceHome(
   // document still needs a heading, and a screen reader reads it first.
   const pageTitle = element("h1", "sr-only", "گزارش مالی پروژه");
 
-  const comparisons = buildOverviewComparisons(data.metrics);
+  /* The chart answers with the cards, not against them. `restsOnNothing` is the same
+     judgement `createSummaryCard` makes a few lines below; made once here, both surfaces
+     withhold the same figure rather than one drawing «۰ تومان» beside the other's
+     «قابل محاسبه نیست». */
+  const comparisons = buildOverviewComparisons(data.metrics, {
+    withheld: MANAGEMENT_METRIC_KEYS.filter((key) => restsOnNothing(data, key)),
+  });
+  const chartCoverage = Object.fromEntries(MANAGEMENT_METRIC_KEYS
+    .map((key) => [key, coverageTooltip(data, key)])
+    .filter(([, note]) => note));
 
   // ── row 1 — the main chart, the day prices, the cost mix ───────────────
   // The four figures a reader opens this page for, then the chart that puts
@@ -539,7 +579,7 @@ function renderFinanceHome(
       data.metrics,
       comparisons.management,
       monthly,
-      chartState,
+      { ...chartState, coverage: chartCoverage },
     ),
   );
 
@@ -640,7 +680,12 @@ function buildWarningsCard(data) {
   // already share rather than from a second set of rules kept in step by hand.
   warnings.className = "finance-analysis-card finance-warnings";
   warnings.setAttribute("aria-label", "هشدارهای محاسبات مالی");
-  const reportWarnings = [...(data.warnings ?? [])];
+  /* The service raised no warning about these: it published the counts and considers the
+     matter stated. But «this total is missing 663 of the project's lines» is exactly what
+     somebody opening this card came to find, and the mark on the chart is only seen by
+     somebody already looking at the chart. First, because coverage is about the figures
+     the reader just read, while the list below is about the inputs behind them. */
+  const reportWarnings = [...coverageWarnings(data), ...(data.warnings ?? [])];
   if (data.calculationStatus === "incomplete") {
     reportWarnings.unshift({
       code: "CALCULATION_INCOMPLETE",
