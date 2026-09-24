@@ -249,7 +249,12 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             # money_required through `general_required` below and never passes the
             # per-line test. Left out, the count would understate the forecast's coverage
             # by every general-cost line the project has.
-            if has_baseline: required_line_count += 1
+            #
+            # `computed_line_count` for the same reason. It is the coverage figure printed
+            # beside «هزینه بروز باقیمانده», and that figure now includes general costs --
+            # so a count that skipped them would say the metric rests on fewer lines than
+            # it does, which is the one thing that count exists to prevent.
+            if has_baseline: required_line_count += 1;computed_line_count += 1
             if line_actual > revised_amount:
                 warnings.append(_line_warning(row,"GENERAL_COST_OVERRUN","General cost actual exceeds its revised estimate.",affected=("moneyRequiredToContinueIrr","forecastFinalCostIrr")))
             continue
@@ -435,7 +440,22 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             "actualCostIrr":actual_line,"remainingPhysicalCostIrr":remaining_cost if has_price else None,"forecastFinalIrr":forecast_line if has_price else None,
             "priceAvailable":has_price,"impactSharePercent":None})
 
+    # «هزینه بروز باقیمانده» IS every rial still to spend, and a general cost is one of
+    # them. It was in the breakdown's own column and in no total, so the four rows of the
+    # type table added up to 8.1 billion toman while the headline beside them said zero --
+    # the same report, the same date, two answers. Nothing pinned the sum, which is why it
+    # stood: the only test touching this asserts a case where `general_required` is zero.
+    #
+    # The one thing to know about the figure: for a priced line the remaining is
+    # `quantity still to do × today's price`, and a general cost has no quantity, so its
+    # remaining is `revised amount − what invoices have already paid against it`. Both are
+    # "money still owed on this line", which is what the metric says it holds.
+    #
+    # No total is counted twice. `forecastFinalCostIrr` is built from `actual_total +
+    # money_required` and never reads this metric, so adding the same figure to both is
+    # two statements about one obligation, not two obligations.
     breakdown["general_cost"]["remainingPhysicalCostIrr"] = general_required
+    remaining_physical_cost += general_required
     money_required += general_required
     for kind in breakdown:
         breakdown[kind]["forecastFinalIrr"] += actual_by_type[kind]

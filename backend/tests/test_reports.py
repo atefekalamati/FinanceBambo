@@ -1181,17 +1181,23 @@ class RequiredLineCoverageTests(unittest.TestCase):
                                      report.required_line_count,
                                      report.total_line_count))
 
-    def test_a_general_cost_with_a_baseline_counts(self):
-        """It `continue`s before the per-line test and still feeds money_required.
+    def test_a_general_cost_with_a_baseline_counts_in_both_coverage_figures(self):
+        """It `continue`s before the per-line test and still feeds BOTH totals.
 
-        Left uncounted, the figure would understate the forecast's coverage by every
-        general-cost line the project has -- and general cost is the one kind that never
-        reaches the branch where everything else is counted.
+        Left uncounted, each figure would understate its coverage by every general-cost
+        line the project has -- and general cost is the one kind that never reaches the
+        branch where everything else is counted.
+
+        `computed_line_count` was 0 here while «هزینه بروز باقیمانده» excluded general
+        costs. It no longer does: that metric is every rial still to spend, and this line
+        owes some of them. The count is what the reader is shown beside the figure, so it
+        has to move with it.
         """
         row = estimate(GENERAL_LINE, GENERAL, "general_cost", None, None, "5000", None, None)
         report = calculate_live_report([row], [], [], [], None)
         self.assertEqual(1, report.required_line_count)
-        self.assertEqual(0, report.computed_line_count, "there is nothing to measure")
+        self.assertEqual(1, report.computed_line_count)
+        self.assertEqual(Decimal("5000"), report.metrics["remainingPhysicalCostIrr"])
 
     def test_a_general_cost_with_no_baseline_does_not_count(self):
         row = estimate(GENERAL_LINE, GENERAL, "general_cost", None, None, None, None, None)
@@ -1289,3 +1295,55 @@ class PriceUnitTests(unittest.TestCase):
         report = calculate_live_report([row], [], [], [], "10")   # no progress either
         self.assertEqual(1, report.excluded_estimate_line_count)
         self.assertEqual([str(MATERIAL_LINE)], report.excluded_estimate_line_ids)
+
+
+class RemainingCostIncludesGeneralCostTests(unittest.TestCase):
+    """«هزینه بروز باقیمانده» is every rial still to spend, general costs included.
+
+    It used to be every rial still to spend EXCEPT those, and the exception showed: the
+    breakdown's own general-cost row carried the figure while the metric beside it did not,
+    so on `terrace` the four rows of «تفکیک هزینه بر اساس نوع قلم» added to 8,120,648,006
+    toman under «باقی‌مانده» while the headline said 0. Same report, same date.
+
+    The two are computed differently and that is not a contradiction: a priced line owes
+    `quantity still to do × today's price`, a general cost has no quantity and owes
+    `revised amount − what invoices have already paid`. Both are money still owed.
+    """
+
+    def test_the_breakdown_rows_add_up_to_the_metric(self):
+        """The property that was broken, stated directly."""
+        material = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1")
+        general = estimate(GENERAL_LINE, GENERAL, "general_cost", None, "800", "800", None, None)
+        report = calculate_live_report(
+            [material, general], [],
+            [{"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}}], [], "10")
+        self.assertEqual(sum(row["remainingPhysicalCostIrr"] for row in report.breakdown),
+                         report.metrics["remainingPhysicalCostIrr"])
+
+    def test_a_general_cost_owes_what_its_invoices_have_not_covered(self):
+        general = estimate(GENERAL_LINE, GENERAL, "general_cost", None, "800", "800", None, None)
+        invoice = {"estimate_line_id": GENERAL_LINE, "resource_id": GENERAL, "quantity": None,
+                   "unit": None, "base_unit": None, "dimension": "lump_sum",
+                   "final_line_amount_irr": "300", "financial_effect_sign": 1,
+                   "resource_type": "general_cost"}
+        report = calculate_live_report([general], [invoice], [], [], "10")
+        self.assertEqual(Decimal("500"), report.metrics["remainingPhysicalCostIrr"])
+
+    def test_a_general_cost_already_overspent_owes_nothing_rather_than_a_negative(self):
+        general = estimate(GENERAL_LINE, GENERAL, "general_cost", None, "800", "800", None, None)
+        invoice = {"estimate_line_id": GENERAL_LINE, "resource_id": GENERAL, "quantity": None,
+                   "unit": None, "base_unit": None, "dimension": "lump_sum",
+                   "final_line_amount_irr": "1000", "financial_effect_sign": 1,
+                   "resource_type": "general_cost"}
+        report = calculate_live_report([general], [invoice], [], [], "10")
+        self.assertEqual(Decimal("0"), report.metrics["remainingPhysicalCostIrr"])
+        self.assertIn("GENERAL_COST_OVERRUN", {w["code"] for w in report.warnings})
+
+    def test_the_forecast_does_not_count_the_same_obligation_twice(self):
+        """`forecastFinalCostIrr` is `actual + money_required` and never reads this metric,
+        so the same figure reaching both is two statements about one obligation."""
+        general = estimate(GENERAL_LINE, GENERAL, "general_cost", None, "800", "800", None, None)
+        report = calculate_live_report([general], [], [], [], "10")
+        self.assertEqual(Decimal("800"), report.metrics["remainingPhysicalCostIrr"])
+        self.assertEqual(Decimal("800"), report.metrics["moneyRequiredToContinueIrr"])
+        self.assertEqual(Decimal("800"), report.metrics["forecastFinalCostIrr"])
