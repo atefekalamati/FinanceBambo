@@ -162,6 +162,11 @@ class WiringTests(unittest.TestCase):
                 # development host afterwards.
                 ("/api/projects/{projectId}/finance/mpp/status", "get"),
                 ("/api/projects/{projectId}/finance/mpp/remap", "post"),
+                # Corrections to an extracted draft, before the decision to confirm it.
+                # Previously a reviewer could only state a different value inside the
+                # confirmation itself, so they could not fix a misheard amount, look at
+                # the result, and then decide.
+                ("/api/projects/{projectId}/finance/extractions/{draftId}", "patch"),
             },
             business_operations,
         )

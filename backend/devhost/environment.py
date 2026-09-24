@@ -41,6 +41,44 @@ def load_env_file(path: Path | None = None) -> dict[str, str]:
     return values
 
 
+def export_env_file() -> tuple[str, ...]:
+    """Put `.env` into `os.environ` for this process, and say which names were added.
+
+    WHY THIS EXISTS
+
+    `setting()` reads the process environment first and the file behind it, so everything
+    that goes through this module sees `.env` whether or not anybody exported it. The
+    extraction providers do not go through this module: `extraction/` is the lower layer
+    and importing a devhost accessor into it would invert the dependency, so they read
+    `os.environ` directly -- which meant a host started without an explicit export had
+    `AVALAI_API_KEY` in its `.env`, `setting()` able to see it, and
+    `build_extraction_provider()` returning None because `os.environ` did not.
+
+    The failure was silent in the worst way. AI extraction and speech both degrade by
+    design rather than raising -- a provider that cannot be built is skipped and the
+    extraction continues -- so the host started, served every endpoint, and produced
+    drafts with no structuring at all, with nothing in the answer saying why.
+
+    So the FILE is exported once, here, at the composition root. This is not a second
+    configuration system: it is the same file `load_env_file()` already parses, moved into
+    the place the lower layer can see. Nothing is read from anywhere new.
+
+    A NAME ALREADY IN THE ENVIRONMENT IS NEVER OVERWRITTEN, which is the same precedence
+    `setting()` applies: an operator who exported something meant it, and a file must not
+    win against a deliberate export.
+
+    Returns the NAMES it added, never the values. The caller prints the names to show what
+    configuration the host picked up; a value here is a credential and belongs in no log.
+    """
+    added = []
+    for name, value in load_env_file().items():
+        if name in os.environ:
+            continue
+        os.environ[name] = value
+        added.append(name)
+    return tuple(sorted(added))
+
+
 def setting(name: str, default: str | None = None) -> str | None:
     """One setting, from the process environment first and the file behind it.
 

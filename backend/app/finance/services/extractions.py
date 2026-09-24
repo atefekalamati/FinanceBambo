@@ -4,7 +4,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from ..domain.errors import FinanceDomainError
-from ..domain.extractions import ExtractionDraft, ExtractionField
+from ..domain.extractions import PROVENANCE_KEYS, ExtractionDraft, ExtractionField
 from ..domain.resources import FinanceRecordNotFound
 from ..schemas.extractions import ProviderExtractionResult
 from .attachments import storage_name
@@ -181,6 +181,40 @@ class FinanceExtractionService:
             raise ExtractionConflict("extraction version is stale or not awaiting review")
         try:
             return await self.repo.reject(scope,current,command.reason,self.ids(),self.clock())
+        except ValueError as error:
+            raise ExtractionConflict("competing extraction mutation") from error
+
+    async def edit(self, scope, draft_id, command):
+        """Correct a draft before confirming it. Never creates a financial effect.
+
+        The gate is the same one `reject` and `confirm` apply -- the uploader, the version
+        they were looking at, and a draft still awaiting review -- so a draft that is
+        already accepted or rejected cannot be rewritten after the fact.
+
+        What an edit does NOT do is confirm anything. The draft keeps `awaitingReview`, the
+        financial effect stays zero, and the invoice is still only created by `confirm`.
+        """
+        current = await self.get(scope, draft_id)
+        if current.submitted_by != scope.actor_user_id:
+            raise ExtractionForbidden("only the uploader can edit this extraction")
+        if current.review_status != "awaitingReview" or current.version != command.expected_version:
+            raise ExtractionConflict("extraction version is stale or not awaiting review")
+        edits = {item.key: item.confirmed_value for item in command.field_edits}
+        known = {field.key for field in current.fields}
+        unknown = set(edits) - known
+        if unknown: raise AIExtractionContentError(f"unknown extracted fields: {sorted(unknown)}")
+        # Evidence is not editable. See PROVENANCE_KEYS: a reviewer who could rewrite the
+        # transcript could erase the very disagreement the transcript exists to record.
+        protected = sorted(PROVENANCE_KEYS & set(edits))
+        if protected: raise AIExtractionContentError(f"fields state provenance and cannot be edited: {protected}")
+        fields = [ExtractionField(field.key, field.extracted_value,
+            edits.get(field.key, field.confirmed_value), field.confidence,
+            # Once edited, always edited: a reviewer who changes a value and changes it back
+            # still looked at it, and the review screen shows that.
+            field.edited_by_user or (field.key in edits and edits[field.key] != field.extracted_value))
+            for field in current.fields]
+        try:
+            return await self.repo.edit(scope, current, fields, self.ids(), self.clock())
         except ValueError as error:
             raise ExtractionConflict("competing extraction mutation") from error
 

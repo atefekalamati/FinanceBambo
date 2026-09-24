@@ -108,6 +108,24 @@ class ReviewedInvoiceCreate(ApiModel):
         return self
 
 
+class ExtractionEdit(ApiModel):
+    """A reviewer's corrections to a draft, before any of it becomes financial.
+
+    The same `(key, confirmedValue)` shape confirmation already accepts, because it is the
+    same act: a person saying what the value should be. Splitting it into a second vocabulary
+    would mean the review screen sent one shape while editing and another while confirming.
+    """
+
+    expected_version: int = Field(ge=1)
+    field_edits: list[ExtractionFieldConfirmation] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def unique_field_edits(self):
+        keys = [item.key for item in self.field_edits]
+        if len(keys) != len(set(keys)): raise ValueError("each field can be edited once")
+        return self
+
+
 class ExtractionConfirm(ApiModel):
     expected_version: int = Field(ge=1)
     idempotency_key: str = Field(min_length=1)

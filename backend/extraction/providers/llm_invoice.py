@@ -93,6 +93,10 @@ def _enabled() -> bool:
 PROVIDER_SETTINGS = {
     "openai": {"key": ("FINANCE_AI_API_KEY",),
                "model": ("FINANCE_AI_MODEL",),
+               # The PAGE model, separate from the text one because the right answer
+               # differs by task. Reachable through configuration for the same reason
+               # every other setting is.
+               "vision_model": ("FINANCE_AI_VISION_MODEL",),
                "base_url": ("FINANCE_AI_BASE_URL",),
                "default_base_url": None},
     "avalai": {# AVALAI_API_KEY first: it is the name the AvalAI notes use. FINANCE_AI_API_KEY
@@ -100,6 +104,7 @@ PROVIDER_SETTINGS = {
                # Finance variable keeps working.
                "key": ("AVALAI_API_KEY", "FINANCE_AI_API_KEY"),
                "model": ("AVALAI_MODEL", "FINANCE_AI_MODEL"),
+               "vision_model": ("AVALAI_VISION_MODEL", "FINANCE_AI_VISION_MODEL"),
                "base_url": ("AVALAI_BASE_URL",),
                "default_base_url": "https://api.avalai.ir/v1"},
 }
@@ -148,6 +153,11 @@ def build_extraction_provider() -> ExtractionProvider | None:
     return LLMInvoiceExtractionProvider(
         key=key,
         model=_first_set(settings["model"]),
+        # Passed explicitly rather than left to the constructor's own environment read.
+        # Without this the vendor-specific name in the table above was unreachable: a host
+        # configured for AvalAI could name its text model and had no way to name its page
+        # model, so every image silently used DEFAULT_VISION_MODEL whatever was configured.
+        vision_model=_first_set(settings.get("vision_model", ())),
         base_url=_first_set(settings["base_url"]) or settings["default_base_url"],
         # The gateway that actually answered, so `extractionSource` on the draft names it.
         # The class default is "openai" because the WIRE FORMAT is OpenAI's, but a format

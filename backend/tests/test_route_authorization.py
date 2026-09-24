@@ -405,6 +405,8 @@ class RouteGateTests(unittest.TestCase):
 
             "POST /files/{fileId}/extractions/async",
 
+            "PATCH /extractions/{draftId}",
+
             "POST /extractions/{draftId}/reject",
 
             "POST /extractions/{draftId}/retry",

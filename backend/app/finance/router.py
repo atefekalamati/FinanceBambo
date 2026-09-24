@@ -30,7 +30,7 @@ from .schemas.imports import ImportCommit,ImportCommitResponse,ImportFromLink,Im
 from .services.google_sheet import fetch_sheet_as_xlsx
 from .schemas.invoices import CorrectiveInvoiceCreate,InvoiceCreate,InvoiceListResponse,InvoicePatch,InvoiceConfirm,InvoiceResponse,InvoiceVoid
 from .schemas.attachments import AttachmentListResponse,AttachmentResponse
-from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionListResponse,ExtractionReject,ExtractionRetry,ExtractionStart
+from .schemas.extractions import ExtractionConfirm,ExtractionDraftResponse,ExtractionEdit,ExtractionListResponse,ExtractionReject,ExtractionRetry,ExtractionStart
 from .domain.monthly import DEFAULT_MONTH_COUNT,MAX_MONTH_COUNT
 from .schemas.reports import LiveReportResponse,MonthlyReportResponse,OperationalOverviewResponse,ReportSnapshotCreate,ReportSnapshotListResponse,ReportSnapshotReference,ReportVarianceListResponse,WbsReportResponse
 from .schemas.audit import AuditEventListResponse,AuditEventResponse
@@ -550,6 +550,24 @@ async def list_extractions(projectId:str,request:Request,page:int=Query(1,ge=1),
 async def get_extraction(projectId:str,draftId:UUID,request:Request):
     scope=await _resource_scope(projectId,request,"finance.view")
     return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.get(scope,draftId))
+
+@router.patch("/extractions/{draftId}",response_model=ExtractionDraftResponse,responses=FINANCE_ERROR_RESPONSES)
+async def edit_extraction(projectId:str,draftId:UUID,payload:ExtractionEdit,request:Request):
+    """Correct a draft before confirming it. Changes nothing financial.
+
+    The review screen needed somewhere to put a reviewer's corrections BEFORE the decision
+    to confirm. Until now the only way to state a different value was to send it inside the
+    confirmation itself, so a reviewer could not fix a misheard amount, look at the result,
+    and then decide. Now they can, as many times as they like.
+
+    An edit writes `confirmedValue` beside what the model read; `extractedValue` is never
+    overwritten, so the transcript and the page reading survive it. The draft stays
+    `awaitingReview`, its financial effect stays zero, and `confirm` remains the only door
+    to the financial engine -- which is the rule this endpoint was built around rather than
+    through.
+    """
+    scope=await _resource_scope(projectId,request,"finance.manage_invoice")
+    return ExtractionDraftResponse.from_domain(await request.app.state.finance_extraction_service.edit(scope,draftId,payload))
 
 @router.post("/extractions/{draftId}/reject",response_model=ExtractionDraftResponse,responses=FINANCE_ERROR_RESPONSES)
 async def reject_extraction(projectId:str,draftId:UUID,payload:ExtractionReject,request:Request):

@@ -11,7 +11,7 @@ import uvicorn
 
 from .app import build
 from .environment import (MissingConfiguration, check_port, database_url, demo_port,
-                          redacted)
+                          export_env_file, redacted)
 
 
 #: Where the OCR and speech packages live. Named here rather than discovered, because the
@@ -73,6 +73,14 @@ def main() -> None:
                         help="drop and reload the development project on startup")
     parser.add_argument("--storage", default=str(Path(__file__).resolve().parent / ".files"))
     args = parser.parse_args()
+    # `.env` into the process environment, before anything reads configuration. The
+    # extraction providers read `os.environ` directly -- they are the lower layer and must
+    # not import a devhost accessor -- so without this a host with a perfectly good `.env`
+    # started with AI extraction and speech silently switched off. Names only: the values
+    # are credentials.
+    exported = export_env_file()
+    if exported:
+        print("configuration from .env: %s" % ", ".join(exported))
     try:
         dsn = args.dsn or database_url()
     except MissingConfiguration as error:

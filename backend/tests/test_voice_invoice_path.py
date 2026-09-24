@@ -213,3 +213,133 @@ class TheSpeechProviderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheReaderIsAskedExactlyOnceTests(unittest.TestCase):
+    """The invoice reader runs once per extraction attempt. It used to run twice.
+
+    `_as_contract` asks it, and `_as_contract_voice` asked it AGAIN afterwards. Two model
+    calls were billed per recording, and the second answer re-emitted `extractionSource`
+    and `extractionConfidence` -- which the contract forbids, so `ProviderExtractionResult`
+    rejected the whole payload and no voice extraction could ever become a draft.
+
+    These fail if that is reintroduced, and they fail for the two separate reasons it was
+    wrong: the call count, and the duplicate keys.
+    """
+
+    RESULT = {"text": SPOKEN_WRONG, "language": "fa", "provider": "avalai",
+              "confidence": None, "model": DEFAULT_MODEL}
+
+    def counted(self, answer=()):
+        """Run the voice contract with `_ai_fields` replaced by a counter."""
+        from extraction import adapters
+
+        calls = []
+
+        def fake(text, already_emitted, **kwargs):
+            calls.append({"text": text, "already_emitted": set(already_emitted),
+                          "kwargs": kwargs})
+            return [dict(field) for field in answer]
+
+        original = adapters._ai_fields
+        adapters._ai_fields = fake
+        try:
+            contract = adapters._as_contract_voice(dict(self.RESULT))
+        finally:
+            adapters._ai_fields = original
+        return contract, calls
+
+    def test_the_reader_is_invoked_once(self):
+        _contract, calls = self.counted()
+        self.assertEqual(1, len(calls), "twice means two model calls and a broken contract")
+
+    def test_it_is_asked_unconditionally_because_speech_has_no_parser(self):
+        _contract, calls = self.counted()
+        self.assertTrue(calls[0]["kwargs"].get("needs_ai"),
+                        "a transcript has no table, so the reader is the only source")
+
+    def test_the_transcript_reaches_the_reader_as_a_hint(self):
+        _contract, calls = self.counted()
+        self.assertEqual(SPOKEN_WRONG, calls[0]["kwargs"].get("transcript"))
+
+    def test_every_key_in_the_answer_is_unique(self):
+        # The exact shape the reader returns on a real run, including the two provenance
+        # fields whose duplication broke the contract.
+        contract, _calls = self.counted(answer=[
+            {"key": "extractionSource", "extractedValue": "avalai",
+             "confidence": 1.0, "editedByUser": False},
+            {"key": "extractionConfidence", "extractedValue": 0.9,
+             "confidence": 1.0, "editedByUser": False},
+            {"key": "supplierName", "extractedValue": "گروه مهندسی نما برتر",
+             "confidence": 0.9, "editedByUser": False}])
+        keys = [field["key"] for field in contract["fields"]]
+        self.assertEqual(len(keys), len(set(keys)), "duplicates: %s" % (
+            [k for k in keys if keys.count(k) > 1],))
+
+    def test_the_answer_validates_against_the_contract(self):
+        from app.finance.schemas.extractions import ProviderExtractionResult
+
+        contract, _calls = self.counted(answer=[
+            {"key": "extractionSource", "extractedValue": "avalai",
+             "confidence": 1.0, "editedByUser": False},
+            {"key": "extractionConfidence", "extractedValue": 0.9,
+             "confidence": 1.0, "editedByUser": False}])
+        parsed = ProviderExtractionResult.model_validate(contract)
+        self.assertTrue(parsed.fields)
+
+    def test_the_transcript_survives_a_reader_that_claims_its_key(self):
+        # Provenance wins. A reader emitting `voiceTranscript` would otherwise take the
+        # slot and the only evidence of what was actually said would be gone.
+        contract, _calls = self.counted(answer=[
+            {"key": TRANSCRIPT_KEY, "extractedValue": "something the model preferred",
+             "confidence": 1.0, "editedByUser": False}])
+        transcript = field(contract, TRANSCRIPT_KEY)
+        self.assertEqual(SPOKEN_WRONG, transcript["extractedValue"])
+        keys = [f["key"] for f in contract["fields"]]
+        self.assertEqual(1, keys.count(TRANSCRIPT_KEY))
+
+    def test_silence_asks_the_reader_nothing_at_all(self):
+        from extraction import adapters
+
+        calls = []
+        original = adapters._ai_fields
+        adapters._ai_fields = lambda *a, **k: calls.append(1) or []
+        try:
+            adapters._as_contract_voice(dict(self.RESULT, text="   "))
+        finally:
+            adapters._ai_fields = original
+        self.assertEqual([], calls, "nothing was said, so there is nothing to structure")
+
+
+class TheImagePathStillAsksOnceTests(unittest.TestCase):
+    """The same property for the path that was never broken, so a later edit cannot break it."""
+
+    def test_one_call_for_a_page(self):
+        from extraction import adapters
+
+        calls = []
+        original = adapters._ai_fields
+        adapters._ai_fields = lambda *a, **k: calls.append(k) or []
+        try:
+            contract = adapters._as_contract(
+                {"text": "شماره فاکتور: F-1\nجمع کل: 120000 ریال", "confidence": 0.9},
+                image=b"\xff\xd8\xff", media_type="image/jpeg")
+        finally:
+            adapters._ai_fields = original
+        self.assertEqual(1, len(calls))
+        self.assertTrue(calls[0].get("needs_ai"), "a page is always worth a second witness")
+        keys = [f["key"] for f in contract["fields"]]
+        self.assertEqual(len(keys), len(set(keys)))
+
+    def test_a_caller_may_switch_the_reader_off(self):
+        from extraction import adapters
+
+        calls = []
+        original = adapters._ai_fields
+        adapters._ai_fields = lambda *a, **k: calls.append(k) or []
+        try:
+            adapters._as_contract({"text": "چیزی", "confidence": 0.9}, needs_ai=False)
+        finally:
+            adapters._ai_fields = original
+        self.assertEqual(1, len(calls), "still one call site")
+        self.assertFalse(calls[0].get("needs_ai"), "and it was told not to ask")

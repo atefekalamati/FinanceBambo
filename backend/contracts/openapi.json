@@ -3541,6 +3541,31 @@
         "title": "ExtractionDraftResponse",
         "type": "object"
       },
+      "ExtractionEdit": {
+        "additionalProperties": false,
+        "description": "A reviewer's corrections to a draft, before any of it becomes financial.\n\nThe same `(key, confirmedValue)` shape confirmation already accepts, because it is the\nsame act: a person saying what the value should be. Splitting it into a second vocabulary\nwould mean the review screen sent one shape while editing and another while confirming.",
+        "properties": {
+          "expectedVersion": {
+            "minimum": 1.0,
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "fieldEdits": {
+            "items": {
+              "$ref": "#/components/schemas/ExtractionFieldConfirmation"
+            },
+            "minItems": 1,
+            "title": "Fieldedits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expectedVersion",
+          "fieldEdits"
+        ],
+        "title": "ExtractionEdit",
+        "type": "object"
+      },
       "ExtractionFieldConfirmation": {
         "additionalProperties": false,
         "properties": {
@@ -14564,6 +14589,162 @@
           }
         },
         "summary": "Get Extraction",
+        "tags": [
+          "finance"
+        ]
+      },
+      "patch": {
+        "description": "Correct a draft before confirming it. Changes nothing financial.\n\nThe review screen needed somewhere to put a reviewer's corrections BEFORE the decision\nto confirm. Until now the only way to state a different value was to send it inside the\nconfirmation itself, so a reviewer could not fix a misheard amount, look at the result,\nand then decide. Now they can, as many times as they like.\n\nAn edit writes `confirmedValue` beside what the model read; `extractedValue` is never\noverwritten, so the transcript and the page reading survive it. The draft stays\n`awaitingReview`, its financial effect stays zero, and `confirm` remains the only door\nto the financial engine -- which is the rule this endpoint was built around rather than\nthrough.",
+        "operationId": "edit_extraction_api_projects__projectId__finance_extractions__draftId__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "title": "Projectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draftId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draftid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractionEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractionDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Scoped record not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Conflict or stale version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "File too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [],
+                    "message": "Request validation failed.",
+                    "requestId": "req-example"
+                  }
+                }
+              }
+            },
+            "description": "Provider or storage unavailable"
+          }
+        },
+        "summary": "Edit Extraction",
         "tags": [
           "finance"
         ]

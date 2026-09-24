@@ -195,7 +195,7 @@ def _fusion_fields(structured, ai_emitted, already_emitted):
             "fusion-requires-review"))
     return emitted
 
-def _as_contract(result, image=None, media_type="image/jpeg"):
+def _as_contract(result, image=None, media_type="image/jpeg", needs_ai=None):
     """A provider's answer as `ProviderExtractionResult` sees it.
 
     `{"fields": [{"key", "extractedValue", "confidence", "editedByUser"}]}` and nothing
@@ -205,6 +205,15 @@ def _as_contract(result, image=None, media_type="image/jpeg"):
     Empty text yields NO fields rather than one empty field. "The model read nothing" and
     "the model read an empty string" are the same fact, and a blank field in a review form
     invites someone to type a number into it that no document ever contained.
+
+    `needs_ai` OVERRIDES the decision about asking the invoice reader; None leaves it to
+    `_needs_ai` and the presence of a page, which is what every image caller wants. It
+    exists for speech: a transcript has no table for the deterministic parser to find, so
+    the reader is the only candidate source there is and the caller knows that before this
+    function looks. THE READER IS ASKED HERE AND NOWHERE ELSE -- a caller that both passed
+    through this function and called `_ai_fields` itself ran the model twice per recording
+    and emitted `extractionSource` and `extractionConfidence` twice, which the contract
+    rejects for duplicate keys. That is the bug this parameter exists to make impossible.
     """
     text = "" if result.get("text") is None else str(result["text"])
     confidence = result.get("confidence")
@@ -233,8 +242,10 @@ def _as_contract(result, image=None, media_type="image/jpeg"):
                     # With a page in hand the model is always worth asking. `_needs_ai`
                     # gates the TEXT reading, where a clean parse makes a second opinion
                     # redundant; a vision reading is a different witness and is the whole
-                    # reason the image was kept this far.
-                    needs_ai=image is not None or _needs_ai(structured, confidence),
+                    # reason the image was kept this far. A caller that already knows the
+                    # answer -- speech does -- says so and is not second-guessed.
+                    needs_ai=(image is not None or _needs_ai(structured, confidence))
+                             if needs_ai is None else needs_ai,
                     image=image, media_type=media_type)
     fields.extend(ai)
     fields.extend(_fusion_fields(structured, ai, {f["key"] for f in fields}))
@@ -749,16 +760,27 @@ def _as_contract_voice(result, hints=None):
     a pipeline that discarded it after structuring would destroy that evidence and leave
     two numbers with no way to tell which came from whom.
     """
+    text = "" if result.get("text") is None else str(result["text"])
+    confidence = result.get("confidence")
+
     # `_as_contract` answers with the whole payload -- `{"fields": [...]}` -- because that
     # is what the service reads. The fields are taken out, added to, and put back in the
     # same envelope: returning a bare list here would be off-contract and the service would
     # reject the entire extraction.
-    contract = _as_contract(result)
+    #
+    # ONE pass, and the invoice reader runs inside it. `needs_ai=True` because a transcript
+    # has no deterministic parser to try first: for an image, rules run before the model and
+    # the model only fills gaps; for speech there are no rules, so the reader is the only
+    # candidate source there is. This used to be a SECOND `_ai_fields` call made here after
+    # `_as_contract` had already made one, which cost two model calls per recording and
+    # emitted `extractionSource` and `extractionConfidence` twice -- and the contract
+    # forbids duplicate keys, so every real voice extraction failed validation before a
+    # draft could be written.
+    #
+    # `transcript=` is carried in on the result so the reader receives it as a hint exactly
+    # as it did before, rather than the None `_as_contract` would otherwise pass for speech.
+    contract = _as_contract(dict(result, transcript=text), needs_ai=True)
     fields = contract["fields"]
-    emitted = {field["key"] for field in fields}
-
-    text = "" if result.get("text") is None else str(result["text"])
-    confidence = result.get("confidence")
 
     provenance = [
         {"key": VOICE_SOURCE_KEY, "extractedValue": VOICE_SOURCE,
@@ -779,15 +801,15 @@ def _as_contract_voice(result, hints=None):
                                result["provider"],
                                "/" + result["model"] if result.get("model") else ""),
                            "confidence": 1.0, "editedByUser": False})
-    fields.extend(field for field in provenance if field["key"] not in emitted)
 
-    if not text.strip():
-        return contract
-
-    # Stage two, and the same reader the image path uses -- not a second one. `needs_ai`
-    # is unconditional here because a transcript has no deterministic parser to try first:
-    # for an image, rules run before the model and the model only fills gaps; for speech
-    # there are no rules, so the reader is the only candidate source there is.
-    fields.extend(_ai_fields(text, {field["key"] for field in fields},
-                             transcript=text, metadata=None, needs_ai=True))
+    # Provenance WINS. It is not merely appended-if-absent: a reader that ever emitted a
+    # key of the same name would otherwise silently take the slot, and the evidence that a
+    # spoken amount differs from a printed one would be gone. The colliding field is
+    # dropped instead, so the transcript survives whatever the reader decided.
+    #
+    # Appended rather than prepended, which keeps `rawText` first exactly as every other
+    # adapter leaves it: the order of this list is part of what the review screen reads,
+    # and this fix is about calling the reader once, not about rearranging the answer.
+    taken = {field["key"] for field in provenance}
+    contract["fields"] = [f for f in fields if f["key"] not in taken] + provenance
     return contract

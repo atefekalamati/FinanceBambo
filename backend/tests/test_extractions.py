@@ -14,7 +14,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 from app.finance.domain.attachments import FinanceAttachment
 from app.finance.domain.invoices import Invoice
 from app.finance.adapters.ports import InvoiceImageExtractor, InvoiceVoiceExtractor
-from app.finance.schemas.extractions import ExtractionConfirm, ExtractionDraftResponse, ExtractionReject
+from app.finance.schemas.extractions import ExtractionConfirm, ExtractionDraftResponse, ExtractionEdit, ExtractionReject
 from app.finance.security.guards import FinanceScope
 from app.finance.services.extractions import AIExtractionContentError, ExtractionConflict, ExtractionForbidden, FinanceExtractionService
 
@@ -66,6 +66,9 @@ class FakeExtractions:
         if file_id:values=[item for item in values if item.file.file_id==file_id]
         if linked_invoice_id:values=[item for item in values if item.file.invoice_id==linked_invoice_id]
         return values[(page-1)*page_size:page*page_size],len(values)
+    async def edit(self,_scope,draft,fields,_audit,_at):
+        if self.value.review_status!="awaitingReview" or self.value.version!=draft.version:raise ValueError("stale")
+        self.value=replace(draft,fields=list(fields),version=draft.version+1);return self.value
     async def reject(self,_scope,draft,_reason,_audit,_at):
         if self.value.review_status!="awaitingReview" or self.value.version!=draft.version:raise ValueError("stale")
         self.value=replace(draft,review_status="rejected",version=draft.version+1);return self.value
@@ -180,3 +183,164 @@ class ExtractionTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AIExtractionContentError):await service.confirm(scope,draft.draft_id,self.confirmation(field_key="unknown"))
         with self.assertRaises(ExtractionConflict):await service.confirm(scope,draft.draft_id,self.confirmation(version=2))
         with self.assertRaises(ExtractionForbidden):await service.confirm(FinanceScope(ORG,"p1",OTHER),draft.draft_id,self.confirmation())
+
+
+class EditBeforeConfirmationTests(unittest.IsolatedAsyncioTestCase):
+    """A reviewer corrects a draft, looks at it, and only then decides.
+
+    Before this there was nowhere to put a correction except inside the confirmation
+    itself, which made "fix the misheard amount, then check it, then confirm" impossible:
+    the only way to see a corrected draft was to have already committed to it.
+
+    The rule the endpoint is built around, not through: an edit is not a confirmation. The
+    draft stays `awaitingReview`, its financial effect stays zero, and `confirm` is still
+    the only door to the financial engine.
+    """
+
+    service = ExtractionTests.service
+
+    def setUp(self):
+        self.scope = FinanceScope(ORG, "p1", ACTOR)
+
+    async def draft(self, fields=None):
+        extractor = FakeExtractor("voice-adapter", {"fields": fields} if fields else None)
+        service = self.service(voice=extractor,
+                               file_value=attachment(logical_type="invoice_voice"))
+        return service, await service.start(self.scope, FILE_ID)
+
+    @staticmethod
+    def edit(version=1, key="invoiceNumber", value="N-CORRECTED"):
+        return ExtractionEdit(expectedVersion=version,
+                              fieldEdits=[{"key": key, "confirmedValue": value}])
+
+    async def test_an_edited_value_is_stored_on_the_draft(self):
+        service, draft = await self.draft()
+        updated = await service.edit(self.scope, draft.draft_id, self.edit())
+        field, = [f for f in updated.fields if f.key == "invoiceNumber"]
+        self.assertEqual("N-CORRECTED", field.confirmed_value)
+        self.assertTrue(field.edited_by_user)
+
+    async def test_what_the_model_read_is_never_overwritten(self):
+        service, draft = await self.draft()
+        updated = await service.edit(self.scope, draft.draft_id, self.edit())
+        field, = [f for f in updated.fields if f.key == "invoiceNumber"]
+        self.assertEqual("N-1", field.extracted_value,
+                         "the reading stands beside the correction, not under it")
+
+    async def test_the_draft_is_still_awaiting_review_and_worth_nothing(self):
+        service, draft = await self.draft()
+        updated = await service.edit(self.scope, draft.draft_id, self.edit())
+        self.assertEqual("awaitingReview", updated.review_status)
+        self.assertEqual(Decimal(0), updated.financial_effect_irr)
+        self.assertIsNone(updated.confirmed_by)
+        self.assertIsNone(updated.confirmed_at)
+        self.assertIsNone(updated.file.invoice_id)
+
+    async def test_no_invoice_is_created_by_an_edit(self):
+        service, draft = await self.draft()
+        await service.edit(self.scope, draft.draft_id, self.edit())
+        self.assertEqual({}, self.invoices.by_id, "the financial engine never ran")
+
+    async def test_the_version_moves_so_a_stale_edit_is_refused(self):
+        service, draft = await self.draft()
+        updated = await service.edit(self.scope, draft.draft_id, self.edit())
+        self.assertEqual(draft.version + 1, updated.version)
+        with self.assertRaises(ExtractionConflict):
+            await service.edit(self.scope, draft.draft_id, self.edit(version=draft.version))
+
+    async def test_editing_twice_is_allowed_and_the_last_value_stands(self):
+        service, draft = await self.draft()
+        once = await service.edit(self.scope, draft.draft_id, self.edit())
+        twice = await service.edit(self.scope, draft.draft_id,
+                                   self.edit(version=once.version, value="N-FINAL"))
+        field, = [f for f in twice.fields if f.key == "invoiceNumber"]
+        self.assertEqual("N-FINAL", field.confirmed_value)
+        self.assertEqual("awaitingReview", twice.review_status)
+
+    async def test_a_rejected_draft_cannot_be_edited(self):
+        service, draft = await self.draft()
+        await service.reject(self.scope, draft.draft_id,
+                             ExtractionReject(expectedVersion=draft.version, reason="wrong"))
+        with self.assertRaises(ExtractionConflict):
+            await service.edit(self.scope, draft.draft_id, self.edit(version=draft.version))
+
+    async def test_a_confirmed_draft_cannot_be_edited(self):
+        service, draft = await self.draft()
+        await service.confirm(self.scope, draft.draft_id,
+                              ExtractionTests.confirmation(version=draft.version))
+        with self.assertRaises(ExtractionConflict):
+            await service.edit(self.scope, draft.draft_id,
+                               self.edit(version=draft.version + 1))
+
+    async def test_only_the_uploader_may_edit(self):
+        service, draft = await self.draft()
+        with self.assertRaises(ExtractionForbidden):
+            await service.edit(FinanceScope(ORG, "p1", OTHER), draft.draft_id, self.edit())
+
+    async def test_a_field_the_extraction_never_produced_is_refused(self):
+        service, draft = await self.draft()
+        with self.assertRaises(AIExtractionContentError):
+            await service.edit(self.scope, draft.draft_id, self.edit(key="somethingElse"))
+
+    async def test_the_transcript_cannot_be_rewritten(self):
+        # The point of keeping a transcript is that a spoken amount can disagree with a
+        # printed one. A reviewer who could edit it could erase the disagreement.
+        service, draft = await self.draft(fields=[
+            {"key": "voiceTranscript", "extractedValue": "SPOKEN ONE HUNDRED AND SEVEN",
+             "confirmedValue": None, "confidence": 0.0, "editedByUser": False},
+            {"key": "totalAmount", "extractedValue": "107786000",
+             "confirmedValue": None, "confidence": 0.9, "editedByUser": False}])
+        with self.assertRaises(AIExtractionContentError):
+            await service.edit(self.scope, draft.draft_id,
+                               self.edit(key="voiceTranscript", value="something else"))
+
+    async def test_the_amount_beside_the_transcript_is_editable(self):
+        service, draft = await self.draft(fields=[
+            {"key": "voiceTranscript", "extractedValue": "SPOKEN ONE HUNDRED AND SEVEN",
+             "confirmedValue": None, "confidence": 0.0, "editedByUser": False},
+            {"key": "totalAmount", "extractedValue": "107786000",
+             "confirmedValue": None, "confidence": 0.9, "editedByUser": False}])
+        updated = await service.edit(self.scope, draft.draft_id,
+                                     self.edit(key="totalAmount", value="117786000"))
+        values = {f.key: f for f in updated.fields}
+        self.assertEqual("117786000", values["totalAmount"].confirmed_value)
+        self.assertEqual("107786000", values["totalAmount"].extracted_value)
+        self.assertEqual("SPOKEN ONE HUNDRED AND SEVEN",
+                         values["voiceTranscript"].extracted_value,
+                         "the evidence of the disagreement survives the correction")
+
+    def test_the_write_never_touches_the_financial_column(self):
+        """Checked against the SQL, not the prose.
+
+        The docstring on `edit` names `financial_effect_irr` in order to say it is absent,
+        so a scan of the whole source would fail on the very sentence that documents the
+        property. What is scanned is the statements the method actually executes.
+        """
+        import ast
+        import textwrap
+
+        from app.finance.repositories.extractions import PsycopgExtractionRepository
+
+        tree = ast.parse(textwrap.dedent(
+            inspect.getsource(PsycopgExtractionRepository.edit)))
+        function = tree.body[0]
+        docstring = ast.get_docstring(function, clean=False)
+        sql = " ".join(node.value for node in ast.walk(function)
+                       if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                       and node.value != docstring)
+
+        self.assertNotIn("financial_effect_irr", sql,
+                         "a corrected draft is still worth nothing")
+        self.assertNotIn("confirmed_by", sql)
+        self.assertNotIn("confirmed_fields", sql,
+                         "nothing has been confirmed, so that column stays as it was")
+        self.assertNotIn("INSERT INTO invoices", sql)
+        self.assertIn("review_status='awaitingReview'", sql,
+                      "an accepted or rejected draft must not be rewritable")
+        self.assertIn("extraction.edited", sql, "the correction is audited")
+
+    def test_no_migration_was_needed(self):
+        # `extracted_fields` is jsonb and already carries `confirmedValue` and
+        # `editedByUser` per field -- the contract was built for this from the start.
+        versions = sorted(p.name for p in (BACKEND_ROOT / "alembic" / "versions").glob("00*.py"))
+        self.assertEqual("0037", versions[-1][:4])

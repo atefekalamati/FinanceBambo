@@ -65,6 +65,33 @@ class PsycopgExtractionRepository:
                 await cursor.execute("INSERT INTO finance_audit_events(id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,reason,before_values,after_values,occurred_at) VALUES(%s,%s,%s,%s,'extraction.rejected','extraction_drafts',%s,%s,%s,%s,%s)",(audit_id,scope.organization_id,scope.project_id,scope.actor_user_id,draft.draft_id,reason,Jsonb({"reviewStatus":"awaitingReview","version":draft.version}),Jsonb({"reviewStatus":"rejected","version":draft.version+1}),at))
         return replace(draft,review_status="rejected",version=draft.version+1)
 
+    async def edit(self, scope, draft, fields, audit_id, at):
+        """A reviewer's corrections, written onto the draft and nowhere else.
+
+        `extracted_fields` is rewritten, but only its `confirmedValue` and `editedByUser`
+        halves: `extractedValue` carries what the model read and is never overwritten, so
+        the transcript and the page reading survive every edit somebody makes.
+
+        `financial_effect_irr` is NOT in this statement. That is the point of the whole
+        endpoint: a draft may be corrected any number of times and remains worth nothing
+        until it is confirmed, and the column that says so is never addressed here.
+
+        `confirmed_fields` is also untouched. It means "what was confirmed", and nothing
+        has been -- filling it during an edit would make the two indistinguishable.
+        """
+        payload = [{"key": field.key, "extractedValue": field.extracted_value,
+            "confirmedValue": field.confirmed_value, "confidence": field.confidence,
+            "editedByUser": field.edited_by_user} for field in fields]
+        async with self.db.transaction():
+            async with self.db.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute("SELECT id,version,review_status FROM extraction_drafts WHERE organization_id=%s AND project_id=%s AND attachment_id=%s ORDER BY version DESC LIMIT 1 FOR UPDATE",(scope.organization_id,scope.project_id,draft.file.file_id));latest=await cursor.fetchone()
+                if latest is None or latest["id"]!=draft.draft_id or latest["version"]!=draft.version or latest["review_status"]!="awaitingReview":raise ValueError("stale extraction")
+                await cursor.execute("UPDATE extraction_drafts SET extracted_fields=%s,version=version+1,updated_at=%s WHERE organization_id=%s AND project_id=%s AND id=%s AND version=%s AND review_status='awaitingReview'",(Jsonb(payload),at,scope.organization_id,scope.project_id,draft.draft_id,draft.version))
+                if cursor.rowcount!=1:raise ValueError("stale extraction")
+                edited=[field.key for field in fields if field.edited_by_user]
+                await cursor.execute("INSERT INTO finance_audit_events(id,organization_id,project_id,actor_user_id,action,entity_type,entity_id,reason,before_values,after_values,occurred_at) VALUES(%s,%s,%s,%s,'extraction.edited','extraction_drafts',%s,NULL,%s,%s,%s)",(audit_id,scope.organization_id,scope.project_id,scope.actor_user_id,draft.draft_id,Jsonb({"version":draft.version}),Jsonb({"version":draft.version+1,"editedKeys":edited}),at))
+        return replace(draft,fields=list(fields),version=draft.version+1)
+
     async def create_next(self, scope, value):
         fields = [{"key": field.key, "extractedValue": field.extracted_value,
             "confirmedValue": field.confirmed_value, "confidence": field.confidence,
