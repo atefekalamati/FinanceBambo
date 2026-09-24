@@ -259,3 +259,43 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* THE READER'S REPORT ON ITSELF.
+   A list, not a field: nothing here is typed into, and the whole reason this block exists
+   is that each of these was an editable input reading «[object Object]». It sits between
+   the readings and the lines because it decides how both are read -- most of all the one
+   saying no currency was recorded, since every amount below is converted as تومان. */
+.ai-warnings {
+  margin-block: var(--space-lg);
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.ai-warnings__row {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  /* The same rail «هشدارهای کیفیت محاسبه» uses, on the inline start so it reads as the
+     margin of the sentence in an RTL column rather than as a box around it. */
+  border-inline-start: .25rem solid var(--dash-sev-med);
+  background: var(--color-btn-action);
+}
+
+.ai-warnings__text {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+/* Figures the sentence cannot carry. Latin digits and an arithmetic operator, so it is
+   left to read left-to-right inside a right-to-left paragraph. */
+.ai-warnings__evidence {
+  display: block;
+  margin-block-start: var(--space-xs);
+  direction: ltr;
+  text-align: start;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
