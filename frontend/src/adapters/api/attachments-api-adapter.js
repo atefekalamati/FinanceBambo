@@ -40,6 +40,24 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
   async function retryExtraction(draftId) {
     return client.request(`${base}/extractions/${encodeURIComponent(draftId)}/retry`, jsonOptions("POST", { hints: { locale: context.locale ?? "fa-IR" } }));
   }
+  /* A reviewer's corrections, recorded before any decision to confirm.
+   *
+   * Until this existed the only way to state a better value was to send it INSIDE the
+   * confirmation, so a reviewer could not fix a misheard amount, look at the result, and
+   * then decide -- the correction and the irreversible act were one button.
+   *
+   * Changes nothing financial: the draft keeps `awaitingReview`, its effect stays zero,
+   * and `confirm` is still the only door to the financial engine. The service writes each
+   * edit to `confirmedValue` BESIDE what the model read, so the page reading and the
+   * transcript survive every correction.
+   *
+   * The version moves. The updated draft comes back and the caller must carry it forward,
+   * or the next write is refused as stale -- which is the point of an optimistic version
+   * and not a thing to work around. */
+  async function editExtraction({ draftId, expectedVersion, fieldEdits }) {
+    return client.request(`${base}/extractions/${encodeURIComponent(draftId)}`,
+      jsonOptions("PATCH", { expectedVersion, fieldEdits }));
+  }
   async function rejectExtraction({ draftId, expectedVersion, reason = null }) {
     return client.request(`${base}/extractions/${encodeURIComponent(draftId)}/reject`, jsonOptions("POST", { expectedVersion, reason }));
   }
@@ -97,5 +115,5 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
   async function getInvoiceTargets() {
     return invoiceAdapter.getInvoiceTargets();
   }
-  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, getExtraction, retryExtraction, rejectExtraction, confirmExtraction, getInvoiceTargets, getFileContentUrl });
+  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, getExtraction, editExtraction, retryExtraction, rejectExtraction, confirmExtraction, getInvoiceTargets, getFileContentUrl });
 }

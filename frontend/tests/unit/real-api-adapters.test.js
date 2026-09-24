@@ -181,3 +181,21 @@ test("a stage catalogue that will not load costs a label, never the invoice", as
   assert.equal(target.stageCode, "5.1");
   assert.equal(target.stageTitle, null);
 });
+
+test("an edit corrects a draft without touching anything financial", async () => {
+  /* The step that used to be impossible: until `PATCH` existed, the only way to state a
+     better value was to send it inside the confirmation, so the correction and the
+     irreversible act were one button. */
+  let request;
+  const client = { async request(path, options) { request = { path, options }; return { version: 3, fields: [] }; } };
+  const adapter = createApiAttachmentsAdapter(context, client, { getInvoiceTargets: async () => [] });
+  await adapter.editExtraction({ draftId: "draft-1", expectedVersion: 2,
+    fieldEdits: [{ key: "totalAmount", confirmedValue: "107786000" }] });
+  assert.match(request.path, /\/extractions\/draft-1$/, "the draft itself, not a sub-route");
+  assert.equal(request.options.method, "PATCH");
+  const body = JSON.parse(request.options.body);
+  assert.equal(body.expectedVersion, 2, "the version the reviewer was looking at");
+  assert.deepEqual(body.fieldEdits, [{ key: "totalAmount", confirmedValue: "107786000" }]);
+  assert.ok(!("invoice" in body), "an edit creates no invoice");
+  assert.ok(!("lines" in body), "and carries no lines");
+});

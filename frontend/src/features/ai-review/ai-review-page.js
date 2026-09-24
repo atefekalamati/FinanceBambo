@@ -344,6 +344,60 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
     showAccessibleDialog(dialog);
   });
+  /* Which readings the reviewer has changed, in the service's own `(key, confirmedValue)`
+     shape -- the same one `PATCH` and `confirm` both take, because they are the same act.
+     Compared against `extractedValue` and never against `confirmedValue`: `confirm`
+     rebuilds its fields from `edits.get(key, extracted_value)`, so a correction saved
+     earlier and not resent would silently revert to what the model read. */
+  const corrections = () => {
+    const values = Object.fromEntries([...controls].map(([key, control]) => [key, control.getValue()]));
+    return draft.fields
+      .filter((field) => Object.hasOwn(values, field.key)
+                      && values[field.key] !== String(field.extractedValue ?? ""))
+      .map((field) => ({ key: field.key, confirmedValue: values[field.key] }));
+  };
+
+  /* Save without deciding.
+     The draft keeps `awaitingReview` and its effect stays zero; this is the step that used
+     to be impossible -- correct a misheard amount, look at what you corrected, and only
+     then decide. The card is NOT rebuilt afterwards: the reviewer's line targets and
+     amounts live here and repainting would throw away the work they came to do. */
+  const save = element("button", "button button--ghost", "ذخیره تصحیحات");
+  save.type = "button";
+  save.disabled = !canEdit;
+  save.addEventListener("click", async () => {
+    const fieldEdits = corrections();
+    if (!fieldEdits.length) {
+      feedback.textContent = "تغییری برای ذخیره نیست.";
+      feedback.className = "form-message";
+      return;
+    }
+    save.disabled = true;
+    try {
+      const updated = await adapter.editExtraction({
+        draftId: draft.draftId, expectedVersion: draft.version, fieldEdits });
+      /* Carry the new version and the saved values forward. Without this the next write
+         is refused as stale, which is what an optimistic version is for and not a thing
+         to route around. */
+      draft.version = updated?.version ?? draft.version;
+      (updated?.fields ?? []).forEach((field) => {
+        const mine = draft.fields.find((item) => item.key === field.key);
+        if (mine) mine.confirmedValue = field.confirmedValue ?? null;
+      });
+      feedback.textContent = `${formatDisplayNumber(String(fieldEdits.length))} تصحیح ذخیره شد. `
+        + "پیش‌نویس هنوز تأیید نشده و اثر مالی ندارد.";
+      feedback.className = "form-message form-message--success";
+    } catch (error) {
+      /* The service's own refusal, verbatim. It owns which fields state provenance and
+         cannot be corrected; a second list kept here would disagree with it the first
+         time either changed, and the reader would be told the wrong reason. */
+      feedback.textContent = formatApiErrorMessage(error, "ذخیره تصحیحات انجام نشد.");
+      feedback.className = "form-message form-message--error";
+    } finally {
+      save.disabled = !canEdit;
+    }
+  });
+
   const confirm = element("button", "button button--primary", "تأیید انسانی و ثبت فاکتور");
   confirm.type = "button";
   confirm.disabled = !canEdit;
@@ -366,16 +420,13 @@ export function reviewCard({ draft, targets, adapter, canEdit, onChanged, root }
       return;
     }
     const lines = invoiceLines(rows, targets);
-    const fieldConfirmations = draft.fields
-      .filter((field) => Object.hasOwn(values, field.key)
-                      && values[field.key] !== String(field.extractedValue ?? ""))
-      .map((field) => ({ key: field.key, confirmedValue: values[field.key] }));
+    const fieldConfirmations = corrections();
     const dialog = confirmationDialog({ title: "تأیید نهایی و ایجاد فاکتور", message: "پس از این تأیید، پیش‌نویس بررسی‌شده به فاکتور تأییدشده تبدیل می‌شود و اثر مالی ایجاد می‌کند.", confirmLabel: "تأیید نهایی", onConfirm: async () => { await adapter.confirmExtraction({ draftId: draft.draftId, expectedVersion: draft.version, idempotencyKey: crypto.randomUUID(), fieldConfirmations, invoice: { invoiceDate: values.invoiceDate, vendorName: values.supplierName, lines } }); await onChanged(); } });
     root.append(dialog);
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
     showAccessibleDialog(dialog);
   });
-  actions.append(retry, reject, confirm);
+  actions.append(retry, save, reject, confirm);
   card.append(feedback, actions);
   return card;
 }

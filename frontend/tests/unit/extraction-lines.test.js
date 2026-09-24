@@ -228,3 +228,51 @@ test("the confirmation sends the service's own key names", () => {
   assert.doesNotMatch(pageSource, /values\.vendorName/, "the mock adapter's names are gone");
   assert.doesNotMatch(pageSource, /values\.totalIRR/);
 });
+
+/* ─────────────────── correcting a draft before deciding on it ─────────────────── */
+
+test("a correction can be saved without confirming anything", () => {
+  /* The step that used to be impossible: the correction and the irreversible act were
+     one button, so a reviewer could not fix a misheard amount, look at what they fixed,
+     and only then decide. */
+  assert.match(pageSource, /adapter\.editExtraction\(/, "the save button calls the edit route");
+  assert.match(pageSource, /ذخیره تصحیحات/);
+  assert.match(pageSource, /پیش‌نویس هنوز تأیید نشده و اثر مالی ندارد/,
+               "and says so, because a button that writes must account for what it wrote");
+});
+
+test("a saved correction carries the new version forward", () => {
+  /* The service moves the version on every edit. A card holding the old one would have
+     its next write refused as stale -- which is what an optimistic version is for. */
+  assert.match(pageSource, /draft\.version = updated\?\.version \?\? draft\.version/);
+  assert.match(pageSource, /mine\.confirmedValue = field\.confirmedValue/,
+               "and the saved values, so the card stops offering to save them again");
+});
+
+test("saving does not repaint the card", () => {
+  /* The reviewer's line targets and amounts live in the card. Reloading after a save
+     would throw away the work they came to do -- the same mistake the schedule panel
+     made and was measured making. */
+  const handler = pageSource.slice(pageSource.indexOf("adapter.editExtraction("),
+                                   pageSource.lastIndexOf("const confirm = element"));
+  assert.doesNotMatch(handler, /onChanged\(\)/);
+});
+
+test("the service owns which fields may not be corrected, and says so itself", () => {
+  /* `PROVENANCE_KEYS` lives in the service and it refuses an edit to one with a 422. A
+     second list kept here would disagree with it the first time either changed, and the
+     reader would be told the wrong reason. */
+  const handler = pageSource.slice(pageSource.indexOf("adapter.editExtraction("),
+                                   pageSource.lastIndexOf("const confirm = element"));
+  assert.match(handler, /formatApiErrorMessage\(error/);
+});
+
+test("a correction already saved is still sent when the invoice is confirmed", () => {
+  /* `confirm` rebuilds its fields from `edits.get(key, extracted_value)` -- note the
+     fallback is what the MODEL read, not what the reviewer saved. A correction left out
+     of the confirmation would silently revert. Comparing against `extractedValue` is
+     what keeps it in. */
+  assert.match(pageSource, /values\[field\.key\] !== String\(field\.extractedValue \?\? ""\)/);
+  assert.match(pageSource, /const fieldConfirmations = corrections\(\)/,
+               "one definition, used by the save button and the confirmation alike");
+});
