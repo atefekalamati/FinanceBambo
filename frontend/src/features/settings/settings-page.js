@@ -16,6 +16,7 @@ import { createUnitConversionForm, renderConversionHistory, renderCurrentConvers
 import { isConfigurableConversionDirection } from "../prices/unit-conversions-validation.js";
 import { validateSettingsRevision } from "./settings-validation.js";
 import { createEquipmentPricingSection } from "./equipment-pricing-section.js";
+import { createScheduleSyncSection } from "./schedule-sync-section.js";
 import { element, tableCaption, tableHead } from "../../shared/dom/elements.js";
 import { IDENTITY, PRIMARY, SECONDARY, createDataTableWithControl, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
@@ -447,7 +448,7 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
     primaryGrid.append(renderCurrencyPolicy(), renderAccessSummary());
     const editor = mayReviseArea(data) ? renderEditor(data) : renderRevisionDenied(data);
     fragment.append(overview, primaryGrid, editor, renderUnitConversions(),
-                    renderEquipmentPricing(data), history);
+                    renderEquipmentPricing(data), renderScheduleSync(data), history);
     return fragment;
   }
 
@@ -483,6 +484,27 @@ export function createSettingsPage({ context, adapter, pricesAdapter, surface = 
       /* The service answers a fresh workspace, so the section is rebuilt from what was
          actually saved rather than from what this page hoped it saved. */
       onSaved: (workspace) => { conversionWorkspace = workspace; paint(); },
+    });
+  }
+
+  /**
+   * Where the schedule becomes estimate lines, and the one control that runs it.
+   *
+   * After the equipment prices on purpose: a reader who has just priced machines is the
+   * one most likely to need their quantities read out of the file. It fetches its own
+   * status, so putting it here costs this page no extra loading.
+   */
+  function renderScheduleSync(data) {
+    return createScheduleSyncSection({
+      adapter,
+      canEdit: mayReviseArea(data),
+      /* Deliberately NOT a reload.
+         Measured in the browser: repainting here destroyed the section that had just been
+         given the run's result, so the reader pressed a button, the service did the work,
+         and the panel came back blank. Nothing this page draws changes from a run anyway —
+         the area, the conversions and the equipment prices are all read from elsewhere —
+         and the section re-reads its own counts, which are the only figures it owns. */
+      onRemapped: () => {},
     });
   }
 
