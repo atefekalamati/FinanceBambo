@@ -5,8 +5,8 @@ import { installDom } from "../helpers/dom.js";
 
 installDom();
 
-const { alignmentCell, materialPriceTrend, priceCell, renderMaterialPrices, sheetDateLabel, statusText,
-        unitCell } =
+const { alignmentCell, materialPriceTrend, priceCell, renderMaterialPrices, rowPriceTrend,
+        sheetDateLabel, statusText, unitCell } =
   await import("../../src/features/prices/material-prices-section.js");
 
 function row(changes = {}) {
@@ -390,13 +390,96 @@ test("the chip appears only when the service publishes the category", () => {
   assert.match(withIt.textContent, /تجهیزات \(3\)/, "and it carries its own count");
 });
 
-test("a machine's rate history draws the same trend as a sheet listing", () => {
-  /* Two price_versions become two points, oldest first — the component cannot tell what
-     wrote them, which is the whole reason it needs no equipment-specific code. */
+test("two observations become two points, newest last, whatever the row is", () => {
+  /* The sparkline's own contract, in one place: the component is handed points and cannot
+     tell what recorded them, which is why an equipment rate and a supplier's listing draw
+     the same line from two different tables. Where a MACHINE's points come from is pinned
+     below, on `rowPriceTrend` — not here, because a machine has no observations. */
   const versions = [{ workflowDate: "2026-09-17", priceIRR: "52100000", validationStatus: "valid" },
                     { workflowDate: "2026-08-20", priceIRR: "48000000", validationStatus: "valid" }];
   const trend = materialPriceTrend({ providerItemId: "m-1" }, versions);
   assert.deepEqual(trend.trend.trendPoints.map((p) => p.unitPriceIrr),
                    ["48000000", "52100000"]);
   assert.equal(trend.trend.trendDirection, "up");
+});
+
+/* The trend `/prices/current` already answers for a Finance resource, in the shape the
+   adapter maps it to. `MACHINE().providerItemId` IS this id: the statement behind an
+   equipment row selects `r.id AS provider_item_id`. */
+const MACHINE_TREND = (points) => new Map([["22222222-2222-4222-8222-222222222222", {
+  resourceId: "22222222-2222-4222-8222-222222222222",
+  currentPriceIrr: points.at(-1)?.unitPriceIrr ?? null,
+  previousPriceIrr: points.at(-2)?.unitPriceIrr ?? null,
+  scopeKind: "project",
+  trendDirection: points.length < 2 ? "none"
+    : BigInt(points.at(-1).unitPriceIrr) > BigInt(points.at(-2).unitPriceIrr) ? "up" : "down",
+  trendPoints: points,
+}]]);
+
+test("a machine's trend comes from the resource it is, not from a worksheet it has not", () => {
+  /* The row carries no observations and never will -- equipment has no sheet, so
+     `/material-prices/{id}/history` answers zero rows for every machine. Its prices are
+     the `price_versions` `/prices/current` already resolved, and this is the lookup that
+     reaches them. */
+  const trend = rowPriceTrend(MACHINE(), new Map(), MACHINE_TREND([
+    { effectiveFrom: "2026-08-20", unitPriceIrr: "48000000" },
+    { effectiveFrom: "2026-09-17", unitPriceIrr: "52100000" },
+  ]));
+  assert.deepEqual(trend.trend.trendPoints.map((point) => point.unitPriceIrr),
+                   ["48000000", "52100000"]);
+  assert.equal(trend.trend.trendDirection, "up");
+  assert.equal(trend.resource.resourceId, "22222222-2222-4222-8222-222222222222");
+});
+
+test("a worksheet row keeps reading its observations even when resource trends are given", () => {
+  /* The lookup is by id and is never told which kind of row it has. A provider item and a
+     Finance resource do not share a UUID, so this row finds nothing and falls through --
+     which is what keeps hundreds of material rows drawing exactly as they did. */
+  const trend = rowPriceTrend(
+    row(),
+    new Map([[row().providerItemId, [
+      { workflowDate: "2026-09-20", priceIRR: "960000", validationStatus: "valid" },
+      { workflowDate: "2026-09-13", priceIRR: "955000", validationStatus: "valid" },
+    ]]]),
+    MACHINE_TREND([{ effectiveFrom: "2026-09-17", unitPriceIrr: "52100000" }]));
+  assert.deepEqual(trend.trend.trendPoints.map((point) => point.unitPriceIrr),
+                   ["955000", "960000"]);
+});
+
+test("given nothing, every row falls back to its observations as it always did", () => {
+  const trend = rowPriceTrend(MACHINE(), new Map());
+  assert.deepEqual(trend.trend.trendPoints, []);
+  assert.equal(trend.trend.trendDirection, "none");
+});
+
+test("the machine's row draws a real line, and it is the same control every row offers", () => {
+  const section = renderMaterialPrices([MACHINE()], {
+    categories: [{ category: "equipment", label: "تجهیزات", activeCount: 1, itemCount: 1 }],
+    selectedCategory: "equipment",
+    onSelectCategory: () => {},
+    resourceTrends: MACHINE_TREND([
+      { effectiveFrom: "2026-08-20", unitPriceIrr: "48000000" },
+      { effectiveFrom: "2026-09-17", unitPriceIrr: "52100000" },
+    ]),
+  });
+  const trend = section.querySelector(".price-trend");
+  assert.ok(trend, "the cell is drawn");
+  assert.ok(trend.querySelector("polyline"), "with a line, not the «بدون سابقه» placeholder");
+  assert.match(trend.textContent, /افزایشی/);
+  assert.equal(trend.tagName, "BUTTON", "and it opens the detail panel, as a sheet row does");
+});
+
+test("one version is still «بدون سابقه», because one point is not a trend", () => {
+  /* The honest answer for every machine priced once. Nothing here invents a second point
+     to draw a line with, and the day somebody revises a rate the line appears by itself. */
+  const section = renderMaterialPrices([MACHINE()], {
+    categories: [{ category: "equipment", label: "تجهیزات", activeCount: 1, itemCount: 1 }],
+    selectedCategory: "equipment",
+    onSelectCategory: () => {},
+    resourceTrends: MACHINE_TREND([{ effectiveFrom: "2026-09-17", unitPriceIrr: "52100000" }]),
+  });
+  const trend = section.querySelector(".price-trend");
+  assert.equal(trend.querySelector("polyline"), null);
+  assert.match(trend.textContent, /بدون سابقه/);
+  assert.notEqual(trend.tagName, "BUTTON", "and a cell with no line is not offered as a control");
 });

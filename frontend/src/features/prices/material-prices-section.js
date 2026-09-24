@@ -164,6 +164,40 @@ export function materialPriceTrend(row, history = []) {
   };
 }
 
+/**
+ * The trend for one row, drawn from whichever record actually holds that row's prices.
+ *
+ * A material row's prices are OBSERVATIONS — what a supplier's worksheet said, on the days
+ * it said it — and they arrive one row at a time from `/material-prices/{id}/history`.
+ *
+ * An equipment row has no worksheet and never will; nobody publishes a daily crane rate in
+ * the material sheet. Its prices are `price_versions` rows somebody DECIDED, and the
+ * statement that reads them selects `r.id AS provider_item_id`: an equipment row's
+ * `providerItemId` IS the Finance resource id. So its points are already on this page —
+ * `/prices/current` answers a trend per resource and the Finance table above draws them —
+ * and finding them costs no request at all. That is why `/material-prices/{id}/history`
+ * answers `totalItems: 0` for every machine and always will: it reads observations, and
+ * there are none to read.
+ *
+ * WHY NOT `/price-history`, WHICH ALSO HAS THE ROWS. It returns every scope's versions
+ * side by side, and the price ladder does not read them that way: `FinancePriceService`
+ * takes `project or organization` and draws ONE of the two, because an organization rate
+ * recorded after a project rate never became the price. A line over both would climb to a
+ * figure this project never paid and the cell above it would disagree with the cell below.
+ *
+ * The lookup is by id and is never told which kind of row it was handed. A provider item
+ * and a Finance resource do not share a UUID, so a material row finds nothing here and
+ * falls through to its observations untouched — and a second category the service decides
+ * to serve from Finance's own records is drawn the day it appears, with no edit here.
+ */
+export function rowPriceTrend(row, priceHistories, resourceTrends) {
+  const resourceTrend = resourceTrends?.get(row.providerItemId);
+  if (resourceTrend) {
+    return { resource: { resourceId: row.providerItemId }, trend: resourceTrend };
+  }
+  return materialPriceTrend(row, priceHistories?.get(row.providerItemId) ?? []);
+}
+
 /* «منشأ» is not a worksheet column, so no category declares it.
  *
  * Every other column here comes from the Backend's per-category schema, derived from the
@@ -287,7 +321,7 @@ export function statusText(row) {
 /* One cell per column, keyed the way the shared table wants them. The product cell is a
    fragment rather than a string: the status badge and the unit note hang under the name,
    which is where a reader judging a price looks, and neither is a column of the sheet. */
-function cellsFor(row, columns, categoryLabels, priceHistories) {
+function cellsFor(row, columns, categoryLabels, priceHistories, resourceTrends) {
   const built = {};
   columns.forEach((column) => {
     if (column.key === "trend") {
@@ -296,7 +330,7 @@ function cellsFor(row, columns, categoryLabels, priceHistories) {
          order, with no request of its own. Keyed on this row's own listing, so a modal
          can only ever show the product whose line was pressed. */
       built[column.key] = createPriceTrend(
-        materialPriceTrend(row, priceHistories.get(row.providerItemId) ?? []), [],
+        rowPriceTrend(row, priceHistories, resourceTrends), [],
         { onOpen: (points) => createPriceTrendDetailDialog({
             title: cellValue({ key: "product", kind: "base" }, row, categoryLabels),
             points,
@@ -350,11 +384,17 @@ function rowNotes(row) {
  *   are the page the server already sliced, so nothing here slices again: the sheet holds
  *   992 pipes and asking for all of them to show fifty is the request this avoids. Absent,
  *   the section renders the rows it was handed with no footer, as it always did.
+ * @param priceHistories  `Map<providerItemId, observation[]>` — a worksheet row's prices.
+ * @param resourceTrends  `Map<resourceId, trend>` — a Finance resource's own price versions,
+ *   as `/prices/current` already resolved them. It is what lets an equipment row draw a
+ *   trend: see `rowPriceTrend`. Absent, every row falls back to its observations, which is
+ *   what this section did before equipment appeared on it.
  */
 export function renderMaterialPrices(rows, { categories = [], selectedCategory = null,
                                              onSelectCategory = null, paging = null,
                                              readOnly = false,
-                                             priceHistories = new Map() } = {}) {
+                                             priceHistories = new Map(),
+                                             resourceTrends = new Map() } = {}) {
   const section = element("section", "prices-section material-prices");
   const heading = element("header", "prices-section__header");
   heading.append(element("h2", "", "قیمت روز بازار (برگه مصالح)"));
@@ -445,7 +485,7 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
     className: "material-prices__table",
     columns,
     rows,
-    cells: (row) => cellsFor(row, columns, categoryLabels, priceHistories),
+    cells: (row) => cellsFor(row, columns, categoryLabels, priceHistories, resourceTrends),
     rowAttributes: () => ({ className: "material-price__row" }),
     emptyMessage: "هیچ محصولی در این دسته نیست.",
   });
