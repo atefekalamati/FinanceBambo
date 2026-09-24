@@ -34,9 +34,13 @@ from extraction.providers.avalai_speech import AvalAISpeechProvider, DEFAULT_MOD
 #: Never a real key. Long enough to be recognisable in a diff if one ever leaks into a log.
 FAKE_KEY = "test-only-not-a-real-key-0000"
 
-MANAGED = ("AVALAI_API_KEY", "FINANCE_AI_API_KEY", "AVALAI_MODEL", "FINANCE_AI_MODEL",
-           "FINANCE_AI_PROVIDER", "FINANCE_AI_EXTRACTION_ENABLED", "AVALAI_BASE_URL",
-           "FINANCE_STT_PROVIDER", "FINANCE_STT_MODEL")
+#: Every name this suite may set, taken from the allowlist itself rather than typed out.
+#:
+#: A hand-written copy went stale immediately: it omitted FINANCE_AI_VISION_MODEL, so a
+#: test that configured a page model leaked it into the next test's environment, where
+#: `export_env_file` then skipped it as "already set" and the assertion failed for a reason
+#: that had nothing to do with the code under test.
+MANAGED = tuple(sorted(environment.extraction_environment_names()))
 
 
 class EnvironmentCase(unittest.TestCase):
@@ -327,3 +331,87 @@ class NoSecretLeaksTests(EnvironmentCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheExportIsAnAllowlistTests(EnvironmentCase):
+    """`.env` also holds the DSNs. Only what the lower layer reads is exported.
+
+    The first version of `export_env_file` exported the whole file, which put
+    FINANCE_MIGRATION_DSN -- the OWNER role, the one permitted to run DDL -- into the
+    process environment of a host whose application role deliberately cannot, and into
+    every subprocess that host ever spawns. It solved a problem only the AI settings had.
+    """
+
+    AI_SETTINGS = ("AVALAI_API_KEY=k\n"
+                   "FINANCE_AI_PROVIDER=avalai\n"
+                   "FINANCE_AI_VISION_MODEL=gemini-2.5-flash-lite\n"
+                   "FINANCE_STT_MODEL=groq.whisper-large-v3-turbo\n")
+
+    def test_the_settings_the_providers_read_are_exported(self):
+        self.write_env(self.AI_SETTINGS)
+        added = environment.export_env_file()
+        for name in ("AVALAI_API_KEY", "FINANCE_AI_PROVIDER",
+                     "FINANCE_AI_VISION_MODEL", "FINANCE_STT_MODEL"):
+            with self.subTest(name=name):
+                self.assertIn(name, added)
+                self.assertIn(name, os.environ)
+
+    def test_the_owner_credential_is_never_exported(self):
+        self.write_env(self.AI_SETTINGS +
+                       "FINANCE_MIGRATION_DSN=postgresql://owner:pw@127.0.0.1:5432/db\n")
+        added = environment.export_env_file()
+        self.assertNotIn("FINANCE_MIGRATION_DSN", added)
+        self.assertNotIn("FINANCE_MIGRATION_DSN", os.environ,
+                         "the role that may run DDL must not reach a subprocess")
+
+    def test_the_application_dsn_is_not_exported_either(self):
+        self.write_env("FINANCE_DEV_DSN=postgresql://app:pw@127.0.0.1:5432/db\n")
+        added = environment.export_env_file()
+        self.assertNotIn("FINANCE_DEV_DSN", added)
+        self.assertNotIn("FINANCE_DEV_DSN", os.environ)
+
+    def test_the_database_settings_still_resolve_through_the_file(self):
+        # Withholding them from os.environ must not break the host: `setting()` reads the
+        # file, which is how database_url() and migration_url() have always found them.
+        self.write_env("FINANCE_DEV_DSN=postgresql://app:pw@127.0.0.1:5432/db\n"
+                       "FINANCE_MIGRATION_DSN=postgresql://owner:pw@127.0.0.1:5432/db\n")
+        environment.export_env_file()
+        self.assertTrue(environment.database_url().startswith("postgresql://"))
+        self.assertTrue(environment.migration_url().startswith("postgresql://"))
+
+    def test_an_unrelated_setting_is_not_exported(self):
+        self.write_env("FRONTEND_ORIGIN=http://127.0.0.1:8000\nAPP_ENV=development\n")
+        added = environment.export_env_file()
+        self.assertEqual((), added)
+
+    def test_a_name_that_is_not_an_identifier_is_refused(self):
+        # `load_env_file` splits on the first `=`, so a pasted fragment becomes a variable
+        # with a nonsense name. Exporting it would put whatever followed into every child.
+        self.write_env("not a name=some-value\nAVALAI_API_KEY=k\n")
+        added = environment.export_env_file()
+        self.assertEqual(("AVALAI_API_KEY",), added)
+
+    def test_the_allowlist_is_derived_from_the_providers_own_declarations(self):
+        from extraction.providers import avalai_speech, llm_invoice
+
+        names = environment.extraction_environment_names()
+        for tuple_name in ("KEY_NAMES", "MODEL_NAMES", "BASE_URL_NAMES"):
+            for declared in getattr(avalai_speech, tuple_name):
+                with self.subTest(declared=declared):
+                    self.assertIn(declared, names)
+        for settings in llm_invoice.PROVIDER_SETTINGS.values():
+            for slot in ("key", "model", "vision_model", "base_url"):
+                for declared in settings.get(slot) or ():
+                    with self.subTest(declared=declared):
+                        self.assertIn(declared, names)
+
+    def test_the_allowlist_contains_no_credential_that_is_not_an_api_key(self):
+        names = environment.extraction_environment_names()
+        self.assertEqual([], [n for n in names if "DSN" in n or "PASSWORD" in n])
+
+    def test_a_deliberate_export_still_wins(self):
+        os.environ["FINANCE_AI_PROVIDER"] = "openai"
+        self.write_env("FINANCE_AI_PROVIDER=avalai\n")
+        added = environment.export_env_file()
+        self.assertEqual("openai", os.environ["FINANCE_AI_PROVIDER"])
+        self.assertNotIn("FINANCE_AI_PROVIDER", added)

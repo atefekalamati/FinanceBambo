@@ -48,6 +48,7 @@ from pathlib import Path
 #: A field the text does not support is absent rather than blank, and nothing here creates
 #: or confirms an invoice.
 from .invoice_parser import parse_invoice
+from .parsing import find_currency
 from .providers.llm_invoice import (ExtractionProviderResponseInvalid,
                                     ExtractionProviderUnavailable,
                                     build_extraction_provider)
@@ -247,7 +248,11 @@ def _as_contract(result, image=None, media_type="image/jpeg", needs_ai=None):
                     needs_ai=(image is not None or _needs_ai(structured, confidence))
                              if needs_ai is None else needs_ai,
                     image=image, media_type=media_type)
+    # A currency the source never states is not a reading, it is a convention being
+    # applied to somebody's invoice. See `_currency_without_evidence`.
+    ai, currency_warnings = _currency_without_evidence(ai, text)
     fields.extend(ai)
+    fields.extend(currency_warnings)
     fields.extend(_fusion_fields(structured, ai, {f["key"] for f in fields}))
     return {"fields": fields}
 
@@ -364,6 +369,46 @@ def _legacy_avalai_fields(text, already_emitted, transcript=None, metadata=None)
                         "confidence": min(1.0, max(0.0, confidence * AI_CONFIDENCE_WEIGHT)),
                         "editedByUser": False})
     return emitted
+
+
+def _currency_without_evidence(ai_fields, text):
+    """Refuse a model-supplied currency the SOURCE never states. Returns (fields, warnings).
+
+    WHY THIS IS DETERMINISTIC AND NOT A PROMPT
+
+    A currency is the unit every amount on the document is denominated in, so getting it
+    wrong is a factor-of-ten error on the whole invoice -- and the two candidates here are
+    exactly a factor of ten apart. On `page2.jpg` the model answered TOMAN for a page that
+    prints neither `تومان` nor `ریال` anywhere, at a confidence above the review threshold,
+    so nobody would have been asked. It was not reading the page; it was applying what
+    Iranian invoices usually say.
+
+    That is the one thing a reader must never do here, and asking it more politely in a
+    prompt is not an enforcement mechanism. `find_currency` already decides the question
+    from the text -- it is what the deterministic parser uses -- so the same function is
+    the evidence test: if the source states a currency word, a currency may be recorded; if
+    it does not, none is, whatever the model believes.
+
+    WHAT IS NOT DONE
+
+    No conversion. `تومان` and `ریال` map to different codes and neither is rewritten into
+    the other; turning one into the other is a financial decision that belongs downstream,
+    where the unit is known rather than guessed.
+
+    Nothing is silently dropped either. The refusal becomes a warning field, so the draft
+    carries no currency AND says why -- a reviewer who needs one is told to supply it
+    instead of finding an empty box with no explanation.
+    """
+    kept = [field for field in ai_fields if field["key"] != "currency"]
+    if len(kept) == len(ai_fields):
+        return ai_fields, []                      # the model claimed none; nothing to judge
+    if find_currency(text or "")[0] is not None:
+        return ai_fields, []                      # the source states one, so the claim stands
+    return kept, _warning_fields(
+        "currencyWarnings",
+        ["a currency was reported that the document does not state, and was not recorded; "
+         "state it during review if this invoice needs one"],
+        "currency-unevidenced")
 
 
 def _warning_fields(key, warnings, source):

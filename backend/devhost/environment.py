@@ -41,8 +41,43 @@ def load_env_file(path: Path | None = None) -> dict[str, str]:
     return values
 
 
+#: Settings the extraction layer reads that are not declared in a provider's own tuple.
+#:
+#: The two switches and the speech provider's NAME: each is read by a literal
+#: `os.environ.get(...)` rather than through a table, so there is nothing to derive them
+#: from. Every other name comes from `extraction_environment_names()` below.
+_EXTRA_EXTRACTION_NAMES = ("FINANCE_AI_EXTRACTION_ENABLED", "FINANCE_AI_PROVIDER",
+                           "FINANCE_STT_PROVIDER")
+
+
+def extraction_environment_names() -> frozenset[str]:
+    """The names the extraction layer reads from `os.environ`, asked OF that layer.
+
+    Derived from the providers' own declarations -- `PROVIDER_SETTINGS` and the speech
+    provider's `KEY_NAMES`/`MODEL_NAMES`/`BASE_URL_NAMES` -- rather than written out here.
+    A hand-kept second list would go stale the first time a provider gained a setting, and
+    it would go stale silently: the symptom is a model configured in `.env` that the host
+    never picks up, which is exactly the class of bug this module already exists to stop.
+
+    Imported inside the function because `extraction/` pulls in optional dependencies that
+    a Finance-only host need not have installed. A host without them still starts; it just
+    exports nothing for a layer it does not run.
+    """
+    names = set(_EXTRA_EXTRACTION_NAMES)
+    try:
+        from extraction.providers import avalai_speech, llm_invoice
+    except Exception:                                                # noqa: BLE001
+        return frozenset(names)
+    for settings in llm_invoice.PROVIDER_SETTINGS.values():
+        for slot in ("key", "model", "vision_model", "base_url"):
+            names.update(settings.get(slot) or ())
+    for tuple_name in ("KEY_NAMES", "MODEL_NAMES", "BASE_URL_NAMES"):
+        names.update(getattr(avalai_speech, tuple_name, ()) or ())
+    return frozenset(names)
+
+
 def export_env_file() -> tuple[str, ...]:
-    """Put `.env` into `os.environ` for this process, and say which names were added.
+    """Put the settings the LOWER LAYER reads into `os.environ`. Not the whole file.
 
     WHY THIS EXISTS
 
@@ -59,9 +94,18 @@ def export_env_file() -> tuple[str, ...]:
     extraction continues -- so the host started, served every endpoint, and produced
     drafts with no structuring at all, with nothing in the answer saying why.
 
-    So the FILE is exported once, here, at the composition root. This is not a second
-    configuration system: it is the same file `load_env_file()` already parses, moved into
-    the place the lower layer can see. Nothing is read from anywhere new.
+    WHY IT IS AN ALLOWLIST AND NOT THE WHOLE FILE
+
+    Because `.env` also holds the DSNs, and one of them is the OWNER role that may run
+    DDL. Exporting it put a credential the application must never hold into the process
+    environment, where every subprocess inherits it and any crash dump can carry it -- to
+    solve a problem only the AI settings had. `database_url()` and `migration_url()` read
+    through `setting()`, which reads the file directly, so those two never needed to be in
+    `os.environ` at all and are no longer put there.
+
+    A malformed line is skipped for the same reason: `load_env_file` splits on the first
+    `=`, so a stray fragment becomes a variable with a nonsense name, and exporting it
+    would put whatever followed that `=` into the environment of every child process.
 
     A NAME ALREADY IN THE ENVIRONMENT IS NEVER OVERWRITTEN, which is the same precedence
     `setting()` applies: an operator who exported something meant it, and a file must not
@@ -70,9 +114,12 @@ def export_env_file() -> tuple[str, ...]:
     Returns the NAMES it added, never the values. The caller prints the names to show what
     configuration the host picked up; a value here is a credential and belongs in no log.
     """
+    allowed = extraction_environment_names()
     added = []
     for name, value in load_env_file().items():
-        if name in os.environ:
+        if name not in allowed or name in os.environ:
+            continue
+        if not name.isidentifier():
             continue
         os.environ[name] = value
         added.append(name)
