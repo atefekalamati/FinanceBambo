@@ -165,3 +165,97 @@
     inline-size: 100%;
   }
 }
+
+/* --------------------------------------------------------------------------
+   The transcript, and the lines a draft proposes
+   -------------------------------------------------------------------------- */
+
+/* Evidence, not a field. It sits where a document's image sits for the other path, and
+   carries no control: a reviewer compares a spoken amount against the figures below and
+   must not be able to edit the thing they are comparing against. */
+.ai-review-transcript {
+  margin: 0;
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(120 145 205 / 5%);
+}
+
+.ai-review-transcript__summary {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.ai-review-transcript[open] .ai-review-transcript__summary {
+  margin-block-end: var(--space-sm);
+}
+
+.ai-review-transcript__text {
+  margin: 0;
+  line-height: 1.9;
+  /* Long, and quoted verbatim. Wrapping is the whole point; a scrollbar would hide the
+     half of a sentence somebody is checking a number against. */
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ai-lines__heading {
+  margin-block: var(--space-lg) var(--space-sm);
+  font-size: var(--font-size-lg);
+}
+
+.ai-lines {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.ai-line {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(120 145 205 / 4%);
+}
+
+.ai-line__name {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* Three numbers that belong together, folding rather than scrolling when narrow. */
+.ai-line__numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-sm);
+}
+
+.ai-lines__total {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-lines__note {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.ai-lines__note:empty { display: none; }
+.ai-lines__note--ok { color: var(--dash-actual); }
+/* A difference is reported, never corrected. The stated total and the lines are two
+   readings of one document and only a person can say which is right. */
+.ai-lines__note--differs { color: var(--dash-sev-med); }
+
+/* An unmeasured confidence is not a low one and must not borrow its colour. */
+.ai-field--unmeasured .ai-field__label small {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+@media (max-width: 30rem) {
+  .ai-line__numbers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

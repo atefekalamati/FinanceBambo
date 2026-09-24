@@ -100,6 +100,12 @@ html[data-theme="light"] {
   margin-block-start: var(--space-sm);
 }
 
+/* The two verdicts a form gives back. Both classes were already being set -- by the
+   invoice form, the review card and now the corrections it saves -- and neither was
+   coloured, so a refusal and a receipt read identically. */
+.form-message--error { color: var(--dash-sev-high, var(--color-text-primary)); }
+.form-message--success { color: var(--dash-actual); }
+
 .ai-confidence-note {
   margin-block: var(--space-lg);
 }
