@@ -781,6 +781,7 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
         selectedCategory: marketCategory,
         readOnly,
         priceHistories: marketPriceHistories,
+        resourceTrends: resourceTrendsOf(workspace),
         /* Back to the first page whenever the category changes. Staying on page four of
            «لوله» while switching to «نبشی» -- which has twelve products -- would ask the
            server for a page that does not exist and show an empty table for a category
@@ -803,6 +804,22 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
     return fragment;
   }
 
+  /* The Finance trend of every resource, by id.
+   *
+   * Already fetched: `/prices/current` is what draws the sparkline in the Finance table,
+   * and it answers one trend per resource whatever the resource's type. Equipment rows in
+   * the market table below carry the Finance resource id as their `providerItemId` -- the
+   * statement behind them selects `r.id AS provider_item_id` -- so the points for a
+   * machine are already in this workspace and need no request of their own.
+   *
+   * Built from the workspace each time rather than held, because the workspace is replaced
+   * whenever a price is recorded and a stale map would keep drawing the old line. */
+  function resourceTrendsOf(workspace) {
+    return new Map((workspace?.currentPrices ?? [])
+      .filter((item) => (item.trend?.trendPoints ?? []).length)
+      .map((item) => [item.resource.resourceId, item.trend]));
+  }
+
   /* Held here for the same reason the paging numbers are: `paint()` rebuilds the whole
      tree, so anything a component remembered would be lost on every repaint. */
   let marketPrices = null;
@@ -822,10 +839,15 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
     const histories = new Map();
     /* A full page may contain fifty listings. Six workers avoid a fifty-request burst,
        while each request transfers only the five points the sparkline can display. */
+    /* A row whose prices Finance itself holds is skipped, not asked about. Equipment has
+       no worksheet, so `/material-prices/{id}/history` answers `totalItems: 0` for every
+       machine -- a request whose answer is known before it is sent, and whose empty result
+       would then overwrite the trend this row already has. */
+    const known = resourceTrendsOf(state.data);
     const worker = async () => {
       while (pending.length) {
         const row = pending.shift();
-        if (!row?.providerItemId) continue;
+        if (!row?.providerItemId || known.has(row.providerItemId)) continue;
         try {
           const result = await materialPricesAdapter.listPriceHistory(
             row.providerItemId, { page: 1, pageSize: 5 });
