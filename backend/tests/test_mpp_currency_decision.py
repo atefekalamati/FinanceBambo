@@ -23,7 +23,7 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from coreint.finance_mpp_sync import (_APPROVED_TOMAN_SHA256, FinanceMppSyncRefused,
+from coreint.finance_mpp_sync import (APPROVED_TOMAN_SHA256, FinanceMppSyncRefused,
                                       finance_rows)
 
 #: The bytes the toman decision was already taken for, in code, before 0023 existed.
@@ -71,12 +71,12 @@ class TheApprovalAlreadyInCodeTests(unittest.TestCase):
         self.assertEqual(Decimal("10000"), row()["source_assignment_cost_irr"])
 
     def test_the_approved_sha_is_still_in_the_frozenset(self):
-        self.assertIn(APPROVED_SHA, _APPROVED_TOMAN_SHA256)
+        self.assertIn(APPROVED_SHA, APPROVED_TOMAN_SHA256)
 
     def test_the_resaved_file_is_deliberately_not_in_the_frozenset(self):
         # If somebody adds it here instead of recording a decision, this fails and says
         # why: the point of 0023 is that approvals stop needing a deploy.
-        self.assertNotIn(RESAVED_SHA, _APPROVED_TOMAN_SHA256)
+        self.assertNotIn(RESAVED_SHA, APPROVED_TOMAN_SHA256)
 
 
 class NobodyHasDecidedTests(unittest.TestCase):

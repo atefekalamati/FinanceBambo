@@ -219,7 +219,7 @@ _TOMAN_TO_RIAL = Decimal(10)
 #:
 #: A THIRD file does not inherit this. Adding a sha here is a statement that somebody read
 #: that file's amounts and found them to be toman.
-_APPROVED_TOMAN_SHA256 = frozenset({
+APPROVED_TOMAN_SHA256 = frozenset({
     "b86b63738f592bfd90286ab08daedcea4374d815c02a7503adc18182cec6e908",
     "9792d658aed54efa0f397cccf73b9e1f55623f73fa0e0062643f62d8132520f3",
 })
@@ -256,7 +256,7 @@ def _currency_scale(parsed, source_sha256, recorded_decision=None):
         # guess the plain-rial branch below would otherwise make.
         return None
 
-    if (source_sha256 in _APPROVED_TOMAN_SHA256
+    if (source_sha256 in APPROVED_TOMAN_SHA256
             and symbol == "تومان" and code == "IRR"):
         return _TOMAN_TO_RIAL
     if code == "IRR" and symbol in ("", "IRR", "ریال", "﷼"):

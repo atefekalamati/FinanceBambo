@@ -26,10 +26,13 @@ fall back on, which is the truth: Finance did not keep MS Project's duration per
 so it does not report one.
 """
 
+from decimal import Decimal
+
 from psycopg.rows import dict_row
 
 from app.finance.domain.mpp_source_version import active_source_version
 
+from .finance_mpp_sync import APPROVED_TOMAN_SHA256
 from .progress import (ACTIVITY_CODE_FIELDS, STATUS_READY, assignment_row, task_row)
 
 #: `sourceType` names the KIND of source file, and its vocabulary is closed by the API
@@ -51,6 +54,57 @@ _BY_ID = ("SELECT %s FROM finance_mpp_source_versions"
           " WHERE organization_id = %%(organization_id)s AND project_id = %%(project_id)s"
           " AND status = 'ready' AND id = %%(version_id)s" % _COLUMNS)
 
+#: What the import multiplied this version's amounts by to get rials.
+#:
+#: WHY THE FEED NEEDS IT AT ALL
+#: `source_cost` is MS Project's Task.getCost() exactly as the file states it, and
+#: `_currency_scale` deliberately leaves every raw column alone -- «the raw column above is
+#: the file's own number and stays that way», and 0007 calls it reference only. Handing it
+#: to a reader as `taskCost` made it money anyway, and on a file whose amounts are TOMAN --
+#: which this project's are -- that understates the whole schedule by a factor of ten.
+#: Measured: the Finance Home trend drew 365,730,884,784 against the card's
+#: 3,657,308,847,841, one rial of rounding away from exactly a tenth.
+#:
+#: THE SAME QUERY THE SYNC ASKS, AGAINST THE SAME BYTES
+#: Not a second opinion: `finance_mpp_currency_decisions` is where a person recorded what
+#: these bytes mean, and it is the first rung of `_currency_scale` for that reason -- it
+#: carries evidence, an author and a date. Keyed on the sha, never the file name, because
+#: MS Project rewrites the container while the name stays.
+#:
+#: Reading the ratio of `source_fixed_cost_irr` to `source_fixed_cost` back off the rows
+#: would have needed no lookup at all, and was tried first. It does not work on real data:
+#: of 2,366 rows here, 246 state a non-zero raw fixed cost and NONE of those carries the
+#: converted one, so the ratio is undefined exactly where it would have been read.
+_CURRENCY_DECISION = """
+    SELECT amounts_are FROM finance_mpp_currency_decisions
+     WHERE organization_id = %(organization_id)s AND project_id = %(project_id)s
+       AND source_sha256 = %(source_sha256)s
+     ORDER BY version DESC LIMIT 1
+"""
+
+#: The decision's vocabulary, as the CHECK constraint fixes it. `unknown` is a person
+#: saying they looked and could not tell, and it maps to None like an absent decision --
+#: an unknown unit is not a cost, and the import keeps those costs null for the same
+#: reason.
+_SCALE_BY_DECISION = {"toman": Decimal(10), "rial": Decimal(1), "unknown": None}
+
+#: The two shas approved in code, mirrored from `finance_mpp_sync` so a file that needs no
+#: recorded decision there needs none here either. Imported rather than copied: two lists
+#: of approved bytes would eventually disagree about one file.
+def _scale_for(version, decision):
+    """This version's file-unit-to-rial factor, or None when nothing states it.
+
+    None is the honest answer and not a fallback to 1: passing the raw figure through as
+    though it were rials is precisely the bug this function exists to end, and a project
+    whose currency nobody has decided has no plan line rather than a wrong one.
+    """
+    if decision is not None:
+        return _SCALE_BY_DECISION.get(decision)
+    if version.get("source_sha256") in APPROVED_TOMAN_SHA256:
+        return Decimal(10)
+    return None
+
+
 _ROWS = """
     SELECT source_task_uid, source_assignment_uid, source_resource_uid,
            task_name, task_wbs, task_start, task_finish,
@@ -65,7 +119,7 @@ _ROWS = """
 """
 
 
-def _builder_row(row):
+def _builder_row(row, currency_scale=None):
     """A persisted row in the vocabulary the shared feed builders read.
 
     Every column Finance chose not to persist is None -- MS Project's own duration and
@@ -89,7 +143,11 @@ def _builder_row(row):
         "physical_progress": row["physical_progress"],
         "planned_progress": row["planned_progress"],
         "progress_variance": row["progress_variance"],
-        "task_cost": row["source_cost"],
+        # IN RIALS, like every other amount a reader of this feed is handed. The column
+        # is the file's own number in the file's own unit; see `_CURRENCY_SCALE`. Null
+        # scale means the unit is unknown, and an unknown unit is not a cost.
+        "task_cost": (None if currency_scale is None or row["source_cost"] is None
+                      else row["source_cost"] * currency_scale),
         "jalali_start": None, "jalali_finish": None,
         "assignment_uid": row["source_assignment_uid"],
         "task_uid": row["source_task_uid"],
@@ -136,8 +194,23 @@ class FinanceRowsProgressProvider:
             await cursor.execute(sql, params)
             return await cursor.fetchall()
 
+    async def _currency_scale(self, version):
+        """This version's file-unit-to-rial factor. See `_scale_for`."""
+        from psycopg import errors
+        try:
+            rows = await self._fetch(_CURRENCY_DECISION, {
+                "organization_id": version["organization_id"],
+                "project_id": version["project_id"],
+                "source_sha256": version["source_sha256"]})
+        except errors.UndefinedTable:
+            # A host whose schema predates the table. The sha allowlist still applies.
+            rows = []
+        return _scale_for(version, rows[0]["amounts_are"] if rows else None)
+
     async def _envelope(self, version):
-        rows = [_builder_row(r) for r in await self._fetch(_ROWS, {"version_id": version["id"]})]
+        scale = await self._currency_scale(version)
+        rows = [_builder_row(r, scale)
+                for r in await self._fetch(_ROWS, {"version_id": version["id"]})]
         if any(r["assignment_uid"] is not None for r in rows):
             feed = [assignment_row(r, self._activity_code_fields) for r in rows
                     if r["assignment_uid"] is not None]

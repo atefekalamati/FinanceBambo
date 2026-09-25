@@ -16,7 +16,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from coreint.finance_mpp_sync import _COLUMNS, finance_rows
-from coreint.finance_progress import _builder_row
+from coreint.finance_mpp_sync import APPROVED_TOMAN_SHA256
+from coreint.finance_progress import _builder_row, _scale_for
 from coreint.progress import assignment_row
 
 
@@ -192,7 +193,7 @@ class SummaryLabelRowTests(unittest.TestCase):
 class FeedFromPersistedRowTests(unittest.TestCase):
     """The stored row, read back, must fill the feed fields the UI renders."""
 
-    def stored(self, **over):
+    def stored(self, scale=Decimal(10), **over):
         row = {"source_task_uid": 1519, "source_assignment_uid": 1, "source_resource_uid": 94,
                "task_name": "تخریب جداول", "task_wbs": "1.5.1.2",
                "task_start": "2025-08-19T08:00", "task_finish": "2025-09-17T17:00",
@@ -205,7 +206,10 @@ class FeedFromPersistedRowTests(unittest.TestCase):
                "progress_variance": Decimal("-0.2"), "source_cost": Decimal("5660176000"),
                "source_actual_cost": None, "source_fixed_cost": None}
         row.update(over)
-        return assignment_row(_builder_row(row))
+        # Ten, because this project's file states TOMAN: `source_cost` above is the file's
+        # own untouched figure and the feed hands over rials. The provider reads the factor
+        # back from the columns the import left behind; here it is stated.
+        return assignment_row(_builder_row(row, scale))
 
     def test_the_page_gets_its_dates_resource_type_and_unit(self):
         feed = self.stored()
@@ -248,7 +252,23 @@ class FeedFromPersistedRowTests(unittest.TestCase):
     def test_the_metrics_block_carries_the_variance_and_the_schedule_cost(self):
         metrics = self.stored()["task"]["metrics"]
         self.assertEqual("-0.2", metrics["progressVariance"])
+        # RIALS, not the file's own toman. `taskCost` used to hand over `source_cost`
+        # exactly as the file states it, and the Finance Home trend drew the whole plan at
+        # a tenth of its size -- 365,730,884,784 against the card's 3,657,308,847,841.
+        self.assertEqual("56601760000", metrics["taskCost"])
+
+    def test_a_file_already_in_rials_is_handed_over_unchanged(self):
+        """The scale is whatever the import used, not a constant ten."""
+        metrics = self.stored(scale=Decimal(1))["task"]["metrics"]
         self.assertEqual("5660176000", metrics["taskCost"])
+
+    def test_a_version_whose_scale_cannot_be_read_back_states_no_cost(self):
+        """An unknown unit is not a cost. Handing the raw figure over anyway is exactly
+        what understated this project's whole schedule by a factor of ten."""
+        self.assertIsNone(self.stored(scale=None)["task"]["metrics"]["taskCost"])
+
+    def test_a_task_the_file_states_no_cost_for_stays_silent(self):
+        self.assertIsNone(self.stored(source_cost=None)["task"]["metrics"]["taskCost"])
 
     def test_no_quantity_reaches_the_feed_when_none_was_approved(self):
         feed = self.stored()
@@ -264,3 +284,46 @@ class FeedFromPersistedRowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CurrencyScaleTests(unittest.TestCase):
+    """Which factor the feed turns the file's own cost into rials with.
+
+    `source_cost` is Task.getCost() exactly as the file states it -- `_currency_scale`
+    leaves every raw column alone on purpose -- so a reader handed that column is handed
+    the FILE's unit. On this project's schedule, whose amounts are toman, the Finance Home
+    trend therefore drew 365,730,884,784 against the card's 3,657,308,847,841: a factor of
+    ten, one rial of rounding away from exact, and the reason the months never added up to
+    the figure beside them.
+    """
+
+    def version(self, sha="0" * 64):
+        return {"id": "v-1", "organization_id": "org-1", "project_id": "p1",
+                "source_sha256": sha}
+
+    def test_a_recorded_toman_decision_is_ten(self):
+        self.assertEqual(Decimal(10), _scale_for(self.version(), "toman"))
+
+    def test_a_recorded_rial_decision_changes_nothing(self):
+        self.assertEqual(Decimal(1), _scale_for(self.version(), "rial"))
+
+    def test_a_recorded_refusal_states_no_scale(self):
+        """`unknown` is somebody saying they looked and could not tell. It outranks every
+        guess below it, exactly as it does in `_currency_scale`."""
+        self.assertIsNone(_scale_for(self.version(), "unknown"))
+
+    def test_a_file_approved_in_code_needs_no_recorded_decision(self):
+        approved = sorted(APPROVED_TOMAN_SHA256)[0]
+        self.assertEqual(Decimal(10), _scale_for(self.version(approved), None))
+
+    def test_an_undecided_file_states_no_scale_rather_than_assuming_rials(self):
+        """The whole bug in one assertion. Passing the raw figure through as though it
+        were already rials is what understated this project by a factor of ten; a project
+        whose currency nobody has decided gets no plan line rather than a wrong one."""
+        self.assertIsNone(_scale_for(self.version(), None))
+
+    def test_a_recorded_decision_outranks_the_code_allowlist(self):
+        """Same order as `_currency_scale`: the recorded decision is the most specific
+        thing anybody knows about these bytes, and it carries evidence the constant cannot."""
+        approved = sorted(APPROVED_TOMAN_SHA256)[0]
+        self.assertEqual(Decimal(1), _scale_for(self.version(approved), "rial"))

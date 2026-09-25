@@ -7,8 +7,22 @@ import { monthKey } from "./monthly-trend.js";
  * WHERE THE NUMBERS COME FROM
  * `finance_mpp_rows`, reached through GET /progress-snapshots/{id}/feed. Each
  * assignment row repeats its task's block, so `task.taskStart` is the schedule's
- * start date and `task.metrics.taskCost` is the schedule's cost for that task —
- * `source_cost`, already converted to whole rials at import.
+ * start date and `task.metrics.taskCost` is the schedule's cost for that task,
+ * in rials.
+ *
+ * This used to say `source_cost`, «already converted to whole rials at import».
+ * It was not: `source_cost` is MS Project's Task.getCost() exactly as the file
+ * states it, and this file states TOMAN — the import multiplies by ten on the
+ * way into the `_irr` columns and deliberately leaves the raw ones alone. So
+ * this module read toman as rials and drew the whole plan at a TENTH of its
+ * size: 365,730,884,784 against the card's 3,657,308,847,841, a factor of ten
+ * to within one rial of rounding, and the reason the months never added up to
+ * the figure beside them.
+ *
+ * The feed now builds the rial figure from the converted columns — `Task.Cost =
+ * Σ assignment costs + Fixed Cost` — so nothing here scales anything. A browser
+ * that multiplied by ten would be hardcoding one project's currency decision
+ * into every project's chart.
  *
  * WHAT IT IS NOT
  * Not Finance money. A Finance figure is a price a person entered against an

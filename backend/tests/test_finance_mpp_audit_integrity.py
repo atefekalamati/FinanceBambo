@@ -10,7 +10,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from coreint.finance_mpp_sync import (
-    _APPROVED_TOMAN_SHA256, FinanceMppSyncRefused, finance_rows,
+    APPROVED_TOMAN_SHA256, FinanceMppSyncRefused, finance_rows,
 )
 from coreint.finance_mpp_mapping import _SOURCE_ROWS
 
@@ -42,7 +42,7 @@ def _sync_fixtures():
 #: One file the toman decision was taken for. The constant is a SET -- the same schedule
 #: reached this project as two files with identical figures -- and a test that wants "an
 #: approved file" wants any member of it, deterministically chosen.
-APPROVED_SHA = sorted(_APPROVED_TOMAN_SHA256)[0]
+APPROVED_SHA = sorted(APPROVED_TOMAN_SHA256)[0]
 
 
 class CurrencyAndAssignmentTests(unittest.TestCase):
