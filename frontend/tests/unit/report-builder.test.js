@@ -76,8 +76,8 @@ test("only the datasets the chosen reports need are asked for", () => {
 });
 
 test("the featured shortcuts are selectable without removing other reports", () => {
-  assert.deepEqual(featuredReports().map((report) => report.key), ["overview", "levelOne", "sCurve", "warnings", "invoices"]);
-  assert.equal(normalizeSelection(featuredReports().map((report) => report.key)).length, 5);
+  assert.deepEqual(featuredReports().map((report) => report.key), ["overview", "levelOne", "sCurve", "warnings", "invoices", "monthly"]);
+  assert.equal(normalizeSelection(featuredReports().map((report) => report.key)).length, 6);
   assert.ok(findReport("monthly"));
   assert.ok(findReport("priceVariance"));
 });

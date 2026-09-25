@@ -6,7 +6,7 @@ import { REPORTS, featuredReports, datasetsFor } from "../../src/features/report
 
 test("the catalogue keeps the featured shortcuts and shares existing datasets", () => {
   assert.equal(REPORTS.length, 21);
-  assert.equal(featuredReports().length, 5);
+  assert.equal(featuredReports().length, 6);
   assert.deepEqual(datasetsFor(["supplierDocuments", "pendingDocuments", "correctiveDocuments"]), ["invoices"]);
   assert.deepEqual(datasetsFor(["completionBudget", "areaCosts"]), ["overview"]);
   // The two that replaced the period report read the project at two dates, and

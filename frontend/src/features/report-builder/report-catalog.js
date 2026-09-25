@@ -51,11 +51,11 @@ export const REPORTS = Object.freeze([
   {
     key: "monthly",
     category: "cost",
-    title: "روند ماهانه هزینه",
-    summary: "هزینه واقعی ثبت‌شده در هر ماه شمسی، به‌همراه تعداد اسناد و ابطال‌ها",
+    title: "روند ماهانه هزینه و برآورد",
+    summary: "روند هزینه واقعی هر ماه و مقایسه آن با برآورد همان ماه",
     needs: ["monthly"],
     period: false,
-    featured: false,
+    featured: true,
   },
   {
     key: "priceVariance",
@@ -196,7 +196,7 @@ export function findReport(key) {
 
 /** The featured shortcuts; the full catalogue remains available in the chooser. */
 export function featuredReports() {
-  return ["overview", "levelOne", "sCurve", "warnings", "invoices"]
+  return ["overview", "levelOne", "sCurve", "warnings", "invoices", "monthly"]
     .map(findReport).filter((report) => report.featured && !report.unavailable);
 }
 

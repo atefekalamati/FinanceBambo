@@ -184,7 +184,7 @@ export function createCombinationChart({
    * the project's FIRST month -- which is the fixed point every offset below is
    * measured from.
    */
-  const scroller = element("div", "combo-chart__scroll");
+  const scroller = element("div", "combo-chart__scroll finance-scrollbar");
   surface.append(scroller, tooltip, axisLayer);
 
   /** Renders the axis numbers and answers how wide the widest of them is. */
@@ -473,14 +473,12 @@ export function createCombinationChart({
     // be measurable on the next draw.
     surface.replaceChildren(scroller, tooltip, axisLayer);
     if (pendingScrollReset) {
-      // Put the focus column against the RIGHT edge of the view, so the months
-      // before it — the recorded ones — fill the view and the months after it
-      // are the scroll away. That is the same intent as when time ran the other
-      // way; the edge it lands on is the one that changed with the flow.
-      // Clamped by the browser to the scrollable range, which is what makes the
-      // no-future case come to rest at the far end on its own.
+      // Centre the focus column in the first visible frame. For the monthly
+      // trend this is today's month, so opening or revealing a long project
+      // never starts on an arbitrary edge. The browser clamps the offset when
+      // there is not enough content on either side to keep it centred.
       const focusLeft = focusIndex >= 0
-        ? Math.max(centreOf(focusIndex) + bandWidth / 2 + EDGE_GUTTER - viewportWidth, 0)
+        ? Math.max(centreOf(focusIndex) - viewportWidth / 2, 0)
         // No month of the window is the one the reader is in — the project has
         // ended, or has not started. The newest month is then the right answer,
         // and it is at the far end of the scroll.
@@ -538,9 +536,9 @@ export function createCombinationChart({
     element: container,
 
     /**
-     * `focusColumn` names the point the chart should open on — the current month
-     * for a series that runs past it. Out of range or absent, the chart opens at
-     * its inline start, which is where it opened before this existed.
+     * `focusColumn` names the point the chart should open on - the current month
+     * for a series that runs past it. Out of range or absent, the chart opens on
+     * the latest available point.
      */
     setData({ points: nextPoints = [], ticks: nextTicks = [], focusColumn = -1 } = {}) {
       points = nextPoints;
@@ -570,6 +568,17 @@ export function createCombinationChart({
      * hidden panel measures zero, so the panel that reveals it calls this.
      */
     resize() {
+      draw();
+    },
+
+    /**
+     * Redraw and return to the configured focus column. Unlike `resize`, this
+     * deliberately discards a previous scroll offset and is used whenever a
+     * hidden chart is selected again.
+     */
+    resetView() {
+      pendingScrollReset = true;
+      hideTooltip();
       draw();
     },
 

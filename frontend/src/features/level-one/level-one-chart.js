@@ -36,7 +36,7 @@ export function createLevelOneChart({ rows, formatExact, ariaLabel, onSelect = n
     axis.append(value);
   });
 
-  const viewport = element("div", "vbars__viewport");
+  const viewport = element("div", "vbars__viewport finance-scrollbar");
   viewport.tabIndex = 0;
   viewport.setAttribute("role", "img");
   viewport.setAttribute("aria-label", ariaLabel);

@@ -203,18 +203,7 @@
   overscroll-behavior-x: contain;
   border-inline-start: 1px solid var(--dash-grid);
   border-block-end: 1px solid var(--dash-grid);
-  scrollbar-width: thin;
-  scrollbar-color: var(--dash-plan) transparent;
   scroll-snap-type: x proximity;
-}
-
-.vbars__viewport::-webkit-scrollbar {
-  block-size: 7px;
-}
-
-.vbars__viewport::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--dash-plan) 60%, transparent);
-  border-radius: 6px;
 }
 
 .vbars__viewport:focus-visible {

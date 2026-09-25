@@ -88,7 +88,7 @@ function createWorkAreaCard(area) {
   area.tags.forEach((tag) => tags.append(element("li", "", tag)));
   const action = element("a", "button button--primary work-area-card__action");
   action.href = area.href;
-  action.append(element("span", "", "ورود به فضای کاری"), element("span", "work-area-card__arrow", "‹"));
+  action.append(element("span", "", "ورود به فضای کاری"), element("span", "work-area-card__arrow", "›"));
   card.append(marker, content, tags, action);
   return card;
 }

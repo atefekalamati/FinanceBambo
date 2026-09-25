@@ -207,6 +207,33 @@
 }
 
 /* --------------------------------------------------------------------------
+   Shared finance scrollbar
+   -------------------------------------------------------------------------- */
+
+.finance-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dash-plan) transparent;
+}
+
+.finance-scrollbar::-webkit-scrollbar {
+  inline-size: 7px;
+  block-size: 7px;
+}
+
+.finance-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.finance-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dash-plan) 60%, transparent);
+}
+
+.finance-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--dash-plan) 82%, var(--dash-actual));
+}
+
+/* --------------------------------------------------------------------------
    Shared RTL data tables
    -------------------------------------------------------------------------- */
 

@@ -443,9 +443,10 @@ function createManagerialComparisonPanel(
       key === "monthly"
         ? monthly.description
         : ANALYSIS_CHARTS[key].description;
-    // The monthly chart measures zero while its panel is hidden, so it is
-    // redrawn once the panel actually has a width.
-    if (key === "monthly") monthly.chart?.resize();
+    // Every reveal starts from the useful end of the series: this month when
+    // it exists in the window, otherwise the latest available month. A plain
+    // resize would preserve the zero offset measured while the panel was hidden.
+    if (key === "monthly") monthly.chart?.resetView();
   }
 
   const switcher = element("div", "analysis-chart-switch");
@@ -698,6 +699,7 @@ function buildWarningsCard(data) {
   const warningMessages = summarizeReportWarnings(reportWarnings);
   if (warningMessages.length) {
     const list = document.createElement("ul");
+    list.className = "finance-scrollbar";
     warningMessages.forEach((message) => {
       list.append(summaryRow("warn", message));
     });
@@ -705,6 +707,7 @@ function buildWarningsCard(data) {
   } else {
     warnings.classList.add("finance-warnings--clear");
     const list = document.createElement("ul");
+    list.className = "finance-scrollbar";
     list.append(
       summaryRow("good", "برای محاسبات زنده فعلی هشداری ثبت نشده است."),
     );
