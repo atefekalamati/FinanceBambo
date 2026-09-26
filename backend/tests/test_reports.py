@@ -173,15 +173,14 @@ class LiveReportDomainTests(unittest.TestCase):
         self.assertEqual(set(WARNING_KEYS) | set(EXTRA_WARNING_KEYS["PROGRESS_UNMAPPED"]),
                          set(unmapped))
         # Same affected metrics as PROGRESS_MISSING: the consequence is identical, only the
-        # cause differs. On a MATERIAL line that consequence is the executed value alone --
-        # since 2026-09-26 its remaining is read from the ledger, so an absent measurement
-        # cannot reach it. The three-metric list is asserted on a labour line below.
+        # cause differs. Since 2026-09-26 that consequence is the executed value alone, for
+        # every priced kind: material, labour and equipment all read their remaining from
+        # the ledger, so an absent measurement cannot reach it.
         self.assertEqual(["currentExecutedValueIrr"], unmapped["affectedMetricKeys"])
         labor = estimate(LABOR_LINE, LABOR, "labor", "10", "10", "100", "100", "a-none")
         unmapped_labor = next(w for w in calculate_live_report([labor], [], [], [], "10").warnings
                               if w["code"] == "PROGRESS_UNMAPPED")
-        self.assertEqual(["currentExecutedValueIrr", "remainingPhysicalCostIrr",
-                          "forecastFinalCostIrr"], unmapped_labor["affectedMetricKeys"])
+        self.assertEqual(["currentExecutedValueIrr"], unmapped_labor["affectedMetricKeys"])
 
     def test_splitting_the_codes_moved_no_financial_figure(self):
         """An unlinked line and a linked-but-empty one must still produce identical money.

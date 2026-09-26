@@ -59,13 +59,17 @@ PROGRESS_AFFECTED_METRICS = ("currentExecutedValueIrr", "remainingPhysicalCostIr
 #:
 #: What "settled quantity" is differs by kind, and the difference is deliberate:
 #:   material  -- the QUANTITY on the invoice line, converted into the line's unit.
-#:   equipment -- the AMOUNT on the invoice line, divided by the rate in force on the
-#:                invoice date. A truck at 2 million an hour in the first year and 5
+#:   equipment, labour -- the AMOUNT on the invoice line, divided by the rate in force on
+#:                the invoice date. A truck at 2 million an hour in the first year and 5
 #:                million the next paid the first year's hours at the first year's rate,
 #:                so the amount is read against the price history, not against today.
-#: Labour is not here: nobody has stated its rule yet, so it still derives its remaining
-#: from the measured quantity, exactly as before.
-SETTLED_BY_LEDGER = ("material", "equipment")
+#:                Labour joined on 2026-09-26 too, by the same rule: «نیروی انسانی هم
+#:                دقیقا مثل تجهیزات است». Both are hours bought against an invoice.
+SETTLED_BY_LEDGER = ("material", "labor", "equipment")
+
+#: The ledger-settled kinds whose invoices are read by AMOUNT ÷ dated rate rather than by
+#: the quantity column: the two that are paid by the hour.
+SETTLED_BY_AMOUNT = ("labor", "equipment")
 
 #: For a ledger-settled kind, an absent measurement blinds ONE figure -- the executed
 #: value -- and not the remaining cost or the forecast, which no longer rest on it. The
@@ -183,7 +187,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     estimate_rate_by_line = {}
     estimate_rate_by_resource = {}
     for row in estimate_rows:
-        if row["resource_type"] == "equipment" and row["original_unit_price_irr"] is not None:
+        if row["resource_type"] in SETTLED_BY_AMOUNT and row["original_unit_price_irr"] is not None:
             rate = Decimal(row["original_unit_price_irr"])
             estimate_rate_by_line[row["id"]] = rate
             estimate_rate_by_resource.setdefault(row["resource_id"], rate)
@@ -193,8 +197,8 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         kind = row["resource_type"]
         actual_total += effect
         actual_by_type[kind] += effect
-        if kind == "equipment":
-            # SETTLED_BY_LEDGER, the equipment half: the amount paid, read against the rate
+        if kind in SETTLED_BY_AMOUNT:
+            # SETTLED_BY_LEDGER, the hourly half: the amount paid, read against the rate
             # that was in force on the day it was paid. `unit_price_at_invoice_date_irr` is
             # the price ladder evaluated at the invoice date, not the report date -- so a
             # payment made when the truck cost 2 million an hour buys the hours it bought

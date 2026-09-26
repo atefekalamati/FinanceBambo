@@ -129,18 +129,24 @@ class LedgerSettledRemainingTests(unittest.TestCase):
         report = calculate_live_report([self.equipment()], [paid], [], [], "10")
         self.assertEqual(Decimal("4000"), report.metrics["remainingPhysicalCostIrr"])
 
-    def test_labour_still_derives_its_remaining_from_the_measurement(self):
-        # Nobody has stated a ledger rule for labour, so nothing about it changed: an
-        # unmeasured labour line is excluded from the remaining and the forecast is
-        # incomplete for it, exactly as before.
+    def test_labour_is_settled_exactly_as_equipment_is(self):
+        # «نیروی انسانی هم دقیقا مثل تجهیزات است» (2026-09-26): a crew is hours bought
+        # against an invoice, read at the rate of the invoice's day. Progress moves the
+        # executed value and nothing else.
         labor = estimate(LABOR_LINE, LABOR, "labor", "10", "10", "100", "100", "a-l")
-        unmeasured = calculate_live_report([labor], [], [{"assignmentExternalId": "a-l", "task": {}}], [], "10")
-        self.assertEqual(Decimal("0"), unmeasured.metrics["remainingPhysicalCostIrr"])
-        self.assertEqual((0, 0), (unmeasured.computed_line_count, unmeasured.required_line_count))
-        self.assertIn("forecastFinalCostIrr", unmeasured.incomplete_metric_keys)
-        measured = calculate_live_report([labor], [], [{"assignmentExternalId": "a-l", "actualWork": "4",
-                                                       "resourceType": "labor", "task": {}}], [], "10")
-        self.assertEqual(Decimal("600"), measured.metrics["remainingPhysicalCostIrr"], "6 x 100")
+        paid = {"estimate_line_id": LABOR_LINE, "resource_id": LABOR, "quantity": None, "unit": None,
+                "base_unit": "hour", "dimension": "time", "final_line_amount_irr": "300",
+                "financial_effect_sign": 1, "resource_type": "labor", "resource_code": "lab",
+                "unit_price_at_invoice_date_irr": "50"}
+        # 300 paid when the hour cost 50: six hours settled, four remain at today's 100.
+        unmeasured = calculate_live_report([labor], [paid], [{"assignmentExternalId": "a-l", "task": {}}], [], "10")
+        self.assertEqual(Decimal("400"), unmeasured.metrics["remainingPhysicalCostIrr"])
+        self.assertEqual((0, 1), (unmeasured.computed_line_count, unmeasured.required_line_count))
+        self.assertEqual(["currentExecutedValueIrr"], unmeasured.incomplete_metric_keys)
+        measured = calculate_live_report([labor], [paid], [{"assignmentExternalId": "a-l", "actualWork": "4",
+                                                           "resourceType": "labor", "task": {}}], [], "10")
+        self.assertEqual(Decimal("400"), measured.metrics["remainingPhysicalCostIrr"], "the measurement changes nothing here")
+        self.assertEqual(Decimal("400"), measured.metrics["currentExecutedValueIrr"], "4 x 100 -- and this is what it changes")
 
     def test_an_unmeasured_material_line_leaves_the_forecast_whole(self):
         # The material rule already read the ledger for `moneyRequiredToContinueIrr`; what
@@ -168,8 +174,9 @@ class LedgerSettledRemainingTests(unittest.TestCase):
         assignments = [{"assignmentExternalId": "a-m", "actualQuantity": "4", "task": {}},
                        {"assignmentExternalId": "a-l", "actualWork": "2", "resourceType": "labor", "task": {}}]
         report = calculate_live_report(rows, invoices, assignments, [], "10")
-        # material 8 x 150 + labour 3 x 200 + equipment 8 x 500 + general (1200 - 700)
-        expected = Decimal("1200") + Decimal("600") + Decimal("4000") + Decimal("500")
+        # material 8 x 150 + labour 5 x 200 (nothing invoiced) + equipment 8 x 500
+        # + general (1200 - 700)
+        expected = Decimal("1200") + Decimal("1000") + Decimal("4000") + Decimal("500")
         self.assertEqual(expected, report.metrics["remainingPhysicalCostIrr"])
         self.assertEqual(expected, report.metrics["moneyRequiredToContinueIrr"])
         self.assertEqual(Decimal("1900") + expected, report.metrics["forecastFinalCostIrr"])
