@@ -62,8 +62,9 @@ test("an old snapshot compares against a new report kind for kind", () => {
   const work = rows.find((row) => row.resourceType === "work");
   assert.ok(work, "one work row, not three rows");
   assert.equal(work.label, "نیرو و تجهیزات");
-  assert.equal(work.measures.actualCostIrr.openingIrr, 500n);
-  assert.equal(work.measures.actualCostIrr.closingIrr, 900n);
-  assert.equal(work.measures.actualCostIrr.changeIrr, 400n);
+  /* Exact integer rials travel as strings, as everywhere in the reports. */
+  assert.equal(work.measures.actualCostIrr.openingIrr, "500");
+  assert.equal(work.measures.actualCostIrr.closingIrr, "900");
+  assert.equal(work.measures.actualCostIrr.changeIrr, "400");
   assert.deepEqual(rows.map((row) => row.resourceType).sort(), ["material", "work"]);
 });
