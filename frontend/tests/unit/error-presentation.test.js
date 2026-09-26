@@ -54,3 +54,28 @@ test("no feature page rebuilds the request-id suffix by hand", () => {
     "inline `${error.message} · شناسه درخواست: …` bypasses presentApiError, so page-level and action-level errors disagree; call formatApiErrorMessage instead",
   );
 });
+
+test("the two report-page 404s are told apart by the sentence the service sent", () => {
+  /* Both arrive as FINANCE_NOT_FOUND / 404, and the 404 preset talks about a deleted
+     record -- wrong about a report page, where nothing was deleted. On the first host
+     deployment گزارش مالی opened on that generic card, and the two causes it could have
+     had need two different people: one wires a progress provider, the other fixes a
+     status date. The service already distinguishes them on `message`. */
+  const dated = presentApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "progress snapshot not found for reporting date", requestId: "req-1" });
+  assert.equal(dated.title, "تاریخ نسخهٔ پیشرفت جلوتر از تاریخ گزارش است");
+  assert.match(dated.message, /تاریخ وضعیت/);
+  assert.equal(dated.retryable, false);
+  assert.equal(dated.requestId, "req-1", "the request id still travels");
+
+  const unserved = presentApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "progress snapshot not found" });
+  assert.equal(unserved.title, "فید پیشرفت این پروژه در دسترس نیست");
+  assert.match(unserved.message, /provider/);
+  assert.doesNotMatch(unserved.message, /progress snapshot not found/, "the English original stays off the screen");
+});
+
+test("a sentence that merely resembles a known one keeps the generic 404 wording", () => {
+  /* Matched on the exact text, not a substring: a future refusal that happens to contain
+     these words must not be silently handed their meaning. */
+  const other = presentApiError({ status: 404, code: "FINANCE_NOT_FOUND", message: "progress snapshot not found: archived" });
+  assert.equal(other.title, "اطلاعات موردنظر پیدا نشد");
+});

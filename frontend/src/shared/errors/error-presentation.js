@@ -31,6 +31,42 @@ const CODE_PRESENTATION = Object.freeze({
   VALIDATION_ERROR: STATUS_PRESENTATION[422],
 });
 
+/* Keyed on the SENTENCE the service sends, for the handful of refusals whose status and
+   code say too little. Every one of these arrives as `FINANCE_NOT_FOUND` / 404, and the
+   404 preset above reads «رکورد ممکن است حذف شده باشد» -- true of a deleted invoice, and
+   wrong about a report page: nothing was deleted, the host's progress provider could not
+   serve a snapshot it had just listed, or that snapshot is dated after today.
+
+   MEASURED ON THE FIRST HOST DEPLOYMENT. گزارش مالی opened on a red card carrying the
+   generic sentence, and the two causes it could have had need two different people --
+   one wires a provider, the other fixes a status date. The service already tells them
+   apart, in English, on `message`; this is that distinction in the language of the page.
+   Matched on the exact text and not on a substring, so a future sentence that merely
+   resembles one of these is not silently given its meaning. `override` keeps the English
+   original off the screen. */
+const MESSAGE_PRESENTATION = Object.freeze({
+  "progress snapshot not found for reporting date": {
+    title: "تاریخ نسخهٔ پیشرفت جلوتر از تاریخ گزارش است",
+    fallback: "نسخهٔ پیشرفت انتخاب‌شده تاریخ وضعیتی بعد از امروز دارد. گزارش زنده روی تاریخ امروز محاسبه می‌شود و نمی‌تواند از پیشرفتی که هنوز گزارش نشده استفاده کند. تاریخ وضعیت زمان‌بندی را بررسی کنید یا نسخهٔ قدیمی‌تری را انتخاب کنید.",
+    retryable: false, override: true,
+  },
+  "progress snapshot not found": {
+    title: "فید پیشرفت این پروژه در دسترس نیست",
+    fallback: "نسخهٔ پیشرفت در فهرست هست اما سرویس نتوانست محتوای آن را بخواند. این یعنی providerِ پیشرفت روی میزبان با منبعی که فهرست از آن ساخته شده هم‌خوانی ندارد، یا جدول‌های تفصیلی زمان‌بندی برای این نسخه خالی‌اند. مشکل با تلاش دوباره برطرف نمی‌شود؛ به تیم استقرار اطلاع دهید.",
+    retryable: false, override: true,
+  },
+  "report snapshot not found": {
+    title: "گزارش صادرشده پیدا نشد",
+    fallback: "گزارشی با این شناسه برای این پروژه صادر نشده است، یا به پروژهٔ دیگری تعلق دارد.",
+    retryable: false, override: true,
+  },
+  "estimate line not found": {
+    title: "ردیف برآورد پیدا نشد",
+    fallback: "ردیف برآوردی که به آن اشاره شده در این پروژه وجود ندارد یا حذف شده است.",
+    retryable: false, override: true,
+  },
+});
+
 function normalizeDetail(detail, index) {
   if (typeof detail === "string") return detail;
   const field = detail?.field ?? detail?.loc?.at?.(-1) ?? null;
@@ -66,12 +102,14 @@ export function presentApiError(error) {
   }
   const status = Number(error?.status) || 0;
   const code = String(error?.code || "UNKNOWN_ERROR");
-  const preset = CODE_PRESENTATION[code] ?? STATUS_PRESENTATION[status] ?? {
+  const serverMessage = String(error?.message ?? "").trim();
+  // The sentence first: it is the most specific thing the service said, and the code
+  // beneath it (`FINANCE_NOT_FOUND`) is shared by refusals that need different people.
+  const preset = MESSAGE_PRESENTATION[serverMessage] ?? CODE_PRESENTATION[code] ?? STATUS_PRESENTATION[status] ?? {
     title: status >= 500 ? "خطای سرویس مالی" : "انجام درخواست ممکن نشد",
     fallback: status >= 500 ? "سرویس با خطای پیش‌بینی‌نشده روبه‌رو شد." : "درخواست را بررسی و دوباره تلاش کنید.",
     retryable: status >= 500,
   };
-  const serverMessage = String(error?.message ?? "").trim();
   const genericMessages = new Set(["خطای پیش‌بینی‌نشده", "دریافت اطلاعات مالی انجام نشد."]);
   const useServerMessage = !preset.override && serverMessage && !genericMessages.has(serverMessage);
   return Object.freeze({

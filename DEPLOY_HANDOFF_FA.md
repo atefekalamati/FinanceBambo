@@ -17,8 +17,9 @@
 | ۴ | نسبت‌دادن مجوزها به نقش‌ها | دیپلوی | کاربر صفحهٔ خالی می‌بیند |
 | ۵ | پر کردن متغیرهای محیطی | دیپلوی | رفتارهای خاموش (بخش ۴) |
 | ۶ | Composition root (۱۴ مؤلفه) | دیپلوی | `503 FINANCE_UNAVAILABLE` |
+| ۶-الف | **Provider پیشرفت** زیر `progress_service` (بخش ۳-۲) | دیپلوی | گزارش مالی: کارت قرمز «فید پیشرفت در دسترس نیست» |
 | ۷ | سه endpoint هویت برای فرانت | دیپلوی | «پروژه‌ای انتخاب نشده» |
-| ۸ | نصب بستهٔ فرانت و دو صفحهٔ mount | دیپلوی | صفحهٔ سفید |
+| ۸ | نصب بستهٔ فرانت، دو صفحهٔ mount، **لینک سایدبار با hash** (بخش ۵-۲) | دیپلوی | هر دو لینک، امور مالی را باز می‌کنند |
 | ۹ | صف پس‌زمینهٔ بادوام | دیپلوی | `503` روی پردازش فاکتور |
 | ۱۰ | پیش‌نیازهای استخراج (اختیاری) | دیپلوی | پردازش تصویر/صدا خاموش |
 
@@ -156,6 +157,49 @@ application.state.allow_ephemeral_finance_tasks = True
   برمی‌گردد. اگر سرویس ری‌استارت شود و صف بادوام نباشد، کار گم می‌شود و کاربر فایلی می‌بیند
   که برای همیشه «در حال پردازش» است.
 
+### ۳-۲ Provider پیشرفت — زیر `progress_service`، و بدون آن گزارش مالی باز نمی‌شود
+
+ماژول مالی «چقدر پیشرفت کرده» را خودش نمی‌داند. یک **پورت** تعریف کرده به نام
+`ProgressSnapshotProvider` با دو سؤال، و میزبان باید یک پیاده‌سازی به آن وصل کند:
+
+| سؤال | متد |
+|---|---|
+| snapshot فعلی این پروژه چیست؟ | `current_snapshot(org, project, as_of)` |
+| فید کامل snapshot با شناسهٔ X | `get_snapshot(org, project, X)` |
+
+`progress_service` و `finance_live_report_service` هر دو روی همین provider ساخته می‌شوند.
+مرجع: `reference/devhost/app.py` تابع `_progress_provider`.
+
+**دو provider آماده در بسته هست:**
+
+| Provider | از کجا می‌خواند | چطور روشن می‌شود |
+|---|---|---|
+| `coreint.progress.CoreProgressSnapshotProvider` | جداول خودِ سایت: `msp_snapshots`، `msp_file_versions`، `msp_tasks`، `msp_resources`، `msp_resource_assignments` | `FINANCE_CORE_PROGRESS=true` + اتصال Core (`FINANCE_CORE_DSN`) |
+| `coreint.finance_progress.FinanceRowsProgressProvider` | ردیف‌هایی که ماژول از فایل MPP وارد کرده (`finance_mpp_rows`) | `MPP_IMPORT_ROOT` تنظیم باشد |
+
+هر دو را می‌توان پشت هم گذاشت (`FirstAvailableProgressProvider`)؛ اولی که جواب بدهد برنده است.
+
+**شرط کار `CoreProgressSnapshotProvider`:** ردیف `msp_snapshots` با `snapshot_type` برابر
+`ACTUAL` یا `RESCHEDULED`، و برای همان `snapshot_id` ردیف‌های `msp_tasks` و
+`msp_resource_assignments` پر شده باشند. یک snapshot که در `msp_snapshots` هست ولی
+جدول‌های تفصیلی‌اش خالی است، در **فهرست** ظاهر می‌شود و در **فید** شکست می‌خورد.
+
+**علامت شکست، دقیقاً:** گزارش مالی روی کارت قرمز باز می‌شود؛ زیرش `کد خطا: FINANCE_NOT_FOUND`
+و یک `شناسه درخواست: req-…`. دو حالت دارد و کارت آن‌ها را جدا می‌گوید:
+
+| عنوان کارت | علت | چه کسی درست می‌کند |
+|---|---|---|
+| «فید پیشرفت این پروژه در دسترس نیست» | provider وصل نیست، یا با منبع فهرست هم‌خوانی ندارد، یا جدول‌های تفصیلی خالی‌اند | دیپلوی |
+| «تاریخ نسخهٔ پیشرفت جلوتر از تاریخ گزارش است» | تاریخ وضعیت snapshot فعال بعد از امروزِ تهران است | دادهٔ سایت |
+
+`GET …/finance/progress-snapshots` سالم بودن و `GET …/finance/overview` شکست خوردن، همین
+مورد است — امور مالی فقط اولی را می‌زند و باز می‌شود، گزارش مالی دومی را هم می‌زند.
+
+> **محدودیت شناخته‌شده:** `msp_tasks` سایت فقط **درصد** پیشرفت دارد، نه مقدار. با
+> `CoreProgressSnapshotProvider` به‌تنهایی، گزارش باز می‌شود ولی هر ردیف برآورد
+> `PROGRESS_MISSING` می‌گیرد و «هزینه بروز باقیمانده» صفر می‌ماند. مقدارِ اجراشده در سطح
+> تخصیص باید از ماژول پیشرفت سایت منتشر شود؛ تا آن روز، صفر یعنی «اندازه‌گیری نشده»، نه «تمام شده».
+
 ---
 
 ## ۴. متغیرهای محیطی
@@ -189,6 +233,7 @@ application.state.allow_ephemeral_finance_tasks = True
 | `MPP_JAVA_HOME` | **JRE 17** — کتابخانهٔ MPXJ جاوا لازم دارد |
 | `MPP_MAX_FILE_SIZE_MB` | پیش‌فرض ۱۰۰ |
 | `MPP_IMPORT_INTERVAL_MINUTES` | خالی = بدون tick دوره‌ای |
+| `FINANCE_CORE_PROGRESS` | `true` = پیشرفت از جداول `msp_*` سایت خوانده شود (بخش ۳-۲). خالی = خوانده **نمی‌شود** و هر snapshot سایت ۴۰۴ می‌دهد |
 
 - **Object storage پشتیبانی نمی‌شود.** فقط مسیر فایل‌سیستم یا mount سیستم‌عامل.
 - بدون `MPP_JAVA_HOME` ایمپورت شکست می‌خورد. این تنها جای ماژول است که به جاوا نیاز دارد.
@@ -254,6 +299,28 @@ npm run package            # خروجی: ../finance-package
 
 **آنچه یک صفحهٔ میزبان را میزبان می‌کند:** نداشتن `data-finance-runtime` روی `<body>`.
 حالت میزبان پیش‌فرض است.
+
+### ۵-۲-الف لینک سایدبار **باید hash داشته باشد** — اندازه‌گیری‌شده روی اولین استقرار
+
+دو صفحهٔ بالا بایت‌به‌بایت یکی‌اند. **تنها** چیزی که تعیین می‌کند کدام سطح باز شود، hash آدرس است:
+
+```
+/finance.html#finance/operations          →  امور مالی
+/finance-report.html#finance/report       →  گزارش مالی
+```
+
+بدون hash، یا با hash ناشناخته، ماژول به **اولین سطحی می‌رود که حساب اجازه دارد** — و برای
+هر حسابی که `finance.edit` دارد آن سطح امور مالی است. نتیجه: لینک «گزارش مالی» هم امور
+مالی را باز می‌کند. روی هاست بازتولید شده:
+
+| لینک | چه باز شد |
+|---|---|
+| `/finance-report.html#finance/report` | گزارش مالی ✓ |
+| `/finance-report.html` | امور مالی |
+| `/finance-report.html#finance/finance-report` | امور مالی |
+
+ردیف سوم hash قدیمی یک سند داخلی است؛ **استفاده نشود.** مسیرهای معتبر در
+`frontend/src/core/config/routes.js` ستون `path` هستند.
 
 ### ۵-۳ سه endpoint هویت
 
@@ -367,6 +434,7 @@ FINANCE_STT_PROVIDER=avalai
 | ۳ | `finance.edit` یک کلید برای نُه در | نقش «کارشناس متره و برآورد» قابل بیان نیست (بخش ۲-۱) |
 | ۴ | تلفیق تصویر + صدا پیاده نشده | یک فاکتور با ویس، یک ردیف خوانده می‌شود |
 | ۵ | ۴۲۶ ردیف تجهیزات مبنای مقدار ندارند | برآورد تجهیزات صفر گزارش می‌شود؛ منتظر استفاده از `planned_work` |
+| ۶ | جداول `msp_*` سایت فقط درصد دارند، نه مقدار | با provider سایت به‌تنهایی، «هزینه بروز باقیمانده» صفر می‌ماند (بخش ۳-۲) |
 
 ---
 
@@ -376,6 +444,10 @@ FINANCE_STT_PROVIDER=avalai
 GET  /healthz/finance                             → status: ready
                                                     (هر چیز جز این = بخش ۳ ناقص است)
 GET  /api/projects/<id>/finance/resources         → ۲۰۰
+GET  /api/projects/<id>/finance/progress-snapshots
+                                                  → ۲۰۰ و آرایهٔ غیرخالی (خالی = provider چیزی نمی‌بیند)
+GET  /api/projects/<id>/finance/overview?reportingDate=<امروز>&progressSnapshotId=<از بالا>
+                                                  → ۲۰۰ (۴۰۴ = بخش ۳-۲)
 GET  /api/projects/<id>/finance/reports/live?reportingDate=<امروز>
                                                   → ۲۰۰، calculationStatus اعلام شود
 POST /api/projects/<id>/finance/files             → ۲۰۱ (با finance.manage_invoice)
@@ -386,8 +458,10 @@ POST /api/projects/<id>/finance/files/<fid>/extractions/async
 پاسخ `/healthz/finance` هیچ DSN، نام جدول، مسیر یا متن exception ندارد — فقط
 `status`، `code`، `checkedAt` و `optionalCapabilities`.
 
-بازکردن `/finance.html?project=<id>` با کاربری که `finance.view` دارد باید صفحه را کامل
-رندر کند، نه «پروژه‌ای انتخاب نشده».
+بازکردن `/finance.html?project=<id>#finance/operations` با کاربری که `finance.edit` دارد، و
+`/finance-report.html?project=<id>#finance/report` با کاربری که `finance_report.view` دارد،
+هر دو باید صفحهٔ **خودشان** را کامل رندر کنند — نه «پروژه‌ای انتخاب نشده»، نه کارت قرمز، و نه
+هر دو یک صفحه.
 
 **معیار بازگشت:** هر کدام از این‌ها شکست بخورد → `backend/docs/DEPLOYMENT_RUNBOOK_FA.md` بخش ۱۰.
 
