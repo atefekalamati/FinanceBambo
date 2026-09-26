@@ -31,6 +31,7 @@ from decimal import Decimal
 from psycopg.rows import dict_row
 
 from app.finance.domain.mpp_source_version import active_source_version
+from app.finance.domain.resource_types import resource_type_for_native as _bambo_type
 
 from .finance_mpp_sync import APPROVED_TOMAN_SHA256
 from .progress import (ACTIVITY_CODE_FIELDS, STATUS_READY, assignment_row, task_row)
@@ -159,11 +160,9 @@ def _builder_row(row, currency_scale=None):
         "assignment_work_complete_percent": None,
         "resource_name": row["resource_name"],
         "native_type": row["resource_type"],
-        # MATERIAL is unambiguous; MS Project does not say whether a WORK resource is
-        # labour or equipment, so that stays unclassified rather than guessed.
-        "bambo_resource_type": ("material"
-                                if (row["resource_type"] or "").upper() == "MATERIAL"
-                                else None),
+        # The file's three kinds are Finance's three kinds (0038): MATERIAL, WORK, COST.
+        # A kind the file does not state stays None rather than guessed.
+        "bambo_resource_type": _bambo_type(row["resource_type"]),
         # The RESOLVED unit, never the file's raw text.
         #
         # `resource_unit` is whatever MS Project held, and for most rows of a real schedule

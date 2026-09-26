@@ -50,6 +50,8 @@ from datetime import date
 from psycopg.rows import dict_row
 
 from app.finance.domain.persian_calendar import persian_to_gregorian
+from app.finance.domain.resource_types import (canonical_resource_type,
+                                               resource_type_for_native as _bambo_type)
 
 #: Snapshot types that can carry executed progress. `TARGET` is a baseline -- a statement
 #: about the plan, not about what happened -- so treating it as a progress report would
@@ -384,9 +386,13 @@ def assignment_row(row, activity_code_fields=ACTIVITY_CODE_FIELDS):
         "resourceExternalId": (None if row["resource_uid"] is None
                                else str(row["resource_uid"])),
         "resourceName": row["resource_name"],
-        # Core's BAMBO classification, which is null for a WORK resource MSP gives no basis
-        # to call labour or equipment. Finance shows those rather than guessing.
-        "resourceType": row["bambo_resource_type"],
+        # The stored classification, read as one of the three kinds (0038): a row that
+        # still says `labor` or `equipment` is `work`, and a WORK resource stored before
+        # 0038 with no classification at all is typed from the file's own kind, exactly
+        # as the importer now types it. Only a kind the file does not state stays None.
+        "resourceType": (canonical_resource_type(row["bambo_resource_type"])
+                         if row["bambo_resource_type"] is not None
+                         else _bambo_type(row.get("native_type"))),
         "unit": row["quantity_unit"] or row["resource_quantity_unit"],
         "plannedQuantity": _decimal(row["planned_quantity"]),
         "actualQuantity": _decimal(row["actual_quantity"]),

@@ -98,14 +98,18 @@ class SharedNormalizedModelTests(unittest.TestCase):
         self.assertEqual(Decimal("3538.11"), rows["tasks"][0]["item_quantity"])
         self.assertIsInstance(rows["assignments"][0]["planned_work"], Decimal)
 
-    def test_a_material_resource_is_classified_and_a_work_one_is_not_guessed(self):
+    def test_the_files_three_kinds_are_typed_and_nothing_else_is_guessed(self):
         material = file_rows(ParsedFile([task()], [resource(native="MATERIAL")],
                                         [assignment()]))["assignments"][0]
         self.assertEqual("material", material["bambo_resource_type"])
+        # WORK is `work` since 0038: crews and machines are one kind, so the file's word
+        # IS the classification and nothing is guessed.
         work = file_rows(ParsedFile([task()], [resource(uid=95, native="WORK")],
                                     [assignment(resource_uid=95)]))["assignments"][0]
-        self.assertIsNone(work["bambo_resource_type"],
-                          "MS Project does not say labour or equipment, so nor do we")
+        self.assertEqual("work", work["bambo_resource_type"])
+        other = file_rows(ParsedFile([task()], [resource(uid=96, native="BUDGET")],
+                                     [assignment(resource_uid=96)]))["assignments"][0]
+        self.assertIsNone(other["bambo_resource_type"], "a kind the file does not have")
 
     def test_an_assignment_whose_task_is_absent_is_dropped_not_invented(self):
         rows = file_rows(ParsedFile([task(uid=1)], [resource()],

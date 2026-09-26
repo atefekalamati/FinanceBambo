@@ -40,6 +40,17 @@ LEGACY_WORK_TYPES = ("labor", "equipment")
 STORED_RESOURCE_TYPES = RESOURCE_TYPES + LEGACY_WORK_TYPES
 
 
+#: The file's kinds, in Finance's words. MS Project has exactly three -- MATERIAL, WORK,
+#: COST -- and they are Finance's three. Stated here, once, so the importer that creates
+#: resources and the two progress feeds that type assignments cannot disagree.
+RESOURCE_TYPE_BY_NATIVE = {"MATERIAL": MATERIAL, "WORK": WORK, "COST": GENERAL_COST}
+
+
+def resource_type_for_native(native_type):
+    """Finance's kind for a schedule's kind, or None for a kind the file does not have."""
+    return RESOURCE_TYPE_BY_NATIVE.get((native_type or "").upper())
+
+
 def canonical_resource_type(value):
     """`labor` and `equipment` are `work`; anything else is returned as it came.
 

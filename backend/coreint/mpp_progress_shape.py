@@ -19,6 +19,7 @@ stable MSP `uid`, which the file does state.
 from decimal import Decimal, InvalidOperation
 
 from .finance_quantity import approved_quantity
+from app.finance.domain.resource_types import resource_type_for_native
 
 
 def _num(value):
@@ -38,13 +39,13 @@ def _resource_index(parsed):
 
 
 def _bambo_type(native_type):
-    """Core's classification, only where the file gives a basis for one.
+    """Finance's kind for the file's kind, or None where the file states none.
 
-    MATERIAL is unambiguous. WORK is not -- MS Project does not say whether a work
-    resource is labour or equipment -- so it stays None rather than being guessed, exactly
-    as the Core adapter leaves it null for the same reason.
+    Until 0038 WORK stayed None because Finance separated labour from equipment and the
+    file does not. It no longer separates them: WORK is `work`, hours either way. The
+    mapping itself lives with the vocabulary, so the importer and both feeds share it.
     """
-    return "material" if (native_type or "").upper() == "MATERIAL" else None
+    return resource_type_for_native(native_type)
 
 
 def _task_fields(task):

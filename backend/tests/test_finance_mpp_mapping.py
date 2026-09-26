@@ -17,7 +17,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from coreint.finance_mpp_sync import MATERIAL_UNIT_RATE
-from coreint.finance_mpp_mapping import (CLASSIFIABLE_TYPES, FIXED_COST_RESIDUE_TASK_UID,
+from coreint.finance_mpp_mapping import (FIXED_COST_RESIDUE_TASK_UID,
                                          FIXED_COST_RESOURCE_CODE,
                                          FIXED_COST_RESOURCE_TITLE, RESOURCE_CODE_PREFIX,
                                          FinanceMppClassificationRefused,
@@ -239,21 +239,32 @@ class ResourceIdentityTests(unittest.TestCase):
         self.assertEqual(1, result["linesCreated"])
         self.assertEqual([], result["unclassifiedResources"])
 
-    def test_a_work_resource_is_left_for_a_person_to_classify(self):
-        # MS Project says WORK; Finance separates labour from equipment and the file does
-        # not. Guessing would put a claim in a financial record that nobody made.
+    def test_a_work_resource_is_mapped_as_work_in_hours(self):
+        # MS Project says WORK, and since 0038 that IS a Finance kind: crews and machines
+        # are one, measured in hours by the file's own convention. Until then this resource
+        # waited for a person to call it labour or equipment -- and on the product nobody
+        # could, so every crew and machine in a schedule stayed unmapped.
         result, db = run([row(1, 100, 156, name="بیل مکانیکی", kind="WORK")])
-        self.assertEqual(0, result["resourcesCreated"])
-        self.assertEqual(0, result["linesCreated"])
-        self.assertEqual(1, result["unmappedRows"])
-        self.assertEqual([{"sourceResourceUid": 156, "name": "بیل مکانیکی",
-                           "nativeType": "WORK"}], result["unclassifiedResources"])
-        self.assertFalse(any("INSERT" in text for text, _p in db.statements))
+        self.assertEqual(1, result["resourcesCreated"])
+        self.assertEqual(1, result["linesCreated"])
+        self.assertEqual(0, result["unmappedRows"])
+        self.assertEqual([], result["unclassifiedResources"])
+        insert = next(p for t, p in db.statements if "INSERT INTO finance_resources" in t)
+        self.assertEqual("work", insert[3])
+        self.assertEqual(("hour", "time"), (insert[6], insert[7]),
+                         "hours, not the file's `initials` letter")
 
-    def test_the_kinds_the_file_states_unambiguously_are_mapped(self):
+    def test_a_kind_the_file_does_not_have_is_still_left_unmapped(self):
+        result, db = run([row(1, 100, 156, name="?", kind="BUDGET")])
+        self.assertEqual(0, result["resourcesCreated"])
+        self.assertEqual([{"sourceResourceUid": 156, "name": "?", "nativeType": "BUDGET"}],
+                         result["unclassifiedResources"])
+
+    def test_the_three_kinds_the_file_states_are_the_three_kinds_finance_has(self):
         self.assertEqual("material", _finance_type("MATERIAL"))
+        self.assertEqual("work", _finance_type("WORK"))
         self.assertEqual("general_cost", _finance_type("COST"))
-        self.assertIsNone(_finance_type("WORK"))
+        self.assertIsNone(_finance_type("BUDGET"))
         self.assertIsNone(_finance_type(None))
 
     def test_a_general_cost_carries_no_unit(self):
@@ -310,124 +321,13 @@ class EstimateLineIdentityTests(unittest.TestCase):
         self.assertEqual("1.8.1.12", insert[4], "activity code is the file's WBS")
         self.assertEqual("55", insert[5], "assignment id is the file's assignment uid")
 
-    def test_a_row_naming_no_resource_produces_nothing(self):
-        # The query already excludes them; this pins that such a row could not become a
-        # line even if it arrived, because there is no resource to name.
-        result, _db = run([row(1, 100, 156, kind="WORK")])
+    def test_a_row_whose_resource_has_no_finance_kind_produces_nothing(self):
+        # A resource of a kind Finance cannot name never becomes a resource, so the row
+        # that names it cannot become a line. (Until 0038 WORK was that kind; it is not
+        # any more, so the fixture uses one MS Project itself does not have.)
+        result, _db = run([row(1, 100, 156, kind="BUDGET")])
         self.assertEqual(0, result["linesCreated"])
         self.assertEqual(1, result["unmappedRows"])
-
-
-class ClassificationTests(unittest.TestCase):
-    """The one decision the file cannot make, made once and stored as the resource."""
-
-    def service(self, db):
-        async def factory():
-            return db
-        return FinanceMppMappingService(factory, id_factory=lambda: UUID(int=7))
-
-    def classify(self, db, uid=156, kind="equipment", unit="hour"):
-        return asyncio.new_event_loop().run_until_complete(
-            self.service(db).classify(ORG, "terrace", uid, kind, unit, actor_user_id=UUID(int=1)))
-
-    def work_db(self, uid=156, native="WORK"):
-        return Db([row(1, 100, uid, name="بیل مکانیکی", kind=native)])
-
-    def test_work_becomes_equipment_when_a_person_says_so(self):
-        db = self.work_db()
-        decision = self.classify(db, kind="equipment")
-        self.assertEqual("classified", decision["status"])
-        self.assertEqual("equipment", decision["resourceType"])
-        insert = next(p for t, p in db.statements if "INSERT INTO finance_resources" in t)
-        self.assertEqual("equipment", insert[3])
-        self.assertEqual(("hour", "time"), (insert[6], insert[7]), "unit and its dimension")
-        self.assertEqual(156, insert[8], "stored against the source identity")
-
-    def test_the_decision_is_recorded_as_an_event_not_only_as_a_row(self):
-        """The resource says who and when. Only the event says what was chosen.
-
-        `created_by` and `created_at` are on every resource the mapper writes too, so a
-        column cannot tell a judgement apart from an import. A WORK resource is the one
-        kind Finance refuses to type on its own, and that refusal is only honest if the
-        answer a person gave is written down as an answer.
-        """
-        db = self.work_db()
-        self.classify(db, kind="equipment")
-        event = next((p for t, p in db.statements
-                      if "INSERT INTO finance_audit_events" in t
-                      and "finance_resource.classified" in t), None)
-        self.assertIsNotNone(event, "a person's classification left no audit event")
-        self.assertEqual(ORG, event[1])
-        self.assertEqual("terrace", event[2])
-        self.assertEqual(UUID(int=1), event[3], "the event names who decided")
-        before, after = event[5].obj, event[6].obj
-        self.assertEqual("WORK", before["nativeType"], "before states what the file said")
-        self.assertIsNone(before["resourceType"], "the file typed it as nothing")
-        self.assertEqual("equipment", after["resourceType"], "after states what was chosen")
-        self.assertEqual(156, after["sourceResourceUid"])
-
-    def test_an_unchanged_decision_records_no_second_event(self):
-        """Repeating the request is not a new decision, so it is not a new event."""
-        db = self.work_db()
-        db.resources[156] = UUID(int=99)          # a person classified it earlier
-        decision = self.classify(db)
-        self.assertEqual("unchanged", decision["status"])
-        self.assertFalse(any("finance_resource.classified" in t for t, _p in db.statements))
-
-    def test_work_becomes_labor_when_a_person_says_so(self):
-        decision = self.classify(self.work_db(), kind="labor")
-        self.assertEqual("labor", decision["resourceType"])
-
-    def test_only_labour_and_equipment_may_be_chosen(self):
-        self.assertEqual(("labor", "equipment"), CLASSIFIABLE_TYPES)
-        for refused in ("material", "general_cost", "", None, "Equipment"):
-            with self.assertRaises(FinanceMppClassificationRefused) as caught:
-                self.classify(self.work_db(), kind=refused)
-            self.assertEqual("FINANCE_MPP_TYPE_NOT_CLASSIFIABLE", caught.exception.code)
-
-    def test_a_unit_the_registry_does_not_define_is_refused(self):
-        # The file's own "unit" for a WORK resource is MS Project's initials -- the first
-        # letter of the name. Accepting it would put "ت" in a unit column.
-        with self.assertRaises(FinanceMppClassificationRefused) as caught:
-            self.classify(self.work_db(), unit="ت")
-        self.assertEqual("FINANCE_MPP_UNIT_UNKNOWN", caught.exception.code)
-
-    def test_a_resource_the_file_already_typed_needs_no_decision(self):
-        with self.assertRaises(FinanceMppClassificationRefused) as caught:
-            self.classify(self.work_db(native="MATERIAL"))
-        self.assertEqual("FINANCE_MPP_NOT_A_WORK_RESOURCE", caught.exception.code)
-
-    def test_an_unknown_resource_is_refused_rather_than_created(self):
-        db = Db([])
-        with self.assertRaises(FinanceMppClassificationRefused) as caught:
-            self.classify(db)
-        self.assertEqual("FINANCE_MPP_RESOURCE_NOT_FOUND", caught.exception.code)
-
-    def test_repeating_a_decision_changes_nothing(self):
-        db = self.work_db()
-        self.classify(db)
-        before = len([t for t, _p in db.statements if t.startswith("INSERT")])
-        again = self.classify(db)
-        self.assertEqual("unchanged", again["status"])
-        after = len([t for t, _p in db.statements if t.startswith("INSERT")])
-        self.assertEqual(before, after, "a repeat inserts nothing")
-
-    def test_classification_never_touches_a_legacy_record(self):
-        db = self.work_db()
-        self.classify(db)
-        for text, _params in db.statements:
-            self.assertNotIn("external_resource_id", text)
-            self.assertFalse(text.startswith("UPDATE"), text[:60])
-            self.assertFalse(text.startswith("DELETE"), text[:60])
-
-    def test_mapping_refuses_to_create_records_nobody_asked_for(self):
-        # estimate_lines.created_by is NOT NULL and a financial record names its author.
-        async def factory():
-            return self.work_db()
-        with self.assertRaises(FinanceMppClassificationRefused) as caught:
-            asyncio.new_event_loop().run_until_complete(
-                FinanceMppMappingService(factory).map_source_version(ORG, "terrace", VERSION))
-        self.assertEqual("FINANCE_MPP_ACTOR_REQUIRED", caught.exception.code)
 
 
 class IdempotenceTests(unittest.TestCase):

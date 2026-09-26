@@ -827,44 +827,6 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
         return await _mapping_service(request).mapping_status(
             str(context.organization_id), projectId)
 
-    @application.post("/api/projects/{projectId}/finance/mpp-work-resources/{sourceResourceUid}")
-    async def classify_work_resource(projectId: str, sourceResourceUid: int,
-                                     request: Request):
-        """Record one decision about one WORK resource, then re-run the mapping.
-
-        The decision is stored as the Finance resource itself -- its type beside its
-        source identity -- so re-running the mapping matches it and builds the estimate
-        lines that were waiting on it. Repeating the request changes nothing.
-        """
-        from fastapi.responses import JSONResponse
-        from coreint.finance_mpp_mapping import FinanceMppClassificationRefused
-        context = await _mpp_guard(request, projectId, "finance.edit")
-        service = _mapping_service(request)
-        body = {}
-        try:
-            body = await request.json()
-        except Exception:  # noqa: BLE001 -- an absent body is a request with no decision
-            pass
-        if not isinstance(body, dict):
-            body = {}
-        try:
-            decision = await service.classify(
-                str(context.organization_id), projectId, sourceResourceUid,
-                body.get("resourceType"), body.get("baseUnit"),
-                actor_user_id=context.user_id)
-        except FinanceMppClassificationRefused as refused:
-            return JSONResponse(status_code=422,
-                                content={"error": {"code": refused.code,
-                                                   "message": str(refused)}})
-        mapped = None
-        if decision["status"] == "classified":
-            version = await service.current_version_id(str(context.organization_id), projectId)
-            if version is not None:
-                mapped = await service.map_source_version(
-                    str(context.organization_id), projectId, version,
-                    actor_user_id=context.user_id)
-        return {"decision": decision, "mapping": mapped}
-
     @application.get("/api/projects/{projectId}/mpp-imports/latest")
     async def latest_mpp_import(projectId: str, request: Request):
         from fastapi import HTTPException

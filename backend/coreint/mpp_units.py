@@ -22,8 +22,8 @@ It does not read the resource's NAME. Guessing m3 from «بتن» or hour from �
 about what a thing usually is, and it is wrong exactly when it matters: a schedule that
 prices concrete by the truckload, or labour by the day, would be silently restated. If a
 unit is to be inferred from a name, a person should confirm it once and it should be stored
-as their decision -- which is what `FinanceMppMappingService.classify` already does for the
-labour/equipment question.
+as their decision. (WORK resources are the exception with a basis: MS Project states their
+work in hours, and the mapper records `hour` for them -- see `WORK_UNIT`.)
 """
 
 from app.finance.domain.unit_registry import UNIT_REGISTRY

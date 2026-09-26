@@ -97,15 +97,23 @@ class AssignmentRowTests(unittest.TestCase):
         self.assertIsNone(row["resourceExternalId"])
         self.assertIsNone(row["plannedQuantity"])
 
-    def test_an_unclassified_work_resource_reports_no_finance_type(self):
-        # MSP has no labour/equipment distinction. Core leaves it null; guessing from the
-        # name is how a crane becomes a bricklayer.
+    def test_a_work_resource_stored_without_a_classification_is_typed_from_the_file(self):
+        # Rows written before 0038 carry null here for every WORK resource, because
+        # Finance then separated labour from equipment and the file does not. It no
+        # longer does: WORK is `work`, so the file's own kind types the row. Nothing about
+        # the crane's NAME is read -- guessing from a name is how a crane becomes a
+        # bricklayer -- and the quantity stays as absent as it was.
         row = assignment_row(joined(native_type="WORK", bambo_resource_type=None,
                                     resource_name="جرثقیل ۳۰ تن",
                                     planned_quantity=None, remaining_quantity=None,
                                     quantity_unit=None, resource_quantity_unit=None))
-        self.assertIsNone(row["resourceType"])
+        self.assertEqual("work", row["resourceType"])
         self.assertIsNone(row["plannedQuantity"])
+
+    def test_a_stored_labor_or_equipment_classification_is_read_as_work(self):
+        for old in ("labor", "equipment"):
+            row = assignment_row(joined(native_type="WORK", bambo_resource_type=old))
+            self.assertEqual("work", row["resourceType"], old)
 
     def test_the_task_block_matches_the_task_level_feed(self):
         row = joined()

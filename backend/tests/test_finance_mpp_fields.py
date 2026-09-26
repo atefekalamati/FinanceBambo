@@ -246,8 +246,9 @@ class FeedFromPersistedRowTests(unittest.TestCase):
         self.assertEqual("kg", self.stored(quantity=Decimal("5"), quantity_unit="kg",
                                            normalized_unit="m")["unit"])
 
-    def test_a_work_resource_is_not_classified_as_labour_or_equipment(self):
-        self.assertIsNone(self.stored(resource_type="WORK")["resourceType"])
+    def test_a_work_resource_is_work(self):
+        # One kind since 0038; the file's WORK is Finance's `work`, hours either way.
+        self.assertEqual("work", self.stored(resource_type="WORK")["resourceType"])
 
     def test_the_metrics_block_carries_the_variance_and_the_schedule_cost(self):
         metrics = self.stored()["task"]["metrics"]

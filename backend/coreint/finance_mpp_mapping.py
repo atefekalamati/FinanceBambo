@@ -53,7 +53,9 @@ from uuid import uuid4
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from app.finance.domain import resource_types
 from app.finance.domain.mpp_source_version import active_source_version
+from app.finance.domain.unit_registry import UNIT_REGISTRY
 
 from .finance_mpp_sync import MATERIAL_UNIT_RATE
 
@@ -63,15 +65,18 @@ LOG = logging.getLogger("coreint.finance_mpp_mapping")
 #: makes it unique and legible; the code is a label, never the identity the mapping keys on.
 RESOURCE_CODE_PREFIX = "MPP-R"
 
-#: How the file's own resource kinds land in Finance's vocabulary. MATERIAL is unambiguous.
-#: A WORK resource is labour or equipment and MS Project does not say which, so it becomes
-#: the one Finance value that claims nothing about which -- and a COST resource is a general
-#: cost. An unrecognised kind maps to nothing and the resource is left unmapped.
-RESOURCE_TYPE_BY_NATIVE = {"MATERIAL": "material", "COST": "general_cost"}
+#: How the file's own resource kinds land in Finance's vocabulary. The three kinds MS
+#: Project has are the three kinds Finance has (0038): MATERIAL is bought by quantity, WORK
+#: by the hour -- crews and machines alike -- and COST is a general cost. Until 0038 a
+#: WORK resource waited for a person to call it labour or equipment, a claim the file
+#: never makes; on the product nobody could make it either, so every crew and machine
+#: stayed unmapped. An unrecognised kind still maps to nothing and is left unmapped.
+RESOURCE_TYPE_BY_NATIVE = resource_types.RESOURCE_TYPE_BY_NATIVE
 
-#: The Finance type for a resource the file calls WORK. `labor` is a claim MS Project does
-#: not make, so it is NOT used here; `equipment` likewise. See `_finance_type`.
-UNCLASSIFIED_WORK_TYPE = None
+#: What a WORK resource is measured in. MS Project states every WORK resource's work in
+#: hours; its `initials` column, which arrives as `resource_unit`, is the first letter of
+#: the name and is not a unit. So the unit is the file's own convention, not a guess.
+WORK_UNIT = "hour"
 
 _SOURCE_ROWS = """
     SELECT source_task_uid, source_assignment_uid, source_resource_uid,
@@ -96,14 +101,6 @@ _INSERT_RESOURCE = """
 #: The decision itself, as an event. `before_values` states what the file said -- a WORK
 #: resource Finance refuses to type -- and `after_values` what the person chose, so the
 #: pair reads as the judgement it is rather than as a row appearing from nowhere.
-_INSERT_CLASSIFICATION_EVENT = """
-    INSERT INTO finance_audit_events
-        (id, organization_id, project_id, actor_user_id, action, entity_type, entity_id,
-         before_values, after_values, occurred_at)
-    VALUES (%s, %s, %s, %s, 'finance_resource.classified', 'finance_resources', %s,
-            %s, %s, now())
-"""
-
 _INSERT_LINE = """
     INSERT INTO estimate_lines
         (id, organization_id, project_id, resource_id, activity_external_id,
@@ -237,37 +234,13 @@ def _resource_title(stated):
 
 
 def _finance_type(native_type):
-    """Finance's kind for a schedule resource, or None when the file does not say.
+    """Finance's kind for a schedule resource, or None when the file states none.
 
-    Returning None is what keeps a WORK resource out: Finance's vocabulary separates labour
-    from equipment and MS Project does not, so calling it either would be a guess dressed as
-    data. Such a resource is reported unmapped and a person classifies it.
+    None keeps a resource out rather than guessing it in: such a resource is reported
+    unmapped. Since 0038 the file's three kinds all have a Finance kind, so this answers
+    None only for a kind MS Project itself does not have.
     """
-    return RESOURCE_TYPE_BY_NATIVE.get((native_type or "").upper(), UNCLASSIFIED_WORK_TYPE)
-
-
-#: What a person may decide a WORK resource is. `material` and `general_cost` are not
-#: here: the file states those unambiguously and nobody needs to choose them.
-CLASSIFIABLE_TYPES = ("labor", "equipment")
-
-_UNCLASSIFIED = """
-    SELECT m.source_resource_uid AS uid,
-           min(m.resource_name)  AS name,
-           min(m.resource_unit)  AS file_unit,
-           count(*)              AS assignment_count,
-           min(m.task_name)      AS sample_task
-      FROM finance_mpp_rows m
-     WHERE m.organization_id = %(organization_id)s AND m.project_id = %(project_id)s
-       AND m.source_resource_uid IS NOT NULL
-       AND upper(coalesce(m.resource_type, '')) = 'WORK'
-       AND NOT EXISTS (SELECT 1 FROM finance_resources fr
-                        WHERE fr.organization_id = m.organization_id
-                          AND fr.project_id = m.project_id
-                          AND fr.source_resource_uid = m.source_resource_uid
-                          AND fr.deleted_at IS NULL)
-     GROUP BY m.source_resource_uid
-     ORDER BY count(*) DESC, m.source_resource_uid
-"""
+    return RESOURCE_TYPE_BY_NATIVE.get((native_type or "").upper())
 
 
 #: Every row of the current schedule, in exactly one state.
@@ -334,13 +307,10 @@ class FinanceMppClassificationRefused(RuntimeError):
 class FinanceMppMappingService:
     """Creates or matches Finance resources and estimate lines from persisted MPP rows.
 
-    Also owns the one decision the file cannot make for us. MS Project calls a resource
-    WORK and Finance separates labour from equipment; nothing in the file distinguishes
-    them, so a person does, once per resource, and the decision is stored as the resource
-    itself -- its `resource_type` beside its `source_resource_uid`. There is no separate
-    override table because there is nothing a separate table would record that the
-    resource row does not already say, and `ux_finance_resources_source_resource` already
-    enforces exactly one decision per (organization, project, resource).
+    Every resource the file names is typed by the file: MATERIAL, WORK and COST are
+    Finance's three kinds (0038). Resources a person classified as `labor` or `equipment`
+    before that are matched by `source_resource_uid` exactly as before -- the lookup runs
+    ahead of the kind rule -- and read as `work` everywhere else.
     """
 
     def __init__(self, connection_factory, id_factory=uuid4):
@@ -417,108 +387,6 @@ class FinanceMppMappingService:
                 for r in stray],
         }
 
-    async def list_unclassified(self, organization_id, project_id):
-        """Every WORK resource nobody has decided about yet, commonest first."""
-        async with await self._connect() as connection:
-            async with connection.cursor(row_factory=dict_row) as cursor:
-                await cursor.execute(_UNCLASSIFIED, {"organization_id": organization_id,
-                                                     "project_id": project_id})
-                rows = await cursor.fetchall()
-        return [{"sourceResourceUid": r["uid"], "name": r["name"],
-                 # The file's own unit for a WORK resource is MS Project's `initials`,
-                 # which defaults to the first letter of the name -- reported so a reader
-                 # can see it is not a unit, never used as one.
-                 "fileUnit": r["file_unit"], "assignmentCount": r["assignment_count"],
-                 "sampleTask": r["sample_task"], "nativeType": "WORK"} for r in rows]
-
-    async def classify(self, organization_id, project_id, source_resource_uid,
-                       resource_type, base_unit, actor_user_id=None):
-        """Record one person's decision about one WORK resource, as a Finance resource.
-
-        Refuses rather than guesses: an unknown type, a unit the registry does not define,
-        or a resource uid the current source never mentions all end as a coded refusal. A
-        resource already decided is returned unchanged -- the decision is not re-opened by
-        repeating the request.
-        """
-        from app.finance.domain.unit_registry import UNIT_REGISTRY
-
-        if resource_type not in CLASSIFIABLE_TYPES:
-            raise FinanceMppClassificationRefused(
-                "FINANCE_MPP_TYPE_NOT_CLASSIFIABLE",
-                "a WORK resource is labour or equipment; %r is neither" % (resource_type,))
-        unit = UNIT_REGISTRY.get(str(base_unit or ""))
-        if unit is None:
-            raise FinanceMppClassificationRefused(
-                "FINANCE_MPP_UNIT_UNKNOWN",
-                "the unit registry defines no unit %r" % (base_unit,))
-
-        async with await self._connect() as connection:
-            async with connection.transaction():
-                async with connection.cursor(row_factory=dict_row) as cursor:
-                    # What the FILE says comes first. A material or a general cost is
-                    # already decided by the schedule, and answering "unchanged" to a
-                    # request to reclassify one would report success for a decision that
-                    # was never anyone's to make.
-                    await cursor.execute("""
-                        SELECT min(resource_name) AS name, min(resource_type) AS native
-                          FROM finance_mpp_rows
-                         WHERE organization_id=%s AND project_id=%s AND source_resource_uid=%s
-                    """, (organization_id, project_id, source_resource_uid))
-                    row = await cursor.fetchone()
-                    if row is None or row["name"] is None:
-                        raise FinanceMppClassificationRefused(
-                            "FINANCE_MPP_RESOURCE_NOT_FOUND",
-                            "no persisted schedule row names resource %r"
-                            % (source_resource_uid,))
-                    if (row["native"] or "").upper() != "WORK":
-                        raise FinanceMppClassificationRefused(
-                            "FINANCE_MPP_NOT_A_WORK_RESOURCE",
-                            "resource %r is %s in the file and needs no decision"
-                            % (source_resource_uid, row["native"]))
-
-                    # Already decided. Returned unchanged rather than re-opened: a repeat
-                    # of the same request is not a new decision.
-                    await cursor.execute("""
-                        SELECT id, resource_type FROM finance_resources
-                         WHERE organization_id=%s AND project_id=%s
-                           AND source_resource_uid=%s AND deleted_at IS NULL
-                    """, (organization_id, project_id, source_resource_uid))
-                    existing = await cursor.fetchone()
-                    if existing is not None:
-                        return {"status": "unchanged", "resourceId": str(existing["id"]),
-                                "resourceType": existing["resource_type"],
-                                "sourceResourceUid": source_resource_uid}
-
-                    resource_id = str(self._ids())
-                    await cursor.execute(
-                        _INSERT_RESOURCE,
-                        (resource_id, organization_id, project_id, resource_type,
-                         "%s%s" % (RESOURCE_CODE_PREFIX, source_resource_uid),
-                         _resource_title(row["name"]),
-                         unit.code, unit.dimension, source_resource_uid, actor_user_id))
-
-                    # A person decided something the file would not say, so the trail has
-                    # to record that a person decided it. The resource carries created_by
-                    # and created_at, which names WHO and WHEN but not WHAT WAS CHOSEN nor
-                    # what it was chosen from -- and MATERIAL and COST resources, which the
-                    # mapper types on its own, look identical in that column. Only the event
-                    # separates a judgement from an import.
-                    await cursor.execute(_INSERT_CLASSIFICATION_EVENT, (
-                        str(self._ids()), organization_id, project_id, actor_user_id,
-                        resource_id,
-                        Jsonb({"sourceResourceUid": source_resource_uid,
-                               "nativeType": "WORK",
-                               "resourceType": None,
-                               "name": row["name"]}),
-                        Jsonb({"sourceResourceUid": source_resource_uid,
-                               "resourceType": resource_type,
-                               "baseUnit": unit.code,
-                               "dimension": unit.dimension,
-                               "code": "%s%s" % (RESOURCE_CODE_PREFIX, source_resource_uid)})))
-        return {"status": "classified", "resourceId": resource_id,
-                "resourceType": resource_type, "baseUnit": unit.code,
-                "sourceResourceUid": source_resource_uid}
-
     async def map_source_version(self, organization_id, project_id, version_id,
                                  actor_user_id=None):
         """One pass over a source version. Returns what was created, matched and refused.
@@ -589,23 +457,28 @@ class FinanceMppMappingService:
                             continue
                         kind = _finance_type(row["resource_type"])
                         if kind is None:
-                            # The file states a kind Finance cannot name, and nobody has
-                            # named it either. Left for a person; see `classify`.
+                            # The file states a kind Finance cannot name. Left unmapped
+                            # and reported; nothing is guessed.
                             result["unclassifiedResources"].append(
                                 {"sourceResourceUid": uid, "name": row["resource_name"],
                                  "nativeType": row["resource_type"]})
                             continue
+                        if kind == "general_cost":
+                            # A general cost is an amount, not a measured thing, so it
+                            # carries no unit -- the same rule the resource form applies.
+                            unit, dimension = None, None
+                        elif kind == "work":
+                            # Hours, by the file's own convention; see WORK_UNIT.
+                            unit, dimension = WORK_UNIT, UNIT_REGISTRY[WORK_UNIT].dimension
+                        else:
+                            unit, dimension = row["resource_unit"], "count"
                         resource_id = str(self._ids())
                         await cursor.execute(
                             _INSERT_RESOURCE,
                             (resource_id, organization_id, project_id, kind,
                              "%s%s" % (RESOURCE_CODE_PREFIX, uid),
                              _resource_title(row["resource_name"]),
-                             # A general cost is an amount, not a measured thing, so it
-                             # carries no unit -- the same rule the resource form applies.
-                             None if kind == "general_cost" else row["resource_unit"],
-                             None if kind == "general_cost" else "count",
-                             uid, actor_user_id))
+                             unit, dimension, uid, actor_user_id))
                         by_uid[uid] = resource_id
                         result["resourcesCreated"] += 1
 
