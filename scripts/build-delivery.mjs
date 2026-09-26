@@ -71,6 +71,9 @@ const EXCLUDE = [
               || p === "frontend/package-lock.json" || p === "frontend/AGENTS.md"
               || p === "frontend/README.md" || p.startsWith("frontend/docs/") },
 
+  { why: "dated internal audits, phase reports and handoffs between us -- decision history, not deployment references; the repository keeps them",
+    test: (p) => /^backend\/docs\/(HANDOFF_2026|PHASE[0-9]|SECTION_AUDIT_|FINANCE_EVIDENCE_AUDIT_|ACCEPTANCE_REVIEW_|API_AUDIT_HANDOFF_|DECISION_PACKS_|DEMO_DATA_ALIGNMENT_|DBEAVER_DEMO_GUIDE_|ALEMBIC_DEMO_CHANGELOG_)/.test(p) },
+
   // ------------------------------------------------------------------- local test data
   // The owner's instruction, and it is the right one: nothing in the development database
   // is real. The host reads its own data from its own tables.
