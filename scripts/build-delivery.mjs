@@ -54,6 +54,8 @@ const EXCLUDE = [
     test: (p) => p.startsWith("backend/scripts/test_only/") },
   { why: "a Windows launcher for a developer's own machine",
     test: (p) => p.startsWith("backend/scripts/dev/") },
+  { why: "the development host's seed rows and the generators behind them -- 104 KB of demo invoices, prices and progress that must never reach a deployed database",
+    test: (p) => /^backend\/devhost\/(seed\.py|seed\.sql|generate_seed_sql\.py|synthetic_progress\.py|inspect\.py)$/.test(p) },
   { why: "operational scripts whose own docstrings say «a local Finance test database»",
     test: (p) => /^backend\/scripts\/ops\/(backup_canonical_test|copy_material_work|import_into_terrace|migrate_canonical_test)\.py$/.test(p) },
   { why: "sample and generated invoices used while developing the reader",
@@ -97,6 +99,15 @@ const EXCLUDE = [
 
 /** The two folders that make up the archive, and where each tracked path lands. */
 function destination(path) {
+  /* The development host is not shipped as code -- it is a SUBSTITUTE host, and the real
+     one is the BAMBO dashboard. But `devhost/app.py::wire()` is the only worked example of
+     assembling the fourteen required components, and a team wiring them from prose alone
+     is guessing. So it travels under `reference/`, where the name says what it is, with
+     the seed files removed by the rule above: without them it does not run, which is the
+     honest state for a file nobody should run. */
+  if (path.startsWith("backend/devhost/")) {
+    return "reference/" + path.slice("backend/".length);
+  }
   if (path.startsWith("backend/")) return path;
   if (path.startsWith("frontend/")) return null;          // built separately, see below
   return null;
@@ -140,6 +151,31 @@ async function main() {
     copied += 1;
   }
 
+  await writeFile(join(out, "reference", "README_FIRST_FA.md"),
+`# مرجع — اجرا نمی‌شود، خوانده می‌شود
+
+این پوشه **کد قابل اجرا نیست** و بخشی از سرویس نیست.
+
+\`devhost\` میزبان توسعهٔ ماژول است — جایگزینی برای داشبورد BAMBO، که میزبان واقعی است.
+اینجا آمده چون \`devhost/app.py::wire()\` تنها نمونهٔ کاملِ سرهم‌کردن آن ۱۴ مؤلفه‌ای است
+که \`DEPLOY_HANDOFF_FA.md\` بخش ۳ نام می‌برد. خواندنش سریع‌تر از حدس‌زدن از روی متن است.
+
+**فایل‌های seed عمداً حذف شده‌اند** (\`seed.py\`، \`seed.sql\`، \`generate_seed_sql.py\`،
+\`synthetic_progress.py\`، \`inspect.py\`). بدون آن‌ها این کد اجرا نمی‌شود — که وضعیت
+درستِ فایلی است که هیچ‌کس نباید اجرایش کند. آن فایل‌ها ۱۰۴ کیلوبایت فاکتور و قیمت و
+پیشرفت نمایشی بودند؛ هیچ‌کدام دادهٔ واقعی نیست.
+
+## چه چیزی را از اینجا بخوانید
+
+| فایل | برای چه |
+|---|---|
+| \`devhost/app.py\` تابع \`wire()\` | چطور ۱۴ مؤلفه روی \`application.state\` نشانده می‌شوند |
+| \`devhost/ports.py\` | پیاده‌سازی نمونهٔ پورت‌های میزبان |
+| \`devhost/environment.py\` | چطور هر تنظیم خوانده و اعتبارسنجی می‌شود |
+| \`devhost/connection.py\` · \`database.py\` | ساخت connection pool سازگار با psycopg |
+`, "utf8");
+  copied += 1;
+
   // The root documents, flattened so the first thing in the archive is the way in.
   for (const doc of ["DEPLOY_HANDOFF_FA.md", "README.md", ".env.example"]) {
     if (!kept.includes(doc)) continue;
@@ -180,6 +216,7 @@ Contents
   DEPLOY_HANDOFF_FA.md   start here — everything the deploy team must do
   backend/               the service, migrations, adapters and API contract
   frontend/              the browser package, served as-is (no build step)
+  reference/             devhost, READ ONLY -- the worked example of wiring the host
   backend/docs/          runbooks: deployment, backup/restore, extraction setup
   .env.example           every setting, with its own explanation
 
