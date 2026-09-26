@@ -26,9 +26,9 @@ const SUMMARY_FIGURES = Object.freeze([
   ["initialEstimateIrr", "برآورد اولیه", "مبنای اولیه برآورد پروژه"],
   ["actualCostIrr", "هزینه واقعی ثبت‌شده", "فقط اسناد مالی تأییدشده"],
   ["currentExecutedValueIrr", "ارزش روز کار انجام‌شده", "مقدار اجراشده با قیمت روز"],
-  ["remainingPhysicalCostIrr", "هزینه کار باقی‌مانده", "کار باقی‌مانده با قیمت روز"],
-  ["forecastFinalCostIrr", "پیش‌بینی هزینه نهایی", "هزینه واقعی به‌اضافه پول ادامه"],
-  ["moneyRequiredToContinueIrr", "بودجه موردنیاز تا تکمیل", "با لحاظ خرید ثبت‌شده مصالح"],
+  ["remainingPhysicalCostIrr", "هزینه بروز باقیمانده", "مقدار خریداری/پرداخت‌نشده طبق فاکتورها × قیمت روز"],
+  ["forecastFinalCostIrr", "پیش‌بینی هزینه نهایی", "هزینه واقعی به‌اضافه هزینه بروز باقیمانده"],
+  ["moneyRequiredToContinueIrr", "بودجه موردنیاز تا تکمیل", "همان هزینه بروز باقیمانده؛ یک رقم با دو نام"],
   ["actualCostPerSquareMeterIrr", "هزینه واقعی هر مترمربع", "براساس زیربنای کل پروژه"],
   ["forecastPerSquareMeterIrr", "پیش‌بینی هزینه هر مترمربع", "پیش‌بینی نهایی تقسیم بر زیربنا"],
 ]);

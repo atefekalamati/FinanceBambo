@@ -46,6 +46,11 @@ const REPORT_WARNINGS = Object.freeze({
      the price screen would waste their time -- the crossing is what is missing. */
   PRICE_UNIT_NOT_CONVERTIBLE: "قیمت روز یکی از اقلام بر حسب واحدی است که به واحد آن ردیف تبدیل نمی‌شود، پس آن ردیف از محاسبات زنده کنار گذاشته شده است.",
   ESTIMATE_BASELINE_MISSING: "یکی از ردیف‌های برآورد مقدار اولیه یا قیمت اولیه ندارد و از جمع برآورد اولیه کنار گذاشته شده است.",
+  /* An equipment payment is turned into settled hours by dividing it by the rate in force
+     on the invoice date. No rate on that date and none in the estimate means the payment
+     is in the actual cost and settles nothing, so the remaining stays high by what it
+     paid for. The fix is a price with an effective date, not a progress entry. */
+  INVOICE_PRICE_MISSING: "برای یکی از پرداخت‌های تجهیزات، در تاریخ فاکتور هیچ قیمتی ثبت نبوده و برآورد هم قیمتی ندارد؛ آن پرداخت در هزینه واقعی هست اما از هزینه بروز باقیمانده کم نشده است.",
   GROSS_AREA_MISSING: "زیربنای کل پروژه ثبت نشده و شاخص‌های هر مترمربع قابل محاسبه نیستند.",
   MONTHLY_ESTIMATE_UNAVAILABLE: "برآورد ماهانه برای این بازه در دسترس نیست.",
 });

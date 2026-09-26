@@ -47,6 +47,36 @@ PRICE_AFFECTED_METRICS = ("currentExecutedValueIrr", "remainingPhysicalCostIrr",
 PROGRESS_AFFECTED_METRICS = ("currentExecutedValueIrr", "remainingPhysicalCostIrr",
                              "forecastFinalCostIrr")
 
+#: The kinds whose "still to pay" is read from the LEDGER, not from site progress.
+#:
+#: Decided 2026-09-26, and it is how a building site actually runs. The material for an
+#: activity is bought before the activity starts, so an activity at 50% does not mean half
+#: its steel is still to buy -- it was all bought, and the invoices say so. Machinery is
+#: paid for by the hour and settled against the invoice, on whatever schedule the contract
+#: happened to use; the invoices are again the record. For both, what remains to be paid
+#: is `revised quantity − quantity already settled`, priced at today's rate, and progress
+#: has nothing to say about it.
+#:
+#: What "settled quantity" is differs by kind, and the difference is deliberate:
+#:   material  -- the QUANTITY on the invoice line, converted into the line's unit.
+#:   equipment -- the AMOUNT on the invoice line, divided by the rate in force on the
+#:                invoice date. A truck at 2 million an hour in the first year and 5
+#:                million the next paid the first year's hours at the first year's rate,
+#:                so the amount is read against the price history, not against today.
+#: Labour is not here: nobody has stated its rule yet, so it still derives its remaining
+#: from the measured quantity, exactly as before.
+SETTLED_BY_LEDGER = ("material", "equipment")
+
+#: For a ledger-settled kind, an absent measurement blinds ONE figure -- the executed
+#: value -- and not the remaining cost or the forecast, which no longer rest on it. The
+#: warning on such a line names only what it reaches; naming all three would make
+#: `incompleteMetricKeys` claim a forecast is incomplete for a reason it does not depend on.
+PROGRESS_AFFECTED_EXECUTED_ONLY = ("currentExecutedValueIrr",)
+
+#: The figures a payment that could not be turned into a settled quantity leaves too high.
+SETTLEMENT_AFFECTED_METRICS = ("remainingPhysicalCostIrr", "moneyRequiredToContinueIrr",
+                               "forecastFinalCostIrr", "forecastPerSquareMeterIrr")
+
 #: The keys every warning carries. ReportWarning forbids extras, so a key invented at one
 #: call site turns every report containing it into a 500 at response validation -- which is
 #: what happened to deviationQuantity. Hence one constructor rather than eight hand-built
@@ -106,10 +136,11 @@ class LiveReport:
     #: that is. Equal counts mean the figures are whole.
     computed_line_count: int = 0
     total_line_count: int = 0
-    #: Lines the FORECAST rests on -- `moneyRequiredToContinueIrr` and
-    #: `forecastFinalCostIrr`. A different set from `computed_line_count`, and the reason
-    #: both are published: a material with a price and no measurement is in one and not the
-    #: other, and one number could not say so.
+    #: Lines the REMAINING COST and the FORECAST rest on -- `remainingPhysicalCostIrr`,
+    #: `moneyRequiredToContinueIrr` and `forecastFinalCostIrr`. A different set from
+    #: `computed_line_count`, which is the executed value's: a material or equipment line
+    #: with a price and no measurement is in this one and not that one, because its
+    #: remaining is read from the ledger (SETTLED_BY_LEDGER) and its executed value is not.
     required_line_count: int = 0
 
 
@@ -144,24 +175,66 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     actual_total = ZERO
     missing_conversion_count = 0
     missing_conversion_types = set()
+    # The rate each estimate line was priced at, for the one place the price history is
+    # silent: an equipment payment dated before any price version took effect. The
+    # estimate's rate is the rate the project was priced at, which is what was in force
+    # until somebody recorded a newer one. Kept per line, and per resource for a payment
+    # that names no line and is pooled across the resource's lines below.
+    estimate_rate_by_line = {}
+    estimate_rate_by_resource = {}
+    for row in estimate_rows:
+        if row["resource_type"] == "equipment" and row["original_unit_price_irr"] is not None:
+            rate = Decimal(row["original_unit_price_irr"])
+            estimate_rate_by_line[row["id"]] = rate
+            estimate_rate_by_resource.setdefault(row["resource_id"], rate)
     for row in invoice_rows:
-        effect = Decimal(row["final_line_amount_irr"]) * Decimal(row["financial_effect_sign"])
+        sign = Decimal(row["financial_effect_sign"])
+        effect = Decimal(row["final_line_amount_irr"]) * sign
+        kind = row["resource_type"]
         actual_total += effect
-        actual_by_type[row["resource_type"]] += effect
-        if row["resource_type"] == "general_cost" or row.get("quantity") is None: continue
-        quantity = Decimal(row["quantity"]) * Decimal(row["financial_effect_sign"])
-        source_unit, target_unit = row.get("unit"), row.get("base_unit")
-        if source_unit != target_unit:
-            factor = conversion_by_key.get((source_unit, target_unit, row.get("dimension")))
-            if factor is None:
-                missing_conversion_count += 1
-                missing_conversion_types.add(row["resource_type"])
-                warnings.append(_warning("UNIT_CONVERSION_MISSING","Purchased quantity was excluded because its unit cannot be converted.",
+        actual_by_type[kind] += effect
+        if kind == "equipment":
+            # SETTLED_BY_LEDGER, the equipment half: the amount paid, read against the rate
+            # that was in force on the day it was paid. `unit_price_at_invoice_date_irr` is
+            # the price ladder evaluated at the invoice date, not the report date -- so a
+            # payment made when the truck cost 2 million an hour buys the hours it bought
+            # then, and today's 5 million rate prices only what is still to come. Where no
+            # version was in force yet, the estimate's own rate is the one that was. Both
+            # are quoted per the resource's base unit, the unit the line is measured in,
+            # so no crossing is needed here.
+            rate = row.get("unit_price_at_invoice_date_irr")
+            if rate is None and row.get("estimate_line_id"):
+                rate = estimate_rate_by_line.get(row["estimate_line_id"])
+            if rate is None:
+                rate = estimate_rate_by_resource.get(row["resource_id"])
+            if rate is None or Decimal(rate) == ZERO:
+                # The payment is real and is in `actualCostIrr`; what it bought is not
+                # knowable, so it settles nothing and the line's remaining stays HIGH by
+                # exactly what this paid for. Not excluded -- the figure exists -- and
+                # named, because the person who can fix it records a price, not progress.
+                warnings.append(_warning("INVOICE_PRICE_MISSING",
+                    "No rate was in force on the invoice date and the estimate states none; this equipment payment could not be turned into settled hours.",
                     estimate_line_id=str(row["estimate_line_id"]) if row.get("estimate_line_id") else None,
                     resource_id=str(row["resource_id"]),resource_code=row.get("resource_code"),
-                    excluded=True,affected=("moneyRequiredToContinueIrr","forecastFinalCostIrr")))
+                    affected=SETTLEMENT_AFFECTED_METRICS))
                 continue
-            quantity *= factor
+            quantity = effect / Decimal(rate)
+        elif kind == "general_cost" or row.get("quantity") is None:
+            continue
+        else:
+            quantity = Decimal(row["quantity"]) * sign
+            source_unit, target_unit = row.get("unit"), row.get("base_unit")
+            if source_unit != target_unit:
+                factor = conversion_by_key.get((source_unit, target_unit, row.get("dimension")))
+                if factor is None:
+                    missing_conversion_count += 1
+                    missing_conversion_types.add(kind)
+                    warnings.append(_warning("UNIT_CONVERSION_MISSING","Purchased quantity was excluded because its unit cannot be converted.",
+                        estimate_line_id=str(row["estimate_line_id"]) if row.get("estimate_line_id") else None,
+                        resource_id=str(row["resource_id"]),resource_code=row.get("resource_code"),
+                        excluded=True,affected=("moneyRequiredToContinueIrr","forecastFinalCostIrr")))
+                    continue
+                quantity *= factor
         if row.get("estimate_line_id"):
             key = row["estimate_line_id"]
             purchased_by_line[key] = purchased_by_line.get(key, ZERO) + quantity
@@ -198,6 +271,10 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     # what has not been BOUGHT. Reporting one count beside both pairs of metrics said the
     # forecast rested on 0 of 715 lines when it rested on rather more than that.
     required_line_count=0
+    #: Unmeasured lines whose remaining DOES rest on the measurement -- labour today. An
+    #: unmeasured material or equipment line is not in here, because its remaining is read
+    #: from the ledger and an absent measurement leaves that figure whole.
+    progress_unknown_unsettled=0
     # missingCount counts lines that DID match an assignment but had no usable quantity on
     # it. Lines that matched nothing are unmappedLineCount instead: the two need different
     # work from different people, so one number for both told the reader nothing.
@@ -300,13 +377,19 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
                 executed = resolved["effective_quantity"];_source = resolved["source_method"]
                 _measurement = resolved["measurement_type"];_status = resolved["progress_status"]
             except ValueError: executed = ZERO;_source="missing";_status = PROGRESS_UNAVAILABLE
+        # What an absent or doubtful measurement on THIS line can reach. For a kind settled
+        # by the ledger that is the executed value alone; the remaining and the forecast
+        # are read from invoices and do not move.
+        settled_by_ledger = kind in SETTLED_BY_LEDGER
+        progress_reaches = PROGRESS_AFFECTED_EXECUTED_ONLY if settled_by_ledger else PROGRESS_AFFECTED_METRICS
         if _source in ("missing","unmapped"):
             progress_quality["complete"] = False
+            if not settled_by_ledger: progress_unknown_unsettled += 1
             if _source == "unmapped":
-                warnings.append(_line_warning(row,"PROGRESS_UNMAPPED","This estimate line is not linked to any assignment in the selected progress snapshot.",excluded=True,affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
+                warnings.append(_line_warning(row,"PROGRESS_UNMAPPED","This estimate line is not linked to any assignment in the selected progress snapshot.",excluded=True,affected=progress_reaches,progressStatus=_status))
             else:
                 progress_quality["missingCount"] += 1
-                warnings.append(_line_warning(row,"PROGRESS_MISSING","The linked assignment carries no usable progress quantity for this estimate line.",excluded=True,affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
+                warnings.append(_line_warning(row,"PROGRESS_MISSING","The linked assignment carries no usable progress quantity for this estimate line.",excluded=True,affected=progress_reaches,progressStatus=_status))
         elif _source == "manual_override": progress_quality["manualOverrideCount"] += 1
         elif _source == "task_progress_fallback": progress_quality["taskFallbackCount"] += 1;progress_quality["complete"] = False
         elif _source == "assignment_work_percent": progress_quality["assignmentPercentFallbackCount"] += 1;progress_quality["complete"] = False
@@ -319,7 +402,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
             # the assignment's actual, so that counter stays true and this one says which of
             # those actuals was effort.
             progress_quality["workAsQuantityCount"] += 1;progress_quality["complete"] = False
-            warnings.append(_line_warning(row,"PROGRESS_WORK_NOT_QUANTITY","Executed quantity was taken from reported work effort, whose unit the progress source does not state.",affected=PROGRESS_AFFECTED_METRICS,progressStatus=_status))
+            warnings.append(_line_warning(row,"PROGRESS_WORK_NOT_QUANTITY","Executed quantity was taken from reported work effort, whose unit the progress source does not state.",affected=progress_reaches,progressStatus=_status))
         # Whether anybody actually MEASURED this line. `executed` is ZERO in both the
         # measured-nothing case and the measured-nothing-because-nobody-looked case, and
         # those are not the same fact: the second one makes `remaining` the line's whole
@@ -390,54 +473,59 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         if not progress_known and str(row["id"]) not in excluded_ids_seen:
             excluded_estimate_line_ids.append(str(row["id"]));excluded_ids_seen.add(str(row["id"]))
             excluded_lines_by_type[kind] += 1
-        executed_value = money(executed * current); remaining_cost = money(remaining * current)
-        # Both sums rest on `executed`, so both need a price AND a measurement. Adding a
-        # priced-but-unmeasured line here is what produced the old behaviour: zero executed
-        # value and the full quantity outstanding, stated as confidently as a real line.
+        executed_value = money(executed * current)
+        # The executed value rests on `executed`, so it needs a price AND a measurement.
         if has_price and progress_known:
-            current_executed += executed_value;remaining_physical_cost += remaining_cost
+            current_executed += executed_value
         line_bought = purchased_by_line.get(row["id"], ZERO)
         resource_remaining_purchase = resource_purchase_remaining.get(row["resource_id"], ZERO)
         resource_allocated_purchase = min(max(revised_quantity - line_bought, ZERO), resource_remaining_purchase) if resource_remaining_purchase > 0 else ZERO
         resource_purchase_remaining[row["resource_id"]] = resource_remaining_purchase - resource_allocated_purchase
         bought = line_bought + resource_allocated_purchase
-        required_quantity = max(revised_quantity - bought, ZERO) if kind == "material" else remaining
+        # WHAT THIS LINE STILL HAS TO PAY FOR, in its own unit -- see SETTLED_BY_LEDGER.
+        # For material and equipment it is what the invoices have not yet settled, and
+        # the ledger states that whether or not anyone walked the site. For labour it is
+        # still what has not been done, so it needs the measurement.
+        #
+        # ONE remaining figure, not two. «هزینه بروز باقیمانده» used to be `(revised −
+        # executed) × today's rate` for every kind, while `moneyRequiredToContinueIrr`
+        # already read material from the ledger; the card on the report page drew the
+        # first and the reader was told, in the report builder, that the two "are not one
+        # concept". Decided 2026-09-26 that the ledger rule is the rule, so both metrics
+        # are now this one sum: the second name is kept because snapshots, exports and the
+        # DTO carry it, and a figure with two names is still one figure.
+        required_quantity = max(revised_quantity - bought, ZERO) if settled_by_ledger else remaining
         required = money(required_quantity * current)
-        # What a material line still needs is what has not been BOUGHT, which the purchase
-        # ledger states whether or not anyone measured site progress. So an unmeasured
-        # material line still contributes here, and only here -- the purchased-quantity
-        # rule is untouched. Every other kind derives its requirement from `remaining`, so
-        # it needs the measurement like the two sums above do.
-        required_is_known = has_price and (kind == "material" or progress_known)
+        required_is_known = has_price and (settled_by_ledger or progress_known)
         if required_is_known:
-            money_required += required;required_line_count += 1
-        if has_price and progress_known:
-            breakdown[kind]["remainingPhysicalCostIrr"] += remaining_cost
-        if required_is_known:
+            remaining_physical_cost += required;money_required += required;required_line_count += 1
+            breakdown[kind]["remainingPhysicalCostIrr"] += required
             breakdown[kind]["forecastFinalIrr"] += required
-        # A line counts as computed when every figure the forecast asks of it is knowable.
+        # A line counts as computed when its executed value is knowable: price and
+        # measurement. `required_line_count` above is the coverage of the remaining cost
+        # and the forecast, and for a ledger-settled kind that is the larger set.
         if has_price and progress_known: computed_line_count += 1
-        price_variance = remaining_cost - money(remaining * original_price) if has_price else ZERO
+        price_variance = required - money(required_quantity * original_price) if has_price else ZERO
         quantity_variance = revised_quantity - original_quantity
         linked_actual_line = actual_by_line.get(row["id"], ZERO)
         resource_remaining_actual = resource_actual_remaining.get(row["resource_id"], ZERO)
         resource_allocated_actual = resource_remaining_actual
         resource_actual_remaining[row["resource_id"]] = ZERO
         actual_line = linked_actual_line + resource_allocated_actual
-        forecast_line = actual_line + remaining_cost
+        forecast_line = actual_line + required
         price_percent = None if original_price == 0 else ((current - original_price) * Decimal(100) / original_price).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
         quantity_percent = None if original_quantity == 0 else (quantity_variance * Decimal(100) / original_quantity).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
         price_variances.append({"varianceKind":"price","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"resourceTitle":row["resource_title"],"resourceType":kind,
             "activityExternalId":row.get("activity_external_id"),"activityTitle":row.get("activity_title"),"wbsCode":row.get("wbs_code"),"baseUnit":row.get("base_unit"),
-            "revisedQuantity":revised_quantity,"remainingQuantity":remaining,"estimateBaseUnitPriceIrr":original_price,"currentUnitPriceIrr":None if current_price is None else current,
-            "varianceIrr":price_variance,"priceVariancePercent":price_percent,"actualCostIrr":actual_line,"remainingPhysicalCostIrr":remaining_cost if has_price else None,
+            "revisedQuantity":revised_quantity,"remainingQuantity":required_quantity,"estimateBaseUnitPriceIrr":original_price,"currentUnitPriceIrr":None if current_price is None else current,
+            "varianceIrr":price_variance,"priceVariancePercent":price_percent,"actualCostIrr":actual_line,"remainingPhysicalCostIrr":required if has_price else None,
             "forecastFinalIrr":forecast_line if has_price else None,"priceAvailable":has_price,"impactSharePercent":None,"currentPriceScope":row.get("current_price_scope"),"currentPriceEffectiveFrom":row.get("current_price_effective_from"),
             "currentPriceVersionId":row.get("price_version_id"),"estimatePriceVersionId":row.get("estimate_version_id")})
         quantity_variances.append({"varianceKind":"quantity","estimateLineId":str(row["id"]),"resourceId":str(row["resource_id"]),"resourceCode":row["resource_code"],"resourceTitle":row["resource_title"],"resourceType":kind,
             "activityExternalId":row.get("activity_external_id"),"activityTitle":row.get("activity_title"),"wbsCode":row.get("wbs_code"),"baseUnit":row.get("base_unit"),
-            "initialQuantity":original_quantity,"revisedQuantity":revised_quantity,"executedQuantity":executed,"remainingQuantity":remaining,
+            "initialQuantity":original_quantity,"revisedQuantity":revised_quantity,"executedQuantity":executed,"remainingQuantity":required_quantity,
             "varianceQuantity":quantity_variance,"quantityVariancePercent":quantity_percent,"sourceMethod":_source,"measurementType":_measurement,"progressStatus":_status,"progressSnapshotId":row.get("progress_snapshot_id"),
-            "actualCostIrr":actual_line,"remainingPhysicalCostIrr":remaining_cost if has_price else None,"forecastFinalIrr":forecast_line if has_price else None,
+            "actualCostIrr":actual_line,"remainingPhysicalCostIrr":required if has_price else None,"forecastFinalIrr":forecast_line if has_price else None,
             "priceAvailable":has_price,"impactSharePercent":None})
 
     # «هزینه بروز باقیمانده» IS every rial still to spend, and a general cost is one of
@@ -479,9 +567,16 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     # makes them: the per-line warnings above already declare these metrics affected, and
     # this is what makes that declaration true instead of decorative.
     progress_unknown=progress_quality["unmappedLineCount"]+progress_quality["missingCount"]
+    settlement_gaps=sum(1 for warning in warnings if warning["code"]=="INVOICE_PRICE_MISSING")
     incomplete_metric_keys=[]
+    # The executed value is blind to ANY unmeasured line. The remaining cost and the
+    # forecast are blind only to an unmeasured line of a kind that still derives its
+    # remaining from the measurement, and to a payment nobody could turn into settled
+    # hours -- a material or equipment line nobody measured leaves them whole.
     if missing_price_count or missing_conversion_count or progress_unknown:
-        incomplete_metric_keys=["currentExecutedValueIrr","remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr","forecastPerSquareMeterIrr"]
+        incomplete_metric_keys.append("currentExecutedValueIrr")
+    if missing_price_count or missing_conversion_count or progress_unknown_unsettled or settlement_gaps:
+        incomplete_metric_keys+=["remainingPhysicalCostIrr","moneyRequiredToContinueIrr","forecastFinalCostIrr","forecastPerSquareMeterIrr"]
     # The baseline is its own kind of gap and names its own metrics. A project can have
     # every price and every measurement and still have lines nobody has estimated.
     if missing_estimate_count:

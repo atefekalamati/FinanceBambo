@@ -172,9 +172,10 @@ class LiveReportResponse(ApiModel):
     #: over 2 of 715 lines reads exactly like a sum over all 715.
     computed_line_count:int=0
     total_line_count:int=0
-    #: Lines the FORECAST rests on. Not the same set as `computedLineCount`: a material
+    #: Lines the REMAINING COST and the FORECAST rest on. Not the same set as
+    #: `computedLineCount`, which is the executed value's: a material or equipment line
     #: with a price and no measurement is excluded from that one and included in this,
-    #: because what a material still needs is what has not been bought. Two metrics, two
+    #: because what it still needs is what the invoices have not settled. Two rules, two
     #: coverage figures -- one number could not describe both.
     required_line_count:int=0
     excluded_estimate_line_ids:list[UUID]=Field(default_factory=list,
@@ -218,9 +219,10 @@ class OperationalOverviewResponse(ApiModel):
     #: over 2 of 715 lines reads exactly like a sum over all 715.
     computed_line_count:int=0
     total_line_count:int=0
-    #: Lines the FORECAST rests on. Not the same set as `computedLineCount`: a material
+    #: Lines the REMAINING COST and the FORECAST rest on. Not the same set as
+    #: `computedLineCount`, which is the executed value's: a material or equipment line
     #: with a price and no measurement is excluded from that one and included in this,
-    #: because what a material still needs is what has not been bought. Two metrics, two
+    #: because what it still needs is what the invoices have not settled. Two rules, two
     #: coverage figures -- one number could not describe both.
     required_line_count:int=0
     progress_quality:ProgressQuality|None=None

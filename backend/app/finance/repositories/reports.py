@@ -4,7 +4,8 @@ from ..domain.estimate_basis import (effective_original_price,
                                     effective_original_quantity,
                                     estimate_line_effective_on_or_before,
                                     original_value_source)
-from ..domain.price_resolution import resolved_price_columns, resolved_price_joins
+from ..domain.price_resolution import (manual_price_join, resolved_price_columns,
+                                       resolved_price_joins)
 
 
 class PsycopgLiveReportRepository:
@@ -65,7 +66,17 @@ class PsycopgLiveReportRepository:
             ) AS uncertain""",(scope.organization_id,scope.project_id,as_of,as_of))
             coverage=await cursor.fetchone()
             coverage_known=bool(estimates) and not coverage["uncertain"]
-            await cursor.execute("""SELECT i.id invoice_id,il.estimate_line_id,il.resource_id,il.quantity,il.unit,il.final_line_amount_irr,i.financial_effect_sign,r.resource_type,r.code resource_code,r.base_unit,r.dimension FROM invoice_lines il JOIN invoices i ON i.organization_id=il.organization_id AND i.project_id=il.project_id AND i.id=il.invoice_id JOIN finance_resources r ON r.organization_id=il.organization_id AND r.project_id=il.project_id AND r.id=il.resource_id WHERE il.organization_id=%s AND il.project_id=%s AND i.status IN ('confirmed','voided','corrected') AND i.invoice_date<=%s""",(scope.organization_id,scope.project_id,as_of));invoices=await cursor.fetchall()
+            await cursor.execute("""SELECT i.id invoice_id,il.estimate_line_id,il.resource_id,il.quantity,il.unit,il.final_line_amount_irr,i.financial_effect_sign,r.resource_type,r.code resource_code,r.base_unit,r.dimension,invoice_price.unit_price_irr unit_price_at_invoice_date_irr FROM invoice_lines il JOIN invoices i ON i.organization_id=il.organization_id AND i.project_id=il.project_id AND i.id=il.invoice_id JOIN finance_resources r ON r.organization_id=il.organization_id AND r.project_id=il.project_id AND r.id=il.resource_id"""
+                # The rate in force ON THE INVOICE DATE, not on the report date: the same
+                # `price_versions` ladder the estimate query uses, evaluated at
+                # `i.invoice_date`. The domain divides an equipment payment by it to learn
+                # how many hours that payment settled -- see SETTLED_BY_LEDGER. Manual
+                # versions only: equipment has no worksheet, and a payment made when the
+                # truck cost 2 million an hour must be read at 2 million, not at today's 5.
+                + manual_price_join(organization="il.organization_id", project="il.project_id",
+                                    resource="il.resource_id", as_of="i.invoice_date",
+                                    name="invoice_price")
+                + """ WHERE il.organization_id=%s AND il.project_id=%s AND i.status IN ('confirmed','voided','corrected') AND i.invoice_date<=%s""",(scope.organization_id,scope.project_id,as_of));invoices=await cursor.fetchall()
             await cursor.execute("""SELECT DISTINCT ON (source_unit,target_unit,dimension) id,source_unit,target_unit,dimension,factor FROM unit_conversions WHERE organization_id=%s AND project_id=%s AND effective_from<=%s ORDER BY source_unit,target_unit,dimension,(scope_kind='project') DESC,effective_from DESC,version DESC,created_at DESC,id DESC""",(scope.organization_id,scope.project_id,as_of));conversions=await cursor.fetchall()
             await cursor.execute("SELECT id progress_snapshot_ref_id,progress_snapshot_id,host_snapshot_id,reporting_date FROM progress_snapshot_refs WHERE organization_id=%s AND project_id=%s AND reporting_date<=%s AND snapshot_status='ready' ORDER BY reporting_date DESC,imported_at DESC LIMIT 1",(scope.organization_id,scope.project_id,as_of));snapshot=await cursor.fetchone()
         return {"settings_id":None if settings is None else settings["id"],"gross_area":None if settings is None else settings["gross_built_area"],"estimate_coverage_known":coverage_known,"estimates":estimates,"invoices":invoices,"conversions":conversions,"snapshot":snapshot}

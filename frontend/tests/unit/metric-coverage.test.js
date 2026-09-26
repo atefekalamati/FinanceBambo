@@ -72,7 +72,7 @@ test("a gap nobody can name falls back rather than printing an empty sentence", 
 
 test("a figure built from every line says nothing extra", () => {
   const report = REPORT({ remainingPhysicalCostIrr: "5" },
-                        { computedLineCount: 835, totalLineCount: 835 });
+                        { requiredLineCount: 835, totalLineCount: 835 });
   assert.equal(coverageOf(report, "remainingPhysicalCostIrr"), null);
   assert.equal(coverageNote(report, "remainingPhysicalCostIrr", "کار باقیمانده"), "کار باقیمانده",
                "a badge on every card is a badge nobody reads");
@@ -80,7 +80,7 @@ test("a figure built from every line says nothing extra", () => {
 
 test("a figure that left lines out says how many", () => {
   const report = REPORT({ remainingPhysicalCostIrr: "5" },
-                        { computedLineCount: 830, totalLineCount: 835 });
+                        { requiredLineCount: 830, totalLineCount: 835 });
   assert.deepEqual(coverageOf(report, "remainingPhysicalCostIrr"),
                    { computed: 830, total: 835, excluded: 5 });
   assert.equal(coverageNote(report, "remainingPhysicalCostIrr", "کار باقیمانده"),
@@ -123,7 +123,7 @@ const { restsOnNothing } = await import("../../src/features/finance-home/metric-
 
 test("a figure built from no lines at all is withheld, not drawn as zero", () => {
   const report = REPORT({ remainingPhysicalCostIrr: "0" },
-                        { computedLineCount: 0, totalLineCount: 715 });
+                        { requiredLineCount: 0, totalLineCount: 715 });
   assert.equal(restsOnNothing(report, "remainingPhysicalCostIrr"), true);
   assert.match(coverageNote(report, "remainingPhysicalCostIrr", "کار باقیمانده"),
                /هیچ‌کدام از ۷۱۵ ردیف/);
@@ -131,7 +131,7 @@ test("a figure built from no lines at all is withheld, not drawn as zero", () =>
 
 test("a figure built from some lines is still drawn, and qualified", () => {
   const report = REPORT({ remainingPhysicalCostIrr: "5" },
-                        { computedLineCount: 2, totalLineCount: 715 });
+                        { requiredLineCount: 2, totalLineCount: 715 });
   assert.equal(restsOnNothing(report, "remainingPhysicalCostIrr"), false);
   assert.match(coverageNote(report, "remainingPhysicalCostIrr", "کار باقیمانده"),
                /۷۱۳ ردیف در این عدد نیامده/);
@@ -144,15 +144,31 @@ test("a figure built from some lines is still drawn, and qualified", () => {
  * measured site progress. One count cannot describe both figures.
  */
 
-test("the forecast is not judged by the count that belongs to the remaining cost", () => {
-  const report = REPORT({ remainingPhysicalCostIrr: "0", forecastFinalCostIrr: "8347173100000" },
+test("the forecast is not judged by the count that belongs to the executed value", () => {
+  const report = REPORT({ currentExecutedValueIrr: "0", forecastFinalCostIrr: "8347173100000" },
                         { computedLineCount: 0, requiredLineCount: 52, totalLineCount: 715 });
   assert.equal(restsOnNothing(report, "forecastFinalCostIrr"), false,
                "52 lines built it; it is not a sum over nothing");
   assert.match(coverageNote(report, "forecastFinalCostIrr", "پیش‌بینی"),
                /۶۶۳ ردیف در این عدد نیامده/);
-  assert.equal(restsOnNothing(report, "remainingPhysicalCostIrr"), true,
+  assert.equal(restsOnNothing(report, "currentExecutedValueIrr"), true,
                "and the other figure, on the same payload, rests on nothing");
+});
+
+/* «هزینه بروز باقیمانده» ANSWERS TO THE FORECAST'S COUNT, since 2026-09-26.
+ *
+ * The service made it the same ledger-settled sum as «بودجه موردنیاز تا تکمیل»: what a
+ * material or equipment line still has to pay for is read from its invoices, whether or
+ * not anyone measured its progress. So on the payload above -- nothing measured, 52 lines
+ * with a price -- the remaining cost rests on those 52, not on nothing. Reading it against
+ * `computedLineCount` would withhold a figure the service built from 52 lines.
+ */
+test("the remaining cost is judged by the forecast's count, not the executed value's", () => {
+  const report = REPORT({ remainingPhysicalCostIrr: "6654488100000" },
+                        { computedLineCount: 0, requiredLineCount: 52, totalLineCount: 715 });
+  assert.equal(restsOnNothing(report, "remainingPhysicalCostIrr"), false);
+  assert.match(coverageNote(report, "remainingPhysicalCostIrr", "باقیمانده"),
+               /۶۶۳ ردیف در این عدد نیامده/);
 });
 
 test("a service that publishes no count for a figure leaves it unqualified", () => {
@@ -177,7 +193,7 @@ const { coverageTooltip, coverageWarnings } =
 test("a figure built from every line gets no mark at all", () => {
   /* A mark on every bar is a mark nobody reads. */
   const report = REPORT({ remainingPhysicalCostIrr: "5" },
-                        { computedLineCount: 715, totalLineCount: 715 });
+                        { requiredLineCount: 715, totalLineCount: 715 });
   assert.equal(coverageTooltip(report, "remainingPhysicalCostIrr"), null);
   assert.deepEqual(coverageWarnings(report), []);
 });
@@ -192,7 +208,7 @@ test("a partial figure states both halves, because they answer different questio
 
 test("a figure resting on nothing says so rather than counting to zero", () => {
   const report = REPORT({ remainingPhysicalCostIrr: "0" },
-                        { computedLineCount: 0, totalLineCount: 715 });
+                        { requiredLineCount: 0, totalLineCount: 715 });
   assert.match(coverageTooltip(report, "remainingPhysicalCostIrr"),
                /هیچ‌کدام از ۷۱۵ ردیف/);
 });
@@ -212,9 +228,9 @@ test("the warnings name the figures a count governs, once, not one line each", (
                         { computedLineCount: 0, requiredLineCount: 52, totalLineCount: 715 });
   const messages = coverageWarnings(report).map((w) => w.message);
   assert.equal(messages.length, 2);
-  assert.match(messages[0], /ارزش اجراشده و هزینه بروز باقیمانده/);
+  assert.match(messages[0], /ارزش اجراشده/);
   assert.match(messages[0], /هیچ‌کدام از ۷۱۵ ردیف/);
-  assert.match(messages[1], /پیش‌بینی هزینه نهایی/);
+  assert.match(messages[1], /هزینه بروز باقیمانده، پیش‌بینی هزینه نهایی/);
   assert.match(messages[1], /۵۲ ردیف از ۷۱۵/);
   assert.match(messages[1], /۶۶۳ ردیف در آن‌ها نیامده/);
 });

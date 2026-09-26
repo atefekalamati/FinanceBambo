@@ -93,7 +93,7 @@ const SUMMARY_ITEMS = Object.freeze([
   [
     "moneyRequiredToContinueIrr",
     "بودجه موردنیاز تا تکمیل",
-    "با لحاظ خرید ثبت‌شده مصالح",
+    "همان هزینه بروز باقیمانده؛ یک رقم با دو نام",
   ],
 ]);
 

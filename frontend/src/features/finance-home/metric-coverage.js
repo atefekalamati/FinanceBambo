@@ -90,18 +90,22 @@ export function unavailableReason(report, key) {
  *
  * TWO COUNTS, BECAUSE THE SERVICE APPLIES TWO RULES. A figure about work DONE needs a
  * price and a measurement. A figure about money still to SPEND needs a price and, for
- * material, no measurement at all — what is left to buy comes from the purchase ledger,
- * not from site progress. Measured on this project the two differ completely: 0 lines
- * against 52.
+ * material and equipment, no measurement at all — what is left to pay for comes from the
+ * invoices, not from site progress. Measured on this project the two differ completely:
+ * 0 lines against 52.
  *
  * So a single count cannot describe both, and reading `computedLineCount` beside the
  * forecast produced «هیچ ردیفی در این عدد نیامده» next to a figure of 8,347 billion. A
  * figure whose count the service does not publish is left unqualified rather than
  * qualified wrongly.
+ *
+ * «هزینه بروز باقیمانده» moved from the first count to the second on 2026-09-26, when the
+ * service made it the same ledger-settled figure as «بودجه موردنیاز تا تکمیل»: one sum
+ * under two names, so one coverage count.
  */
 const COVERAGE_COUNT = Object.freeze({
   currentExecutedValueIrr: "computedLineCount",
-  remainingPhysicalCostIrr: "computedLineCount",
+  remainingPhysicalCostIrr: "requiredLineCount",
   moneyRequiredToContinueIrr: "requiredLineCount",
   forecastFinalCostIrr: "requiredLineCount",
   forecastPerSquareMeterIrr: "requiredLineCount",
@@ -153,11 +157,11 @@ export function coverageOf(report, key) {
  * nobody. */
 const COVERAGE_GROUPS = Object.freeze([
   { field: "computedLineCount",
-    keys: ["currentExecutedValueIrr", "remainingPhysicalCostIrr"],
-    label: "ارزش اجراشده و هزینه بروز باقیمانده" },
+    keys: ["currentExecutedValueIrr"],
+    label: "ارزش اجراشده" },
   { field: "requiredLineCount",
-    keys: ["moneyRequiredToContinueIrr", "forecastFinalCostIrr", "forecastPerSquareMeterIrr"],
-    label: "پیش‌بینی هزینه نهایی، بودجه موردنیاز تا تکمیل و پیش‌بینی هر مترمربع" },
+    keys: ["remainingPhysicalCostIrr", "moneyRequiredToContinueIrr", "forecastFinalCostIrr", "forecastPerSquareMeterIrr"],
+    label: "هزینه بروز باقیمانده، پیش‌بینی هزینه نهایی و پیش‌بینی هر مترمربع" },
 ]);
 
 /** `{computed, total}` for one governing count, or null when it cannot be read. */

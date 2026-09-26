@@ -90,22 +90,29 @@ class LiveReportDomainTests(unittest.TestCase):
         report = calculate_live_report(estimates, invoices, assignments,
                                        [{"source_unit": "box", "target_unit": "each", "dimension": "count", "factor": "2"}], "10")
         self.assertEqual(8, len(report.metrics))
+        # Revised 2026-09-26, SETTLED_BY_LEDGER. Material: 12 revised, 8 bought (4 boxes
+        # of 2, and the two pooled units cancel), so 4 still to buy at 150 = 600. Labour:
+        # 5 revised, 2 done, 3 × 200 = 600. General: 1300 paid against 1200, nothing left.
+        # «هزینه بروز باقیمانده» and «بودجه موردنیاز» are now the same 1200 -- the first
+        # used to be 1800, counting the 8 bought units as still to pay for.
         self.assertEqual({
             "initialEstimateIrr": Decimal("2500"), "actualCostIrr": Decimal("2300"),
-            "currentExecutedValueIrr": Decimal("1000"), "remainingPhysicalCostIrr": Decimal("1800"),
+            "currentExecutedValueIrr": Decimal("1000"), "remainingPhysicalCostIrr": Decimal("1200"),
             "moneyRequiredToContinueIrr": Decimal("1200"), "forecastFinalCostIrr": Decimal("3500"),
             "actualCostPerSquareMeterIrr": Decimal("230"), "forecastPerSquareMeterIrr": Decimal("350")}, report.metrics)
         by_type = {row["resourceType"]: row for row in report.breakdown}
         self.assertEqual(Decimal("1200"), by_type["material"]["revisedEstimateIrr"])
         self.assertEqual(Decimal("1200"), by_type["general_cost"]["revisedEstimateIrr"])
-        self.assertEqual(Decimal("1200"), by_type["material"]["remainingPhysicalCostIrr"])
+        self.assertEqual(Decimal("600"), by_type["material"]["remainingPhysicalCostIrr"])
         self.assertEqual(Decimal("0"), by_type["general_cost"]["remainingPhysicalCostIrr"])
         self.assertEqual(Decimal("1400"), by_type["material"]["forecastFinalIrr"])
         self.assertEqual(Decimal("800"), by_type["labor"]["forecastFinalIrr"])
         self.assertEqual(Decimal("1300"), by_type["general_cost"]["forecastFinalIrr"])
-        self.assertEqual(Decimal("400"), report.price_variances[0]["varianceIrr"])
-        self.assertEqual((Decimal("12"),Decimal("8"),Decimal("100"),Decimal("150")), (report.price_variances[0]["revisedQuantity"],report.price_variances[0]["remainingQuantity"],report.price_variances[0]["estimateBaseUnitPriceIrr"],report.price_variances[0]["currentUnitPriceIrr"]))
-        self.assertEqual(Decimal("50.0000"), report.price_variances[0]["priceVariancePercent"])
+        # The price variance is on the quantity still to pay for: 4 units × (150 − 100).
+        material_variance = next(item for item in report.price_variances if item["resourceType"] == "material")
+        self.assertEqual(Decimal("200"), material_variance["varianceIrr"])
+        self.assertEqual((Decimal("12"),Decimal("4"),Decimal("100"),Decimal("150")), (material_variance["revisedQuantity"],material_variance["remainingQuantity"],material_variance["estimateBaseUnitPriceIrr"],material_variance["currentUnitPriceIrr"]))
+        self.assertEqual(Decimal("50.0000"), material_variance["priceVariancePercent"])
         self.assertEqual(Decimal("2"), report.quantity_variances[0]["varianceQuantity"])
         self.assertEqual(("assignment_actual",SNAPSHOT), (report.quantity_variances[0]["sourceMethod"],report.quantity_variances[0].get("progressSnapshotId")))
         self.assertIn("GENERAL_COST_OVERRUN", {warning["code"] for warning in report.warnings})
@@ -166,9 +173,15 @@ class LiveReportDomainTests(unittest.TestCase):
         self.assertEqual(set(WARNING_KEYS) | set(EXTRA_WARNING_KEYS["PROGRESS_UNMAPPED"]),
                          set(unmapped))
         # Same affected metrics as PROGRESS_MISSING: the consequence is identical, only the
-        # cause differs.
+        # cause differs. On a MATERIAL line that consequence is the executed value alone --
+        # since 2026-09-26 its remaining is read from the ledger, so an absent measurement
+        # cannot reach it. The three-metric list is asserted on a labour line below.
+        self.assertEqual(["currentExecutedValueIrr"], unmapped["affectedMetricKeys"])
+        labor = estimate(LABOR_LINE, LABOR, "labor", "10", "10", "100", "100", "a-none")
+        unmapped_labor = next(w for w in calculate_live_report([labor], [], [], [], "10").warnings
+                              if w["code"] == "PROGRESS_UNMAPPED")
         self.assertEqual(["currentExecutedValueIrr", "remainingPhysicalCostIrr",
-                          "forecastFinalCostIrr"], unmapped["affectedMetricKeys"])
+                          "forecastFinalCostIrr"], unmapped_labor["affectedMetricKeys"])
 
     def test_splitting_the_codes_moved_no_financial_figure(self):
         """An unlinked line and a linked-but-empty one must still produce identical money.
@@ -195,10 +208,11 @@ class LiveReportDomainTests(unittest.TestCase):
         row = estimate(MATERIAL_LINE, MATERIAL, "material", "10", "10", "100", "100", "a-1")
         report = calculate_live_report(
             row and [row], [], [{"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}}], [], "10")
-        # Exact pre-split figures for this fixture: executed 4 of 10 at 100 IRR. The domain
+        # Exact figures for this fixture: executed 4 of 10 at 100 IRR, and nothing bought,
+        # so all 10 are still to pay for (SETTLED_BY_LEDGER, 2026-09-26). The domain
         # returns Decimal; the string form appears only after DTO serialisation.
         self.assertEqual(Decimal("400"), report.metrics["currentExecutedValueIrr"])
-        self.assertEqual(Decimal("600"), report.metrics["remainingPhysicalCostIrr"])
+        self.assertEqual(Decimal("1000"), report.metrics["remainingPhysicalCostIrr"])
         self.assertEqual(Decimal("1000"), report.metrics["forecastFinalCostIrr"])
         self.assertEqual([], [w["code"] for w in report.warnings if w["code"].startswith("PROGRESS_")])
         self.assertTrue(report.progress_quality["complete"])
@@ -347,7 +361,9 @@ class LiveReportDomainTests(unittest.TestCase):
         warning = next(item for item in report.warnings if item["code"] == "QUANTITY_OVERRUN")
         self.assertEqual(("2","20.0000"), (warning["deviationQuantity"], warning["deviationPercent"]))
         self.assertEqual(Decimal("1200"), report.metrics["currentExecutedValueIrr"])
-        self.assertEqual(Decimal("0"), report.metrics["remainingPhysicalCostIrr"])
+        # Material used beyond its estimate and never invoiced is material still to pay
+        # for: the ledger, not the measurement, says what remains (2026-09-26).
+        self.assertEqual(Decimal("1000"), report.metrics["remainingPhysicalCostIrr"])
 
     def test_rounds_money_once_per_line_with_round_half_up(self):
         estimates = [
@@ -458,7 +474,9 @@ class LiveReportServiceTests(unittest.IsolatedAsyncioTestCase):
         repository.overrides=[{"estimate_line_id":MATERIAL_LINE,"computed_value":Decimal("4"),"override_value":Decimal("7"),"reason":"field correction","created_by":UUID(int=8),"created_at":__import__("datetime").datetime(2026,8,2,tzinfo=__import__("datetime").timezone.utc),"activity_external_id":None,"assignment_external_id":"a-m"}]
         service=FinanceLiveReportService(repository,AssignmentProvider(organization_id,scope.project_id),lambda:UUID(int=10))
         live=await service.live(scope,date(2026,8,2),SNAPSHOT)
-        self.assertEqual((Decimal("700"),Decimal("300"),Decimal("300"),Decimal("1000")),(live["metrics"]["currentExecutedValueIrr"],live["metrics"]["remainingPhysicalCostIrr"],live["breakdown"][0]["remainingPhysicalCostIrr"],live["metrics"]["forecastFinalCostIrr"]))
+        # The override moves the executed value (7 × 100). The remaining is the ledger's --
+        # nothing invoiced, all 10 still to buy -- and does not move with it (2026-09-26).
+        self.assertEqual((Decimal("700"),Decimal("1000"),Decimal("1000"),Decimal("1000")),(live["metrics"]["currentExecutedValueIrr"],live["metrics"]["remainingPhysicalCostIrr"],live["breakdown"][0]["remainingPhysicalCostIrr"],live["metrics"]["forecastFinalCostIrr"]))
         self.assertEqual((Decimal("7"),"manual_override"),(live["top_quantity_variances"][0]["executedQuantity"],live["top_quantity_variances"][0]["sourceMethod"]))
         await service.issue(scope,date(2026,8,2),SNAPSHOT)
         self.assertEqual("7",repository.payload["progressSnapshot"]["assignments"][0]["manualOverride"]["newValue"])
@@ -623,8 +641,9 @@ class WorkAsQuantityTests(unittest.TestCase):
                          (warning["estimateLineId"], warning["resourceId"], warning["resourceCode"]))
         # Not excluded: the value is in the metrics, which is exactly why it is worth saying.
         self.assertFalse(warning["excludedFromCalculation"])
-        self.assertEqual(["currentExecutedValueIrr", "remainingPhysicalCostIrr", "forecastFinalCostIrr"],
-                         warning["affectedMetricKeys"])
+        # A material line: the doubtful number reaches its executed value and nothing
+        # else, because its remaining is read from the ledger (2026-09-26).
+        self.assertEqual(["currentExecutedValueIrr"], warning["affectedMetricKeys"])
 
     def test_the_counter_is_a_subset_of_assignment_actual_and_forces_incomplete(self):
         report = self._report({"assignmentExternalId": "a-1", "actualWork": "4","resourceType":"labor", "task": {}})
@@ -777,18 +796,18 @@ class ProgressStateTests(unittest.TestCase):
                          "forecastPerSquareMeterIrr": Decimal("100")}
         # Revised 2026-09-22. An unmeasured line is now REMOVED from the sums that rest on
         # a measurement, instead of making those sums disappear for the whole project. So
-        # the two executed-dependent figures are sums over nothing and read zero, and
-        # computedLineCount 0 of 1 is what says they are empty rather than settled.
+        # the executed value is a sum over nothing and reads zero, and computedLineCount
+        # 0 of 1 is what says it is empty rather than settled.
         #
-        # The two that survive are the point of the change. This is a material line, and
-        # what a material line still needs is what has not been BOUGHT -- a fact the
-        # purchase ledger states whether or not anyone walked the site. So 1000 of material
-        # is still required and still forecast, and the purchased-quantity rule is
-        # untouched. remainingPhysicalCostIrr 0 beside moneyRequiredToContinueIrr 1000 is
-        # not a contradiction: nobody measured the work, and nobody bought the material.
+        # Revised again 2026-09-26. This is a material line, and what a material line
+        # still needs is what has not been BOUGHT -- a fact the purchase ledger states
+        # whether or not anyone walked the site. That rule used to govern only
+        # `moneyRequiredToContinueIrr`, so the same payload read remaining 0 beside
+        # required 1000. It now governs «هزینه بروز باقیمانده» too: nobody bought the
+        # material, so 1000 of it is still to pay for, whoever did or did not measure it.
         unknown = {"initialEstimateIrr": Decimal("1000"), "actualCostIrr": Decimal("0"),
                    "currentExecutedValueIrr": Decimal("0"),
-                   "remainingPhysicalCostIrr": Decimal("0"),
+                   "remainingPhysicalCostIrr": Decimal("1000"),
                    "moneyRequiredToContinueIrr": Decimal("1000"),
                    "forecastFinalCostIrr": Decimal("1000"),
                    "actualCostPerSquareMeterIrr": Decimal("0"),
@@ -801,7 +820,7 @@ class ProgressStateTests(unittest.TestCase):
                 report = self._report(line, assignments)
                 self.assertEqual(unknown, report.metrics)
                 self.assertEqual("incomplete", report.calculation_status)
-                self.assertIn("forecastFinalCostIrr", report.incomplete_metric_keys)
+                self.assertEqual(["currentExecutedValueIrr"], report.incomplete_metric_keys)
                 self.assertEqual((0, 1), (report.computed_line_count, report.total_line_count))
         zero = self._report(self._line("a-1"),
                             [{"assignmentExternalId": "a-1", "actualQuantity": "0", "task": {}}])
@@ -813,7 +832,9 @@ class ProgressStateTests(unittest.TestCase):
         measured = self._report(self._line("a-1"),
                                 [{"assignmentExternalId": "a-1", "actualQuantity": "4", "task": {}}])
         self.assertEqual(Decimal("400"), measured.metrics["currentExecutedValueIrr"])
-        self.assertEqual(Decimal("600"), measured.metrics["remainingPhysicalCostIrr"])
+        # Measured 4 of 10 and bought none: the remaining is the ledger's 10, not the
+        # measurement's 6.
+        self.assertEqual(Decimal("1000"), measured.metrics["remainingPhysicalCostIrr"])
 
     def test_an_absence_excludes_the_line_instead_of_scoring_it_at_zero(self):
         """Unknown progress removes the line from the sums; it never counts as 0% done.
@@ -835,9 +856,12 @@ class ProgressStateTests(unittest.TestCase):
         self.assertEqual([str(MATERIAL_LINE)], report.excluded_estimate_line_ids)
         self.assertEqual(1, report.excluded_estimate_line_count)
         self.assertEqual((0, 1), (report.computed_line_count, report.total_line_count))
-        # Published, not withheld -- and named as incomplete in the same breath.
+        # Published, not withheld -- and named as incomplete in the same breath. The
+        # figure the absence blinds is the executed value; the forecast of a material line
+        # rests on its invoices and is whole (SETTLED_BY_LEDGER, 2026-09-26).
         self.assertEqual(Decimal("0"), report.metrics["currentExecutedValueIrr"])
-        self.assertIn("forecastFinalCostIrr", report.incomplete_metric_keys)
+        self.assertIn("currentExecutedValueIrr", report.incomplete_metric_keys)
+        self.assertNotIn("forecastFinalCostIrr", report.incomplete_metric_keys)
         self.assertEqual("incomplete", report.calculation_status)
         # What can be stated without a measurement still is stated.
         self.assertEqual(Decimal("1000"), report.metrics["initialEstimateIrr"])
@@ -1113,22 +1137,28 @@ class CoverageCountTests(unittest.TestCase):
             with self.subTest(key):
                 self.assertIsNotNone(report.metrics[key])
 
-        # ...and still flagged, so nobody reads them as whole.
+        # ...and still flagged, so nobody reads them as whole. The blind lines are
+        # material, so the figure they blind is the executed value; their remaining is read
+        # from the (empty) ledger and the forecast is whole (2026-09-26).
         self.assertEqual("incomplete", report.calculation_status)
-        self.assertIn("forecastFinalCostIrr", report.incomplete_metric_keys)
+        self.assertIn("currentExecutedValueIrr", report.incomplete_metric_keys)
+        self.assertNotIn("forecastFinalCostIrr", report.incomplete_metric_keys)
+        self.assertEqual(835, report.required_line_count)
 
     def test_the_excluded_lines_contribute_nothing_to_the_totals(self):
         """Exclusion means absent from the sum, not entered as zero.
 
         The check is arithmetic rather than a flag: 830 lines executed 4 of 10 at 100 IRR
-        is exactly 332,000 executed and 498,000 remaining. Had the five blind lines been
-        scored at 0% they would have added 5,000 to the remaining cost -- so this number
-        fails if the old behaviour ever comes back, with the amount on screen.
+        is exactly 332,000 executed. Had the five blind lines been scored at 0% the figure
+        would be the same -- which is why the COUNT beside it is what says they are absent,
+        and why the remaining cost, which since 2026-09-26 is read from the ledger for
+        material, is 835 lines × 10 units still to buy × 100 = 835,000 with the blind five
+        in it: nobody bought their material either.
         """
         rows, assignments = self._rows()
         report = calculate_live_report(rows, [], assignments, [], None)
         self.assertEqual(Decimal("332000"), report.metrics["currentExecutedValueIrr"])
-        self.assertEqual(Decimal("498000"), report.metrics["remainingPhysicalCostIrr"])
+        self.assertEqual(Decimal("835000"), report.metrics["remainingPhysicalCostIrr"])
 
     def test_a_project_with_no_gaps_reports_full_coverage(self):
         """The control. Same shape, nothing missing -- the counters must agree."""
@@ -1239,8 +1269,8 @@ class PriceUnitTests(unittest.TestCase):
 
     def test_a_price_in_this_lines_own_unit_is_used_as_it_always_was(self):
         report = self.report(self.priced("kg", "kg"))
-        # remaining 6 x 100
-        self.assertEqual(Decimal("600"), report.metrics["remainingPhysicalCostIrr"])
+        # 10 still to buy (nothing invoiced) x 100
+        self.assertEqual(Decimal("1000"), report.metrics["remainingPhysicalCostIrr"])
         self.assertEqual(1, report.computed_line_count)
         self.assertNotIn("PRICE_UNIT_NOT_CONVERTIBLE", self.codes(report))
 
@@ -1248,7 +1278,7 @@ class PriceUnitTests(unittest.TestCase):
         """`current_price_unit` is NULL for a host that does not send it, and for a manual
         price it is the base unit by construction. Neither is a mismatch."""
         report = self.report(self.priced("kg", None))
-        self.assertEqual(Decimal("600"), report.metrics["remainingPhysicalCostIrr"])
+        self.assertEqual(Decimal("1000"), report.metrics["remainingPhysicalCostIrr"])
 
     def test_a_crossable_price_is_crossed_rather_than_dropped(self):
         """Quoted per kg, the line measured in tonnes: one tonne costs a thousand times one
@@ -1257,8 +1287,8 @@ class PriceUnitTests(unittest.TestCase):
         report = self.report(self.priced("ton", "kg"),
                              [{"source_unit": "ton", "target_unit": "kg",
                                "dimension": "mass", "factor": "1000"}])
-        # remaining 6 tonnes x (100 per kg x 1000 kg per tonne)
-        self.assertEqual(Decimal("600000"), report.metrics["remainingPhysicalCostIrr"])
+        # 10 tonnes still to buy x (100 per kg x 1000 kg per tonne)
+        self.assertEqual(Decimal("1000000"), report.metrics["remainingPhysicalCostIrr"])
         self.assertEqual(1, report.computed_line_count)
         self.assertNotIn("PRICE_UNIT_NOT_CONVERTIBLE", self.codes(report))
 

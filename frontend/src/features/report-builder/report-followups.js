@@ -44,7 +44,7 @@ export function changedEstimateRows(workspace = {}) {
 }
 
 function metricReport(data, metrics) {
-  return [note("ارقام از سرویس مالی دریافت شده‌اند؛ مقدار ناموجود صفر نیست. بودجه تا تکمیل با هزینه فیزیکی کار باقی‌مانده یک مفهوم ندارد."),
+  return [note("ارقام از سرویس مالی دریافت شده‌اند؛ مقدار ناموجود صفر نیست. هزینه بروز باقیمانده و بودجه تا تکمیل یک رقم‌اند: مصالح و تجهیزات طبق فاکتورها، نیروی انسانی طبق پیشرفت."),
     ...(data.overview?.calculationStatus === "incomplete" ? [note("محاسبات ناقص است؛ پیش از تصمیم‌گیری گزارش کیفیت داده را بررسی کنید.")] : []),
     reportTable({ caption: "شاخص‌ها و مبنای محاسبه", columns: [{ label: "شاخص" }, { label: "مبلغ", numeric: true }, { label: "مبنا" }],
       rows: metrics.map(([key, label, basis]) => [label, money(data.overview?.metrics?.[key]), basis]) })];
@@ -54,9 +54,9 @@ export const FOLLOWUP_SECTIONS = Object.freeze({
   completionBudget(data) {
     return metricReport(data, [
       ["actualCostIrr", "هزینه واقعی", "اسناد مالی مؤثر تا تاریخ گزارش"],
-      ["remainingPhysicalCostIrr", "هزینه کار باقی‌مانده", "کار فیزیکی باقی‌مانده با قیمت معتبر"],
-      ["moneyRequiredToContinueIrr", "بودجه موردنیاز تا تکمیل", "بودجه ادامه طبق قواعد محاسبات مالی"],
-      ["forecastFinalCostIrr", "پیش‌بینی نهایی", "هزینه واقعی به‌اضافه بودجه موردنیاز"],
+      ["remainingPhysicalCostIrr", "هزینه بروز باقیمانده", "مصالح و تجهیزات: مقدار تسویه‌نشده طبق فاکتورها × قیمت روز؛ نیروی انسانی: مقدار انجام‌نشده × قیمت روز؛ هزینه عمومی: برآورد منهای پرداختی"],
+      ["moneyRequiredToContinueIrr", "بودجه موردنیاز تا تکمیل", "همان هزینه بروز باقیمانده؛ یک رقم با دو نام"],
+      ["forecastFinalCostIrr", "پیش‌بینی نهایی", "هزینه واقعی به‌اضافه هزینه بروز باقیمانده"],
     ]);
   },
   areaCosts(data) {
