@@ -35,7 +35,11 @@ export function scheduleSummary(status) {
        heading never had an assignment, while an assignment naming no resource is a gap in
        the file. The service already separates them and this keeps that separation. */
     { key: "activityOnly", label: "بدون تخصیص", value: count(status.activityOnly) },
-    { key: "unclassified", label: "منبع طبقه‌بندی‌نشده", value: count(status.unclassified) },
+    /* A resource is assigned here and no estimate line names it. Since the service types
+       WORK resources itself (0038) nothing is expected in this state; anything that is,
+       is worth a person. The old label «طبقه‌بندی‌نشده» described a decision nobody
+       makes any more. */
+    { key: "unclassified", label: "تخصیص بدون ردیف برآورد", value: count(status.unclassified) },
   ];
 }
 

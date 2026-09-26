@@ -44,9 +44,10 @@ function mapRevision(value) {
 /* What the mapping made of the project's schedule.
  *
  * `total` is what the file states; the three counts below it say what became of each row,
- * and they add up to it. `unclassified` is the one a person can act on — a resource the
- * file calls WORK that nobody has yet called labour or equipment — so it is carried even
- * when zero, because «۰ منبع طبقه‌بندی‌نشده» is an answer and a blank is not.
+ * and they add up to it. `unclassified` is the one a person can act on — an assignment
+ * whose resource no estimate line names, which since the service types WORK resources on
+ * its own (0038) should be empty — so it is carried even when zero, because «۰» is an
+ * answer and a blank is not.
  *
  * Provenance travels with the counts and never separately: the service reads the file's
  * name from the same statement that chose the version it counted, so a reader cannot be

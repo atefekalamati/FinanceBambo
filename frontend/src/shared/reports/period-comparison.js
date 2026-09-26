@@ -1,6 +1,7 @@
 // The period arithmetic below needs to know which days fall inside a range;
 // the range itself is a shared idea, and lives with the other reporting dates.
 import { isWithinPeriod, openingDateFor } from "../../shared/dates/reporting-periods.js";
+import { RESOURCE_TYPE_LABELS, foldLegacyTypes } from "../resource-types.js";
 export { buildPeriodPresets, isWithinPeriod, matchPreset, openingDateFor, periodDayCount, validatePeriod } from "../../shared/dates/reporting-periods.js";
 
 /**
@@ -58,12 +59,7 @@ export const PERIOD_METRICS = Object.freeze([
   { key: "forecastPerSquareMeterIrr", label: "پیش‌بینی هزینه هر مترمربع", kind: "state" },
 ]);
 
-const BREAKDOWN_LABELS = Object.freeze({
-  material: "مصالح",
-  labor: "نیروی انسانی",
-  equipment: "تجهیزات",
-  general_cost: "هزینه‌های عمومی پروژه",
-});
+const BREAKDOWN_LABELS = RESOURCE_TYPE_LABELS;
 
 const BREAKDOWN_MEASURES = Object.freeze([
   { key: "initialEstimateIrr", kind: "cumulative" },
@@ -94,11 +90,18 @@ export function buildPeriodComparison({ opening, closing } = {}) {
 }
 
 export function buildBreakdownComparison({ opening = [], closing = [] } = {}) {
-  const openingByType = new Map((opening ?? []).map((row) => [row.resourceType, row]));
-  const types = [...new Set([...(closing ?? []).map((row) => row.resourceType), ...openingByType.keys()])];
+  /* A snapshot issued before 0038 is frozen with `labor` and `equipment` rows; the live
+     report beside it has one `work` row. Folded here, exactly, so the two sides of the
+     comparison describe the same three kinds and «نیرو و تجهیزات» is not shown as having
+     appeared from nowhere. */
+  const measureKeys = BREAKDOWN_MEASURES.map(({ key }) => key);
+  const openingRows = foldLegacyTypes(opening ?? [], measureKeys);
+  const closingRows = foldLegacyTypes(closing ?? [], measureKeys);
+  const openingByType = new Map(openingRows.map((row) => [row.resourceType, row]));
+  const types = [...new Set([...closingRows.map((row) => row.resourceType), ...openingByType.keys()])];
 
   return types.map((resourceType) => {
-    const closingRow = (closing ?? []).find((row) => row.resourceType === resourceType) ?? {};
+    const closingRow = closingRows.find((row) => row.resourceType === resourceType) ?? {};
     const openingRow = openingByType.get(resourceType) ?? {};
     const measures = {};
     BREAKDOWN_MEASURES.forEach(({ key, kind }) => {

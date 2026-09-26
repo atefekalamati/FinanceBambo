@@ -1,11 +1,6 @@
 import { buildValueTicks, chooseAxisCeiling } from "../charts/value-ticks.js";
 
-const TYPE_LABELS = Object.freeze({
-  material: "مصالح",
-  labor: "نیروی انسانی",
-  equipment: "تجهیزات",
-  general_cost: "هزینه‌های عمومی پروژه",
-});
+import { resourceTypeLabel } from "../resource-types.js";
 
 function exactInteger(value) {
   return /^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : 0n;
@@ -120,7 +115,7 @@ export function buildBulletPresentation(rows = []) {
     const actual = statedInteger(row.actualCostIrr);
     return {
       resourceType: row.resourceType,
-      label: TYPE_LABELS[row.resourceType] ?? "نوع تعریف‌نشده",
+      label: resourceTypeLabel(row.resourceType) ?? "نوع تعریف‌نشده",
       // Null is carried, not defaulted. A type whose estimate could not be worked out
       // — this project's equipment lines state no quantity and no rate — is not a type
       // budgeted at nothing, and the table beside this chart already prints "قابل محاسبه

@@ -1,16 +1,19 @@
-export const RESOURCE_TYPES = Object.freeze([
-  { value: "material", label: "متریال" },
-  { value: "labor", label: "نیروی انسانی" },
-  { value: "equipment", label: "دستگاه و تجهیزات" },
-  { value: "general_cost", label: "هزینه‌های عمومی پروژه" },
-]);
+import { RESOURCE_TYPES as KINDS, canonicalResourceType, resourceTypeLabel } from "../../shared/resource-types.js";
 
-const RESOURCE_TYPE_MAP = new Map(RESOURCE_TYPES.map((type) => [type.value, type.label]));
+/* The form's own register: «متریال» is what the estimators call it on this page. */
+const FORM_LABELS = Object.freeze({
+  material: "متریال",
+  work: "نیرو و تجهیزات",
+  general_cost: "هزینه‌های عمومی پروژه",
+});
+
+export const RESOURCE_TYPES = Object.freeze(KINDS.map((value) => ({ value, label: FORM_LABELS[value] })));
 
 export function getResourceTypeLabel(value) {
-  return RESOURCE_TYPE_MAP.get(value) ?? value;
+  return resourceTypeLabel(value, FORM_LABELS) ?? canonicalResourceType(value);
 }
 
+/* What may be CREATED. The old names are not offered: a stored one is read as `work`. */
 export function isResourceType(value) {
-  return RESOURCE_TYPE_MAP.has(value);
+  return KINDS.includes(value);
 }

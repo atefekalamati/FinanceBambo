@@ -20,8 +20,10 @@
  * the data — only in how the number arrives.
  */
 
-/** The resource type the schedule gives machines. */
-export const EQUIPMENT_TYPE = "equipment";
+import { canonicalResourceType } from "../../shared/resource-types.js";
+
+/** The kind the schedule gives machines -- and crews: `work`, one kind since 0038. */
+export const EQUIPMENT_TYPE = "work";
 
 export const FILTERS = Object.freeze([
   { value: "all", label: "همه" },
@@ -39,7 +41,7 @@ export const FILTERS = Object.freeze([
  */
 export function equipmentRows(workspace) {
   return (workspace?.currentPrices ?? [])
-    .filter((entry) => entry?.resource?.type === EQUIPMENT_TYPE)
+    .filter((entry) => canonicalResourceType(entry?.resource?.type) === EQUIPMENT_TYPE)
     .map((entry) => ({
       resourceId: entry.resource.resourceId,
       title: entry.resource.title ?? "—",

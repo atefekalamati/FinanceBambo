@@ -292,20 +292,20 @@ test("and joins the primary chips as soon as it does", () => {
   const section = renderMaterialPrices([row()], {
     categories: [
       { category: "rebar", activeCount: 590, itemCount: 590, inactiveCount: 0 },
-      { category: "equipment", label: "تجهیزات", activeCount: 19, itemCount: 19, inactiveCount: 0 },
+      { category: "work", label: "نیرو و تجهیزات", activeCount: 19, itemCount: 19, inactiveCount: 0 },
     ],
     selectedCategory: null,
     onSelectCategory: (value) => chosen.push(value),
   });
   const filter = section.querySelector(".material-prices__filters");
   const labels = [...filter.children].map((chip) => chip.textContent);
-  assert.ok(labels.includes("تجهیزات (19)"),
+  assert.ok(labels.includes("نیرو و تجهیزات (19)"),
             `expected a counted تجهیزات chip among: ${labels.join(" | ")}`);
   /* Beside the other primaries, not behind «…» — which is the whole point of adding it. */
-  const chip = [...filter.children].find((node) => node.textContent === "تجهیزات (19)");
+  const chip = [...filter.children].find((node) => node.textContent === "نیرو و تجهیزات (19)");
   assert.equal(chip.tagName, "BUTTON");
   chip.click();
-  assert.deepEqual(chosen, ["equipment"]);
+  assert.deepEqual(chosen, ["work"]);
 });
 
 
@@ -322,7 +322,7 @@ const MACHINE = () => row({
   providerItemId: "22222222-2222-4222-8222-222222222222",
   externalId: null,
   name: "گریدر",
-  category: "equipment",
+  category: "work",
   providerName: null,          // a machine has no supplier
   worksheet: null,
   origin: "manual",
@@ -344,8 +344,8 @@ const MACHINE = () => row({
 
 test("a machine renders on the prices page with no supplier and no worksheet", () => {
   const section = renderMaterialPrices([MACHINE()], {
-    categories: [{ category: "equipment", label: "تجهیزات", activeCount: 1, itemCount: 1 }],
-    selectedCategory: "equipment",
+    categories: [{ category: "work", label: "نیرو و تجهیزات", activeCount: 1, itemCount: 1 }],
+    selectedCategory: "work",
     onSelectCategory: () => {},
   });
   const text = section.textContent;
@@ -357,8 +357,8 @@ test("a machine renders on the prices page with no supplier and no worksheet", (
 
 test("the empty supplier and product id are dashes, never blanks or zeros", () => {
   const cells = [...renderMaterialPrices([MACHINE()], {
-    categories: [{ category: "equipment", label: "تجهیزات", activeCount: 1, itemCount: 1 }],
-    selectedCategory: "equipment", onSelectCategory: () => {},
+    categories: [{ category: "work", label: "نیرو و تجهیزات", activeCount: 1, itemCount: 1 }],
+    selectedCategory: "work", onSelectCategory: () => {},
   }).querySelectorAll("tbody td")].map((cell) => cell.textContent.trim());
   assert.ok(cells.includes("—"), "an absent supplier reads as an em dash");
 });
@@ -380,14 +380,14 @@ test("the chip appears only when the service publishes the category", () => {
 
   const withIt = renderMaterialPrices([], {
     categories: [{ category: "rebar", label: "میلگرد", activeCount: 1, itemCount: 1 },
-                 { category: "equipment", label: "تجهیزات", activeCount: 3, itemCount: 3 }],
+                 { category: "work", label: "نیرو و تجهیزات", activeCount: 3, itemCount: 3 }],
     selectedCategory: "rebar", onSelectCategory: () => {},
   });
   /* The count is the service's own number, printed as the chips have always printed
      one -- Latin digits, like «میلگرد (1)» beside it. Pinned as it is rather than as it
      arguably should be: a chip that suddenly counted in Persian while its neighbours
      counted in Latin would be a new inconsistency, not a fix. */
-  assert.match(withIt.textContent, /تجهیزات \(3\)/, "and it carries its own count");
+  assert.match(withIt.textContent, /نیرو و تجهیزات \(3\)/, "and it carries its own count");
 });
 
 test("two observations become two points, newest last, whatever the row is", () => {
@@ -454,8 +454,8 @@ test("given nothing, every row falls back to its observations as it always did",
 
 test("the machine's row draws a real line, and it is the same control every row offers", () => {
   const section = renderMaterialPrices([MACHINE()], {
-    categories: [{ category: "equipment", label: "تجهیزات", activeCount: 1, itemCount: 1 }],
-    selectedCategory: "equipment",
+    categories: [{ category: "work", label: "نیرو و تجهیزات", activeCount: 1, itemCount: 1 }],
+    selectedCategory: "work",
     onSelectCategory: () => {},
     resourceTrends: MACHINE_TREND([
       { effectiveFrom: "2026-08-20", unitPriceIrr: "48000000" },
@@ -473,8 +473,8 @@ test("one version is still «بدون سابقه», because one point is not a t
   /* The honest answer for every machine priced once. Nothing here invents a second point
      to draw a line with, and the day somebody revises a rate the line appears by itself. */
   const section = renderMaterialPrices([MACHINE()], {
-    categories: [{ category: "equipment", label: "تجهیزات", activeCount: 1, itemCount: 1 }],
-    selectedCategory: "equipment",
+    categories: [{ category: "work", label: "نیرو و تجهیزات", activeCount: 1, itemCount: 1 }],
+    selectedCategory: "work",
     onSelectCategory: () => {},
     resourceTrends: MACHINE_TREND([{ effectiveFrom: "2026-09-17", unitPriceIrr: "52100000" }]),
   });

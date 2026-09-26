@@ -15,14 +15,9 @@
  * magnitudes — a percentage of the widest bar — never as an amount.
  */
 
-const RESOURCE_TYPES = Object.freeze(["material", "labor", "equipment", "general_cost"]);
+import { RESOURCE_TYPES, RESOURCE_TYPE_SHORT_LABELS as RESOURCE_TYPE_LABELS } from "../resource-types.js";
 
-export const RESOURCE_TYPE_LABELS = Object.freeze({
-  material: "مصالح",
-  labor: "نیروی انسانی",
-  equipment: "تجهیزات",
-  general_cost: "هزینه عمومی",
-});
+export { RESOURCE_TYPE_LABELS };
 
 function exactInteger(value) {
   return /^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : null;

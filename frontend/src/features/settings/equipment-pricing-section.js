@@ -102,10 +102,10 @@ export function createEquipmentPricingSection({ workspace, adapter, canEdit = tr
   const head = element("div", "settings-card__head settings-card__head--actions");
   const copy = element("div", "settings-card__head-copy");
   copy.append(
-    element("h2", "", "قیمت‌گذاری تجهیزات"),
+    element("h2", "", "قیمت‌گذاری نیرو و تجهیزات"),
     element("p", "",
-      "دستگاه‌های این پروژه قیمت بازار ندارند و باید دستی قیمت‌گذاری شوند. "
-      + "واحد هر دستگاه از فایل زمان‌بندی می‌آید و قابل تغییر نیست — قیمت را به ازای همان واحد وارد کنید."));
+      "اکیپ‌ها و دستگاه‌های این پروژه قیمت بازار ندارند و باید دستی قیمت‌گذاری شوند. "
+      + "واحد هر ردیف از فایل زمان‌بندی می‌آید و قابل تغییر نیست — قیمت را به ازای همان واحد وارد کنید."));
   head.append(element("div", "settings-card__icon", "⚙"), copy);
 
   /* The one number that says whether this job is finished. */
@@ -331,21 +331,21 @@ export function createEquipmentPricingSection({ workspace, adapter, canEdit = tr
     const priced = formatDisplayNumber(String(progress.priced));
     const total = formatDisplayNumber(String(progress.total));
     counter.textContent = `${priced} از ${total}`;
-    counter.title = `${priced} دستگاه از ${total} دستگاه قیمت دارد`;
+    counter.title = `${priced} ردیف از ${total} ردیف نیرو و تجهیزات قیمت دارد`;
 
     const visible = selectRows(rows, { search, filter });
     list.replaceChildren();
 
     if (!rows.length) {
       list.append(element("p", "inline-notice",
-        "در فایل زمان‌بندی این پروژه هیچ دستگاهی ثبت نشده است."));
+        "در فایل زمان‌بندی این پروژه هیچ نیرو یا دستگاهی ثبت نشده است."));
       return;
     }
     if (!visible.length) {
       list.append(element("p", "inline-notice",
-        filter === "unpriced" ? "همهٔ دستگاه‌ها قیمت دارند."
-          : filter === "priced" ? "هنوز هیچ دستگاهی قیمت‌گذاری نشده است."
-          : "دستگاهی با این عبارت پیدا نشد."));
+        filter === "unpriced" ? "همهٔ ردیف‌های نیرو و تجهیزات قیمت دارند."
+          : filter === "priced" ? "هنوز هیچ ردیفی قیمت‌گذاری نشده است."
+          : "ردیفی با این عبارت پیدا نشد."));
       return;
     }
 

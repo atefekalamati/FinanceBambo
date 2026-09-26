@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { CURRENCY_LABELS } from "../../src/shared/constants/currency.js";
 import { validateEstimateLine, validateEstimateRevision, validateResource } from "../../src/features/financial-items/financial-items-validation.js";
 
-test("supports the four PRD financial item types", () => {
-  for (const type of ["material", "labor", "equipment", "general_cost"]) {
+test("supports the three financial item types", () => {
+  // Three since 0038: `work` is what the PRD's labour and equipment became.
+  for (const type of ["material", "work", "general_cost"]) {
     const result = validateResource({ type, title: "قلم نمونه", code: `CODE-${type}`, baseUnit: "kg" });
     assert.equal(result.valid, true, type);
   }

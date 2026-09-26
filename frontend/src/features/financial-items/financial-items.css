@@ -323,7 +323,8 @@
   background: rgb(59 130 246 / 10%);
 }
 
-.type-badge--equipment {
+.type-badge--equipment,
+.type-badge--work {
   color: var(--dash-sev-med);
   background: rgb(234 179 8 / 10%);
 }

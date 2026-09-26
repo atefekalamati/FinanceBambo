@@ -421,7 +421,7 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
       { category: "ibeam", label: "تیرآهن" },
       { category: "channel", label: "ناودانی" },
       { category: "pipe", label: "لوله" },
-      ...(byCode.has("equipment") ? [{ category: "equipment", label: "تجهیزات" }] : []),
+      ...(byCode.has("work") ? [{ category: "work", label: "نیرو و تجهیزات" }] : []),
     ];
     const makeChip = (category, container = filter, dropdown = null) => {
       const active = category.category === selectedCategory;

@@ -51,6 +51,7 @@ CONVERSION_READY = ("automatic", "factor")
 #: A price the resolver took from `price_versions`. Named from the shared module rather
 #: than spelled here, so the two cannot drift into disagreeing about what "manual" means.
 from ..domain.price_resolution import SOURCE_MANUAL_RESOURCE  # noqa: E402
+from ..domain.resource_types import canonical_resource_type  # noqa: E402
 
 
 class ItemsAndEstimatesService:
@@ -196,7 +197,8 @@ class ItemsAndEstimatesService:
             "resource_name": head["resource_name"],
             "finance_resource_title": head["resource_title"],
             "file_resource_type": head["file_resource_type"],
-            "resource_type": head["resource_type"],
+            # A stored `labor`/`equipment` leaves as `work` (0038).
+            "resource_type": canonical_resource_type(head["resource_type"]),
             "source_unit": head["resource_unit"],
             "normalized_unit": head["normalized_unit"],
             "assignment_count": len(children),
@@ -234,7 +236,7 @@ class ItemsAndEstimatesService:
             "legacy_status": row["legacy_status"],
             "source": row["source"],
             "resource_title": row["resource_title"],
-            "resource_type": row["resource_type"],
+            "resource_type": canonical_resource_type(row["resource_type"]),
             "original_quantity": row["original_quantity"],
             "original_unit_price_irr": row["original_unit_price_irr"],
             "invoice_linked": row["invoice_linked"],

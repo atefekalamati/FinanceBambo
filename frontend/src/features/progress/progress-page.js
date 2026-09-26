@@ -10,13 +10,19 @@ import { actorLabel } from "../../shared/formatters/actor.js";
 import { capabilitiesFor } from "../../core/auth/capabilities.js";
 import { calculateProgressDeviation, validateProgressOverride } from "./progress-validation.js";
 import { element } from "../../shared/dom/elements.js";
+import { LEGACY_WORK_TYPES, RESOURCE_TYPE_LABELS as RESOURCE_TYPE_LABELS_SHARED } from "../../shared/resource-types.js";
 import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createPagedDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
 import { getRowsPerPage } from "../../shared/preferences/rows-per-page.js";
 import { feedWarningText } from "../../shared/warnings/finance-warning-labels.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "آماده", superseded: "جایگزین‌شده" });
-const RESOURCE_TYPE_LABELS = Object.freeze({ material: "مصالح", labor: "نیروی انسانی", equipment: "دستگاه و تجهیزات", general_cost: "هزینه‌های عمومی پروژه" });
+/* The feed may still say `labor` or `equipment` for an assignment stored before 0038;
+   both are «نیرو و تجهیزات» here, as everywhere. */
+const RESOURCE_TYPE_LABELS = Object.freeze({
+  ...RESOURCE_TYPE_LABELS_SHARED,
+  ...Object.fromEntries(LEGACY_WORK_TYPES.map((old) => [old, RESOURCE_TYPE_LABELS_SHARED.work])),
+});
 const SOURCE_METHOD_LABELS = Object.freeze({
   assignment_actual: "مقدار واقعی تخصیص",
   assignment_work_percent: "درصد پیشرفت تخصیص",
