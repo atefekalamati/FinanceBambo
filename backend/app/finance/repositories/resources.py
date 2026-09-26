@@ -12,6 +12,7 @@ from psycopg.rows import dict_row
 #: carrying it is the seed talking to itself, and is not somebody having priced an item.
 SEED_PRICE_REASON = "TEST ONLY -- local demo rate"
 from psycopg.types.json import Jsonb
+from ..domain.resource_types import canonical_resource_type
 
 from ..domain.mpp_source_version import active_source_version_for
 from ..domain.estimate_basis import (effective_original_price,
@@ -26,8 +27,10 @@ class PsycopgFinanceResourcesRepository:
 
     @staticmethod
     def _resource(row):
+        # A stored `labor`/`equipment` leaves the repository as `work` (0038). The rows are
+        # not rewritten; this is the one door they come through.
         return FinanceResource(row["id"], row["organization_id"], row["project_id"],
-            row["resource_type"], row["code"], row["title"], row["base_unit"], row["dimension"],
+            canonical_resource_type(row["resource_type"]), row["code"], row["title"], row["base_unit"], row["dimension"],
             row["external_resource_id"], row["created_by"], row["created_at"],
             row.get("source_resource_uid"), bool(row.get("has_operational_records")))
 

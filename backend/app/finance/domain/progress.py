@@ -65,7 +65,8 @@ MEASUREMENT_STATUS={"measured_quantity":PROGRESS_MEASURED,"stated_quantity":PROG
  "derived_from_percent":PROGRESS_FALLBACK,"work_effort":PROGRESS_FALLBACK}
 
 #: Resource kinds whose own unit IS time, so reported hours are a quantity in that unit.
-TIME_BASED_RESOURCE_TYPES = ("labor", "equipment")
+#: `work` since 0038; the two old names a feed may still send are read as it.
+TIME_BASED_RESOURCE_TYPES = ("work", "labor", "equipment")
 
 
 def _work_is_a_quantity(a):

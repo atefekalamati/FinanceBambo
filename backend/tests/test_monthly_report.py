@@ -214,8 +214,10 @@ class MonthlySeriesTests(unittest.TestCase):
              amount("2026-08-02", "equipment", "300"), amount("2026-08-03", "general_cost", "200")],
             [], ANCHOR, 12)
         entry = month_of(months, 1405, 5)
-        self.assertEqual({"material": Decimal("1000"), "labor": Decimal("500"),
-                          "equipment": Decimal("300"), "generalCost": Decimal("200")},
+        # The rows still say `labor` and `equipment` -- rows written before 0038 do -- and
+        # both land in `work`: one kind, and the old names are read as it.
+        self.assertEqual({"material": Decimal("1000"), "work": Decimal("800"),
+                          "generalCost": Decimal("200")},
                          entry["breakdown"])
         self.assertEqual(entry["actualCostIrr"], sum(entry["breakdown"].values()))
 
@@ -493,7 +495,7 @@ class MonthlyApiTests(unittest.TestCase):
             body = api.get(self.URL, params={"reportingDate": "2026-08-21"}).json()
         self.assertEqual({"persianYear", "persianMonth", "actualCostIrr", "estimateIrr",
                           "invoiceCount", "reversalCount", "breakdown"}, set(body["months"][0]))
-        self.assertEqual({"material", "labor", "equipment", "generalCost"},
+        self.assertEqual({"material", "work", "generalCost"},
                          set(body["months"][0]["breakdown"]))
         self.assertEqual("unavailable", body["estimateSource"])
 

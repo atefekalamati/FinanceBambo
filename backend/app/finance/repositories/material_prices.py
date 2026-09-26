@@ -250,7 +250,7 @@ class PsycopgMaterialPriceRepository:
         + """
          WHERE r.organization_id=%(organization_id)s
            AND r.project_id=%(project_id)s
-           AND r.resource_type='equipment'
+           AND r.resource_type IN ('work', 'labor', 'equipment')
            AND r.deleted_at IS NULL
            AND manual_price.unit_price_irr IS NOT NULL
          ORDER BY r.title, r.id""")

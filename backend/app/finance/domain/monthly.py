@@ -23,7 +23,7 @@ from datetime import date
 from .persian_calendar import gregorian_to_persian, next_persian_month
 from .reports import ZERO, money
 
-RESOURCE_TYPES = ("material", "labor", "equipment", "general_cost")
+from .resource_types import RESOURCE_TYPES, canonical_resource_type
 
 # Twelve months is what the trend chart draws. The ceiling keeps an unbounded history
 # request from turning into an unbounded scan; both ends of the window are reported so a
@@ -85,7 +85,7 @@ def build_monthly_series(amount_rows, document_rows, window):
             continue
         amount = money(ZERO if row["amount_irr"] is None else row["amount_irr"])
         bucket["actualCostIrr"] += amount
-        bucket["breakdown"][_breakdown_key(row["resource_type"])] += amount
+        bucket["breakdown"][_breakdown_key(canonical_resource_type(row["resource_type"]))] += amount
 
     for row in document_rows:
         bucket = buckets.get(gregorian_to_persian(row["invoice_date"])[:2])

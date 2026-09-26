@@ -180,7 +180,7 @@ class CategoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], [x for x in items if x["category"] == EQUIPMENT_CATEGORY])
 
     def test_the_label_comes_from_the_shared_vocabulary(self):
-        self.assertEqual("تجهیزات", CATEGORY_LABELS[EQUIPMENT_CATEGORY])
+        self.assertEqual("نیرو و تجهیزات", CATEGORY_LABELS[EQUIPMENT_CATEGORY])
 
     def test_it_publishes_no_worksheet_columns(self):
         self.assertIn(EQUIPMENT_CATEGORY, VIRTUAL_CATEGORIES)
@@ -333,7 +333,8 @@ class TheLadderIsSharedNotCopiedTests(unittest.TestCase):
 
     def test_only_priced_equipment_is_selected(self):
         statement = " ".join(PsycopgMaterialPriceRepository._EQUIPMENT_RATES.split())
-        self.assertIn("r.resource_type='equipment'", statement)
+        # `work` since 0038, and the two names rows written before it still carry.
+        self.assertIn("r.resource_type IN ('work', 'labor', 'equipment')", statement)
         self.assertIn("r.deleted_at IS NULL", statement)
         self.assertIn("manual_price.unit_price_irr IS NOT NULL", statement)
 
@@ -376,7 +377,9 @@ class NothingIsWrittenTests(unittest.TestCase):
     def test_no_migration_was_added_for_this(self):
         versions = sorted(p.name for p in
                           (BACKEND_ROOT / "alembic" / "versions").glob("00*.py"))
-        self.assertEqual("0037", versions[-1][:4],
+        # 0038 came later and is about the type vocabulary, not about rates: it widens a
+        # CHECK and creates nothing. The claim this test makes still holds.
+        self.assertEqual("0038", versions[-1][:4],
                          "equipment rates read existing tables; nothing was migrated")
 
 
@@ -426,7 +429,7 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(200, response.status_code, response.text)
         equipment, = [x for x in response.json()["items"]
                       if x["category"] == EQUIPMENT_CATEGORY]
-        self.assertEqual("تجهیزات", equipment["label"])
+        self.assertEqual("نیرو و تجهیزات", equipment["label"])
         self.assertEqual([], equipment["columns"])
         self.assertEqual([3, 3, 0], [equipment["itemCount"], equipment["activeCount"],
                                      equipment["inactiveCount"]])
@@ -434,12 +437,12 @@ class EndpointTests(unittest.TestCase):
     def test_current_returns_the_rates_in_the_ordinary_shape(self):
         with client(three_priced()) as api:
             response = api.get(BASE + "/material-prices/current",
-                               params={"category": "equipment"})
+                               params={"category": "work"})
         self.assertEqual(200, response.status_code, response.text)
         body = response.json()
         self.assertEqual(3, body["totalItems"])
         row = body["items"][0]
-        self.assertEqual("equipment", row["category"])
+        self.assertEqual("work", row["category"])
         self.assertIsNone(row["externalId"])
         self.assertIsNone(row["providerName"])
         self.assertEqual("manual", row["origin"])

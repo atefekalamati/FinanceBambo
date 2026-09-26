@@ -477,8 +477,8 @@ class ManualCreationRefusedTests(unittest.IsolatedAsyncioTestCase):
         from app.finance.schemas.resources import ResourcePatch
         resource = self.seed(uid=94)
         updated = await self.service.update_resource(self.scope, resource.id,
-                                                     ResourcePatch(type="equipment"))
-        self.assertEqual("equipment", updated.type)
+                                                     ResourcePatch(type="work"))
+        self.assertEqual("work", updated.type)
         self.assertEqual(94, updated.source_resource_uid, "identity is never changed")
         self.assertEqual(1, len(self.repo.resources), "no new resource was made")
 

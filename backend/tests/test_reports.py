@@ -106,7 +106,7 @@ class LiveReportDomainTests(unittest.TestCase):
         self.assertEqual(Decimal("600"), by_type["material"]["remainingPhysicalCostIrr"])
         self.assertEqual(Decimal("0"), by_type["general_cost"]["remainingPhysicalCostIrr"])
         self.assertEqual(Decimal("1400"), by_type["material"]["forecastFinalIrr"])
-        self.assertEqual(Decimal("800"), by_type["labor"]["forecastFinalIrr"])
+        self.assertEqual(Decimal("800"), by_type["work"]["forecastFinalIrr"])
         self.assertEqual(Decimal("1300"), by_type["general_cost"]["forecastFinalIrr"])
         # The price variance is on the quantity still to pay for: 4 units × (150 − 100).
         material_variance = next(item for item in report.price_variances if item["resourceType"] == "material")
@@ -276,7 +276,8 @@ class LiveReportDomainTests(unittest.TestCase):
         report=calculate_live_report([priced,unpriced],[],assignments,[],"10")
         by_type={item["resourceType"]:item for item in report.breakdown}
         self.assertEqual(("complete",0),(by_type["material"]["calculationStatus"],by_type["material"]["excludedEstimateLineCount"]))
-        self.assertEqual(("incomplete",1),(by_type["labor"]["calculationStatus"],by_type["labor"]["excludedEstimateLineCount"]))
+        # The line says `labor`, as rows written before 0038 do; its row is `work`.
+        self.assertEqual(("incomplete",1),(by_type["work"]["calculationStatus"],by_type["work"]["excludedEstimateLineCount"]))
         # The unpriced line must not present itself as a fully-costed line worth zero.
         unpriced_row=next(item for item in report.all_price_variances if item["estimateLineId"]==str(LABOR_LINE))
         self.assertEqual((False,None,None,None),(unpriced_row["priceAvailable"],unpriced_row["currentUnitPriceIrr"],unpriced_row["remainingPhysicalCostIrr"],unpriced_row["forecastFinalIrr"]))
@@ -288,7 +289,7 @@ class LiveReportDomainTests(unittest.TestCase):
         self.assertEqual((True,Decimal("1000")),(priced_row["priceAvailable"],priced_row["remainingPhysicalCostIrr"]))
         # The priced category keeps a real number; only the unpriced one is withheld.
         self.assertEqual(Decimal("1000"),by_type["material"]["remainingPhysicalCostIrr"])
-        self.assertEqual(Decimal("0"),by_type["labor"]["remainingPhysicalCostIrr"])
+        self.assertEqual(Decimal("0"),by_type["work"]["remainingPhysicalCostIrr"])
 
     def test_missing_conversion_marks_only_the_affected_breakdown_category_incomplete(self):
         row=estimate(MATERIAL_LINE,MATERIAL,"material","10","10","100","100","a-m")
@@ -296,7 +297,7 @@ class LiveReportDomainTests(unittest.TestCase):
         report=calculate_live_report([row],[invoice],[{"assignmentExternalId":"a-m","actualQuantity":"0","task":{}}],[],"10")
         by_type={item["resourceType"]:item for item in report.breakdown}
         self.assertEqual("incomplete",by_type["material"]["calculationStatus"])
-        self.assertEqual("complete",by_type["labor"]["calculationStatus"])
+        self.assertEqual("complete",by_type["work"]["calculationStatus"])
 
     def test_resource_level_purchase_is_allocated_once_across_multiple_estimate_lines(self):
         line2=UUID("10000000-0000-4000-8000-000000000004")

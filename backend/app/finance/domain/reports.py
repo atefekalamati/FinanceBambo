@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 
+from .resource_types import MATERIAL, RESOURCE_TYPES, WORK, canonical_resource_type
+
 from .progress import (PROGRESS_FALLBACK, PROGRESS_MEASURED, ProgressPairing, assignment_keys,
                        line_keys, resolve_progress_quantity)
 
@@ -58,18 +60,18 @@ PROGRESS_AFFECTED_METRICS = ("currentExecutedValueIrr", "remainingPhysicalCostIr
 #: has nothing to say about it.
 #:
 #: What "settled quantity" is differs by kind, and the difference is deliberate:
-#:   material  -- the QUANTITY on the invoice line, converted into the line's unit.
-#:   equipment, labour -- the AMOUNT on the invoice line, divided by the rate in force on
-#:                the invoice date. A truck at 2 million an hour in the first year and 5
-#:                million the next paid the first year's hours at the first year's rate,
-#:                so the amount is read against the price history, not against today.
-#:                Labour joined on 2026-09-26 too, by the same rule: «نیروی انسانی هم
-#:                دقیقا مثل تجهیزات است». Both are hours bought against an invoice.
-SETTLED_BY_LEDGER = ("material", "labor", "equipment")
+#:   material -- the QUANTITY on the invoice line, converted into the line's unit.
+#:   work     -- the AMOUNT on the invoice line, divided by the rate in force on the
+#:               invoice date. A truck at 2 million an hour in the first year and 5
+#:               million the next paid the first year's hours at the first year's rate,
+#:               so the amount is read against the price history, not against today.
+#:               Crews and machines alike: «نیروی انسانی هم دقیقا مثل تجهیزات است», and
+#:               since 0038 they are one kind. Both are hours bought against an invoice.
+SETTLED_BY_LEDGER = (MATERIAL, WORK)
 
 #: The ledger-settled kinds whose invoices are read by AMOUNT ÷ dated rate rather than by
-#: the quantity column: the two that are paid by the hour.
-SETTLED_BY_AMOUNT = ("labor", "equipment")
+#: the quantity column: whatever is paid by the hour.
+SETTLED_BY_AMOUNT = (WORK,)
 
 #: For a ledger-settled kind, an absent measurement blinds ONE figure -- the executed
 #: value -- and not the remaining cost or the forecast, which no longer rest on it. The
@@ -167,6 +169,13 @@ def _calculation_status(missing_price_count, missing_conversion_count, progress_
 def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions, gross_area,
                           corroborate_identity=False):
     warnings = []
+    # A stored `labor` or `equipment` is `work` from here on (0038). Done once, at the
+    # door, on copies -- the caller's rows are not rewritten -- so no branch below has to
+    # remember that the old names exist.
+    estimate_rows = [{**row, "resource_type": canonical_resource_type(row["resource_type"])}
+                     for row in estimate_rows]
+    invoice_rows = [{**row, "resource_type": canonical_resource_type(row["resource_type"])}
+                    for row in invoice_rows]
     # `corroborate_identity` is set for a feed whose rows belong to a Finance source
     # version. Estimate lines carry identifiers from whatever schedule created them and
     # record no provenance, so against a NEW source a lone integer match is a collision
@@ -175,7 +184,7 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
     conversion_by_key = {(row["source_unit"], row["target_unit"], row["dimension"]): Decimal(row["factor"]) for row in conversions}
     purchased_by_line = {}
     purchased_by_resource = {}
-    actual_by_type = {kind: ZERO for kind in ("material", "labor", "equipment", "general_cost")}
+    actual_by_type = {kind: ZERO for kind in RESOURCE_TYPES}
     actual_total = ZERO
     missing_conversion_count = 0
     missing_conversion_types = set()

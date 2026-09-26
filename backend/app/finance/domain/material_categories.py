@@ -86,11 +86,12 @@ CATEGORY_LABELS: dict[str, str] = {
     "pipe": "لوله",
     "pipe_fitting": "اتصالات لوله",
     "brick": "آجر",
-    # Not a worksheet. Equipment rates are `price_versions` rows a person set against a
-    # Finance resource, shown on the daily-prices page beside the sheet's categories so a
-    # reader looking for "what does this cost today" finds all of it in one place. The
-    # label lives here, with the others, so no service has to spell it again.
-    "equipment": "تجهیزات",
+    # Not a worksheet. Hourly rates -- crews and machines, one kind `work` since 0038 --
+    # are `price_versions` rows a person set against a Finance resource, shown on the
+    # daily-prices page beside the sheet's categories so a reader looking for "what does
+    # this cost today" finds all of it in one place. The label lives here, with the
+    # others, so no service has to spell it again.
+    "work": "نیرو و تجهیزات",
 }
 
 #: Categories that are a READING of Finance's own records rather than a worksheet.
@@ -100,7 +101,7 @@ CATEGORY_LABELS: dict[str, str] = {
 #: nothing for them rather than the five base ones, because every base column names
 #: something a worksheet supplies -- a source, a workflow date, a product id -- and an
 #: equipment rate has none of those to show.
-VIRTUAL_CATEGORIES: frozenset[str] = frozenset({"equipment"})
+VIRTUAL_CATEGORIES: frozenset[str] = frozenset({"work"})
 
 
 def spec_columns(category):

@@ -108,8 +108,9 @@ class ResourceEstimateTests(unittest.IsolatedAsyncioTestCase):
         self.service = FinanceResourcesService(self.repo, self.ids, ActivityProvider(), lambda: NOW)
         self.scope = FinanceScope(ORG, "sample_site_01", ACTOR)
 
-    def test_four_types_and_general_cost_optional_unit(self):
-        for kind in ("material", "labor", "equipment"):
+    def test_three_types_and_general_cost_optional_unit(self):
+        # Three since 0038: `work` is what `labor` and `equipment` used to be.
+        for kind in ("material", "work"):
             command = ResourceCreate(type=kind, code="X", title="قلم", baseUnit="kg")
             self.assertIsNone(command.dimension)
         ResourceCreate(type="general_cost", code="GC", title="هزینه عمومی")

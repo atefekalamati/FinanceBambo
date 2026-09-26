@@ -380,8 +380,8 @@ class WbsReportTests(unittest.IsolatedAsyncioTestCase):
         result = await build().by_wbs(SCOPE, WHEN, parent_wbs_code="1")
         stage = next(item for item in result["items"] if item["wbs_code"] == "1.8")
         self.assertEqual(Decimal("90000"), stage["breakdown"]["material"])
-        self.assertEqual(Decimal("15000"), stage["breakdown"]["labor"])
-        self.assertEqual(Decimal("8000"), stage["breakdown"]["equipment"])
+        # The fixture's crew (15000) and machine (8000) are one kind since 0038.
+        self.assertEqual(Decimal("23000"), stage["breakdown"]["work"])
         self.assertEqual(Decimal("0"), stage["breakdown"]["general_cost"])
 
     async def test_an_invoice_with_no_estimate_line_is_counted_not_dropped(self):

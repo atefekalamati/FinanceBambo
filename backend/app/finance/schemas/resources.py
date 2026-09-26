@@ -9,7 +9,10 @@ from .base import ApiModel
 from .numeric import strict_optional_decimal
 from ..domain.resources import EstimateLine, FinanceResource
 
-ResourceType = Literal["material", "labor", "equipment", "general_cost"]
+#: What a resource may be CREATED as. Three kinds since 0038 -- see domain/resource_types.
+#: The repository canonicalises stored `labor`/`equipment` on read, so a response never
+#: carries them and this Literal need not admit them.
+ResourceType = Literal["material", "work", "general_cost"]
 EstimateSource = Literal["progress_feed", "excel_import", "manual_entry"]
 
 

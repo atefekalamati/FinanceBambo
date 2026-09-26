@@ -343,4 +343,5 @@ class EditBeforeConfirmationTests(unittest.IsolatedAsyncioTestCase):
         # `extracted_fields` is jsonb and already carries `confirmedValue` and
         # `editedByUser` per field -- the contract was built for this from the start.
         versions = sorted(p.name for p in (BACKEND_ROOT / "alembic" / "versions").glob("00*.py"))
-        self.assertEqual("0037", versions[-1][:4])
+        # 0038 is the resource-type vocabulary, unrelated to extraction.
+        self.assertEqual("0038", versions[-1][:4])

@@ -108,17 +108,18 @@ class EstimateBaselineTests(unittest.TestCase):
         # The per-type row has the same problem in miniature: a type made entirely of
         # unestimated lines must not publish a confident zero beside a type that really
         # was estimated at nothing.
+        # The line still says `equipment`, as rows written before 0038 do; it is `work`.
         report = build_report([line("10", "100000"),
                                line(None, None, kind="equipment", line_id=LABOR_TWO)])
         rows = {row["resourceType"]: row for row in report.breakdown}
         self.assertEqual(0, rows["material"]["missingEstimateLineCount"],
                          "this type stated its baseline; its estimate is its total")
-        self.assertEqual(1, rows["equipment"]["missingEstimateLineCount"])
-        self.assertEqual("incomplete", rows["equipment"]["calculationStatus"])
-        # `labor` has no lines here at all, which is a third state again: nothing to
-        # estimate, nothing missing, and a status that stays complete.
-        self.assertEqual(0, rows["labor"]["missingEstimateLineCount"])
-        self.assertEqual("complete", rows["labor"]["calculationStatus"])
+        self.assertEqual(1, rows["work"]["missingEstimateLineCount"])
+        self.assertEqual("incomplete", rows["work"]["calculationStatus"])
+        # `general_cost` has no lines here at all, which is a third state again: nothing
+        # to estimate, nothing missing, and a status that stays complete.
+        self.assertEqual(0, rows["general_cost"]["missingEstimateLineCount"])
+        self.assertEqual("complete", rows["general_cost"]["calculationStatus"])
 
     def test_a_fully_stated_project_carries_a_zero_count(self):
         # The counter is published even when there is nothing to report: "none of them"

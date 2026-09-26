@@ -27,7 +27,7 @@ SEPARATOR = "."
 ZERO = Decimal(0)
 
 #: The resource types the breakdown reports, in the order the rest of Finance uses.
-RESOURCE_TYPES = ("material", "labor", "equipment", "general_cost")
+from .resource_types import RESOURCE_TYPES
 
 
 def segments(code):

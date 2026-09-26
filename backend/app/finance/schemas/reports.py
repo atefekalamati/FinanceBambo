@@ -43,7 +43,7 @@ class TypeBreakdown(ApiModel):
     Nullable is not the same as defaulted. `calculate_live_report` always states both
     figures for a row it could compute, so a null here means the calculation said so.
     """
-    resource_type: Literal["material","labor","equipment","general_cost"]
+    resource_type: Literal["material","work","general_cost"]
     initial_estimate_irr: Decimal | None
     revised_estimate_irr: Decimal | None = Decimal(0)
     actual_cost_irr: Decimal
@@ -286,15 +286,15 @@ class ReportSnapshotReference(ApiModel):
 class MonthlyBreakdown(ApiModel):
     """Signed actual cost of one Persian month, split by the resource type of each line.
 
-    Every invoice line carries a NOT NULL resource_id, so the four buckets are exhaustive
+    Every invoice line carries a NOT NULL resource_id, so the three buckets are exhaustive
     and always sum to the month's actualCostIrr — there is no uncategorised remainder.
+    `work` holds what used to be split into labor and equipment (0038).
     """
 
     material:Decimal
-    labor:Decimal
-    equipment:Decimal
+    work:Decimal
     general_cost:Decimal
-    @field_serializer("material","labor","equipment","general_cost")
+    @field_serializer("material","work","general_cost")
     def serialize_money(self,value):return None if value is None else format(value,"f")
 
 

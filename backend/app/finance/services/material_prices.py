@@ -33,7 +33,9 @@ DEFAULT_STALE_AFTER_DAYS = 7
 #: observation for a piece of equipment: a listing is something a supplier published, a
 #: rate is something a person decided, and copying one into the other would put a row in
 #: the importer's table that no sheet produced.
-EQUIPMENT_CATEGORY = "equipment"
+#: `work` since 0038: the same rows now include crews, which are priced per hour exactly as
+#: machines are. The constant keeps its name; every reader of it means "the hourly rates".
+EQUIPMENT_CATEGORY = "work"
 
 
 def _midnight(day):
