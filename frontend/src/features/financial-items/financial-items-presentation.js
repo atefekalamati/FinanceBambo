@@ -1,4 +1,5 @@
 import { formatDisplayNumber } from "../../shared/formatters/display.js";
+import { canonicalResourceType } from "../../shared/resource-types.js";
 
 /**
  * Which activity, which cost item, and which WBS code — kept apart.
@@ -346,3 +347,27 @@ export function isManualPrice(line, priced) {
   if (price === null || price === undefined) return false;
   return priced?.dailyItemCostIRR === null || priced?.dailyItemCostIRR === undefined;
 }
+
+/**
+ * A row priced BY THE HOUR: a crew or a machine, the kind `work`.
+ *
+ * Such a row never joins the sheet. The daily-price link searches supplier LISTINGS, and
+ * nobody publishes a listing for a crane-hour; its rate is a `price_versions` row somebody
+ * set -- on this page's «ثبت نرخ ساعتی» or in settings -- and that rate prices every line
+ * of the same resource at once. Measured 2026-09-27: every such row still offered
+ * «اتصال به قیمت روز», opened a panel whose category list could never contain it, and
+ * wore a «وصل نشده» chip for a link that does not exist. The row is not unlinked; it is
+ * of a kind that is not linked.
+ */
+export function isHourlyRate(resource) {
+  return canonicalResourceType(resource?.type) === "work";
+}
+
+/** The words an hourly row uses where a material row talks about the sheet. */
+export const HOURLY_RATE_WORDING = Object.freeze({
+  sheetUnit: "نرخ ساعتی؛ از شیت قیمت نمی‌آید",
+  unpriced: "نرخ ثبت نشده",
+  method: "نرخ ساعتی",
+  set: "ثبت نرخ ساعتی",
+  edit: "ویرایش نرخ ساعتی",
+});

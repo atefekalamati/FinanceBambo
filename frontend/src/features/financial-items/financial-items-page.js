@@ -23,7 +23,7 @@ import { element } from "../../shared/dom/elements.js";
 import { GoogleSheetError, requireSheetLink } from "../../shared/imports/google-sheet.js";
 import { IDENTITY, PRIMARY, SECONDARY, createColumnControl, createDataTableWithControl, createPagedDataTable, defaultVisibleColumns }
   from "../../shared/components/data-table.js";
-import { ABSENT, activityBlockStarts, activityLabel, assignmentCostOf, canonicalWbs, factorSourceLabel, isManualPrice, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
+import { ABSENT, HOURLY_RATE_WORDING, activityBlockStarts, activityLabel, assignmentCostOf, canonicalWbs, factorSourceLabel, isHourlyRate, isManualPrice, resourceLabel, resourceSourceLabel, scheduleCostOf, selectEstimateRows, selectVisibleResources, sortEstimateRows, sourceLabel, withheldRowsNotice } from "./financial-items-presentation.js";
 
 function createTextField({ id, label, hint, inputMode = "text" }) {
   const wrapper = element("div", "form-field");
@@ -776,6 +776,8 @@ function mspUnitCell(line, resource, isGeneralCost) {
 function sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resource, methodNotes = true }) {
   if (isGeneralCost) return ABSENT;
   if (!priced || !priced.componentCount) {
+    /* Not «وصل نشده»: an hourly row has no sheet to be linked to. See isHourlyRate. */
+    if (isHourlyRate(resource)) return element("span", "cell-secondary", HOURLY_RATE_WORDING.sheetUnit);
     return element("span", "missing-value", "هنوز به قیمت روز وصل نشده");
   }
   const cell = document.createDocumentFragment();
@@ -840,7 +842,10 @@ function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, r
      figure came to look like a failure: true that the row is not linked to the sheet, but
      that is not the headline when the row has a price. */
   const manualOnly = isManualPrice(line, priced);
-  if (priced.status !== "ready" && !manualOnly) {
+  const hourly = isHourlyRate(resource);
+  /* An hourly row wears no mapping chip: the service reports it as `needs_components`
+     because nothing links it to the sheet, and nothing ever will. */
+  if (priced.status !== "ready" && !manualOnly && !hourly) {
     cell.append(statusChip(priced.status,
       priced.status === UNLINKED ? "وصل نشده" : priced.statusLabel));
   }
@@ -855,7 +860,9 @@ function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, r
     /* Full weight, like any other figure in this column, and named so a reader knows where
        it came from rather than wondering why it looks different. */
     cell.append(element("span", "", fallback));
-    if (methodNotes) cell.append(element("span", "cell-secondary", "قیمت دستی"));
+    if (methodNotes) cell.append(element("span", "cell-secondary", hourly ? HOURLY_RATE_WORDING.method : "قیمت دستی"));
+  } else if (hourly) {
+    cell.append(element("span", "missing-value", HOURLY_RATE_WORDING.unpriced));
   }
   cell.append(manualPriceButton(line, isGeneralCost, { canEdit, onManualPrice, resource }));
   return cell;
@@ -914,8 +921,12 @@ export function groupDailyPriceCell(rows, priceStatuses, { methodNotes = true } 
 function manualPriceButton(line, isGeneralCost, { canEdit, onManualPrice, resource } = {}) {
   if (isGeneralCost || !canEdit || !onManualPrice) return document.createDocumentFragment();
   const hasManual = line.currentUnitPriceIRR !== null && line.currentUnitPriceIRR !== undefined;
+  /* For an hourly row this is not the fallback for what the market will not quote; it is
+     THE way it is priced, and the label says so. */
+  const hourly = isHourlyRate(resource);
   const button = element("button", "table-action table-action--manual-price",
-                         hasManual ? "ویرایش قیمت روز" : "ثبت دستی قیمت روز");
+                         hourly ? (hasManual ? HOURLY_RATE_WORDING.edit : HOURLY_RATE_WORDING.set)
+                                : (hasManual ? "ویرایش قیمت روز" : "ثبت دستی قیمت روز"));
   button.type = "button";
   button.dataset.action = "manual-price";
   button.addEventListener("click", () => onManualPrice(line, resource));
@@ -1004,7 +1015,10 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
          listing in «منبع», and the action here. The table's shape is what people navigate
          by. */
       const priced = priceStatuses.get(line.lineId) ?? null;
-      if (onMapPrice && !isGeneralCost) {
+      /* Never for an hourly row: the panel behind this button searches sheet listings,
+         and no listing can price a crane-hour. Its action is «ثبت نرخ ساعتی», in the
+         daily-price cell. See isHourlyRate. */
+      if (onMapPrice && !isGeneralCost && !isHourlyRate(resource)) {
         const label = priced?.componentCount ? "تغییر محصول" : "اتصال به قیمت روز";
         const map = element("button", "table-action table-action--map-price", label);
         map.type = "button";

@@ -3,6 +3,7 @@ import { formatUnitLabel } from "../../shared/formatters/display.js";
 import { formatTomanFromIrr, tomanInputToIrr } from "../../shared/formatters/money.js";
 import { getTehranTodayIso } from "../../shared/dates/persian-date.js";
 import { showAccessibleDialog } from "../../shared/components/accessible-dialog.js";
+import { HOURLY_RATE_WORDING, isHourlyRate } from "./financial-items-presentation.js";
 
 /* Entering a daily price by hand, for the items the market sheet will never price.
  *
@@ -57,8 +58,12 @@ export function createManualPriceDialog({ line, resource, current = null, adapte
   const close = element("button", "button button--ghost", "بستن");
   close.type = "button";
   close.addEventListener("click", () => { dialog.close(); onClose?.(); });
+  /* The heading matches the button that opened it: an hourly row came in through
+     «ثبت نرخ ساعتی» and must not be met by «قیمت روز» wording that belongs to the sheet. */
+  const hourly = isHourlyRate(resource);
   head.append(
-    element("h2", "", current ? "ویرایش قیمت روز" : "ثبت دستی قیمت روز"),
+    element("h2", "", hourly ? (current ? HOURLY_RATE_WORDING.edit : HOURLY_RATE_WORDING.set)
+                             : (current ? "ویرایش قیمت روز" : "ثبت دستی قیمت روز")),
     close);
 
   const facts = element("dl", "manual-price-dialog__facts");
