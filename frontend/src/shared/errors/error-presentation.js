@@ -18,6 +18,11 @@ const STATUS_PRESENTATION = Object.freeze({
 });
 
 const CODE_PRESENTATION = Object.freeze({
+  /* The two ways a request fails WITHOUT an answer, raised by the API client itself.
+     Both are the infrastructure's to fix and both are worth trying again; neither is a
+     display fault, which is what an unwrapped `Failed to fetch` used to be shown as. */
+  NETWORK_UNREACHABLE: { title: "ارتباط با سرویس مالی برقرار نشد", fallback: "درخواست به سرویس نرسید. اتصال شبکه، آدرس سرویس و تنظیمات proxy را بررسی کنید؛ اگر ادامه داشت به تیم استقرار اطلاع دهید.", retryable: true, override: true },
+  REQUEST_TIMEOUT: { title: "سرویس مالی پاسخ نداد", fallback: "درخواست فرستاده شد اما در زمان مجاز پاسخی نیامد. سرویس یا پایگاه داده ممکن است کند یا قفل باشد؛ دوباره تلاش کنید و اگر تکرار شد به تیم استقرار اطلاع دهید.", retryable: true, override: true },
   AI_EXTRACTION_FAILED: { title: "پردازش فایل انجام نشد", fallback: "فایل اصلی حفظ شده است و می‌توانید پردازش را دوباره اجرا کنید.", retryable: true },
   // Raised for a repeated import file and for a repeated invoice attachment.
   // Both carry an English developer message, so `override` keeps it off screen.

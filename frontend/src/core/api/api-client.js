@@ -33,14 +33,65 @@ function assertSameOrigin(url) {
   return resolved;
 }
 
-export function createApiClient({ fetchImpl = window.fetch.bind(window) } = {}) {
+/**
+ * How long one request may take before it is given up on.
+ *
+ * Without this, a request the service never answers -- a proxy holding the connection,
+ * a database lock under `/overview` -- never rejected, `Promise.all` never settled, and
+ * the report page stayed on «در حال بارگذاری» with no way to tell that from a slow day.
+ * Ninety seconds is far past anything measured (the live report on terrace answers in
+ * seconds) and far short of forever.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 90_000;
+
+/**
+ * A fetch that REJECTED, as opposed to answered. Two kinds, told apart because they
+ * need different people:
+ *
+ *   AbortError  -- the caller cancelled, or the timeout below fired. Passed through
+ *                  untouched when it is the caller's own, so cancellation stays
+ *                  cancellation and never becomes an error card.
+ *   anything else -- the browser could not reach the service at all: a proxy that
+ *                  drops the path, a refused connection, TLS, DNS, an extension. The
+ *                  browser says `TypeError: Failed to fetch` and nothing more. That is
+ *                  not an ApiError, and un-wrapped it reached the reader as «نمایش
+ *                  اطلاعات انجام نشد» -- a display fault, not retryable -- for a request
+ *                  that never left the machine. Named here for what it is.
+ */
+function transportError(error, timedOut) {
+  if (timedOut) {
+    return new ApiError({ status: 0, code: "REQUEST_TIMEOUT",
+                          message: "سرویس مالی در زمان مجاز پاسخ نداد." });
+  }
+  if (error?.name === "AbortError") return error;
+  return new ApiError({ status: 0, code: "NETWORK_UNREACHABLE",
+                        message: "ارتباط با سرویس مالی برقرار نشد." });
+}
+
+async function fetchWithTimeout(fetchImpl, url, options, timeoutMs) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+  // A caller's own signal still cancels; it is forwarded rather than replaced.
+  options.signal?.addEventListener("abort", () => controller.abort(), { once: true });
+  try {
+    return await fetchImpl(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    throw transportError(error, timedOut);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function createApiClient({ fetchImpl = window.fetch.bind(window),
+                                  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS } = {}) {
   async function request(path, options = {}) {
     const url = assertSameOrigin(path);
     const headers = new Headers(options.headers);
     headers.set("Accept", "application/json");
     if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
 
-    const response = await fetchImpl(url, { ...options, headers, credentials: "same-origin" });
+    const response = await fetchWithTimeout(fetchImpl, url, { ...options, headers, credentials: "same-origin" }, requestTimeoutMs);
     const payload = response.status === 204 ? null : await response.json().catch(() => null);
     if (!response.ok) {
       announceSessionEnd(response.status);
@@ -52,7 +103,7 @@ export function createApiClient({ fetchImpl = window.fetch.bind(window) } = {}) 
   async function download(path, options = {}) {
     const url = assertSameOrigin(path);
     const headers = new Headers(options.headers);
-    const response = await fetchImpl(url, { ...options, headers, credentials: "same-origin" });
+    const response = await fetchWithTimeout(fetchImpl, url, { ...options, headers, credentials: "same-origin" }, requestTimeoutMs);
 
     if (!response.ok) {
       announceSessionEnd(response.status);

@@ -63,7 +63,24 @@ export function renderPageState(state, { renderContent, renderEmpty, onRetry } =
         });
       }
     case REQUEST_STATUS.SUCCESS:
-      return renderContent(state.data);
+      /* The data arrived and the page threw while drawing it. Uncaught, that exception
+         left the reader on «در حال بارگذاری» for good: every page paints the loading
+         card first and replaces it only when this call returns, so a throw here meant
+         the replacement never happened and nothing on screen said why. The card below
+         is the same one an adapter fault gets; the exception itself goes to the console,
+         because the card deliberately does not print it. */
+      try {
+        return renderContent(state.data);
+      } catch (error) {
+        console.error("[BAMBO Finance] رسم صفحه با خطا متوقف شد.", error);
+        const fault = presentApiError(error);
+        return messageCard({
+          title: fault.title,
+          message: fault.message,
+          metadata: [["کد خطا", fault.code]],
+          variant: "danger",
+        });
+      }
     default:
       return document.createDocumentFragment();
   }
