@@ -136,6 +136,8 @@ class ObjectDiscoveryTests(unittest.TestCase):
             ["estimate_line_source_completions", "estimate_lines",
              "finance_invoice_counters", "finance_item_price_mapping_components",
              "finance_item_price_mappings",
+             # 0039: the hourly-rate link of a line.
+             "finance_item_rate_links",
              "finance_mpp_currency_decisions",
              "finance_mpp_rows", "finance_mpp_source_versions",
              "finance_price_categories", "finance_resources",

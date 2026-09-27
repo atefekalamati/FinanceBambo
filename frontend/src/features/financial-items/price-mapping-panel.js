@@ -3,6 +3,7 @@ import { formatDisplayNumber, formatJalaliBusinessDate, formatUnitLabel } from "
 import { formatTomanFromIrr } from "../../shared/formatters/money.js";
 import { createConversionRuleDialog } from "./conversion-rule-dialog.js";
 import { createSourceUnitDialog } from "./source-unit-dialog.js";
+import { HOURLY_RATE_WORDING, isHourlyRate } from "./financial-items-presentation.js";
 
 /* The materials one schedule item consumes, and what they cost at today's prices.
  *
@@ -116,6 +117,11 @@ export function createPriceMappingPanel({ line, resource, adapter, materialPrice
   panel.setAttribute("aria-label", "مصالح و قیمت روز این قلم");
   const lineId = line.lineId ?? line.estimateLineId ?? "";
   panel.dataset.estimateLineId = lineId;
+  /* A crew or a machine links to a RATE -- one of the resources priced by the hour in
+     settings, offered under «نیرو و تجهیزات» -- not to a sheet listing. The form is the
+     same; what it saves is a rate link, and the newest decision (this link, or a rate
+     typed on the row) prices the line. See isHourlyRate. */
+  const hourly = isHourlyRate(resource);
 
   let header = null;
   /* The listing being chosen right now, and the stored link being corrected. Both reset
@@ -170,7 +176,7 @@ export function createPriceMappingPanel({ line, resource, adapter, materialPrice
   const componentsSection = element("section", "price-components");
   const totalBox = element("div", "price-components__total");
   const componentList = element("div", "price-components__list");
-  const add = element("button", "button button--primary", "اتصال به قیمت روز");
+  const add = element("button", "button button--primary", hourly ? "اتصال به نرخ" : "اتصال به قیمت روز");
   add.type = "button";
   add.disabled = !canEdit;
   componentsSection.append(element("h3", "", "قیمت روز این قلم"),
@@ -198,9 +204,34 @@ export function createPriceMappingPanel({ line, resource, adapter, materialPrice
     if (total.reason) totalBox.append(element("p", "price-components__reason", total.reason));
   }
 
+  /* The rate link of an hourly row, drawn like a linked listing: whose rate, what it is
+     today, and whether it is the decision in force. A link a later typed rate has set
+     aside is still shown -- it is what «اتصال به نرخ» again would bring back. */
+  function renderRateLink(link) {
+    if (!link) return;
+    const card = element("article",
+      `price-component price-component--rate-link${link.inForce ? "" : " price-component--superseded"}`);
+    card.dataset.rateLinkId = link.id ?? "";
+    card.dataset.status = link.inForce ? "ready" : "superseded";
+    card.append(
+      element("h4", "", link.rateResourceTitle ?? "—"),
+      element("p", "price-component__meta", HOURLY_RATE_WORDING.linked),
+      statusChip(link.inForce ? "resource_price_ready" : "needs_components",
+        link.inForce ? "نرخ متصل در حال استفاده است" : "نرخی که بعداً روی این ردیف ثبت شده جای این اتصال را گرفته است"));
+    if (link.inForce) {
+      const figures = element("dl", "price-component__figures");
+      figures.append(
+        element("dt", "", `نرخ به ازای ${formatUnitLabel(link.priceUnit) ?? "واحد"}`),
+        element("dd", "numeric", priceText(link.currentUnitPriceIRR)));
+      card.append(figures);
+    }
+    if (link.reason) card.append(element("p", "table-note", link.reason));
+    componentList.append(card);
+  }
+
   function renderConnection(components) {
     componentList.replaceChildren();
-    if (!components.some((component) => component.active)) {
+    if (!components.some((component) => component.active) && !hourly) {
       componentList.append(element("p", "empty-state",
         "این قلم هنوز به قیمت روز وصل نشده است. با «اتصال به قیمت روز» محصول بازار آن را انتخاب کنید."));
     }
@@ -512,10 +543,34 @@ export function createPriceMappingPanel({ line, resource, adapter, materialPrice
     save.disabled = true;
   }
 
+  /* A rate is already in the row's own unit and needs no crossing, so the second step
+     is skipped: the preview is the rate itself, and saving needs only a reason. */
+  function renderRatePreview(candidate) {
+    preview.replaceChildren();
+    renderConversionPrompt(null);
+    lastPreview = null;
+    const outcome = element("p", "price-component-form__outcome");
+    outcome.append(
+      element("span", "", candidate.name ?? "—"),
+      element("span", "price-component-form__times", "·"),
+      element("strong", "",
+        candidate.currentPriceIRR === null
+          ? "بدون نرخ"
+          : `${priceText(candidate.currentPriceIRR)} به ازای ${formatUnitLabel(candidate.sourceUnitCode) ?? "واحد"}`));
+    preview.append(outcome);
+  }
+
   function choose(candidate, card) {
     chosen = candidate;
     results.querySelectorAll(".price-candidate").forEach((node) =>
       node.classList.toggle("price-candidate--chosen", node === card));
+    if (candidate.category === "work") {
+      unitSelect.value = "";
+      unitSelect.disabled = true;
+      renderRatePreview(candidate);
+      save.disabled = !canEdit;
+      return;
+    }
     unitSelect.disabled = !canEdit;
     /* Default to the unit the sheet states this price in, when it is one the registry
        knows. It is a starting point a person can change -- never a decision made for
@@ -558,7 +613,8 @@ export function createPriceMappingPanel({ line, resource, adapter, materialPrice
     results.replaceChildren(element("p", "empty-state", "در حال بارگذاری…"));
     try {
       const body = await adapter.candidates({
-        category: categorySelect.value || undefined,
+        /* An hourly row opens on the rates, before the person has touched a filter. */
+        category: categorySelect.value || (hourly ? "work" : undefined),
         providerId: providerSelect.value || undefined,
         productType: typeSelect.value || undefined,
         query: search.value.trim() || undefined,
@@ -626,6 +682,7 @@ export function createPriceMappingPanel({ line, resource, adapter, materialPrice
     } else {
       [categorySelect, providerSelect, typeSelect, search, reason]
         .forEach((node) => { node.value = ""; });
+      if (hourly) categorySelect.value = "work";
       clearChoice();
     }
     loadCandidates();
@@ -643,6 +700,20 @@ export function createPriceMappingPanel({ line, resource, adapter, materialPrice
 
   save.addEventListener("click", async () => {
     feedback.textContent = "";
+    if (chosen?.category === "work") {
+      if (!reason.value.trim()) { feedback.textContent = "دلیل ثبت این اتصال الزامی است."; return; }
+      save.disabled = true;
+      try {
+        await adapter.linkRate(lineId, { rateResourceId: chosen.providerItemId, reason: reason.value.trim() });
+        closeForm();
+        await loadConnection();
+        onSaved?.();
+      } catch (error) {
+        feedback.textContent = error?.message ?? "ثبت اتصال به نرخ انجام نشد.";
+        save.disabled = false;
+      }
+      return;
+    }
     const body = draft();
     if (!body.providerItemId || !body.selectedUnit) {
       feedback.textContent = "محصول و واحد رسمی را انتخاب کنید."; return;
@@ -701,11 +772,20 @@ export function createPriceMappingPanel({ line, resource, adapter, materialPrice
       header = body.line;
       renderSchedule();
       renderConnection(body.connection ? [body.connection] : []);
+      if (hourly && typeof adapter.rateLinkFor === "function") {
+        const link = await adapter.rateLinkFor(lineId);
+        renderRateLink(link);
+        if (!link && !body.connection) {
+          componentList.append(element("p", "empty-state",
+            "این ردیف به نرخی وصل نشده است. با «اتصال به نرخ» یکی از نرخ‌های نیرو و تجهیزات را انتخاب کنید."));
+        }
+      }
       renderTotal(body.total);
       /* Hidden once the line is linked: there is one listing per line, and a second
          «اتصال» button would offer a state this page cannot produce. Changing the product
-         is on the card, where the current one is. */
-      add.hidden = Boolean(body.connection) || !canEdit;
+         is on the card, where the current one is. An hourly row keeps the button: linking
+         again is how a rate typed since is set aside. */
+      add.hidden = hourly ? !canEdit : (Boolean(body.connection) || !canEdit);
     } catch (error) {
       componentList.replaceChildren(
         element("p", "form-feedback", error?.message ?? "اتصال قیمت روز این قلم خوانده نشد."));

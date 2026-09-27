@@ -216,8 +216,57 @@ class PsycopgItemPriceComponentRepository:
                 + resolved_price_joins("l") +
                 """ WHERE l.organization_id=%s AND l.project_id=%s
                       AND l.deleted_at IS NULL AND r.deleted_at IS NULL""",
-                (as_of, as_of, s.organization_id, s.project_id))
+                (as_of, as_of, as_of, s.organization_id, s.project_id))
             return {row["estimate_line_id"]: row for row in await c.fetchall()}
+
+    # ---------------------------------------------------------------- rate links (0039)
+    #
+    # A line linked to another resource's hourly rate. One live link per line; a new one
+    # supersedes the old, appended and never deleted.
+
+    _RATE_LINK = """
+        SELECT rl.id, rl.estimate_line_id, rl.rate_resource_id, rl.reason, rl.created_by,
+               rl.created_at, rr.title AS rate_resource_title, rr.base_unit AS rate_unit,
+               rr.resource_type AS rate_resource_type
+          FROM finance_item_rate_links rl
+          JOIN finance_resources rr
+            ON rr.organization_id=rl.organization_id AND rr.project_id=rl.project_id
+           AND rr.id=rl.rate_resource_id
+         WHERE rl.organization_id=%s AND rl.project_id=%s AND rl.estimate_line_id=%s
+           AND rl.superseded_at IS NULL"""
+
+    async def live_rate_link(self, s, estimate_line_id):
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(self._RATE_LINK, (s.organization_id, s.project_id, estimate_line_id))
+            return await c.fetchone()
+
+    async def rate_resource(self, s, resource_id):
+        """The resource a link would name, or None when this project has no such one."""
+        async with self.db.cursor(row_factory=dict_row) as c:
+            await c.execute(
+                "SELECT id, title, base_unit, resource_type FROM finance_resources"
+                " WHERE organization_id=%s AND project_id=%s AND id=%s AND deleted_at IS NULL",
+                (s.organization_id, s.project_id, resource_id))
+            return await c.fetchone()
+
+    async def append_rate_link(self, s, *, estimate_line_id, rate_resource_id, reason,
+                               created_by):
+        """Retire the live link, then write the new one. One transaction."""
+        row_id = uuid4()
+        async with self.db.transaction():
+            async with self.db.cursor(row_factory=dict_row) as c:
+                await c.execute(
+                    "UPDATE finance_item_rate_links SET superseded_at = now()"
+                    " WHERE organization_id=%s AND project_id=%s AND estimate_line_id=%s"
+                    " AND superseded_at IS NULL",
+                    (s.organization_id, s.project_id, estimate_line_id))
+                await c.execute(
+                    "INSERT INTO finance_item_rate_links"
+                    " (id, organization_id, project_id, estimate_line_id, rate_resource_id,"
+                    "  reason, created_by) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (row_id, s.organization_id, s.project_id, estimate_line_id,
+                     rate_resource_id, reason, created_by))
+        return await self.live_rate_link(s, estimate_line_id)
 
     async def line_quantities(self, s):
         """The quantity each line is priced on, for every line of the project.

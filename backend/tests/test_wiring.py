@@ -136,6 +136,9 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping/components", "post"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping/components/history", "get"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping/components/{componentId}", "patch"),
+                # The hourly-rate link of a crew or machine line (0039, 2026-09-27).
+                ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/rate-link", "get"),
+                ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/rate-link", "post"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-mapping/components/{componentId}/deactivate", "post"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-component-preview", "get"),
                 ("/api/projects/{projectId}/finance/estimate-lines/{lineId}/price-total-preview", "get"),

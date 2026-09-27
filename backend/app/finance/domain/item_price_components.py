@@ -360,7 +360,7 @@ def aggregate_row(priced):
     }
 
 
-def resource_priced_row(unit_price_irr, quantity, price_unit, price_source):
+def resource_priced_row(unit_price_irr, quantity, price_unit, price_source, product_name=None):
     """A row priced from its own resource rather than from material components.
 
     The cost is `quantity x unit_price`, computed HERE so that the page, the report and
@@ -382,6 +382,9 @@ def resource_priced_row(unit_price_irr, quantity, price_unit, price_source):
         "current_unit_price_irr": _text(unit_price_irr),
         "price_unit": price_unit,
         "price_source": price_source,
+        # Null for a typed rate; the linked machine's title for a rate link, so the
+        # «منبع» column says whose rate this is.
+        "product_name": product_name,
         # No components were consulted, and saying "0 of 0 ready" would invite the reader
         # to think something is missing. Nothing is.
         "component_count": 0, "ready_component_count": 0,

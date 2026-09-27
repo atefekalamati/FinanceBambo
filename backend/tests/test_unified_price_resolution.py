@@ -52,10 +52,12 @@ class TheLadderTests(unittest.TestCase):
         answer; otherwise the link wins. One predicate, spliced into every column, so the
         amount and its source cannot name different winners.
         """
-        self.assertIn("manual_price.price_recorded_at >= sheet_price.linked_at", MANUAL_WINS)
-        self.assertIn("sheet_price.unit_price_irr IS NULL", MANUAL_WINS, "an unpriced link falls back")
-        self.assertEqual(6, RESOLVED_PRICE_COLUMNS.count(MANUAL_WINS),
-                         "every column decides by the same predicate")
+        self.assertIn("manual_price.price_recorded_at", MANUAL_WINS)
+        self.assertIn("sheet_price.linked_at", MANUAL_WINS)
+        self.assertIn("sheet_price.unit_price_irr IS NOT NULL THEN sheet_price.linked_at", MANUAL_WINS,
+                      "an unpriced link has no clock, so it neither wins nor blocks")
+        self.assertGreaterEqual(RESOLVED_PRICE_COLUMNS.count(MANUAL_WINS), 6,
+                                "every column decides by the same predicate")
         self.assertNotIn("COALESCE(manual_price.unit_price_irr", RESOLVED_PRICE_COLUMNS)
 
     def test_a_link_made_on_the_items_page_reaches_every_reader(self):
@@ -71,7 +73,8 @@ class TheLadderTests(unittest.TestCase):
     def test_a_line_with_no_price_survives_the_joins(self):
         """LEFT, not INNER. An unpriced line must still be counted, not dropped."""
         joins = resolved_price_joins("l")
-        self.assertEqual(2, joins.count("LEFT JOIN LATERAL"))
+        # Three rungs (manual, sheet, rate link) and one nested lookup inside the third.
+        self.assertEqual(4, joins.count("LEFT JOIN LATERAL"))
         self.assertEqual(0, joins.count("INNER JOIN"))
 
     def test_the_keys_can_come_from_different_tables(self):

@@ -141,7 +141,11 @@ def _price_crossing(row, price_unit, conversion_by_key):
 
     base_unit = row.get("base_unit")
     dimension = row.get("dimension")
-    if row.get("current_price_source") != "sheet":
+    # A typed rate on the line's own resource is per that resource's base unit by
+    # construction. Anything else -- a sheet listing, or another resource's hourly rate
+    # through a rate link -- is quoted per a unit somebody else chose, and is read
+    # through the canonicaliser below.
+    if row.get("current_price_source") in (None, "manual_resource", "none"):
         if price_unit is None or price_unit == base_unit:
             return Decimal(1), False
         crossing = conversion_by_key.get((base_unit, price_unit, dimension))

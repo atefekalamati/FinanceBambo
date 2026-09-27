@@ -42,7 +42,7 @@ RowStatus = Literal["ready", "needs_components", "partially_unresolved", "needs_
 
 #: Where the price on a row came from. `none` is the resolver reporting that it looked,
 #: which is a different statement from a field nobody filled in.
-PriceSource = Literal["manual_resource", "sheet", "none"]
+PriceSource = Literal["manual_resource", "sheet", "linked_rate", "none"]
 
 UsageMode = Literal["per_msp_unit", "total_quantity"]
 
@@ -177,6 +177,32 @@ class PriceComponentListResponse(ApiModel):
     line: PricedLineHeaderResponse | None = None
     components: list[PriceComponentResponse] = Field(default_factory=list)
     total: ItemPriceRowStatusResponse | None = None
+
+
+class RateLinkCreate(ApiModel):
+    """A person saying this line is priced at another resource's hourly rate (0039)."""
+
+    rate_resource_id: UUID
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class RateLinkResponse(ApiModel):
+    """The live rate link of one line, and whether it prices the line today.
+
+    `in_force` is false when a rate typed on the line's own resource after the link is
+    the newer decision -- the link is kept and shown, and the typed rate wins until the
+    line is linked again.
+    """
+
+    id: str
+    estimate_line_id: str
+    rate_resource_id: str
+    rate_resource_title: str | None = None
+    reason: str | None = None
+    linked_at: datetime | None = None
+    in_force: bool = False
+    current_unit_price_irr: str | None = None
+    price_unit: str | None = None
 
 
 class PriceComponentCreate(ApiModel):

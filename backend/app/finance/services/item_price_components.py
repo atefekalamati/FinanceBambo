@@ -31,9 +31,16 @@ from ..domain.item_price_components import (PER_MSP_UNIT, TOTAL_QUANTITY, USAGE_
                                             price_component, resource_priced_row)
 from ..domain.conversion_rules import choose_conversion
 from ..domain.material_categories import category_label, spec_columns, specs_of
-from ..domain.price_resolution import SOURCE_MANUAL_RESOURCE
+from ..domain.price_resolution import SOURCE_LINKED_RATE, SOURCE_MANUAL_RESOURCE
+from ..domain.resource_types import WORK, canonical_resource_type
 from ..domain.unit_conversion import can_convert
 from ..domain.unit_registry import UNIT_REGISTRY
+
+#: The ladder answers a line by its own resource's rate or by a rate it is LINKED to;
+#: either way the row is priced from a rate and not assembled from components. The sheet
+#: is the one source whose answer the components path prices better, because it knows the
+#: usage quantity and the unit crossing.
+RESOURCE_PRICE_SOURCES = (SOURCE_MANUAL_RESOURCE, SOURCE_LINKED_RATE)
 from .material_price_resolution import stated_source_unit
 
 
@@ -105,13 +112,16 @@ class ItemPriceComponentService:
             # components are here, they price the row: that path knows the usage quantity
             # and the crossing, which a unit price alone does not.
             priced_by_resource = resolved and (
-                resource_price.get("current_price_source") == SOURCE_MANUAL_RESOURCE
+                resource_price.get("current_price_source") in RESOURCE_PRICE_SOURCES
                 or not line_components)
             if priced_by_resource:
                 answers[str(line_id)] = dict(
                     resource_priced_row(resource_price["current_unit_price_irr"], quantity,
                                         resource_price.get("current_price_unit"),
-                                        resource_price.get("current_price_source")),
+                                        resource_price.get("current_price_source"),
+                                        # The «منبع» column names the machine whose rate
+                                        # a linked line uses; a typed rate names nothing.
+                                        product_name=resource_price.get("current_price_link_title")),
                     estimate_line_id=str(line_id))
                 continue
             priced = [self._price(c, prices, factors, quantity, rules)
@@ -131,6 +141,56 @@ class ItemPriceComponentService:
                 **self._source_summary(items, prices, orphaned)))
         return answers
 
+
+    # ---------------------------------------------------------------- rate links (0039)
+
+    async def rate_link_for_line(self, scope, estimate_line_id):
+        """What this line is linked to, and whether that link prices it today.
+
+        `in_force` is the ladder's verdict for THIS line: the link's rate prices the
+        line only while the link is the newest decision. Said explicitly, so the panel
+        can show a link that a rate typed afterwards has set aside.
+        """
+        link = await self.repository.live_rate_link(scope, estimate_line_id)
+        if link is None:
+            return None
+        resolved = (await self._resource_prices(scope)).get(estimate_line_id) or {}
+        in_force = resolved.get("current_price_source") == SOURCE_LINKED_RATE
+        return {
+            "id": str(link["id"]),
+            "estimate_line_id": str(link["estimate_line_id"]),
+            "rate_resource_id": str(link["rate_resource_id"]),
+            "rate_resource_title": link.get("rate_resource_title"),
+            "reason": link.get("reason"),
+            "linked_at": link.get("created_at"),
+            "in_force": in_force,
+            "current_unit_price_irr": (_text(resolved.get("current_unit_price_irr"))
+                                       if in_force else None),
+            "price_unit": (resolved.get("current_price_unit") if in_force
+                           else link.get("rate_unit")),
+        }
+
+    async def link_rate(self, scope, *, estimate_line_id, rate_resource_id, reason, actor_id):
+        """Link this line to another resource's hourly rate. The newest decision wins.
+
+        Refuses rather than guesses: a line or a resource this project does not have, a
+        resource that is not priced by the hour, a blank reason. Appended over the
+        previous link; never deleted.
+        """
+        text = (reason or "").strip()
+        if not text:
+            raise ItemPriceComponentRefused("دلیل ثبت این اتصال الزامی است")
+        if await self.repository.line_context(scope, estimate_line_id) is None:
+            raise ItemPriceComponentRefused("این ردیف برآورد در این پروژه یافت نشد")
+        resource = await self.repository.rate_resource(scope, rate_resource_id)
+        if resource is None:
+            raise ItemPriceComponentRefused("منبع نرخ در این پروژه یافت نشد")
+        if canonical_resource_type(resource.get("resource_type")) != WORK:
+            raise ItemPriceComponentRefused("فقط به نرخ نیرو و تجهیزات می‌توان متصل شد")
+        await self.repository.append_rate_link(
+            scope, estimate_line_id=estimate_line_id, rate_resource_id=rate_resource_id,
+            reason=text, created_by=actor_id)
+        return await self.rate_link_for_line(scope, estimate_line_id)
 
     async def _resource_prices(self, scope):
         """Resource prices, or nothing when the repository predates this lookup.

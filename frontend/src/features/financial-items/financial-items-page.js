@@ -776,8 +776,14 @@ function mspUnitCell(line, resource, isGeneralCost) {
 function sheetUnitCell(line, priced, isGeneralCost, { canEdit, onMapPrice, resource, methodNotes = true }) {
   if (isGeneralCost) return ABSENT;
   if (!priced || !priced.componentCount) {
-    /* Not «وصل نشده»: an hourly row has no sheet to be linked to. See isHourlyRate. */
-    if (isHourlyRate(resource)) return element("span", "cell-secondary", HOURLY_RATE_WORDING.sheetUnit);
+    /* Not «وصل نشده»: an hourly row has no sheet to be linked to. It may be linked to a
+       RATE, and then the cell names whose rate it uses. See isHourlyRate. */
+    if (isHourlyRate(resource)) {
+      return element("span", "cell-secondary",
+        priced?.priceSource === "linked_rate" && priced.productName
+          ? `${HOURLY_RATE_WORDING.linked}: ${priced.productName}`
+          : HOURLY_RATE_WORDING.sheetUnit);
+    }
     return element("span", "missing-value", "هنوز به قیمت روز وصل نشده");
   }
   const cell = document.createDocumentFragment();
@@ -852,6 +858,11 @@ function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, r
   if (priced.dailyItemCostIRR !== null) {
     cell.append(element("span", "",
       formatTomanFromIrr(priced.dailyItemCostIRR, { withCurrency: false })));
+    /* Priced at another crew's or machine's rate through a link: said, so a reader can
+       tell it from a rate typed on this row. */
+    if (priced.priceSource === "linked_rate" && methodNotes) {
+      cell.append(element("span", "cell-secondary", HOURLY_RATE_WORDING.linked));
+    }
     if (priced.unresolvedComponentCount) {
       cell.append(element("span", "cell-secondary",
         `${formatDisplayNumber(priced.readyComponentCount)} از ${formatDisplayNumber(priced.componentCount)} قلم مصالح`));
@@ -1020,11 +1031,15 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
          listing in «منبع», and the action here. The table's shape is what people navigate
          by. */
       const priced = priceStatuses.get(line.lineId) ?? null;
-      /* Never for an hourly row: the panel behind this button searches sheet listings,
-         and no listing can price a crane-hour. Its action is «ثبت نرخ ساعتی», in the
-         daily-price cell. See isHourlyRate. */
-      if (onMapPrice && !isGeneralCost && !isHourlyRate(resource)) {
-        const label = priced?.componentCount ? "تغییر محصول" : "اتصال به قیمت روز";
+      /* An hourly row links to a RATE -- one of the crews or machines priced in
+         settings -- rather than to a sheet listing; the panel offers those under
+         «نیرو و تجهیزات». «ثبت نرخ ساعتی» in the daily-price cell stays beside it, and
+         the newer of the two decisions prices the row. */
+      if (onMapPrice && !isGeneralCost) {
+        const hourly = isHourlyRate(resource);
+        const label = hourly
+          ? (priced?.priceSource === "linked_rate" ? "تغییر نرخ متصل" : "اتصال به نرخ")
+          : (priced?.componentCount ? "تغییر محصول" : "اتصال به قیمت روز");
         const map = element("button", "table-action table-action--map-price", label);
         map.type = "button";
         map.dataset.action = "map-price";

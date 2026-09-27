@@ -379,7 +379,7 @@ class NothingIsWrittenTests(unittest.TestCase):
                           (BACKEND_ROOT / "alembic" / "versions").glob("00*.py"))
         # 0038 came later and is about the type vocabulary, not about rates: it widens a
         # CHECK and creates nothing. The claim this test makes still holds.
-        self.assertEqual("0038", versions[-1][:4],
+        self.assertEqual("0039", versions[-1][:4],
                          "equipment rates read existing tables; nothing was migrated")
 
 

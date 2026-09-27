@@ -344,4 +344,4 @@ class EditBeforeConfirmationTests(unittest.IsolatedAsyncioTestCase):
         # `editedByUser` per field -- the contract was built for this from the start.
         versions = sorted(p.name for p in (BACKEND_ROOT / "alembic" / "versions").glob("00*.py"))
         # 0038 is the resource-type vocabulary, unrelated to extraction.
-        self.assertEqual("0038", versions[-1][:4])
+        self.assertEqual("0039", versions[-1][:4])

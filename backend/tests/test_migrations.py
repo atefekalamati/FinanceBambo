@@ -355,7 +355,8 @@ class AlembicChainTests(unittest.TestCase):
              "0035_preserve_source_sheet_weight",
              "0036_a_price_revision_need_not_be_explained",
              "0037_a_market_price_belongs_to_the_company",
-             "0038_work_is_one_kind"],
+             "0038_work_is_one_kind",
+             "0039_item_rate_links"],
             sorted(path.stem for path in VERSIONS.glob("*.py")))
 
     def test_every_revision_runs_both_directions(self):

@@ -66,6 +66,30 @@ function mapRowStatus(value) {
        whole project is a different kind of fact from the same number measured on the
        product being priced, and a reader cannot tell them apart from the cost alone. */
     factorSource: value.factorSource ?? null,
+
+    /* Which decision priced the row -- `manual_resource`, `sheet`, `linked_rate` -- and
+       the unit price it resolved to, present on a row priced from a rate. The table
+       uses the source to say «نرخ متصل» beside a linked crew or machine. */
+    priceSource: value.priceSource ?? null,
+    currentUnitPriceIRR: value.currentUnitPriceIrr ?? null,
+  };
+}
+
+/* A line linked to another resource's hourly rate (the rates set in settings). `inForce`
+   is the ladder's verdict: the link prices the line only while it is the newest decision;
+   a rate typed on the line afterwards sets it aside until the line is linked again. */
+function mapRateLink(value) {
+  if (!value) return null;
+  return {
+    id: value.id,
+    estimateLineId: value.estimateLineId,
+    rateResourceId: value.rateResourceId,
+    rateResourceTitle: value.rateResourceTitle ?? null,
+    reason: value.reason ?? null,
+    linkedAt: value.linkedAt ?? null,
+    inForce: value.inForce === true,
+    currentUnitPriceIRR: value.currentUnitPriceIrr ?? null,
+    priceUnit: value.priceUnit ?? null,
   };
 }
 
@@ -356,6 +380,19 @@ export function createItemPriceMappingsApiAdapter(context, { client }) {
         + query({ providerItemId: draft?.providerItemId, selectedUnit: draft?.selectedUnit,
                   usageMode: WHOLE_LINE.usageMode, usageQuantity: WHOLE_LINE.usageQuantity }));
       return mapComponent(body);
+    },
+
+    /* The hourly-rate link of a crew or machine line, or null. */
+    async rateLinkFor(estimateLineId) {
+      return mapRateLink(await client.request(`${line(estimateLineId)}/rate-link`));
+    },
+
+    /* Link a line to a resource's hourly rate. A new link supersedes the previous one,
+       and the newest decision -- link or typed rate -- prices the line. */
+    async linkRate(estimateLineId, { rateResourceId, reason }) {
+      return mapRateLink(await client.request(
+        `${line(estimateLineId)}/rate-link`,
+        jsonOptions("POST", { rateResourceId, reason })));
     },
 
     async connect(estimateLineId, { providerItemId, selectedUnit, reason }) {

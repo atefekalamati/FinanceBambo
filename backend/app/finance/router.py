@@ -50,7 +50,7 @@ from .schemas.material_prices import (ManualPriceCreate,ManualPriceResponse,
 from .schemas.item_price_mappings import (CandidateListResponse,CandidateProductResponse,
     ConvertedPricePreviewResponse,ItemPriceMappingCreate,ItemPriceMappingResponse,
     MappingFiltersResponse)
-from .schemas.item_price_components import (ItemPriceRowStatusListResponse,ItemPriceRowStatusResponse,PriceComponentCreate,
+from .schemas.item_price_components import (ItemPriceRowStatusListResponse,ItemPriceRowStatusResponse,PriceComponentCreate,RateLinkCreate,RateLinkResponse,
     PriceComponentDeactivate,PriceComponentListResponse,PriceComponentPreviewResponse,
     PriceComponentResponse,PriceComponentRow,PricedLineHeaderResponse)
 from .schemas.unit_conversion_rules import (ConversionIssueListResponse,
@@ -60,6 +60,7 @@ from .schemas.unit_conversion_rules import (ConversionIssueListResponse,
 from .services.unit_conversion_rules import registry_units
 from .domain.material_categories import category_columns,category_label,spec_columns,specs_of
 from .services.material_price_resolution import canonical_unit
+from .services.material_prices import EQUIPMENT_CATEGORY
 from datetime import date
 from decimal import Decimal
 
@@ -1068,6 +1069,24 @@ async def item_price_candidates(projectId:str,request:Request,
     and a policy nobody configured must not arrive disguised as an ordering.
     """
     scope=await _resource_scope(projectId,request,"finance.view")
+    if category==EQUIPMENT_CATEGORY:
+        # «نیرو و تجهیزات» is not a worksheet: its candidates are the project's own
+        # resources that carry an hourly rate, the same rows the daily-prices page lists
+        # under that chip. A line linked to one uses that rate -- see the rate-link route.
+        rates,total=await request.app.state.material_price_service.current(
+            scope,category=EQUIPMENT_CATEGORY,page=page,page_size=pageSize,as_of=None,
+            today=date.today())
+        needle=(query or "").strip()
+        rows=[r for r in rates if not needle or needle in (r.get("external_name") or "")]
+        return CandidateListResponse(items=[_declared(CandidateProductResponse,{
+            "provider_item_id":str(r["provider_item_id"]),"external_id":None,
+            "external_name":r.get("external_name"),"category":EQUIPMENT_CATEGORY,
+            "category_label":category_label(EQUIPMENT_CATEGORY),"provider_id":None,
+            "provider_name":None,"current_price_irr":_money_text(r.get("current_price_irr")),
+            "raw_price":None,"source_unit":r.get("source_unit"),
+            "source_unit_code":canonical_unit(r.get("source_unit")) or r.get("source_unit"),
+            "source_currency":"IRR","active":True,"specs":{},"spec_columns":[],
+            "worksheet":None}) for r in rows],page=page,page_size=pageSize,total_items=total)
     rows,total=await request.app.state.item_price_mapping_service.candidates(
         scope,category=category,query=query,provider_id=providerId,
         product_type=productType,page=page,page_size=pageSize)
@@ -1100,7 +1119,9 @@ async def item_price_filters(projectId:str,request:Request,
     scope=await _resource_scope(projectId,request,"finance.view")
     filters=await request.app.state.item_price_component_service.filters(
         scope,category=category,provider_id=providerId)
-    categories=await request.app.state.material_price_service.categories(scope)
+    # `today`, so the «نیرو و تجهیزات» chip appears with the count of rates in force --
+    # the modal offers them as candidates, see the candidates route.
+    categories=await request.app.state.material_price_service.categories(scope,today=date.today())
     return MappingFiltersResponse(
         providers=[{"id":str(p["id"]),"name":p["name"]} for p in filters["providers"]],
         product_types=filters["product_types"],
@@ -1265,6 +1286,27 @@ async def add_price_component(projectId:str,lineId:UUID,payload:PriceComponentCr
     row=await request.app.state.item_price_component_service.add_component(
         scope,estimate_line_id=lineId,payload=payload,actor_id=scope.actor_user_id)
     return await _named(request, _component_row(row))
+
+@router.get("/estimate-lines/{lineId}/rate-link",response_model=RateLinkResponse|None)
+async def read_rate_link(projectId:str,lineId:UUID,request:Request):
+    """The hourly rate this line is linked to, if any, and whether it prices the line today."""
+    scope=await _resource_scope(projectId,request,"finance.view")
+    link=await request.app.state.item_price_component_service.rate_link_for_line(scope,lineId)
+    return None if link is None else RateLinkResponse(**link)
+
+@router.post("/estimate-lines/{lineId}/rate-link",response_model=RateLinkResponse,
+             status_code=201,responses=FINANCE_ERROR_RESPONSES)
+async def link_rate(projectId:str,lineId:UUID,payload:RateLinkCreate,request:Request):
+    """Link this line to a crew's or a machine's hourly rate set in settings (0039).
+
+    A decision like typing a rate or linking a listing, ranked by the same clock: the
+    newest of the three prices the line, everywhere.
+    """
+    scope=await _resource_scope(projectId,request,"finance.edit")
+    link=await request.app.state.item_price_component_service.link_rate(
+        scope,estimate_line_id=lineId,rate_resource_id=payload.rate_resource_id,
+        reason=payload.reason,actor_id=scope.actor_user_id)
+    return RateLinkResponse(**link)
 
 @router.patch("/estimate-lines/{lineId}/price-mapping/components/{componentId}",
               response_model=PriceComponentRow,responses=FINANCE_ERROR_RESPONSES)

@@ -18,10 +18,9 @@ const PAGE_SOURCE = readFileSync(
 
 /* A CREW OR A MACHINE IS NOT LINKED TO THE SHEET; IT IS PRICED BY THE HOUR.
  *
- * Reported 2026-09-27: «نیرو و تجهیزات جزو دسته‌بندی‌ها نیستند و نمی‌شود ... به قلم‌ها
- * متصل کرد». They never could be. The link panel searches supplier listings, and a
- * machine's rate is a price version somebody set, not a listing. What was wrong is that
- * every hourly row still offered the link, opened the panel, and wore «وصل نشده».
+ * Reported 2026-09-27. An hourly row is priced by a RATE: typed on the row, or -- since
+ * the same afternoon -- linked from the rates set in settings (rate-link-panel.test.js).
+ * What it never was is a sheet listing, and it must not wear «وصل نشده» for one.
  */
 
 test("the kind `work` is hourly, and so are the two names it used to have", () => {
@@ -31,12 +30,6 @@ test("the kind `work` is hourly, and so are the two names it used to have", () =
   assert.equal(isHourlyRate({ type: "material" }), false);
   assert.equal(isHourlyRate({ type: "general_cost" }), false);
   assert.equal(isHourlyRate(null), false);
-});
-
-test("the link button is guarded by the hourly test in the one place it is made", () => {
-  const branch = PAGE_SOURCE.split('dataset.action = "map-price"')[0].split("\n").slice(-12).join("\n");
-  assert.match(branch, /!isHourlyRate\(resource\)/,
-               "«اتصال به قیمت روز» must not be offered to an hourly row");
 });
 
 test("the three cells an hourly row differs in all read the shared wording", () => {

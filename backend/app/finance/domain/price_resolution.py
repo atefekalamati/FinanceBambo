@@ -32,6 +32,15 @@ a person who linked an unpriced listing did not mean to unprice the item.
 Within each decision the old ranking stands: project before organization, newest date
 first.
 
+THE THIRD DECISION: A RATE LINK -- added the same day
+
+A crew or a machine is priced by the hour, and the project's hourly rates are
+`price_versions` rows on `work` resources set in settings. A line may be LINKED to one of
+those resources (`finance_item_rate_links`, 0039) instead of having a rate typed on its
+own resource, so one rate set in settings prices every line linked to it. That link is a
+decision like the other two and is ranked by the same clock: typed after the link, the
+typed rate wins; linked after that, the link wins again.
+
 WHERE A LINK IS RECORDED
 
 In two tables, and the resolver reads both. `finance_item_price_mappings` is keyed by the
@@ -113,7 +122,8 @@ def resolved_price_joins(alias="l", as_of="%s", *, organization=None, project=No
     cannot price is a line the report must still COUNT. Dropping it here would make
     `totalLineCount` a count of priced lines, which is the one thing it must not be.
 
-    `as_of` is the report cutoff, passed twice -- once per join.
+    `as_of` is the report cutoff, passed THREE times -- once per join (manual, sheet,
+    rate link), in that order.
 
     The keyword arguments override where each key is read from. A caller whose keys sit
     on ONE table leaves them out; Items and Estimates cannot, because its rows come from
@@ -163,7 +173,31 @@ def resolved_price_joins(alias="l", as_of="%s", *, organization=None, project=No
         WHERE (o.workflow_date_gregorian IS NULL OR o.workflow_date_gregorian<={as_of})
         ORDER BY (o.scope_level='project') DESC,
                  o.workflow_date_gregorian DESC NULLS LAST, o.fetched_at DESC, o.id
-        LIMIT 1) sheet_price ON TRUE""".format(org=organization, proj=project, res=resource, asg=assignment,
+        LIMIT 1) sheet_price ON TRUE
+  LEFT JOIN LATERAL (
+       -- The live rate link, and the newest rate in force on the resource it names:
+       -- the same precedence as manual_price above, on a different resource.
+       SELECT pv.unit_price_irr, pv.scope_kind, pv.effective_from,
+              pv.id AS price_version_id, pv.created_at AS price_recorded_at,
+              rl.created_at AS linked_at, rr.base_unit, rr.title, rr.id AS rate_resource_id
+         FROM finance_item_rate_links rl
+         JOIN finance_resources rr
+           ON rr.organization_id=rl.organization_id AND rr.project_id=rl.project_id
+          AND rr.id=rl.rate_resource_id AND rr.deleted_at IS NULL
+         LEFT JOIN LATERAL (
+              SELECT pv.id, pv.unit_price_irr, pv.scope_kind, pv.effective_from, pv.created_at
+                FROM price_versions pv
+               WHERE pv.organization_id=rl.organization_id
+                 AND (pv.scope_kind='organization' OR pv.project_id=rl.project_id)
+                 AND pv.resource_id=rl.rate_resource_id
+                 AND pv.effective_from<={as_of}
+               {order}
+               LIMIT 1) pv ON TRUE
+        WHERE rl.organization_id={org}
+          AND rl.project_id={proj}
+          AND rl.estimate_line_id={line}
+          AND rl.superseded_at IS NULL
+        LIMIT 1) rate_link ON TRUE""".format(org=organization, proj=project, res=resource, asg=assignment,
                  line=line, as_of=as_of, order=_VERSION_ORDER)
 
 
@@ -172,7 +206,13 @@ def resolved_price_joins(alias="l", as_of="%s", *, organization=None, project=No
 #: from a field that was never populated.
 SOURCE_MANUAL_RESOURCE = "manual_resource"
 SOURCE_SHEET = "sheet"
+#: The line is priced by ANOTHER resource's hourly rate, through a rate link (0039).
+SOURCE_LINKED_RATE = "linked_rate"
 SOURCE_NONE = "none"
+
+#: What `current_price_scope` holds for a rate link. Not a `price_versions.scope_kind`:
+#: the rate behind it has one of those, published in `current_price_scope_level`.
+SCOPE_LINKED_RATE = "linked_rate"
 
 #: Which `price_versions.scope_kind` values count as a manual resource price. Both do --
 #: the ladder has already chosen between them by the time this runs, and a reader asking
@@ -189,33 +229,58 @@ MANUAL_SCOPES = ("project", "organization")
 #:
 #: Both are published because collapsing them lost information that the settings screen
 #: needs, and keeping only the precise one made every consumer re-derive the coarse one.
-#: When the typed rate prices the item: it exists, and either the link cannot answer or
-#: the rate was typed AFTER the link was made. Stated once and spliced into every CASE
-#: below, so the five columns cannot disagree about which decision won.
-MANUAL_WINS = """(manual_price.unit_price_irr IS NOT NULL
-                  AND (sheet_price.unit_price_irr IS NULL
-                       OR manual_price.price_recorded_at >= sheet_price.linked_at))"""
+#: WHEN each decision was made -- NULL when that decision cannot answer, so a decision
+#: with no price behind it never wins and never blocks. The sheet's clock is the link's
+#: time; the rate link's likewise; the typed rate's is when it was typed.
+_MANUAL_TS = "(CASE WHEN manual_price.unit_price_irr IS NOT NULL THEN manual_price.price_recorded_at END)"
+_SHEET_TS = "(CASE WHEN sheet_price.unit_price_irr IS NOT NULL THEN sheet_price.linked_at END)"
+_RATE_TS = "(CASE WHEN rate_link.unit_price_irr IS NOT NULL THEN rate_link.linked_at END)"
+
+#: When the typed rate prices the item: it exists and is the newest decision that can
+#: answer. Stated once and spliced into every CASE below, so the columns cannot disagree
+#: about which decision won. `>=` on a tie, so a rate typed in the same instant as a
+#: link still reads as the deliberate one.
+MANUAL_WINS = """({m} IS NOT NULL
+                  AND {m} >= COALESCE({s}, {m})
+                  AND {m} >= COALESCE({r}, {m}))""".format(m=_MANUAL_TS, s=_SHEET_TS, r=_RATE_TS)
+
+#: When the rate link prices the item: the typed rate did not win, and the link is at
+#: least as new as the sheet link (or the sheet cannot answer).
+RATE_WINS = """(NOT {wins} AND {r} IS NOT NULL AND {r} >= COALESCE({s}, {r}))""".format(
+    wins=MANUAL_WINS, r=_RATE_TS, s=_SHEET_TS)
 
 RESOLVED_PRICE_COLUMNS = """
        CASE WHEN {wins} THEN manual_price.unit_price_irr
+            WHEN {rate} THEN rate_link.unit_price_irr
             ELSE sheet_price.unit_price_irr
        END AS current_unit_price_irr,
        CASE WHEN {wins} THEN manual_price.scope_kind
+            WHEN {rate} THEN 'linked_rate'
             WHEN sheet_price.unit_price_irr IS NOT NULL THEN 'provider_sheet'
        END AS current_price_scope,
        CASE WHEN {wins} THEN 'manual_resource'
+            WHEN {rate} THEN 'linked_rate'
             WHEN sheet_price.unit_price_irr IS NOT NULL THEN 'sheet'
             ELSE 'none'
        END AS current_price_source,
        CASE WHEN {wins} THEN manual_price.effective_from
+            WHEN {rate} THEN rate_link.effective_from
             ELSE sheet_price.effective_from
        END AS current_price_effective_from,
        CASE WHEN {wins}
                  THEN CASE WHEN manual_price.scope_kind='organization'
                            THEN 'organization' ELSE 'project' END
+            WHEN {rate}
+                 THEN CASE WHEN rate_link.scope_kind='organization'
+                           THEN 'organization' ELSE 'project' END
             WHEN sheet_price.unit_price_irr IS NOT NULL THEN sheet_price.scope_level
        END AS current_price_scope_level,
-       CASE WHEN {wins} THEN manual_price.price_version_id END AS price_version_id""".format(wins=MANUAL_WINS)
+       CASE WHEN {wins} THEN manual_price.price_version_id
+            WHEN {rate} THEN rate_link.price_version_id
+       END AS price_version_id,
+       CASE WHEN {rate} THEN rate_link.title END AS current_price_link_title,
+       CASE WHEN {rate} THEN rate_link.rate_resource_id END AS current_price_link_resource_id""".format(
+    wins=MANUAL_WINS, rate=RATE_WINS)
 
 #: What `current_price_scope` can hold, for anyone matching on it.
 SCOPE_PROJECT = "project"
@@ -234,6 +299,8 @@ def price_source_of(scope_kind):
         return SOURCE_MANUAL_RESOURCE
     if scope_kind == SCOPE_PROVIDER_SHEET:
         return SOURCE_SHEET
+    if scope_kind == SCOPE_LINKED_RATE:
+        return SOURCE_LINKED_RATE
     return SOURCE_NONE
 
 
@@ -254,5 +321,6 @@ def resolved_price_columns(base_unit=None):
         return RESOLVED_PRICE_COLUMNS
     return RESOLVED_PRICE_COLUMNS + """,
        CASE WHEN %s THEN %s
+            WHEN %s THEN rate_link.base_unit
             WHEN sheet_price.unit_price_irr IS NOT NULL THEN sheet_price.source_unit
-       END AS current_price_unit""" % (MANUAL_WINS, base_unit)
+       END AS current_price_unit""" % (MANUAL_WINS, base_unit, RATE_WINS)

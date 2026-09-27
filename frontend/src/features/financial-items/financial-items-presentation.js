@@ -366,6 +366,7 @@ export function isHourlyRate(resource) {
 /** The words an hourly row uses where a material row talks about the sheet. */
 export const HOURLY_RATE_WORDING = Object.freeze({
   sheetUnit: "نرخ ساعتی؛ از شیت قیمت نمی‌آید",
+  linked: "نرخ متصل",
   unpriced: "نرخ ثبت نشده",
   method: "نرخ ساعتی",
   set: "ثبت نرخ ساعتی",
