@@ -304,9 +304,10 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
     real Core tables instead of fixtures. The eleven finance services below are unchanged
     either way -- which is the point of the port boundary, and worth seeing in one function.
     """
-    # Explicitly development-only. Production composition never enables this flag and must
-    # provide a durable `finance_background_executor` before the async route returns 202.
-    application.state.allow_ephemeral_finance_tasks = True
+    # The development host used to run background work in the web process behind
+    # `allow_ephemeral_finance_tasks`. It now composes the same durable executor a
+    # production host must, so the path the site runs is the path that is exercised here.
+    application.state.allow_ephemeral_finance_tasks = False
     if core is None:
         auth = StaticAuthContextProvider(seed.ORGANIZATION_ID, seed.PROJECT_ID, seed.ACTOR_ID)
         application.state.auth_context_provider = auth
@@ -418,6 +419,19 @@ def wire(application: FastAPI, connection, storage_root: Path, core=None) -> Non
         PsycopgExtractionRepository(connection), PsycopgAttachmentRepository(connection), storage,
         image_extractor, voice_extractor,
         invoice_service=invoice_service)
+    # THE DURABLE QUEUE (0040). The executor is what the async extraction route submits
+    # to; the worker is started by the lifespan below and drains the same table. A
+    # production composition does exactly these two lines and starts the worker the same
+    # way -- see DEPLOY_HANDOFF_FA.md §3-1.
+    from app.finance.repositories.background_jobs import PsycopgBackgroundJobRepository
+    from app.finance.services.background_jobs import (BackgroundWorker,
+                                                      DurableBackgroundExecutor,
+                                                      default_handlers)
+    jobs = PsycopgBackgroundJobRepository(connection)
+    application.state.finance_background_executor = DurableBackgroundExecutor(jobs)
+    application.state.finance_background_worker = BackgroundWorker(
+        jobs, default_handlers(application.state.finance_extraction_service),
+        name="devhost")
     application.state.finance_live_report_service = FinanceLiveReportService(
         PsycopgLiveReportRepository(connection), progress_provider,
         # The WBS rollup reads its stages from the activity catalogue. Same provider the
@@ -638,9 +652,21 @@ def build(dsn: str, storage_root: Path, reseed: bool = False) -> FastAPI:
                 price_periodic = asyncio.create_task(_price_periodic())
                 print("material price periodic import ENABLED every %d minutes"
                       % price_interval)
+        # The queue worker, on its own task like the two importers. It survives a failed
+        # tick on its own; cancelling it is how it stops.
+        worker = getattr(application.state, "finance_background_worker", None)
+        worker_task = asyncio.create_task(worker.run_forever()) if worker is not None else None
+        if worker_task is not None:
+            print("finance background worker ENABLED (durable queue, 0040)")
         try:
             yield
         finally:
+            if worker_task is not None:
+                worker_task.cancel()
+                try:
+                    await worker_task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
             if price_periodic is not None:
                 price_periodic.cancel()
                 try:

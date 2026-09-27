@@ -1,7 +1,10 @@
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
+from inspect import isawaitable
 from uuid import uuid4
+
+from .background_jobs import extraction_job
 
 from ..domain.errors import FinanceDomainError
 from ..domain.extractions import PROVENANCE_KEYS, ExtractionDraft, ExtractionField
@@ -166,7 +169,13 @@ class FinanceExtractionService:
                 LOG.warning("extraction failed file=%s %s: %s", attachment_id,
                             type(error).__name__, error)
 
-        background(run)
+        # Both forms of the work, and the caller keeps the one it can hold. A development
+        # host runs the closure in the web process; the production executor stores the
+        # SPEC -- ids and options -- as a row and rebuilds the call later, possibly in
+        # another process, which is what makes it survive a restart.
+        outcome = background(run, extraction_job(scope, attachment_id, hints))
+        if isawaitable(outcome):
+            await outcome
         return attachment, None
 
     async def retry(self, scope, draft_id, hints=None):

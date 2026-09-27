@@ -98,6 +98,8 @@ class WiringTests(unittest.TestCase):
                 ("/api/projects/{projectId}/finance/reports/live/variances", "get"),
                 ("/api/projects/{projectId}/finance/reports/live/by-wbs", "get"),
                 ("/api/projects/{projectId}/finance/files/{fileId}/extractions/async", "post"),
+                # The durable job behind an async extraction (0040, 2026-09-27).
+                ("/api/projects/{projectId}/finance/files/{fileId}/extractions/job", "get"),
                 ("/api/projects/{projectId}/finance/report-snapshots", "get"),
                 ("/api/projects/{projectId}/finance/report-snapshots", "post"),
                 ("/api/projects/{projectId}/finance/report-snapshots/{reportId}", "get"),

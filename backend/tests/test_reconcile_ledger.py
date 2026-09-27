@@ -134,6 +134,8 @@ class ObjectDiscoveryTests(unittest.TestCase):
         # is about.
         self.assertEqual(
             ["estimate_line_source_completions", "estimate_lines",
+             # 0040: the durable job queue.
+             "finance_background_jobs",
              "finance_invoice_counters", "finance_item_price_mapping_components",
              "finance_item_price_mappings",
              # 0039: the hourly-rate link of a line.

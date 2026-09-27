@@ -131,8 +131,9 @@ class Background:
     def __init__(self):
         self.tasks = []
 
-    def add(self, run):
+    def add(self, run, spec=None):
         self.tasks.append(run)
+        self.specs = getattr(self, "specs", []) + [spec]
 
     async def drain(self):
         while self.tasks:

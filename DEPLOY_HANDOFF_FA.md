@@ -20,7 +20,7 @@
 | ۶-الف | **Provider پیشرفت** زیر `progress_service` (بخش ۳-۲) | دیپلوی | گزارش مالی: کارت قرمز «فید پیشرفت در دسترس نیست» |
 | ۷ | سه endpoint هویت برای فرانت | دیپلوی | «پروژه‌ای انتخاب نشده» |
 | ۸ | نصب بستهٔ فرانت، دو صفحهٔ mount، **لینک سایدبار با hash** (بخش ۵-۲) | دیپلوی | هر دو لینک، امور مالی را باز می‌کنند |
-| ۹ | صف پس‌زمینهٔ بادوام | دیپلوی | `503` روی پردازش فاکتور |
+| ۹ | صف پس‌زمینهٔ بادوام: دو خط composition + راه‌اندازی worker (بخش ۳-۱) | دیپلوی | `503` روی پردازش فاکتور |
 | ۱۰ | پیش‌نیازهای استخراج (اختیاری) | دیپلوی | پردازش تصویر/صدا خاموش |
 
 ---
@@ -139,23 +139,34 @@ finance_background_executor
 اگر هرکدام از ۱۴ مؤلفهٔ اجباری نباشد، ماژول `503` با کد `FINANCE_UNAVAILABLE` می‌دهد و
 `optionalCapabilities` را اعلام می‌کند. DSN، نام جدول، مسیر و متن exception از این مرز رد نمی‌شود.
 
-### ۳-۱ صف پس‌زمینهٔ بادوام — **مانع واقعی production**
+### ۳-۱ صف پس‌زمینهٔ بادوام — پیاده‌سازی شده (2026-09-27، مهاجرت ۰۰۴۰)
+
+چرا لازم است: OCR بین ۲ تا ۶ ثانیه و رونویسی صدا تا ۴۰ ثانیه طول می‌کشد. پاسخ ۲۰۲ فوراً
+برمی‌گردد و کار بعداً انجام می‌شود. صف باید در **دیتابیس** باشد تا ری‌استارت آن را نکشد؛ صف همان
+PostgreSQL است (جدول `finance_background_jobs`)، بدون Redis یا سرویس جدید.
+
+**دو خط در composition root** (همان که میزبان توسعه در `backend/devhost/app.py` می‌زند):
 
 ```python
-# backend/devhost/app.py:308
-# Explicitly development-only. Production composition never enables this
-# flag and must provide a durable `finance_background_executor`.
-application.state.allow_ephemeral_finance_tasks = True
+from app.finance.repositories.background_jobs import PsycopgBackgroundJobRepository
+from app.finance.services.background_jobs import (BackgroundWorker,
+                                                  DurableBackgroundExecutor, default_handlers)
+
+jobs = PsycopgBackgroundJobRepository(connection)          # همان اتصال بقیهٔ سرویس‌ها
+application.state.finance_background_executor = DurableBackgroundExecutor(jobs)
+worker = BackgroundWorker(jobs, default_handlers(application.state.finance_extraction_service),
+                          name="<نام این پردازه>")
+# در lifespan:  task = asyncio.create_task(worker.run_forever())  و در shutdown:  task.cancel()
 ```
 
-- production **نباید** `allow_ephemeral_finance_tasks` را روشن کند.
-- بدون `finance_background_executor` مسیر `POST /files/{id}/extractions/async` پاسخ
+- `allow_ephemeral_finance_tasks` **نباید** روشن باشد (میزبان توسعه هم دیگر روشن نمی‌کند).
+- worker داخل همان فرایند بکند اجرا می‌شود؛ چند پردازه هر کدام یک worker می‌توانند داشته باشند،
+  `FOR UPDATE SKIP LOCKED` نمی‌گذارد یک کار دو بار اجرا شود.
+- کاری که worker وسطش بمیرد بعد از ۵ دقیقه (مهلت claim) توسط worker بعدی برداشته می‌شود؛ هر کار
+  حداکثر ۳ بار تلاش می‌شود و بعد `failed` می‌شود؛ خود فایل هم در همان لحظه `failed` می‌شود.
+- مسیر جدید برای دیدن وضعیت/علت: `GET /files/{id}/extractions/job` (تعداد تلاش، متن خطا).
+- بدون این دو خط، مسیر `POST /files/{id}/extractions/async` پاسخ
   `503 "durable extraction execution is not configured"` می‌دهد.
-- **هیچ پیاده‌سازی‌ای از این executor در مخزن نیست.** فقط نامش در `OPTIONAL_COMPONENTS` ثبت شده.
-- قرارداد: یک `submit(callable)` که کار را بادوام صف می‌کند.
-- چرا لازم است: OCR بین ۲ تا ۶ ثانیه و رونویسی صدا تا ۴۰ ثانیه طول می‌کشد. پاسخ ۲۰۲ فوراً
-  برمی‌گردد. اگر سرویس ری‌استارت شود و صف بادوام نباشد، کار گم می‌شود و کاربر فایلی می‌بیند
-  که برای همیشه «در حال پردازش» است.
 
 ### ۳-۲ Provider پیشرفت — زیر `progress_service`، و بدون آن گزارش مالی باز نمی‌شود
 
@@ -470,7 +481,7 @@ FINANCE_STT_PROVIDER=avalai
 
 | # | مورد | اثر |
 |---|---|---|
-| ۱ | `finance_background_executor` پیاده‌سازی ندارد | پردازش ناهمگام فاکتور در production کار نمی‌کند (بخش ۳-۱) |
+| ۱ | ~~`finance_background_executor` پیاده‌سازی ندارد~~ — پیاده شد (۰۰۴۰، 2026-09-27) | فقط باید در composition root وصل و worker راه‌اندازی شود (بخش ۳-۱) |
 | ۲ | پین‌های استخراج روی لینوکس تأیید نشده | اولین نصب ممکن است resolve نشود (بخش ۷) |
 | ۳ | `finance.edit` یک کلید برای نُه در | نقش «کارشناس متره و برآورد» قابل بیان نیست (بخش ۲-۱) |
 | ۴ | تلفیق تصویر + صدا پیاده نشده | یک فاکتور با ویس، یک ردیف خوانده می‌شود |

@@ -48,7 +48,8 @@
 35. `0035_preserve_source_sheet_weight`
 36. `0036_a_price_revision_need_not_be_explained`
 37. `0037_a_market_price_belongs_to_the_company` — ستون `scope_level` روی چهار جدول قیمت شیت. فقط افزودنی: ردیف‌های موجود با پیش‌فرض `project` می‌مانند و هیچ سطری بازنویسی نمی‌شود.
-39. `0039_item_rate_links` (head) — جدول جدید `finance_item_rate_links`: اتصال یک ردیف برآورد به نرخ ساعتی یک منبع «نیرو و تجهیزات». فقط ایجاد جدول و دو ایندکس؛ هیچ سطری نوشته یا بازنویسی نمی‌شود.
+40. `0040_durable_background_jobs` (head) — جدول جدید `finance_background_jobs`: صف بادوام کارهای پس‌زمینه (پردازش تصویر/صدای فاکتور). فقط ایجاد جدول و دو ایندکس؛ هیچ سطری نوشته نمی‌شود.
+39. `0039_item_rate_links` — جدول جدید `finance_item_rate_links`: اتصال یک ردیف برآورد به نرخ ساعتی یک منبع «نیرو و تجهیزات». فقط ایجاد جدول و دو ایندکس؛ هیچ سطری نوشته یا بازنویسی نمی‌شود.
 38. `0038_work_is_one_kind` — دو قید CHECK (`finance_resources.resource_type` و `msp_resources.bambo_resource_type`) مقدار `work` را می‌پذیرند. هیچ سطری بازنویسی نمی‌شود؛ `labor` و `equipment` مجاز می‌مانند و برنامه آن‌ها را `work` می‌خواند. downgrade اگر سطر `work` وجود داشته باشد رد می‌شود.
 
 **۰۰۲۷ فقط شکل می‌سازد و هیچ داده‌ای نمی‌نویسد.** ستون‌های تایپ‌شدهٔ مشخصات روی

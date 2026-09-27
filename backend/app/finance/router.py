@@ -61,6 +61,8 @@ from .services.unit_conversion_rules import registry_units
 from .domain.material_categories import category_columns,category_label,spec_columns,specs_of
 from .services.material_price_resolution import canonical_unit
 from .services.material_prices import EQUIPMENT_CATEGORY
+from .domain.background_jobs import KIND_EXTRACTION
+from .schemas.background_jobs import BackgroundJobResponse
 from datetime import date
 from decimal import Decimal
 
@@ -528,11 +530,14 @@ async def start_extraction_async(projectId:str,fileId:UUID,payload:ExtractionSta
     scope=await _resource_scope(projectId,request,"finance.manage_invoice")
     executor=getattr(request.app.state,"finance_background_executor",None)
     if executor is not None:
-        enqueue=executor.submit
+        # The SPEC is stored, never the closure: a row survives a restart, a callable does
+        # not. `submit` is awaited by the service, so the 202 is answered only once the
+        # job is a row.
+        enqueue=lambda run,spec:executor.submit(spec)
     elif getattr(request.app.state,"allow_ephemeral_finance_tasks",False):
         # Development only. A production host must provide a durable executor; accepting
         # work into a web-worker callback would lose it on restart after returning 202.
-        enqueue=lambda run:background.add_task(run)
+        enqueue=lambda run,spec:background.add_task(run)
     else:
         raise HTTPException(503,"durable extraction execution is not configured")
     attachment,existing=await request.app.state.finance_extraction_service.schedule(
@@ -547,6 +552,27 @@ async def start_extraction_async(projectId:str,fileId:UUID,payload:ExtractionSta
     return {"fileId":str(fileId),"processingStatus":attachment.processing_status,
             "extractionId":None if existing is None else str(existing.draft_id),
             "alreadyExtracted":existing is not None}
+
+@router.get("/files/{fileId}/extractions/job",response_model=BackgroundJobResponse|None)
+async def extraction_job_status(projectId:str,fileId:UUID,request:Request):
+    """The newest durable job for this file, or null where none was ever queued.
+
+    The file's own status says `processing` or `failed`; this says WHY a `failed` failed
+    and how many times it was tried -- and, for a file that is `processing` past any
+    honest run, whether a job is queued, running, or was never written at all. Null on a
+    host without the durable executor, where the work ran in the web process.
+    """
+    scope=await _resource_scope(projectId,request,"finance.view")
+    executor=getattr(request.app.state,"finance_background_executor",None)
+    repository=getattr(executor,"repository",None)
+    if repository is None:
+        return None
+    row=await repository.latest_for_payload(scope,KIND_EXTRACTION,"attachmentId",str(fileId))
+    if row is None:
+        return None
+    return BackgroundJobResponse(job_id=str(row["id"]),kind=row["kind"],status=row["status"],
+        attempts=row["attempts"],max_attempts=row["max_attempts"],error=row.get("error"),
+        created_at=row["created_at"],started_at=row.get("started_at"),finished_at=row.get("finished_at"))
 
 @router.get("/extractions",response_model=ExtractionListResponse,responses=FINANCE_ERROR_RESPONSES)
 async def list_extractions(projectId:str,request:Request,page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200),reviewStatus:str|None=Query(None,pattern="^(awaitingReview|accepted|rejected)$"),source:str|None=Query(None,pattern="^(image|voice)$"),fileId:UUID|None=None,linkedInvoiceId:UUID|None=None):
