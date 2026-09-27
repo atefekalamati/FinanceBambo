@@ -23,7 +23,7 @@ from app.finance.domain.item_price_components import (NEEDS_COMPONENTS,
                                                       RESOURCE_PRICE_READY,
                                                       STATUS_LABELS, STATUS_REASONS,
                                                       aggregate_row, resource_priced_row)
-from app.finance.domain.price_resolution import (MANUAL_SCOPES, RESOLVED_PRICE_COLUMNS,
+from app.finance.domain.price_resolution import (MANUAL_SCOPES, MANUAL_WINS, RESOLVED_PRICE_COLUMNS,
                                                  SOURCE_MANUAL_RESOURCE, SOURCE_NONE,
                                                  SOURCE_SHEET, price_source_of,
                                                  resolved_price_columns,
@@ -45,9 +45,28 @@ class TheLadderTests(unittest.TestCase):
         self.assertIn("pv.effective_from DESC", joins)
         self.assertIn("pv.effective_from<=", joins)
 
-    def test_the_amount_prefers_the_manual_rung(self):
-        self.assertIn("COALESCE(manual_price.unit_price_irr, sheet_price.unit_price_irr)",
-                      RESOLVED_PRICE_COLUMNS)
+    def test_the_amount_is_the_newer_of_the_two_decisions(self):
+        """Revised 2026-09-27: a typed rate no longer beats a link unconditionally.
+
+        The rate wins when it was typed after the link was made, or when the link cannot
+        answer; otherwise the link wins. One predicate, spliced into every column, so the
+        amount and its source cannot name different winners.
+        """
+        self.assertIn("manual_price.price_recorded_at >= sheet_price.linked_at", MANUAL_WINS)
+        self.assertIn("sheet_price.unit_price_irr IS NULL", MANUAL_WINS, "an unpriced link falls back")
+        self.assertEqual(6, RESOLVED_PRICE_COLUMNS.count(MANUAL_WINS),
+                         "every column decides by the same predicate")
+        self.assertNotIn("COALESCE(manual_price.unit_price_irr", RESOLVED_PRICE_COLUMNS)
+
+    def test_a_link_made_on_the_items_page_reaches_every_reader(self):
+        """Both link tables, newest first. The component table is what the page writes."""
+        joins = resolved_price_joins("l")
+        self.assertIn("FROM finance_item_price_mappings fm", joins)
+        self.assertIn("FROM finance_item_price_mapping_components fc", joins)
+        self.assertIn("fc.estimate_line_id=l.id", joins)
+        self.assertIn("fc.active", joins, "a retired component is not a link")
+        self.assertLess(joins.index("UNION ALL"), joins.index("ORDER BY linked_at DESC"))
+        self.assertIn("fm.linked_at", joins, "the columns need the link's own time")
 
     def test_a_line_with_no_price_survives_the_joins(self):
         """LEFT, not INNER. An unpriced line must still be counted, not dropped."""

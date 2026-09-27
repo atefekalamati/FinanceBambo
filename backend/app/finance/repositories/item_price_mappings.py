@@ -268,14 +268,21 @@ class PsycopgItemPriceMappingRepository:
     async def line_quantities(self, s):
         """The quantity each line is priced on, for every line of the project.
 
-        The file's own material quantity from the ACTIVE source version, which is what the
-        items page already shows as «مقدار». Read here rather than recomputed so the cost
-        and the quantity beside it cannot disagree.
+        The quantity the items page shows as «مقدار»: the newest REVISION when somebody
+        has revised the line, else the line's own original, else the file's completion.
+        Read here rather than recomputed so the cost and the quantity beside it cannot
+        disagree. The revision came first on 2026-09-27; see the components repository.
         """
         async with self.db.cursor(row_factory=dict_row) as c:
             await c.execute(
                 """SELECT l.id AS estimate_line_id,
-                          coalesce(l.original_quantity,
+                          coalesce((SELECT er.new_quantity
+                                      FROM estimate_revisions er
+                                     WHERE er.organization_id = l.organization_id
+                                       AND er.project_id = l.project_id
+                                       AND er.estimate_line_id = l.id
+                                     ORDER BY er.revision DESC LIMIT 1),
+                                   l.original_quantity,
                                    (SELECT c.quantity
                                       FROM estimate_line_source_completions c
                                      WHERE c.estimate_line_id = l.id)) AS quantity

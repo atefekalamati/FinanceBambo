@@ -13,9 +13,33 @@ The rungs, in order. The first that answers, wins:
 
     1. price_versions, scope_kind='project'        a price someone set FOR THIS PROJECT
     2. price_versions, scope_kind='organization'   the company's price for that resource
-    3. the mapped listing's newest VALID observation, PROJECT-scoped
+    3. the linked listing's newest VALID observation, PROJECT-scoped
     4. the same, ORGANIZATION-scoped                the company's daily market reading
     5. nothing
+
+THE LATEST DECISION WINS -- decided 2026-09-27
+
+Rungs 1-2 and rungs 3-4 are two DECISIONS a person can make about the same item: type a
+rate, or link the item to a market listing. They used to be ranked -- a typed rate beat a
+link, always -- and since price versions are append-only, an item once typed could never
+be handed back to the sheet. The project owner ruled otherwise: «همیشه آخرین قیمتی که
+برای یک محصول ست می‌شود باید ارجحیت داشته باشد». So the two decisions are compared by
+WHEN they were made: the newer one prices the item, and typing a rate after a link, or
+linking after a rate, flips it again. The tie-break, when the newer decision cannot
+answer -- a link whose listing has no valid price yet -- is the other one, not nothing:
+a person who linked an unpriced listing did not mean to unprice the item.
+
+Within each decision the old ranking stands: project before organization, newest date
+first.
+
+WHERE A LINK IS RECORDED
+
+In two tables, and the resolver reads both. `finance_item_price_mappings` is keyed by the
+schedule assignment; `finance_item_price_mapping_components` is keyed by the estimate
+line and is what «اتصال به قیمت روز» on the items page writes. The report resolved only
+the first, so a link made on the items page never reached the report (measured 2026-09-27:
+line «بتن ۴۰۰» on 1.8.1.7.3, linked, component recorded, report unaware). The newest
+live link of either kind is the link.
 
 Rungs 2 and 4 are the company's, and both were unreachable until 0037. An organization
 price_version carried a project_id and the join demanded it match, so «organization» only
@@ -81,7 +105,7 @@ def manual_price_join(*, organization, project, resource, as_of="%s",
 
 
 def resolved_price_joins(alias="l", as_of="%s", *, organization=None, project=None,
-                         resource=None, assignment=None):
+                         resource=None, assignment=None, line=None):
     """LATERAL joins that resolve one price per row of `alias`.
 
     Produces two derived tables, `manual_price` and `sheet_price`. They are LEFT joins:
@@ -91,36 +115,56 @@ def resolved_price_joins(alias="l", as_of="%s", *, organization=None, project=No
 
     `as_of` is the report cutoff, passed twice -- once per join.
 
-    The four keyword arguments override where each key is read from. A caller whose four
-    keys sit on ONE table leaves them out; Items and Estimates cannot, because its rows
-    come from `finance_mpp_rows` while the resource is on a LEFT-joined `finance_resources`
-    that may be absent. Reading `resource_id` off a row that might be NULL is how an
-    unclassified assignment would silently take some other line's price.
+    The keyword arguments override where each key is read from. A caller whose keys sit
+    on ONE table leaves them out; Items and Estimates cannot, because its rows come from
+    `finance_mpp_rows` while the resource is on a LEFT-joined `finance_resources` that may
+    be absent. Reading `resource_id` off a row that might be NULL is how an unclassified
+    assignment would silently take some other line's price. `line` is the estimate line's
+    id, which the component link is keyed by.
+
+    `sheet_price.linked_at` is WHEN the link was made, and `manual_price.price_recorded_at`
+    when the rate was typed; the columns compare the two. See the module docstring.
     """
     organization = organization or "%s.organization_id" % alias
     project = project or "%s.project_id" % alias
     resource = resource or "%s.resource_id" % alias
     assignment = assignment or "%s.source_assignment_uid" % alias
+    line = line or "%s.id" % alias
     return manual_price_join(organization=organization, project=project,
                              resource=resource, as_of=as_of) + """
   LEFT JOIN LATERAL (
        SELECT o.normalized_price_irr AS unit_price_irr, o.source_unit, o.scope_level,
-              o.workflow_date_gregorian AS effective_from
-         FROM finance_item_price_mappings fm
+              o.workflow_date_gregorian AS effective_from, fm.linked_at
+         FROM (
+              -- The newest live link, from either table that records one.
+              SELECT fm.organization_id, fm.project_id, fm.provider_item_id,
+                     fm.created_at AS linked_at
+                FROM finance_item_price_mappings fm
+               WHERE fm.organization_id={org}
+                 AND fm.project_id={proj}
+                 AND fm.source_assignment_uid={asg}
+                 AND fm.superseded_at IS NULL
+              UNION ALL
+              SELECT fc.organization_id, fc.project_id, fc.provider_item_id,
+                     fc.created_at
+                FROM finance_item_price_mapping_components fc
+               WHERE fc.organization_id={org}
+                 AND fc.project_id={proj}
+                 AND fc.estimate_line_id={line}
+                 AND fc.superseded_at IS NULL
+                 AND fc.active
+               ORDER BY linked_at DESC
+               LIMIT 1) fm
          JOIN price_observations o
            ON o.organization_id=fm.organization_id
           AND (o.project_id=fm.project_id OR o.scope_level='organization')
           AND o.provider_item_id=fm.provider_item_id
           AND o.validation_status='valid'
-        WHERE fm.organization_id={org}
-          AND fm.project_id={proj}
-          AND fm.source_assignment_uid={asg}
-          AND fm.superseded_at IS NULL
-          AND (o.workflow_date_gregorian IS NULL OR o.workflow_date_gregorian<={as_of})
+        WHERE (o.workflow_date_gregorian IS NULL OR o.workflow_date_gregorian<={as_of})
         ORDER BY (o.scope_level='project') DESC,
                  o.workflow_date_gregorian DESC NULLS LAST, o.fetched_at DESC, o.id
         LIMIT 1) sheet_price ON TRUE""".format(org=organization, proj=project, res=resource, asg=assignment,
-                 as_of=as_of, order=_VERSION_ORDER)
+                 line=line, as_of=as_of, order=_VERSION_ORDER)
 
 
 #: What `priceSource` can hold. Three values, and the third is not an absence of a value:
@@ -145,24 +189,33 @@ MANUAL_SCOPES = ("project", "organization")
 #:
 #: Both are published because collapsing them lost information that the settings screen
 #: needs, and keeping only the precise one made every consumer re-derive the coarse one.
+#: When the typed rate prices the item: it exists, and either the link cannot answer or
+#: the rate was typed AFTER the link was made. Stated once and spliced into every CASE
+#: below, so the five columns cannot disagree about which decision won.
+MANUAL_WINS = """(manual_price.unit_price_irr IS NOT NULL
+                  AND (sheet_price.unit_price_irr IS NULL
+                       OR manual_price.price_recorded_at >= sheet_price.linked_at))"""
+
 RESOLVED_PRICE_COLUMNS = """
-       COALESCE(manual_price.unit_price_irr, sheet_price.unit_price_irr)
-           AS current_unit_price_irr,
-       CASE WHEN manual_price.unit_price_irr IS NOT NULL THEN manual_price.scope_kind
+       CASE WHEN {wins} THEN manual_price.unit_price_irr
+            ELSE sheet_price.unit_price_irr
+       END AS current_unit_price_irr,
+       CASE WHEN {wins} THEN manual_price.scope_kind
             WHEN sheet_price.unit_price_irr IS NOT NULL THEN 'provider_sheet'
        END AS current_price_scope,
-       CASE WHEN manual_price.unit_price_irr IS NOT NULL THEN 'manual_resource'
+       CASE WHEN {wins} THEN 'manual_resource'
             WHEN sheet_price.unit_price_irr IS NOT NULL THEN 'sheet'
             ELSE 'none'
        END AS current_price_source,
-       COALESCE(manual_price.effective_from, sheet_price.effective_from)
-           AS current_price_effective_from,
-       CASE WHEN manual_price.unit_price_irr IS NOT NULL
+       CASE WHEN {wins} THEN manual_price.effective_from
+            ELSE sheet_price.effective_from
+       END AS current_price_effective_from,
+       CASE WHEN {wins}
                  THEN CASE WHEN manual_price.scope_kind='organization'
                            THEN 'organization' ELSE 'project' END
             WHEN sheet_price.unit_price_irr IS NOT NULL THEN sheet_price.scope_level
        END AS current_price_scope_level,
-       manual_price.price_version_id AS price_version_id"""
+       CASE WHEN {wins} THEN manual_price.price_version_id END AS price_version_id""".format(wins=MANUAL_WINS)
 
 #: What `current_price_scope` can hold, for anyone matching on it.
 SCOPE_PROJECT = "project"
@@ -200,6 +253,6 @@ def resolved_price_columns(base_unit=None):
     if base_unit is None:
         return RESOLVED_PRICE_COLUMNS
     return RESOLVED_PRICE_COLUMNS + """,
-       CASE WHEN manual_price.unit_price_irr IS NOT NULL THEN %s
+       CASE WHEN %s THEN %s
             WHEN sheet_price.unit_price_irr IS NOT NULL THEN sheet_price.source_unit
-       END AS current_price_unit""" % base_unit
+       END AS current_price_unit""" % (MANUAL_WINS, base_unit)

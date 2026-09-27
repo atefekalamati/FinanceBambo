@@ -31,6 +31,7 @@ from ..domain.item_price_components import (PER_MSP_UNIT, TOTAL_QUANTITY, USAGE_
                                             price_component, resource_priced_row)
 from ..domain.conversion_rules import choose_conversion
 from ..domain.material_categories import category_label, spec_columns, specs_of
+from ..domain.price_resolution import SOURCE_MANUAL_RESOURCE
 from ..domain.unit_conversion import can_convert
 from ..domain.unit_registry import UNIT_REGISTRY
 from .material_price_resolution import stated_source_unit
@@ -95,10 +96,18 @@ class ItemPriceComponentService:
         answers = {}
         for line_id, quantity in quantities.items():
             resource_price = resource_prices.get(line_id)
-            if resource_price and resource_price.get("current_unit_price_irr") is not None:
-                # Priced by its own resource. A truck is hired at a rate, not assembled
-                # from materials, and demanding components for it asks for work that must
-                # never be done.
+            line_components = by_line.get(line_id, [])
+            resolved = (resource_price or {}).get("current_unit_price_irr") is not None
+            # Priced by its own resource when the ladder says the TYPED rate is the
+            # newer decision -- a truck is hired at a rate, not assembled from materials
+            # -- or when the ladder answered from a link this table holds no components
+            # for (a schedule-level mapping). When the link is the newer decision and its
+            # components are here, they price the row: that path knows the usage quantity
+            # and the crossing, which a unit price alone does not.
+            priced_by_resource = resolved and (
+                resource_price.get("current_price_source") == SOURCE_MANUAL_RESOURCE
+                or not line_components)
+            if priced_by_resource:
                 answers[str(line_id)] = dict(
                     resource_priced_row(resource_price["current_unit_price_irr"], quantity,
                                         resource_price.get("current_price_unit"),

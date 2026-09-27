@@ -118,6 +118,47 @@ def money(value):
     return Decimal(value).quantize(IRR, rounding=ROUND_HALF_UP)
 
 
+def _price_crossing(row, price_unit, conversion_by_key):
+    """`(factor, uncrossable)`: how many price-units one base-unit is, or that it cannot
+    be known. `current = price × factor` prices the line in its own unit.
+
+    Two rungs quote per different units, and the unit column is read differently for
+    each. A MANUAL price is per the resource's base unit by construction, so a stated
+    unit that differs from it is a real mismatch and the project's own conversion rules
+    are asked. A SHEET price is per whatever the listing said, in whatever spelling:
+    «کیلو» beside a line in «کیلوگرم», «m3» beside «مترمکعب». Both are read through the
+    registry's canonicaliser first, the same one the items table crosses with, so the
+    two surfaces cannot disagree about whether a unit matches.
+
+    A sheet price whose unit NOBODY stated is not this line's price. It used to pass --
+    `NULL` read as "no mismatch" -- and the day links made on the items page reached
+    this engine (2026-09-27), 2,926 m³ of excavation was priced per twelve-metre I-beam:
+    4.8 trillion rial on a line worth nothing of the kind. The items table refuses that
+    listing as «واحد قیمت مبدأ مشخص نیست»; so does this.
+    """
+    from ..services.material_price_resolution import canonical_unit
+    from .unit_conversion import can_convert, quantity_factor
+
+    base_unit = row.get("base_unit")
+    dimension = row.get("dimension")
+    if row.get("current_price_source") != "sheet":
+        if price_unit is None or price_unit == base_unit:
+            return Decimal(1), False
+        crossing = conversion_by_key.get((base_unit, price_unit, dimension))
+        return (Decimal(1), True) if crossing is None else (crossing, False)
+    price_code = canonical_unit(price_unit)
+    base_code = canonical_unit(base_unit)
+    if price_code is None:
+        return Decimal(1), True
+    if base_code is not None and price_code == base_code:
+        return Decimal(1), False
+    crossing = (conversion_by_key.get((base_unit, price_unit, dimension))
+                or conversion_by_key.get((base_code, price_code, dimension)))
+    if crossing is None and base_code is not None and can_convert(base_code, price_code):
+        crossing = quantity_factor(base_code, price_code)
+    return (Decimal(1), True) if crossing is None else (crossing, False)
+
+
 @dataclass(frozen=True)
 class LiveReport:
     metrics: dict
@@ -452,12 +493,9 @@ def calculate_live_report(estimate_rows, invoice_rows, assignments, conversions,
         price_unit = row.get("current_price_unit")
         price_quantity_factor = Decimal(1)
         uncrossable_price = False
-        if stated_current_price is not None and price_unit is not None and price_unit != row.get("base_unit"):
-            crossing = conversion_by_key.get((row.get("base_unit"), price_unit, row.get("dimension")))
-            if crossing is None:
-                uncrossable_price = True
-            else:
-                price_quantity_factor = crossing
+        if stated_current_price is not None:
+            price_quantity_factor, uncrossable_price = _price_crossing(
+                row, price_unit, conversion_by_key)
         # A price in the wrong unit is not this line's price, so the line is excluded
         # exactly as an unpriced one is -- but it is NOT reported as unpriced. The price is
         # there and could not be brought into this unit: a different problem, fixed by a

@@ -83,7 +83,7 @@ SELECT DISTINCT ON (m.source_assignment_uid)
 """ + resolved_price_joins(
     as_of="CURRENT_DATE",
     organization="m.organization_id", project="m.project_id",
-    resource="r.id", assignment="m.source_assignment_uid") + """
+    resource="r.id", assignment="m.source_assignment_uid", line="l.id") + """
  WHERE m.organization_id=%s AND m.project_id=%s AND m.source_version_id=%s
    AND m.source_assignment_uid IS NOT NULL
  ORDER BY m.source_assignment_uid, m.id
