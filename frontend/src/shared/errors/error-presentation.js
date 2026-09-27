@@ -30,7 +30,10 @@ const CODE_PRESENTATION = Object.freeze({
   FINANCE_FORBIDDEN: STATUS_PRESENTATION[403],
   FINANCE_NOT_FOUND: STATUS_PRESENTATION[404],
   INVOICE_ALREADY_CONFIRMED: { title: "فاکتور قبلاً تأیید شده است", fallback: "فاکتور تأییدشده قابل ویرایش مستقیم نیست.", retryable: false },
-  PRICE_PERIOD_OVERLAP: { title: "بازه قیمت با نسخه دیگری تداخل دارد", fallback: "تاریخ اثر قیمت را بررسی کنید.", retryable: false },
+  /* Since 2026-09-27 the service raises this only for the SAME amount, same scope, same
+     day -- a double submit. A different amount on the same day is a correction and is
+     accepted as a newer version. */
+  PRICE_PERIOD_OVERLAP: { title: "همین قیمت قبلاً برای این تاریخ ثبت شده است", fallback: "قیمت جدیدی وارد نشده است؛ اگر می‌خواهید قیمت را اصلاح کنید، مبلغ دیگری بنویسید.", retryable: false, override: true },
   STALE_VERSION: { title: "نسخه جدیدتری ثبت شده است", fallback: "اطلاعات را به‌روزرسانی و تغییر خود را دوباره بررسی کنید.", retryable: true },
   UNIT_MISMATCH: { title: "واحدها با یکدیگر سازگار نیستند", fallback: "بُعد واحد یا تبدیل معتبر را بررسی کنید.", retryable: false },
   VALIDATION_ERROR: STATUS_PRESENTATION[422],

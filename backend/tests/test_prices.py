@@ -47,8 +47,10 @@ class PriceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PricePeriodOverlapTests(unittest.IsolatedAsyncioTestCase):
-    """PRD lists PRICE_PERIOD_OVERLAP as a 409; without it the older same-day price
-    becomes unreachable data instead of a rejected write."""
+    """PRD lists PRICE_PERIOD_OVERLAP as a 409. Revised 2026-09-27: it now names a
+    DOUBLE SUBMIT -- the same amount, same scope, same day -- and no longer a same-day
+    correction, which every reader resolves by version and which a person needs the
+    moment they mistype a rate."""
 
     class Repo:
         def __init__(self,history):self.history_rows=history;self.appended=None
@@ -65,12 +67,31 @@ class PricePeriodOverlapTests(unittest.IsolatedAsyncioTestCase):
     def _scope(self):
         return SimpleNamespace(organization_id=UUID(int=2),project_id="p1",actor_user_id=UUID(int=4))
 
-    async def test_same_scope_same_day_is_rejected(self):
+    async def test_the_same_amount_on_the_same_day_is_rejected(self):
         repo=self.Repo([self._existing("project",date(2026,8,10))])
         service=FinancePriceService(repo,id_factory=lambda:UUID(int=9))
+        same=PriceCreate(scopeKind="project",unitPriceIrr="100",effectiveFrom="2026-08-10",reason="r")
         with self.assertRaises(PricePeriodOverlap):
-            await service.create(self._scope(),UUID(int=3),self._command("project",date(2026,8,10)))
+            await service.create(self._scope(),UUID(int=3),same)
         self.assertIsNone(repo.appended)
+
+    async def test_a_same_day_correction_appends_a_newer_version(self):
+        """Typed 5,650,000 at 10:07, meant 5,560,000: the fix is a version 2 on the same
+        day, and version 2 is what every reader resolves for that day."""
+        repo=self.Repo([self._existing("project",date(2026,8,10))])
+        service=FinancePriceService(repo,id_factory=lambda:UUID(int=9))
+        await service.create(self._scope(),UUID(int=3),self._command("project",date(2026,8,10)))
+        self.assertEqual(2,repo.appended.version)
+        self.assertEqual(Decimal("200"),repo.appended.unit_price_irr)
+
+    def test_the_trend_steps_from_the_previous_day_not_from_the_corrected_typo(self):
+        from app.finance.domain.prices import latest_price_trend
+        day=lambda d,v,price:PriceVersion(UUID(int=v),UUID(int=2),"p1",UUID(int=3),"project",v,
+            Decimal(price),d,"r",UUID(int=4),datetime(2026,8,1,tzinfo=timezone.utc))
+        current,previous,percent,direction,_=latest_price_trend([
+            day(date(2026,8,9),1,"100"), day(date(2026,8,10),2,"565"), day(date(2026,8,10),3,"556")])
+        self.assertEqual((Decimal("556"),Decimal("100")),(current.unit_price_irr,previous.unit_price_irr))
+        self.assertEqual("up",direction)
 
     async def test_a_different_scope_or_a_different_day_still_appends(self):
         for scope_kind,day in (("organization",date(2026,8,10)),("project",date(2026,8,11))):

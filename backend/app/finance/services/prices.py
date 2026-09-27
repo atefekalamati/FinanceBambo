@@ -7,10 +7,17 @@ class FinancePriceService:
  async def create(self,scope,resource_id,command):
   if scope.actor_user_id is None: raise PermissionError("authenticated actor is required")
   history=await self.repo.history(scope,resource_id)
-  # Prices are append-only with no effectiveTo, so the only overlap possible is two
-  # versions of the same scope claiming the same effective day.
-  if any(x.scope_kind==command.scope_kind and x.effective_from==command.effective_from for x in history):
-   raise PricePeriodOverlap("a price for this scope already takes effect on that date")
+  # Prices are append-only with no effectiveTo, so two versions of one scope on one
+  # effective day are a CORRECTION: the newer version is the price from that day and
+  # the older stays in the history, superseded. Every reader already orders by
+  # (effective_from, version), so nothing has to be deleted for the correction to win.
+  # Revised 2026-09-27: this used to be refused outright, which meant a rate typed
+  # wrongly this morning could not be put right until tomorrow («a price for this
+  # scope already takes effect on that date» on «ویرایش نرخ ساعتی»). What is still
+  # refused is the same amount again on the same day -- a double submit, not a decision.
+  if any(x.scope_kind==command.scope_kind and x.effective_from==command.effective_from
+         and x.unit_price_irr==command.unit_price_irr for x in history):
+   raise PricePeriodOverlap("this price is already recorded for this scope on that date")
   version=max((x.version for x in history),default=0)+1
   value=PriceVersion(self.ids(),scope.organization_id,scope.project_id,resource_id,command.scope_kind,version,command.unit_price_irr,command.effective_from,command.reason,scope.actor_user_id,self.clock())
   return await self.repo.append(scope,value,self.ids())

@@ -27,7 +27,11 @@ def latest_price_trend(versions):
     if not versions:return None
     ordered=sorted(versions,key=lambda value:(value.effective_from,value.version,value.created_at,value.id))
     current=ordered[-1]
-    previous=ordered[-2] if len(ordered)>1 else None
+    # The previous PRICE, not the previous version: a same-day correction supersedes the
+    # version before it rather than following it, and a trend drawn from typo to fix
+    # would report a change nobody made.
+    earlier=[value for value in ordered if value.effective_from<current.effective_from]
+    previous=earlier[-1] if earlier else None
     if previous is None:return current,None,None,"none",ordered
     if current.unit_price_irr>previous.unit_price_irr:direction="up"
     elif current.unit_price_irr<previous.unit_price_irr:direction="down"
