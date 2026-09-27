@@ -3702,8 +3702,16 @@ a.breakdown-donut:focus-visible {
   overflow-y: auto;
 }
 
-.finance-board .items-summary__unit {
+/* The stage code before the item's name, on the same line: the column clips rather
+   than wraps, and a second line would have grown every row. Muted and tabular so it
+   reads as a reference, not as part of the name. */
+.finance-board .items-summary__stage {
   color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-inline-end: 0.4em;
+}
+
+.finance-board .items-summary__estimate {
   font-weight: 700;
 }
 
