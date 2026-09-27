@@ -1091,6 +1091,7 @@ function createMonthlyTrendPanel({ trend, trendError, trendWindow }) {
    categories the sheet has fill in, so the card never shows fewer than it could. */
 export const MARKET_SAMPLE_CATEGORIES = Object.freeze(["brick", "ibeam", "rebar"]);
 const MARKET_SAMPLE_COUNT = 3;
+const MARKET_SAMPLE_PAGES = 4;
 
 /**
  * Up to three priced listings, one per category, each with its own trend -- the same
@@ -1111,11 +1112,18 @@ export async function loadMarketSamples(adapter, categories = MARKET_SAMPLE_CATE
   const samples = [];
   for (const category of order) {
     if (samples.length >= MARKET_SAMPLE_COUNT) break;
-    let page;
-    try {
-      page = await adapter.listCurrentPrices({ category, pageSize: 50 });
-    } catch { continue; }
-    const priced = (page?.items ?? []).find((item) => /^\d+$/.test(String(item?.currentPriceIRR ?? "")));
+    /* A category may list hundreds of rows and price only a few, and not on the first
+       page -- terrace's one priced I-beam sits past row 50. A few pages are walked
+       before the category is given up on; the whole sheet is not. */
+    let priced = null;
+    for (let page = 1; page <= MARKET_SAMPLE_PAGES && !priced; page += 1) {
+      let body;
+      try {
+        body = await adapter.listCurrentPrices({ category, page, pageSize: 100 });
+      } catch { break; }
+      priced = (body?.items ?? []).find((item) => /^\d+$/.test(String(item?.currentPriceIRR ?? ""))) ?? null;
+      if (!body?.items?.length || (body.totalPages && page >= body.totalPages)) break;
+    }
     if (!priced) continue;
     let history = [];
     try {
