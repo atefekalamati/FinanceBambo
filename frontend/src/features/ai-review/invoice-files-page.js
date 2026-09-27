@@ -91,6 +91,29 @@ function createUploadCard({ logicalType, title, description, accept, limit, adap
 }
 
 /** Exported so the card's decisions can be asserted without a page, a clock or a browser. */
+/* The worker records the failure in the words the run raised -- an exception name and
+   an English sentence meant for the server log. The reader gets the reason in the
+   language of the page, chosen by the exception name, with the attempt count that says
+   whether the service gave up or a person may simply try again. */
+const JOB_FAILURE_WORDING = Object.freeze([
+  ["AIExtractionContentError", "سرویس پردازش جواب داد، اما خروجی‌اش با قالب فاکتور نمی‌خواند."],
+  ["AIExtractionFailed", "سرویس پردازش تصویر/صدا روی این فایل خطا داد."],
+  ["FinanceRecordNotFound", "فایل روی سرور پیدا نشد."],
+  ["ExtractionForbidden", "فقط بارگذارندهٔ فایل می‌تواند آن را پردازش کند."],
+  ["no handler", "سرویس پردازش روی این میزبان راه‌اندازی نشده است."],
+]);
+
+export function jobFailureText(job) {
+  if (!job || job.status !== "failed") return null;
+  const raw = String(job.error ?? "");
+  const known = JOB_FAILURE_WORDING.find(([marker]) => raw.includes(marker));
+  const attempts = job.maxAttempts
+    ? ` (${formatDisplayNumber(String(job.attempts))} از ${formatDisplayNumber(String(job.maxAttempts))} تلاش)`
+    : "";
+  const sentence = known ? known[1] : "پردازش با خطای پیش‌بینی‌نشده متوقف شد.";
+  return `${sentence}${attempts} فایل اصلی حفظ شده است؛ می‌توانید دوباره تلاش کنید یا فاکتور را دستی وارد کنید.`;
+}
+
 export function renderFiles(files, { adapter, canUpload, onChanged }) {
   const section = element("section", "uploaded-files");
   const head = element("div", "section-heading");
@@ -124,8 +147,18 @@ export function renderFiles(files, { adapter, canUpload, onChanged }) {
     card.append(title, details, element("p", "uploaded-file-card__note", "فایل و استخراج احتمالی آن تا تأیید انسانی، اثر مالی ندارد."));
     if (file.processingStatus === "failed") {
       const failure = element("div", "file-processing-failure");
-      failure.append(element("strong", "", "پردازش ناموفق بود"), element("p", "", file.processingError || "فایل اصلی حفظ شده است؛ دوباره تلاش کنید یا فاکتور را دستی وارد کنید."));
+      const reason = element("p", "", "فایل اصلی حفظ شده است؛ دوباره تلاش کنید یا فاکتور را دستی وارد کنید.");
+      failure.append(element("strong", "", "پردازش ناموفق بود"), reason);
       card.append(failure);
+      /* WHY, from the job the worker recorded (0040). Fetched after the card is drawn, so
+         a slow or absent answer never delays the list; the generic sentence stays when
+         there is no job to ask. */
+      if (typeof adapter?.getExtractionJob === "function") {
+        adapter.getExtractionJob(file.fileId).then((job) => {
+          const text = jobFailureText(job);
+          if (text) reason.textContent = text;
+        }, () => {});
+      }
     }
     const actions = element("div", "uploaded-file-card__actions");
     /* A file the service has already read is not offered as one to start reading. It

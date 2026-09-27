@@ -36,6 +36,21 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
       extractionId: payload?.extractionId ?? null,
     };
   }
+  /* The durable job behind a file's reading (0040): why a `failed` file failed, and how
+     many times it was tried. Null where no job was ever queued -- a host without the
+     durable executor, or a file read before it existed. */
+  async function getExtractionJob(fileId) {
+    const payload = await client.request(`${base}/files/${encodeURIComponent(fileId)}/extractions/job`);
+    if (!payload) return null;
+    return {
+      jobId: payload.jobId,
+      status: payload.status,
+      attempts: payload.attempts ?? 0,
+      maxAttempts: payload.maxAttempts ?? 0,
+      error: payload.error ?? null,
+      finishedAt: payload.finishedAt ?? null,
+    };
+  }
   async function getExtractions({ page = 1, pageSize = 50, reviewStatus = "", source = "", fileId = "", linkedInvoiceId = "" } = {}) {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (reviewStatus) params.set("reviewStatus", reviewStatus);
@@ -126,5 +141,5 @@ export function createApiAttachmentsAdapter(context, client, invoiceAdapter) {
   async function getInvoiceTargets() {
     return invoiceAdapter.getInvoiceTargets();
   }
-  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractions, getExtraction, editExtraction, retryExtraction, rejectExtraction, confirmExtraction, getInvoiceTargets, getFileContentUrl });
+  return Object.freeze({ getFiles, uploadFile, startExtraction, getExtractionJob, getExtractions, getExtraction, editExtraction, retryExtraction, rejectExtraction, confirmExtraction, getInvoiceTargets, getFileContentUrl });
 }

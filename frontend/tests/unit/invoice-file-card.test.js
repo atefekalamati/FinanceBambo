@@ -98,3 +98,45 @@ test("a start that says nothing about a previous reading is still waited for", a
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.ok(polled >= 1, "the status was polled");
 });
+
+/* WHY A FILE FAILED, from the durable job the worker recorded (0040, 2026-09-27). */
+const { jobFailureText } = await import("../../src/features/ai-review/invoice-files-page.js");
+
+test("a failed file names its reason and its attempts once the job is read", async () => {
+  const adapter = {
+    ...adapterSaying(null),
+    async getExtractionJob() {
+      return { jobId: "j1", status: "failed", attempts: 3, maxAttempts: 3,
+               error: "AIExtractionFailed: extraction failed in paddle-ocr (RuntimeError); see the server log" };
+    },
+  };
+  const section = renderFiles([file({ processingStatus: "failed" })],
+    { adapter, canUpload: true, onChanged: async () => {} });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const text = section.querySelector(".file-processing-failure").textContent;
+  assert.match(text, /سرویس پردازش تصویر\/صدا روی این فایل خطا داد/);
+  assert.match(text, /۳ از ۳ تلاش/);
+  assert.doesNotMatch(text, /paddle-ocr|RuntimeError/, "the server's words stay in the log");
+});
+
+test("with no job, or a job that cannot be read, the generic sentence stays", async () => {
+  const none = { ...adapterSaying(null), async getExtractionJob() { return null; } };
+  const broken = { ...adapterSaying(null), async getExtractionJob() { throw new Error("x"); } };
+  for (const adapter of [none, broken, adapterSaying(null)]) {
+    const section = renderFiles([file({ processingStatus: "failed" })],
+      { adapter, canUpload: true, onChanged: async () => {} });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.match(section.querySelector(".file-processing-failure").textContent, /فایل اصلی حفظ شده است/);
+  }
+});
+
+test("the wording is chosen by the exception the run raised", () => {
+  assert.match(jobFailureText({ status: "failed", error: "AIExtractionContentError: off-contract", attempts: 1, maxAttempts: 3 }),
+               /قالب فاکتور نمی‌خواند.*۱ از ۳/);
+  assert.match(jobFailureText({ status: "failed", error: "no handler for kind 'extraction'", attempts: 1, maxAttempts: 3 }),
+               /راه‌اندازی نشده/);
+  assert.match(jobFailureText({ status: "failed", error: "ZeroDivisionError: x", attempts: 3, maxAttempts: 3 }),
+               /پیش‌بینی‌نشده/);
+  assert.equal(jobFailureText({ status: "done" }), null);
+  assert.equal(jobFailureText(null), null);
+});
