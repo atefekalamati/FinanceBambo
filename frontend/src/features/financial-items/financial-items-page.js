@@ -873,7 +873,12 @@ function dailyPriceCell(line, priced, isGeneralCost, { canEdit, onManualPrice, r
  * Missing children do not become zero: a visible subtotal is labelled with its coverage,
  * and a group with no usable child price states that no total is available yet.
  */
-export function groupDailyPriceCell(rows, priceStatuses, { methodNotes = true } = {}) {
+export function groupDailyPriceCell(rows, priceStatuses, { methodNotes = true, statusesUnavailable = false } = {}) {
+  /* The statuses never arrived -- the service was down, or restarting, when the page
+     asked. Every amount below is then null for a reason that has nothing to do with the
+     rows, and «قیمت دستی دارد؛ جمع ساخته نمی‌شود» would send the reader to fix rows that
+     are fine. Measured 2026-09-27, on an activity whose three rows all had a cost. */
+  if (statusesUnavailable) return element("span", "missing-value", "وضعیت قیمت روز دریافت نشد؛ صفحه را دوباره بارگذاری کنید");
   const amounts = (rows ?? []).map((line) => {
     const value = priceStatuses.get(line.lineId)?.dailyItemCostIRR;
     return /^-?\d+$/.test(String(value ?? "")) ? BigInt(value) : null;
@@ -933,7 +938,7 @@ function manualPriceButton(line, isGeneralCost, { canEdit, onManualPrice, resour
   return button;
 }
 
-function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible, paging, priceStatuses = new Map(), onMapPrice = null, onManualPrice = null, methodNotes = true }) {
+function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistory, withheld = null, focusResourceId = "", focusEstimateLineId = "", columns, visible, paging, priceStatuses = new Map(), onMapPrice = null, onManualPrice = null, methodNotes = true, statusesUnavailable = false }) {
   const resourceMap = new Map(resources.map((resource) => [resource.resourceId, resource]));
   const fragment = document.createDocumentFragment();
   if (withheld) fragment.append(element("p", "table-note", withheld));
@@ -979,7 +984,7 @@ function renderEstimateLineTable(lines, resources, { canEdit, onRevise, onHistor
           // The schedule's figure belongs to the activity, so it is written on
           // the activity's own row rather than repeated down its items.
           scheduleCost: formatTomanFromIrr(scheduleCostOf(first), { withCurrency: false }),
-          currentPrice: groupDailyPriceCell(rows, priceStatuses, { methodNotes }),
+          currentPrice: groupDailyPriceCell(rows, priceStatuses, { methodNotes, statusesUnavailable }),
         };
       },
     },
@@ -1334,6 +1339,7 @@ export function createFinancialItemsPage({ context, adapter, priceMappingAdapter
          امور مالی and still needs to see how a row was priced. The surface decides this,
          and only the surface. */
       methodNotes: !readOnly,
+      statusesUnavailable: Boolean(priceStatusError),
       paging: { ...linePaging, onChange: (next) => { linePaging = next; paint(); } },
       canEdit,
       withheld: linesWithheld,

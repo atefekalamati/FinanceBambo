@@ -548,3 +548,20 @@ test("an activity with nothing priced at all still says so plainly", () => {
   const statuses = new Map([["a", { dailyItemCostIRR: null }]]);
   assert.match(groupDailyPriceCell(rows, statuses).textContent, /هنوز قیمت روز ندارد/);
 });
+
+/* THE STATUSES NEVER ARRIVED.
+ *
+ * Measured 2026-09-27 on «بتن ریزی شمع ها»: the service was restarting when the page
+ * asked for statuses, every amount came back null, and the activity read «قیمت دستی
+ * دارد؛ جمع این فعالیت هنوز ساخته نمی‌شود» -- sending the reader to fix three rows that
+ * all had a cost. A missing answer is not a row problem, and says so. */
+test("a failed status load is named as such, not blamed on the rows", () => {
+  const rows = [{ lineId: "line-1", currentUnitPriceIRR: "5650000" },
+                { lineId: "line-2", currentUnitPriceIRR: "5000000" }];
+  const cell = groupDailyPriceCell(rows, new Map(), { statusesUnavailable: true });
+  assert.match(cell.textContent, /وضعیت قیمت روز دریافت نشد/);
+  assert.doesNotMatch(cell.textContent, /قیمت دستی/);
+  /* And with the statuses present, the same rows still get the ordinary verdict. */
+  const usual = groupDailyPriceCell(rows, new Map(), { statusesUnavailable: false });
+  assert.match(usual.textContent, /قیمت دستی دارد/);
+});
