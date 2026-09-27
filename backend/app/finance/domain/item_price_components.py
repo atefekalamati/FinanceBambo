@@ -369,7 +369,13 @@ def resource_priced_row(unit_price_irr, quantity, price_unit, price_source, prod
     difference between "no total" and "a total of zero" is the difference between a
     question and a claim.
     """
-    total = None if quantity is None else Decimal(quantity) * Decimal(unit_price_irr)
+    # WHOLE RIALS, like every component cost above. `60.0000 × 6,000,000` is
+    # `360000000.0000`, and a money string with a fraction is not money to the page: every
+    # exact-integer guard there rejects it, the row read «—», and two machines with a rate
+    # and a quantity were counted «بدون قیمت» in their activity's sum (1.8.1.7.3,
+    # 2026-09-27). Rounded once, here, half up, as the component path already does.
+    total = (None if quantity is None
+             else (Decimal(quantity) * Decimal(unit_price_irr)).quantize(WHOLE_RIAL, rounding=ROUND_HALF_UP))
     return {
         "status": RESOURCE_PRICE_READY,
         "status_label": STATUS_LABELS[RESOURCE_PRICE_READY],

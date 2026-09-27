@@ -154,5 +154,18 @@ class TheLadderTests(unittest.TestCase):
         self.assertIn("THEN rate_link.base_unit", resolved_price_columns("r.base_unit"))
 
 
+
+class ResourcePricedRowIsWholeRialsTests(unittest.TestCase):
+    """`60.0000 × 6,000,000` came back as `360000000.0000`; the page's integer guards
+    rejected it and two priced machines read «—» and «بدون قیمت» (1.8.1.7.3)."""
+
+    def test_a_fractional_quantity_still_yields_an_integer_string(self):
+        from app.finance.domain.item_price_components import resource_priced_row
+        row = resource_priced_row(Decimal("6000000"), Decimal("60.0000"), "hour", SOURCE_MANUAL_RESOURCE)
+        self.assertEqual("360000000", row["daily_item_cost_irr"])
+        row = resource_priced_row(Decimal("3"), Decimal("0.5"), "hour", SOURCE_MANUAL_RESOURCE)
+        self.assertEqual("2", row["daily_item_cost_irr"], "1.5 rial rounds half up, once")
+        self.assertIsNone(resource_priced_row(Decimal("3"), None, "hour", SOURCE_MANUAL_RESOURCE)["daily_item_cost_irr"])
+
 if __name__ == "__main__":
     unittest.main()
