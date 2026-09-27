@@ -408,3 +408,30 @@ class MspAlignmentTests(unittest.IsolatedAsyncioTestCase):
             finance_units=self.finance_unit("ton"))
         self.assertEqual(Decimal("955000"), items[0]["current_price_irr"],
                          "the price is still per kilogram; alignment only reports")
+
+
+class NameSearchTests(unittest.IsolatedAsyncioTestCase):
+    """`query` narrows the page to listings whose name contains it (2026-09-27)."""
+
+    SCOPE = ServiceShapeTests.Scope()
+
+    def rows(self):
+        return [observation(provider_item_id=UUID(int=1), external_name="میلگرد آجدار 14 A3"),
+                observation(provider_item_id=UUID(int=2), external_name="میلگرد ساده 25 یزد"),
+                observation(provider_item_id=UUID(int=3), external_name="تیرآهن 18 ذوب آهن")]
+
+    async def test_the_count_beside_the_table_is_the_count_of_matches(self):
+        items, total = await service(rows=self.rows()).current(self.SCOPE, query="میلگرد", page=1, page_size=1)
+        self.assertEqual(2, total)
+        self.assertEqual(1, len(items), "paged after the filter, not before")
+
+    async def test_case_spaces_and_keyboard_are_folded(self):
+        for needle in ("ميلگردآجدار", "آجدار 14", "a3", "14 میلگرد"):
+            with self.subTest(needle):
+                items, total = await service(rows=self.rows()).current(self.SCOPE, query=needle)
+                self.assertEqual(1, total, needle)
+                self.assertEqual("میلگرد آجدار 14 A3", items[0]["external_name"])
+
+    async def test_a_blank_query_is_no_query(self):
+        _items, total = await service(rows=self.rows()).current(self.SCOPE, query="  ")
+        self.assertEqual(3, total)

@@ -38,6 +38,30 @@ DEFAULT_STALE_AFTER_DAYS = 7
 EQUIPMENT_CATEGORY = "work"
 
 
+def _fold_name(text):
+    """A listing name as a person types it: no case, no spaces, one keyboard.
+
+    Arabic «ي»/«ك» and Persian «ی»/«ک» are the same letters typed on different keyboards,
+    and a search that told them apart would find «ميلگرد» and miss «میلگرد».
+    """
+    return (str(text or "").casefold().replace(" ", "").replace("‌", "")
+            .replace("ي", "ی").replace("ك", "ک"))
+
+
+def _matching_name(rows, query):
+    """The rows whose `external_name` contains every WORD of `query`, in any order.
+
+    Per word, not as one string: «میلگرد 25» must find «میلگرد ساده 25 یزد», whose words
+    are not adjacent. No query, or only spaces, is no filter.
+    """
+    words = [_fold_name(word) for word in str(query or "").split()]
+    words = [word for word in words if word]
+    if not words:
+        return rows
+    return [row for row in rows
+            if all(word in _fold_name(row.get("external_name")) for word in words)]
+
+
 def _midnight(day):
     """A business DATE as the timestamp the response declares, or None.
 
@@ -283,8 +307,13 @@ class MaterialPriceService:
         return await self.repository.unresolved_items(scope, page=page, page_size=page_size)
 
     async def current(self, scope, *, category=None, as_of=None, page=1, page_size=50,
-                      only_active=True, provider_item_id=None, today=None):
+                      only_active=True, provider_item_id=None, today=None, query=None):
         """The newest observation per listing, resolved, paged.
+
+        `query` narrows the page to listings whose name contains it, case-folded and
+        space-folded, so «میلگرد۱۴» finds «میلگرد 14». Applied before paging, so the count
+        beside the table is the count of matches. Added 2026-09-27 for the search box on
+        the daily-prices page: a category with 992 pipes is not browsed, it is searched.
 
         Paged in memory after resolution rather than in SQL, and deliberately: the status a
         row ends up with depends on the unit settings and the factors available to it, so a
@@ -294,7 +323,7 @@ class MaterialPriceService:
         """
         if category == EQUIPMENT_CATEGORY:
             return await self._equipment_current(scope, as_of=as_of, today=today,
-                                                 page=page, page_size=page_size)
+                                                 page=page, page_size=page_size, query=query)
         options = {"category": category, "only_active": only_active}
         if provider_item_id is not None:
             options["provider_item_id"] = provider_item_id
@@ -347,11 +376,12 @@ class MaterialPriceService:
                 # failed crossing and a crossing nobody requested are different answers.
                 eligible=_conversion_eligible(row, source, target, factor)))
 
+        resolved = _matching_name(resolved, query)
         total = len(resolved)
         start = (page - 1) * page_size
         return resolved[start:start + page_size], total
 
-    async def _equipment_current(self, scope, *, as_of, today, page, page_size):
+    async def _equipment_current(self, scope, *, as_of, today, page, page_size, query=None):
         """Equipment rates, in the shape the daily-prices table already renders.
 
         Asked for explicitly or not at all. `category=equipment` is the only way in: the
@@ -368,7 +398,7 @@ class MaterialPriceService:
         if cutoff is None or not hasattr(self.repository, "equipment_rates"):
             return [], 0
         rows = await self.repository.equipment_rates(scope, as_of=cutoff)
-        shaped = [self._equipment_row(row) for row in rows]
+        shaped = _matching_name([self._equipment_row(row) for row in rows], query)
         start = (page - 1) * page_size
         return shaped[start:start + page_size], len(shaped)
 

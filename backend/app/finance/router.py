@@ -747,16 +747,18 @@ async def record_manual_material_price(projectId:str,payload:ManualPriceCreate,
 async def material_prices_current(projectId:str,request:Request,
     category:str|None=Query(None,min_length=1,max_length=60),
     asOf:date|None=None,includeInactive:bool=False,
+    query:str|None=Query(None,max_length=120),
     page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=200)):
     """The newest price per listing, each with the status that says how to read it.
 
     `asOf` turns freshness on: without it nothing is called stale, because a page that does
-    not say which day it means cannot say whether a price is old.
+    not say which day it means cannot say whether a price is old. `query` narrows the
+    listings to names containing it.
     """
     scope=await _resource_scope(projectId,request,"finance.view")
     items,total=await request.app.state.material_price_service.current(
         scope,category=category,as_of=asOf,page=page,page_size=pageSize,
-        only_active=not includeInactive,
+        only_active=not includeInactive,query=query,
         # The day to read equipment rates against when the caller named none. It is NOT a
         # default for `asOf`: passing it there would turn freshness on for every sheet row
         # and start calling prices stale on a request that never asked about a date.

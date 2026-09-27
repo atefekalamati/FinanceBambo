@@ -270,9 +270,12 @@ export function createMaterialPricesApiAdapter(context, { client }) {
     },
 
     async listCurrentPrices({ category = null, asOf = null, includeInactive = false,
-                              page = 1, pageSize = 50 } = {}) {
+                              page = 1, pageSize = 50, search = null } = {}) {
       const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (category) query.set("category", category);
+      /* A product-name search, applied by the service before paging so the count beside
+         the table is the count of matches. */
+      if (search && String(search).trim()) query.set("query", String(search).trim());
       /* asOf is what turns freshness on. Without it the backend calls nothing stale,
          because a page that does not say which day it means cannot say a price is old. */
       if (asOf) query.set("asOf", asOf);

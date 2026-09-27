@@ -390,11 +390,30 @@ function rowNotes(row) {
  *   trend: see `rowPriceTrend`. Absent, every row falls back to its observations, which is
  *   what this section did before equipment appeared on it.
  */
+function labelledSearch(text, input, note = null) {
+  const wrap = element("label", "material-prices__search-field");
+  wrap.append(element("span", "material-prices__search-label", text), input);
+  if (note) wrap.append(note);
+  return wrap;
+}
+
+/** How long typing pauses before a product search is sent. */
+export const SEARCH_DEBOUNCE_MS = 300;
+
+/* A chip label as a person types it: no case, no spaces, one keyboard -- the same folding
+   the service applies to product names, so the two boxes behave alike. */
+export function foldSearchText(text) {
+  return String(text ?? "").toLowerCase().replace(/[\s‌]/g, "")
+    .replace(/ي/g, "ی").replace(/ك/g, "ک");
+}
+
 export function renderMaterialPrices(rows, { categories = [], selectedCategory = null,
                                              onSelectCategory = null, paging = null,
                                              readOnly = false,
                                              priceHistories = new Map(),
-                                             resourceTrends = new Map() } = {}) {
+                                             resourceTrends = new Map(),
+                                             productQuery = "", onSearchProduct = null,
+                                             searchDebounceMs = SEARCH_DEBOUNCE_MS } = {}) {
   const section = element("section", "prices-section material-prices");
   const heading = element("header", "prices-section__header");
   heading.append(element("h2", "", "قیمت روز بازار (برگه مصالح)"));
@@ -403,8 +422,83 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
     + "قیمت رسمی را یک نفر ثبت می‌کند و فاکتورها و گزارش‌ها با آن سنجیده می‌شوند."));
   section.append(heading);
 
+  /* TWO SEARCHES, two levels. Asked 2026-09-27: a sheet with a dozen categories is hard
+     to scan as chips, and a category with 992 pipes is not browsed, it is searched.
+       - «جست‌وجوی دسته» narrows the CHIPS, on the page, as the person types: chips whose
+         label does not contain the text are hidden, the overflow menu included, and the
+         count of hidden chips is said so «همه» beside three chips is not read as "three
+         categories". Nothing is fetched.
+       - «جست‌وجوی محصول» asks the SERVICE for listings whose name contains the text, on the
+         chosen category or across all of them, after a short pause in typing; the page
+         goes back to page one, and the value survives the re-render because the page
+         hands it back as `productQuery`. */
+  const search = element("div", "material-prices__search");
+  const categorySearch = element("input", "app-input material-prices__search-input");
+  categorySearch.type = "search";
+  categorySearch.name = "categorySearch";
+  categorySearch.placeholder = "جست‌وجوی دسته‌بندی";
+  categorySearch.setAttribute("aria-label", "جست‌وجو در دسته‌بندی‌ها");
+  const chipsHidden = element("span", "material-prices__search-note", "");
+  chipsHidden.setAttribute("aria-live", "polite");
+  const productSearch = element("input", "app-input material-prices__search-input");
+  productSearch.type = "search";
+  productSearch.name = "productSearch";
+  productSearch.placeholder = "جست‌وجوی نام محصول";
+  productSearch.setAttribute("aria-label", "جست‌وجو در نام محصولات");
+  productSearch.value = productQuery ?? "";
+  let searchBoxes = 0;
+  if (categories.length && onSelectCategory) {
+    search.append(labelledSearch("دسته", categorySearch, chipsHidden));
+    searchBoxes += 1;
+  }
+  if (onSearchProduct) {
+    search.append(labelledSearch("محصول", productSearch));
+    searchBoxes += 1;
+    let timer = null;
+    let last = productQuery ?? "";
+    const send = () => {
+      const value = productSearch.value.trim();
+      if (value === last) return;
+      last = value;
+      onSearchProduct(value);
+    };
+    productSearch.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(send, searchDebounceMs);
+    });
+    productSearch.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); clearTimeout(timer); send(); }
+    });
+    /* `search` fires on the clear button of a search input, and on Escape. */
+    productSearch.addEventListener("search", () => { clearTimeout(timer); send(); });
+  }
+  if (searchBoxes) section.append(search);
+
   if (categories.length && onSelectCategory) {
     const filter = element("div", "material-prices__filters");
+    /* The chip search: hide what does not match, count what was hidden. Chips are found
+       by their data attribute so the overflow menu's chips are filtered too. */
+    categorySearch.addEventListener("input", () => {
+      /* Per word, in any order, like the product search at the service. */
+      const words = String(categorySearch.value ?? "").split(/\s+/).map(foldSearchText).filter(Boolean);
+      const needle = words.length > 0;
+      let hidden = 0;
+      filter.querySelectorAll(".material-prices__chip").forEach((chip) => {
+        const label = foldSearchText(chip.dataset.label);
+        const match = words.every((word) => label.includes(word));
+        chip.hidden = !match;
+        if (!match) hidden += 1;
+      });
+      const more = filter.querySelector(".material-prices__more");
+      if (more) {
+        const visible = [...more.querySelectorAll(".material-prices__chip")].some((chip) => !chip.hidden);
+        more.hidden = !visible;
+        if (needle && visible) more.open = true;
+      }
+      chipsHidden.textContent = hidden
+        ? `${formatDisplayNumber(String(hidden))} دسته پنهان شد`
+        : "";
+    });
     const byCode = new Map(categories.map((category) => [category.category, category]));
     /* The five that are always on screen whatever this project's sheet happens to carry:
        they are the trades every project has, and a chip that came and went with a missing
@@ -426,10 +520,12 @@ export function renderMaterialPrices(rows, { categories = [], selectedCategory =
     const makeChip = (category, container = filter, dropdown = null) => {
       const active = category.category === selectedCategory;
       const count = category.activeCount == null ? "" : ` (${category.activeCount})`;
-      const chip = element("button", "app-chip" + (active ? " app-chip--active" : ""),
+      const chip = element("button", "app-chip material-prices__chip" + (active ? " app-chip--active" : ""),
         `${category.label ?? category.category}${count}`);
       chip.type = "button";
       chip.dataset.category = category.category;
+      /* The label alone, for the chip search: the count in the text is not a name. */
+      chip.dataset.label = category.label ?? category.category;
       chip.setAttribute("aria-pressed", String(active));
       chip.addEventListener("click", () => {
         if (dropdown) dropdown.open = false;

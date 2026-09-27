@@ -791,6 +791,14 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
           marketPaging = { ...marketPaging, page: 1 };
           loadMarketPrices();
         },
+        /* The product search, from the first page: a query that matches three products
+           has no page four. The text is handed back so the box survives the re-render. */
+        productQuery: marketQuery,
+        onSearchProduct: (value) => {
+          marketQuery = value;
+          marketPaging = { ...marketPaging, page: 1 };
+          loadMarketPrices();
+        },
         paging: {
           page: marketPrices.page ?? marketPaging.page,
           pageSize: marketPrices.pageSize ?? marketPaging.pageSize,
@@ -825,6 +833,7 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
   let marketPrices = null;
   let marketCategories = [];
   let marketCategory = null;
+  let marketQuery = "";
   let marketLoading = false;
   let marketError = null;
   let marketPriceHistories = new Map();
@@ -876,7 +885,7 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
          means cannot say a price is old. */
       const [page, categories] = await Promise.all([
         materialPricesAdapter.listCurrentPrices({
-          category: marketCategory, asOf: getTehranTodayIso(),
+          category: marketCategory, asOf: getTehranTodayIso(), search: marketQuery,
           page: marketPaging.page, pageSize: marketPaging.pageSize,
         }),
         materialPricesAdapter.listCategories(),
@@ -897,7 +906,17 @@ export function createPricesPage({ context, adapter, materialPricesAdapter = nul
   }
 
   function paint() {
+    /* A person typing in the product search box triggers a reload, and the reload
+       repaints the page -- which would take the caret out of the box they are typing
+       in. The focused search box is remembered by name and focus is put back, at the end
+       of the text, once the new one exists. */
+    const focused = document.activeElement?.closest?.(".material-prices__search")
+      ? document.activeElement.name : null;
     root.replaceChildren(renderHeader(), renderPageState(state, { renderContent, onRetry: load }));
+    if (focused) {
+      const again = root.querySelector(`.material-prices__search [name=${focused}]`);
+      if (again) { again.focus(); again.setSelectionRange?.(again.value.length, again.value.length); }
+    }
     const target = root.querySelector(".deep-link-target");
     if (target) queueMicrotask(() => {
       target.scrollIntoView({ block: "center", behavior: "smooth" });

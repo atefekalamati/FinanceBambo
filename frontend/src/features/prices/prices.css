@@ -618,7 +618,11 @@ html[data-theme="light"] .price-form select {
   position: absolute;
   z-index: 20;
   inset-block-start: calc(100% + var(--space-sm));
-  inset-inline-start: 0;
+  /* Anchored to the trigger's inline END and growing back towards the page. The «…» chip
+     is the last in its row and, on a phone, sits at the row's far edge; a menu anchored
+     to its inline start grew past that edge -- measured at 360px: 12px off-screen. */
+  inset-inline-end: 0;
+  max-inline-size: calc(100vw - 2 * var(--space-md));
   display: grid;
   gap: var(--space-xs);
   min-inline-size: 12rem;
@@ -1159,4 +1163,36 @@ html[data-theme="light"] .price-form select {
 
   .trend-detail .trend-detail__title { font-size: .74rem; }
   .trend-detail__amount { font-size: .86rem; }
+}
+
+/* The two search boxes above the category chips: one narrows the chips on the page, the
+   other asks the service for product names. Side by side where there is room, stacked
+   where there is not. */
+.material-prices__search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-block-start: var(--space-md);
+}
+
+.material-prices__search-field {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.material-prices__search-label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.material-prices__search-input {
+  inline-size: 100%;
+}
+
+.material-prices__search-note {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  min-block-size: 1em;
 }
