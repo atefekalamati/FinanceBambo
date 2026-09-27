@@ -48,6 +48,7 @@ import { createReportBuilderSection } from "../report-builder/report-builder-sec
 import { reportIcon } from "../report-builder/report-icons.js";
 import { createLevelOneSection } from "../level-one/level-one-section.js";
 import { createPricesSummary } from "./prices-summary.js";
+import { materialPriceTrend } from "../prices/material-prices-section.js";
 import { createItemsSummary } from "./items-summary.js";
 import { createInvoicesEntry } from "./invoices-entry.js";
 import { coverageNote, coverageTooltip, coverageWarnings, restsOnNothing, unavailableReason }
@@ -1085,11 +1086,54 @@ function createMonthlyTrendPanel({ trend, trendError, trendWindow }) {
   };
 }
 
+/* Which market categories the card samples, in the order the reader named them: a
+   brick, an I-beam, a rebar. A category with nothing priced yields no row and the next
+   categories the sheet has fill in, so the card never shows fewer than it could. */
+export const MARKET_SAMPLE_CATEGORIES = Object.freeze(["brick", "ibeam", "rebar"]);
+const MARKET_SAMPLE_COUNT = 3;
+
+/**
+ * Up to three priced listings, one per category, each with its own trend -- the same
+ * `materialPriceTrend` the prices page draws, from the same history call. Categories
+ * the sheet publishes beyond the three named are tried afterwards; the hourly-rates
+ * chip is not a market and is skipped.
+ */
+export async function loadMarketSamples(adapter, categories = MARKET_SAMPLE_CATEGORIES) {
+  if (!adapter || typeof adapter.listCurrentPrices !== "function") return [];
+  const order = [...categories];
+  try {
+    const published = await adapter.listCategories();
+    for (const entry of published?.items ?? published ?? []) {
+      const code = entry?.category;
+      if (code && code !== "work" && !order.includes(code)) order.push(code);
+    }
+  } catch { /* the named three are still tried */ }
+  const samples = [];
+  for (const category of order) {
+    if (samples.length >= MARKET_SAMPLE_COUNT) break;
+    let page;
+    try {
+      page = await adapter.listCurrentPrices({ category, pageSize: 50 });
+    } catch { continue; }
+    const priced = (page?.items ?? []).find((item) => /^\d+$/.test(String(item?.currentPriceIRR ?? "")));
+    if (!priced) continue;
+    let history = [];
+    try {
+      history = (await adapter.listPriceHistory(priced.providerItemId, { page: 1, pageSize: 5 })).items ?? [];
+    } catch { /* a trend that cannot be read is «بدون سابقه», not a missing price */ }
+    samples.push({ ...priced, trendItem: materialPriceTrend(priced, history) });
+  }
+  return samples;
+}
+
 export function createFinanceHomePage({
   reportsAdapter,
   progressAdapter,
   pricesAdapter,
   financialItemsAdapter,
+  /* The market sheet, for the three sample rows of the «قیمت‌های روز» card. Optional:
+     a host without the material-prices module gets the card from resource rates. */
+  materialPricesAdapter = null,
 }) {
   let state = createRequestState(REQUEST_STATUS.LOADING);
   let trend = null;
@@ -1101,6 +1145,11 @@ export function createFinanceHomePage({
   let wbsError = null;
   let priceWorkspace = null;
   let priceError = null;
+  /* Three MARKET prices for the card -- a brick, an I-beam, a rebar -- read from the
+     sheet, not from the resource rates. Measured 2026-09-27: the card's "first three
+     priced resources" were three seed rates of 100,000 toman, which say nothing about
+     the market. Empty when the sheet has nothing priced, or the module is not wired. */
+  let marketSamples = [];
   let itemsWorkspace = null;
   let itemsError = null;
   let activeChart = "managerial";
@@ -1157,7 +1206,7 @@ export function createFinanceHomePage({
           );
         // The trend is independent of the overview: a failure there must not
         // take the eight headline metrics down with it.
-        const [report, monthly, rollup, priceData, itemData, scheduleFeed] =
+        const [report, monthly, rollup, priceData, itemData, scheduleFeed, samples] =
           await Promise.all([
             reportsAdapter.getOverview({
               reportingDate,
@@ -1237,10 +1286,14 @@ export function createFinanceHomePage({
               },
             ),
             scheduleFeedPromise,
+            /* Silent by design, like the schedule feed: a sheet that cannot be read
+               leaves the card to the resource rates, and says nothing. */
+            loadMarketSamples(materialPricesAdapter).then((value) => value, () => []),
           ]);
         trend = withScheduleEstimate(monthly, scheduleFeed);
         wbsRollup = rollup;
         priceWorkspace = priceData;
+        marketSamples = samples ?? [];
         itemsWorkspace = itemData;
         state = report
           ? createRequestState(REQUEST_STATUS.SUCCESS, report)
@@ -1278,7 +1331,7 @@ export function createFinanceHomePage({
       const built = createMonthlyTrendPanel({ trend, trendError, trendWindow });
       const curve = createCostCurvePanel({ trend, trendError, trendWindow });
       const levelOne = { rollup: wbsRollup, error: wbsError };
-      const prices = { workspace: priceWorkspace, error: priceError };
+      const prices = { workspace: priceWorkspace, error: priceError, samples: marketSamples };
       const items = { workspace: itemsWorkspace, error: itemsError };
       chart = built.chart;
       const provenance = warnOnSnapshotMismatch({

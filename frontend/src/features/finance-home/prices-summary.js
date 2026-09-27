@@ -17,7 +17,33 @@ import { createPriceTrend } from "../../shared/components/price-trend.js";
 
 const ROW_COUNT = 3;
 
-export function createPricesSummary({ workspace = null, error = null } = {}) {
+/* A market listing as a card row: its name, its sheet price, its own trend. Shaped like
+   a resource row so the table below draws both the same way. */
+function marketRow(sample) {
+  return {
+    name: sample.name ?? sample.externalName ?? "قلم بدون عنوان",
+    unitPriceIRR: sample.currentPriceIRR,
+    trendItem: sample.trendItem ?? { resource: { resourceId: sample.providerItemId }, trend: null },
+    history: [],
+  };
+}
+
+function resourceRow(item, history) {
+  return {
+    name: item.resource?.title ?? "قلم بدون عنوان",
+    unitPriceIRR: item.currentPrice.unitPriceIRR,
+    trendItem: item,
+    history,
+  };
+}
+
+/**
+ * @param samples  MARKET prices, first: a brick, an I-beam, a rebar, read from the sheet
+ *   by the page. The card used to show the first three priced RESOURCES, which on this
+ *   project were three seed rates of 100,000 toman -- the market is what a reader opening
+ *   «قیمت‌های روز» expects to see. Resource rates fill the rows the market leaves empty.
+ */
+export function createPricesSummary({ workspace = null, error = null, samples = [] } = {}) {
   const section = element("section", "overview-card prices-summary");
   section.setAttribute("aria-label", "قیمت‌های روز");
 
@@ -35,9 +61,14 @@ export function createPricesSummary({ workspace = null, error = null } = {}) {
 
   // `currentPrices` is what the workspace calls its rows — the same array the
   // full table on #finance/report-prices renders.
-  const rows = (workspace?.currentPrices ?? [])
+  const market = (samples ?? [])
+    .filter((sample) => /^\d+$/.test(String(sample?.currentPriceIRR ?? "")))
+    .slice(0, ROW_COUNT)
+    .map(marketRow);
+  const rows = market.concat((workspace?.currentPrices ?? [])
     .filter((item) => item?.currentPrice?.unitPriceIRR)
-    .slice(0, ROW_COUNT);
+    .slice(0, ROW_COUNT - market.length)
+    .map((item) => resourceRow(item, workspace?.history ?? [])));
 
   if (!rows.length) {
     section.append(element("p", "inline-notice", "هنوز قیمت روزی برای اقلام این پروژه ثبت نشده است."));
@@ -58,15 +89,15 @@ export function createPricesSummary({ workspace = null, error = null } = {}) {
     // The column is a fixed share of the card and the cell clips rather than
     // wrapping, so a name longer than its column is cut on screen. The title is
     // where the whole of it stays.
-    const nameText = item.resource?.title ?? "قلم بدون عنوان";
+    const nameText = item.name;
     name.title = nameText;
     name.append(element("span", "", nameText));
     const price = element("td", "numeric prices-summary__price",
-      formatTomanFromIrr(item.currentPrice.unitPriceIRR, { withCurrency: false }));
+      formatTomanFromIrr(item.unitPriceIRR, { withCurrency: false }));
     // The table's own trend, not a second reading of it: same function, same
     // item, same history — so the line here is the line there.
     const trend = element("td", "prices-summary__trend");
-    trend.append(createPriceTrend(item, workspace?.history ?? []));
+    trend.append(createPriceTrend(item.trendItem, item.history));
     record.append(name, price, trend);
     body.append(record);
   });
